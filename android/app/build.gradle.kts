@@ -48,6 +48,9 @@ android {
                 storePassword = releaseStorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
+                // v3 makes a future key rotation possible (signing certificate lineage).
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
