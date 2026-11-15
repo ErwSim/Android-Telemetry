@@ -1,19 +1,21 @@
 package sim
 
 import (
+	"fmt"
 	"math/rand"
 	"sort"
+	"strings"
 	"time"
 )
 
 const securityPatch = "2026-10-01"
 
-func basePosture(t time.Time) map[string]any {
+func basePosture(t time.Time, dnsHost string) map[string]any {
 	patch, _ := time.Parse("2006-01-02", securityPatch)
 	return map[string]any{
 		"security_patch": securityPatch, "patch_age_days": int(t.Sub(patch).Hours() / 24), "encrypted": true,
 		"lock_secure": true, "adb_enabled": false, "adb_wifi_enabled": false, "dev_options": false, "unknown_sources": false,
-		"private_dns_mode": "hostname", "private_dns_host": "dns.vigie.example", "always_on_vpn": false, "device_owner": true,
+		"private_dns_mode": "hostname", "private_dns_host": dnsHost, "always_on_vpn": false, "device_owner": true,
 		"verified_boot_state": "green", "user_ca_certs": []any{}, "play_protect": true, "usb_data_signaling": true,
 	}
 }
@@ -26,13 +28,87 @@ func (g *Generator) postureEvent(t time.Time, sev int) {
 		cp[k] = v
 	}
 	g.emit(t, "security.posture", sev, cp)
+	g.postureChanges(t.Add(time.Millisecond), cp)
+}
+
+// postureChanges emits one security.posture_change per field that differs from the previous
+// security.posture (contract §2, catalog details), values converted to strings. patch_age_days
+// is derived from the date and is not a change of the device.
+func (g *Generator) postureChanges(t time.Time, cur map[string]any) {
+	now := make(map[string]string, len(cur))
+	for k, v := range cur {
+		now[k] = postureString(v)
+	}
+	prev := g.postureSnt
+	g.postureSnt = now
+	if prev == nil {
+		return
+	}
+	keys := make([]string, 0, len(now))
+	for k := range now {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if k == "patch_age_days" || prev[k] == now[k] {
+			continue
+		}
+		g.emit(t, "security.posture_change", postureChangeSev(k, now[k]), map[string]any{"field": k, "old": prev[k], "new": now[k]})
+		t = t.Add(time.Millisecond)
+	}
+}
+
+func postureString(v any) string {
+	switch x := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return x
+	case []any:
+		parts := make([]string, len(x))
+		for i, e := range x {
+			parts[i] = postureString(e)
+		}
+		return strings.Join(parts, ",")
+	default:
+		return fmt.Sprint(x)
+	}
+}
+
+// postureChangeSev: severity hint of a posture change, as the agent would set it.
+func postureChangeSev(field, val string) int {
+	switch field {
+	case "device_owner", "encrypted", "lock_secure":
+		if val == "false" {
+			return 3
+		}
+	case "verified_boot_state":
+		if val != "green" {
+			return 3
+		}
+	case "adb_enabled", "adb_wifi_enabled", "dev_options", "unknown_sources":
+		if val == "true" {
+			return 2
+		}
+	case "play_protect":
+		if val == "false" {
+			return 2
+		}
+	case "private_dns_mode", "private_dns_host":
+		return 2
+	case "user_ca_certs":
+		if val != "" {
+			return 2
+		}
+	}
+	return 0
 }
 
 // startup emits what the agent reports when its service starts.
 func (g *Generator) startup(t time.Time, reason string) {
 	g.emit(t, "agent.started", 0, map[string]any{"reason": reason, "agent_version": g.version})
 	for i, p := range []map[string]any{
-		{"action": "private_dns_set", "target": "dns.vigie.example", "profile": "equilibre", "ok": true},
+		{"action": "private_dns_set", "target": g.dnsHost, "profile": "equilibre", "ok": true},
 		{"action": "network_logging", "target": "enabled", "profile": "equilibre", "ok": true},
 		{"action": "security_logging", "target": "enabled", "profile": "equilibre", "ok": true},
 		{"action": "restriction_set", "target": "no_install_unknown_sources_globally", "profile": "equilibre", "ok": true},
@@ -157,10 +233,15 @@ func (g *Generator) PlanScenario(from, to time.Time) {
 	caSHA := sha256Hex("corporate-proxy-ca")
 	g.emit(ca, "security.ca_cert", 2, map[string]any{"event": "added", "sha256": caSHA, "subject": "CN=Corporate Proxy Root CA, O=Example Corp"})
 	g.emit(ca.Add(time.Second), "security.log", 1, map[string]any{"tag": "cert_authority_installed", "level": "info",
-		"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"result": 1, "subject": "CN=Corporate Proxy Root CA, O=Example Corp", "user_id": 0}})
-	g.posture["user_ca_certs"] = []any{caSHA}
-	g.postureEvent(ca.Add(2*time.Second), 1)
+		"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"success": true, "subject": "CN=Corporate Proxy Root CA, O=Example Corp", "user_id": 0}})
+	// State changes go through later() so that every posture in between stays consistent.
+	g.later(ca.Add(2*time.Second), func(t time.Time) {
+		g.posture["user_ca_certs"] = []any{caSHA}
+		g.postureEvent(t, 1)
+	})
 	g.emit(ca.Add(3*time.Hour), "security.ca_cert", 2, map[string]any{"event": "removed", "sha256": caSHA, "subject": "CN=Corporate Proxy Root CA, O=Example Corp"})
+	g.emit(ca.Add(3*time.Hour+500*time.Millisecond), "security.log", 0, map[string]any{"tag": "cert_authority_removed", "level": "info",
+		"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"success": true, "subject": "CN=Corporate Proxy Root CA, O=Example Corp", "user_id": 0}})
 	g.later(ca.Add(3*time.Hour+time.Second), func(t time.Time) {
 		g.posture["user_ca_certs"] = []any{}
 		g.postureEvent(t, 0)
@@ -230,18 +311,60 @@ func (g *Generator) PlanScenario(from, to time.Time) {
 		ts := kg.Add(time.Duration(i*6) * time.Second)
 		g.emit(ts, "security.keyguard", sev, map[string]any{"event": "unlock_failed", "failed_attempts": i})
 		g.emit(ts.Add(10*time.Millisecond), "security.log", 1, map[string]any{"tag": "keyguard_dismiss_auth_attempt", "level": "warning",
-			"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"success": false, "method_strength": 1}})
+			"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"success": false, "strength": 1}})
 	}
 	g.emit(kg.Add(40*time.Second), "security.keyguard", 0, map[string]any{"event": "unlock_succeeded", "failed_attempts": 3})
 
+	// Sensors carry the screen state (contract §2, catalog details): screen_on, locked.
+	sensor := func(ts time.Time, typ string, sev int, d map[string]any, screenOn, locked bool) {
+		d["screen_on"], d["locked"] = screenOn, locked
+		g.emit(ts, typ, sev, d)
+	}
 	cam := at(0.42)
-	g.emit(cam, "sensor.camera", 0, map[string]any{"camera_id": "0", "in_use": true, "package": "com.sec.android.app.camera"})
-	g.emit(cam.Add(35*time.Second), "sensor.camera", 0, map[string]any{"camera_id": "0", "in_use": false, "package": "com.sec.android.app.camera"})
+	sensor(cam, "sensor.camera", 0, map[string]any{"camera_id": "0", "in_use": true, "package": "com.sec.android.app.camera"}, true, false)
+	sensor(cam.Add(35*time.Second), "sensor.camera", 0, map[string]any{"camera_id": "0", "in_use": false, "package": "com.sec.android.app.camera"}, true, false)
+	// A call: the proximity sensor turns the screen off, the phone is not locked.
 	call := at(0.75)
-	g.emit(call, "sensor.microphone", 0, map[string]any{"recording": true, "source": "voice_communication", "package": "com.whatsapp", "silenced": false})
-	g.emit(call.Add(7*time.Minute), "sensor.microphone", 0, map[string]any{"recording": false, "source": "voice_communication", "package": "com.whatsapp", "silenced": false})
-	g.emit(at(0.77), "sensor.camera", 1, map[string]any{"camera_id": "1", "in_use": true, "package": "com.instagram.android"})
-	g.emit(at(0.77).Add(50*time.Second), "sensor.camera", 0, map[string]any{"camera_id": "1", "in_use": false, "package": "com.instagram.android"})
+	sensor(call, "sensor.microphone", 0, map[string]any{"recording": true, "source": "voice_communication", "package": "com.whatsapp", "silenced": false}, false, false)
+	sensor(call.Add(7*time.Minute), "sensor.microphone", 0, map[string]any{"recording": false, "source": "voice_communication", "package": "com.whatsapp", "silenced": false}, true, false)
+	sensor(at(0.77), "sensor.camera", 1, map[string]any{"camera_id": "1", "in_use": true, "package": "com.instagram.android"}, true, false)
+	sensor(at(0.77).Add(50*time.Second), "sensor.camera", 0, map[string]any{"camera_id": "1", "in_use": false, "package": "com.instagram.android"}, true, false)
+	// Suspicious: the sideloaded app records and films while the phone is locked, screen off.
+	spy := at(0.67)
+	sensor(spy, "sensor.microphone", 2, map[string]any{"recording": true, "source": "mic", "package": "com.qrscan.free.reader", "silenced": false}, false, true)
+	sensor(spy.Add(2*time.Minute), "sensor.microphone", 0, map[string]any{"recording": false, "source": "mic", "package": "com.qrscan.free.reader", "silenced": false}, false, true)
+	sensor(spy.Add(3*time.Minute), "sensor.camera", 2, map[string]any{"camera_id": "1", "in_use": true, "package": "com.qrscan.free.reader"}, false, true)
+	sensor(spy.Add(3*time.Minute+20*time.Second), "sensor.camera", 0, map[string]any{"camera_id": "1", "in_use": false, "package": "com.qrscan.free.reader"}, false, true)
+
+	// security.log with the payload names of the contract table.
+	g.emit(side.Add(200*time.Millisecond), "security.log", 0, map[string]any{"tag": "package_installed", "level": "info",
+		"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"package": "com.qrscan.free.reader", "version_code": 317, "user_id": 0}})
+	g.emit(usbKey.Add(2*time.Second), "security.log", 0, map[string]any{"tag": "media_mount", "level": "info",
+		"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"mount_point": "/storage/4A21-0000", "label": "SanDisk"}})
+	g.emit(usbKey.Add(4*time.Minute), "security.log", 0, map[string]any{"tag": "media_unmount", "level": "info",
+		"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"mount_point": "/storage/4A21-0000", "label": "SanDisk"}})
+
+	// Temporary posture degradations (one security.posture_change per field).
+	g.later(at(0.92), func(t time.Time) {
+		g.posture["unknown_sources"] = true
+		g.posture["play_protect"] = false
+		g.postureEvent(t, 2)
+	})
+	g.later(at(0.92).Add(20*time.Minute), func(t time.Time) {
+		g.posture["unknown_sources"] = false
+		g.posture["play_protect"] = true
+		g.postureEvent(t, 0)
+	})
+	g.later(at(0.95), func(t time.Time) {
+		g.posture["private_dns_mode"] = "opportunistic"
+		g.posture["private_dns_host"] = ""
+		g.postureEvent(t, 2)
+	})
+	g.later(at(0.95).Add(10*time.Minute), func(t time.Time) {
+		g.posture["private_dns_mode"] = "hostname"
+		g.posture["private_dns_host"] = g.dnsHost
+		g.postureEvent(t, 0)
+	})
 
 	dev := at(0.9)
 	g.later(dev, func(t time.Time) {
@@ -250,6 +373,10 @@ func (g *Generator) PlanScenario(from, to time.Time) {
 		g.postureEvent(t, 2)
 		g.emit(t.Add(2*time.Minute), "security.log", 1, map[string]any{"tag": "adb_shell_interactive", "level": "info",
 			"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{}})
+		g.emit(t.Add(3*time.Minute), "security.log", 1, map[string]any{"tag": "adb_shell_cmd", "level": "info",
+			"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"command": "pm list packages -3"}})
+		g.emit(t.Add(4*time.Minute), "security.log", 1, map[string]any{"tag": "sync_recv_file", "level": "info",
+			"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"path": "/sdcard/Download/rapport.pdf"}})
 	})
 	g.later(dev.Add(90*time.Minute), func(t time.Time) {
 		g.posture["dev_options"] = false

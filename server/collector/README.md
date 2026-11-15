@@ -72,6 +72,8 @@ Variables : celles du contrat §7, plus `VIGIE_TILE_URL` (§6, défaut OpenStree
   fait `fsync`, puis avance le curseur. L'ingestion ne fait qu'un signal non bloquant : un volume plein ou
   absent ne la ralentit jamais, et un redémarrage reprend au curseur (au moins une fois : quelques lignes
   peuvent être dupliquées après un arrêt brutal). Au premier démarrage, l'historique n'est pas rejoué.
+  Le fichier est créé (0640) dès le démarrage de `serve`, avant tout événement : `wazuh-logcollector`
+  ouvre un fichier apparu après son propre démarrage **à la fin**, et en perdrait les premières lignes.
   Rotation par renommage (`.1`…`.KEEP`), jamais de troncature ; une ligne partielle laissée par un arrêt
   brutal est terminée par `\n` (ligne ignorée par Wazuh, événement réexporté). `vigie.data.location` est
   réservé au point `geo_point` posé par le collecteur sur `location.fix` : une clé `location` venue de
@@ -94,6 +96,11 @@ Variables : celles du contrat §7, plus `VIGIE_TILE_URL` (§6, défaut OpenStree
   inventaires quotidiens (parties liées par `inventory_id`), et un scénario plaçant tous les types rares (redémarrage, traceur BLE, 2G, AC
   utilisateur, `agent.tamper`, ADB, USB, appli installée hors Play Store, position simulée…) dans la fenêtre
   de `--backfill` (ou dans la première heure du mode continu). `seq` part de l'heure Unix en ms.
+  L'hôte DNS privé (posture, politique, connectivité) est repris du fichier `.vigie`. Chaque changement de
+  posture produit un `security.posture_change` par champ modifié (sauf `patch_age_days`, dérivé de la date) :
+  ADB et options développeur, sources inconnues et Play Protect, DNS privé non strict, AC utilisateur ;
+  `sensor.*` portent `screen_on` et `locked` (dont un micro et une caméra utilisés écran éteint et
+  verrouillé par l'appli installée hors Play Store) ; `security.log` suit la table de noms du contrat.
 
 ## Limites connues
 
@@ -104,5 +111,5 @@ Variables : celles du contrat §7, plus `VIGIE_TILE_URL` (§6, défaut OpenStree
 - Un événement dont `ts` dépasse l'heure du serveur de plus de 24 h ou précède 2000 est rejeté
   (`invalid_ts`, définitif) ; la purge de rétention se fait sur `ts`.
 - Limitation de débit en mémoire (réinitialisée au redémarrage, propre à une instance).
-- Caddy limite le corps des requêtes d'ingestion à 2 Mo (infra) : un lot non compressé ne peut donc pas
-  atteindre les 8 Mio autorisés par le collecteur.
+- Caddy limite le corps des requêtes d'ingestion à 9 Mo (infra) : marge au-dessus des 8 Mio décompressés,
+  les limites fines restent celles du collecteur.

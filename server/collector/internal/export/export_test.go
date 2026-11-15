@@ -331,3 +331,33 @@ func TestExporterResume(t *testing.T) {
 		}
 	}
 }
+
+// The export file exists as soon as the exporter is initialised, before any event (Wazuh
+// would otherwise open it at its end when it appears and miss the first lines).
+func TestExporterInitCreatesFile(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	st, err := store.Open(ctx, filepath.Join(dir, "vigie.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	path := filepath.Join(dir, "events.ndjson")
+	e := New(st, path, 1<<20, 3, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err := e.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer e.w.Close()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("export file not created at start-up: %v", err)
+	}
+	if fi.Size() != 0 || fi.Mode().Perm() != 0o640 {
+		t.Fatalf("size %d, mode %v", fi.Size(), fi.Mode().Perm())
+	}
+	// A missing directory is not fatal at start-up.
+	e2 := New(st, filepath.Join(dir, "absent", "events.ndjson"), 1<<20, 3, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err := e2.Init(ctx); err != nil {
+		t.Fatalf("Init failed on a missing directory: %v", err)
+	}
+}

@@ -2,6 +2,7 @@ package sim
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 
@@ -18,12 +19,18 @@ var catalog = []string{
 	"net.bluetooth", "net.ble_tracker", "net.hotspot", "net.nfc",
 	"app.inventory", "app.installed", "app.updated", "app.removed", "app.foreground", "app.permission_changed", "app.special_access", "app.notification",
 	"sensor.camera", "sensor.microphone",
-	"security.log", "security.posture", "security.keyguard", "security.ca_cert", "security.policy",
+	"security.log", "security.posture", "security.posture_change", "security.keyguard", "security.ca_cert", "security.policy",
 }
 
 func generate(t *testing.T, start time.Time, span time.Duration) []Event {
 	t.Helper()
-	g := New(Options{Start: start, Seed: 42, Rate: 1, SeqBase: 1000})
+	return generateOpts(t, Options{Start: start, Seed: 42, Rate: 1, SeqBase: 1000}, span)
+}
+
+func generateOpts(t *testing.T, opts Options, span time.Duration) []Event {
+	t.Helper()
+	start := opts.Start
+	g := New(opts)
 	end := start.Add(span)
 	g.PlanScenario(start, end)
 	var all []Event
@@ -144,5 +151,155 @@ func TestInventoryID(t *testing.T) {
 		if len(ps) != parts {
 			t.Fatalf("inventory %s has parts %v, want %d", id, ps, parts)
 		}
+	}
+}
+
+// security.posture_change: one event per changed field, consistent with the successive postures.
+func TestPostureChanges(t *testing.T) {
+	start := time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC)
+	evs := generate(t, start, 24*time.Hour)
+	var prev map[string]string
+	pending := map[string]bool{} // fields announced by the last posture, awaiting their change event
+	seen := map[string]int{}
+	for _, e := range evs {
+		switch e.Type {
+		case "security.posture":
+			if len(pending) > 0 {
+				t.Fatalf("posture changes missing before %s: %v", e.TS, pending)
+			}
+			cur := map[string]string{}
+			for k, v := range e.Data {
+				cur[k] = postureString(v)
+			}
+			if prev != nil {
+				for k, v := range cur {
+					if k != "patch_age_days" && prev[k] != v {
+						pending[k] = true
+					}
+				}
+			}
+			prev = cur
+		case "security.posture_change":
+			f, _ := e.Data["field"].(string)
+			if !pending[f] {
+				t.Fatalf("unexpected posture_change %v", e.Data)
+			}
+			if _, ok := e.Data["old"].(string); !ok {
+				t.Fatalf("old not a string: %v", e.Data)
+			}
+			if e.Data["new"] != prev[f] {
+				t.Fatalf("new %v != posture %q", e.Data["new"], prev[f])
+			}
+			delete(pending, f)
+			seen[f]++
+		}
+	}
+	for _, f := range []string{"adb_enabled", "dev_options", "user_ca_certs", "unknown_sources", "play_protect", "private_dns_mode", "private_dns_host"} {
+		if seen[f] == 0 {
+			t.Errorf("no posture_change for %s (%v)", f, seen)
+		}
+	}
+}
+
+// sensor.camera / sensor.microphone carry screen_on and locked; some use happens screen off and locked.
+func TestSensorScreenState(t *testing.T) {
+	start := time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC)
+	hidden := 0
+	for _, e := range generate(t, start, 24*time.Hour) {
+		if e.Type != "sensor.camera" && e.Type != "sensor.microphone" {
+			continue
+		}
+		on, ok1 := e.Data["screen_on"].(bool)
+		locked, ok2 := e.Data["locked"].(bool)
+		if !ok1 || !ok2 {
+			t.Fatalf("%s without screen_on/locked: %v", e.Type, e.Data)
+		}
+		if (e.Data["recording"] == true || e.Data["in_use"] == true) && !on && locked {
+			hidden++
+		}
+	}
+	if hidden < 2 {
+		t.Errorf("only %d camera/microphone uses with the screen off and locked", hidden)
+	}
+}
+
+// security.log payloads follow the table of the contract.
+func TestSecurityLogFields(t *testing.T) {
+	allowed := map[string][]string{
+		"adb_shell_interactive": {}, "adb_shell_cmd": {"command"}, "sync_recv_file": {"path"}, "sync_send_file": {"path"},
+		"app_process_start":  {"process", "start_time", "uid", "pid", "seinfo", "apk_sha256"},
+		"keyguard_dismissed": {}, "keyguard_secured": {},
+		"keyguard_dismiss_auth_attempt": {"success", "strength"},
+		"os_startup":                    {"verified_boot_state", "dm_verity_mode"}, "os_shutdown": {},
+		"logging_started": {}, "logging_stopped": {}, "log_buffer_size_critical": {},
+		"media_mount": {"mount_point", "label"}, "media_unmount": {"mount_point", "label"},
+		"crypto_self_test_completed": {"success"},
+		"key_generated":              {"success", "alias", "uid"}, "key_import": {"success", "alias", "uid"}, "key_destruction": {"success", "alias", "uid"},
+		"key_integrity_violation":  {"alias", "uid"},
+		"cert_authority_installed": {"success", "subject", "user_id"}, "cert_authority_removed": {"success", "subject", "user_id"},
+		"cert_validation_failure": {"reason"},
+		"user_restriction_added":  {"admin_package", "user_id", "restriction"}, "user_restriction_removed": {"admin_package", "user_id", "restriction"},
+		"password_changed": {"complexity", "user_id"},
+		"wifi_connection":  {"bssid", "event_type", "reason"}, "wifi_disconnection": {"bssid", "reason"},
+		"bluetooth_connection": {"address", "success", "reason"}, "bluetooth_disconnection": {"address", "reason"},
+		"package_installed": {"package", "version_code", "user_id"}, "package_updated": {"package", "version_code", "user_id"},
+		"package_uninstalled": {"package", "version_code", "user_id"},
+	}
+	start := time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC)
+	tags := map[string]int{}
+	for _, e := range generate(t, start, 24*time.Hour) {
+		if e.Type != "security.log" {
+			continue
+		}
+		tag, _ := e.Data["tag"].(string)
+		tags[tag]++
+		names, ok := allowed[tag]
+		if !ok {
+			t.Fatalf("tag %q not in the contract table", tag)
+		}
+		fields, _ := e.Data["fields"].(map[string]any)
+		for k, v := range fields {
+			if !slices.Contains(names, k) {
+				t.Fatalf("tag %s: field %q not in the contract (%v)", tag, k, names)
+			}
+			if k == "success" {
+				if _, ok := v.(bool); !ok {
+					t.Fatalf("tag %s: success must be a boolean, got %T", tag, v)
+				}
+			}
+		}
+	}
+	for _, tag := range []string{"adb_shell_interactive", "adb_shell_cmd", "sync_recv_file", "keyguard_dismiss_auth_attempt",
+		"cert_authority_installed", "media_mount", "package_installed", "app_process_start"} {
+		if tags[tag] == 0 {
+			t.Errorf("tag %s never generated", tag)
+		}
+	}
+}
+
+// The private DNS host comes from the enrollment file.
+func TestPrivateDNSHostFromOptions(t *testing.T) {
+	start := time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC)
+	evs := generateOpts(t, Options{Start: start, Seed: 7, Rate: 0.2, SeqBase: 1, PrivateDNSHost: "dns.essai.test"}, 6*time.Hour)
+	n := 0
+	for _, e := range evs {
+		switch e.Type {
+		case "security.posture":
+			if h := e.Data["private_dns_host"]; h != "dns.essai.test" && h != "" {
+				t.Fatalf("posture private_dns_host %v", h)
+			}
+			n++
+		case "net.connectivity":
+			if e.Data["private_dns_server"] != "dns.essai.test" {
+				t.Fatalf("connectivity private_dns_server %v", e.Data["private_dns_server"])
+			}
+		case "security.policy":
+			if e.Data["action"] == "private_dns_set" && e.Data["target"] != "dns.essai.test" {
+				t.Fatalf("policy target %v", e.Data["target"])
+			}
+		}
+	}
+	if n == 0 {
+		t.Fatal("no posture generated")
 	}
 }

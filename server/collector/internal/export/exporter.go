@@ -94,6 +94,12 @@ func (e *Exporter) Init(ctx context.Context) error {
 	e.mu.Lock()
 	e.cursor = c
 	e.mu.Unlock()
+	// Create/open the file now rather than at the first event: wazuh-logcollector opens a file
+	// that appears after its own start at the END, so the first lines written would never be
+	// read. A failure is not fatal (missing volume): Run retries with backoff.
+	if err := e.w.ensureOpen(); err != nil {
+		e.log.Warn("export NDJSON : fichier non ouvrable au démarrage, nouvel essai à l'export", "path", e.w.path, "err", err)
+	}
 	return nil
 }
 

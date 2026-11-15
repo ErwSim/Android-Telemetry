@@ -48,6 +48,9 @@ type Options struct {
 	Rate         float64 // multiplier of traffic and notification volumes
 	AgentVersion string
 	SeqBase      int64
+	// PrivateDNSHost is the private DNS host of the enrollment file (posture, policy,
+	// connectivity); "dns.vigie.example" when empty.
+	PrivateDNSHost string
 }
 
 // Generator produces events chronologically.
@@ -83,6 +86,8 @@ type Generator struct {
 	usageHour  time.Time
 	usage      map[string]*usageAcc
 	posture    map[string]any
+	postureSnt map[string]string // last values reported by security.posture (for security.posture_change)
+	dnsHost    string
 	dropped    int
 	mockFixAt  time.Time
 	uploadedAt time.Time
@@ -103,10 +108,14 @@ func New(opts Options) *Generator {
 	if opts.AgentVersion == "" {
 		opts.AgentVersion = "1.0.0-sim"
 	}
+	if opts.PrivateDNSHost == "" {
+		opts.PrivateDNSHost = "dns.vigie.example"
+	}
 	start := opts.Start.UTC().Truncate(time.Millisecond)
 	g := &Generator{
 		rng: rand.New(rand.NewSource(opts.Seed)), seed: opts.Seed, loc: loc, rate: rate, version: opts.AgentVersion,
 		cur: start, seq: opts.SeqBase, battery: 64, plugged: "none", usage: map[string]*usageAcc{},
+		dnsHost: opts.PrivateDNSHost,
 	}
 	g.lastBatt = int(g.battery)
 	// The phone has been up for a few days.
@@ -116,7 +125,7 @@ func New(opts Options) *Generator {
 	g.nextScan = start.Add(10 * time.Minute)
 	g.usageHour = start.Truncate(time.Hour)
 	g.uploadedAt = start
-	g.posture = basePosture(start)
+	g.posture = basePosture(start, g.dnsHost)
 	g.startup(start, "boot_completed")
 	g.lastDaily = start.In(loc).Format("2006-01-02")
 	if start.In(loc).Hour() < 3 { // daily jobs of today have not run yet
@@ -338,7 +347,7 @@ func (g *Generator) transition(prev, next segment, t time.Time) {
 			g.emit(t.Add(40*time.Second), "net.bluetooth", 0, map[string]any{"event": "connected", "enabled": true,
 				"name": "Galaxy Buds2 Pro", "address": "8c:79:f5:1e:42:a7", "type": "audio"})
 			g.emit(t.Add(41*time.Second), "security.log", 0, map[string]any{"tag": "bluetooth_connection", "level": "info",
-				"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"address": "8c:79:f5:1e:42:a7", "connected": true, "reason": ""}})
+				"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"address": "8c:79:f5:1e:42:a7", "success": true, "reason": ""}})
 		}
 	}
 	if w := placeWifi(next.place); w != nil && placeWifi(prev.place) != w {
@@ -360,7 +369,7 @@ func (g *Generator) transition(prev, next segment, t time.Time) {
 }
 
 func (g *Generator) connectivity(t time.Time, w *wifiNet) {
-	d := map[string]any{"validated": true, "vpn": false, "private_dns_active": true, "private_dns_server": "dns.vigie.example"}
+	d := map[string]any{"validated": true, "vpn": false, "private_dns_active": true, "private_dns_server": g.dnsHost}
 	if w != nil {
 		d["transports"] = []any{"wifi"}
 		d["metered"] = false
@@ -457,7 +466,7 @@ func (g *Generator) screen(t0, t1 time.Time, seg segment) {
 	g.emit(at, "device.screen", 0, map[string]any{"state": "on"})
 	unlock := at.Add(time.Duration(1500+g.rng.Intn(2500)) * time.Millisecond)
 	g.emit(unlock, "security.log", 0, map[string]any{"tag": "keyguard_dismiss_auth_attempt", "level": "info",
-		"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"success": true, "method_strength": 1}})
+		"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"success": true, "strength": 1}})
 	g.emit(unlock.Add(50*time.Millisecond), "security.keyguard", 0, map[string]any{"event": "unlock_succeeded", "failed_attempts": 0})
 	g.emit(unlock.Add(80*time.Millisecond), "device.screen", 0, map[string]any{"state": "unlocked"})
 	g.emit(unlock.Add(90*time.Millisecond), "security.log", 0, map[string]any{"tag": "keyguard_dismissed", "level": "info",
@@ -475,7 +484,7 @@ func (g *Generator) foreground(t time.Time, a *app, event string) {
 	if event == "resumed" && g.rng.Intn(3) == 0 {
 		g.emit(t, "security.log", 0, map[string]any{"tag": "app_process_start", "level": "info",
 			"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"process": a.pkg, "start_time": t.UnixMilli(), "uid": a.uid,
-				"pid": 4000 + g.rng.Intn(28000), "seinfo": "default:targetSdkVersion=35:complete", "apk_hash": sha256Hex("apk:" + a.pkg + a.version)}})
+				"pid": 4000 + g.rng.Intn(28000), "seinfo": "default:targetSdkVersion=35:complete", "apk_sha256": sha256Hex("apk:" + a.pkg + a.version)}})
 	}
 }
 

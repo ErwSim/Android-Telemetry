@@ -63,7 +63,8 @@ func cmdSim(args []string) error {
 	}
 	stats := &simStats{types: map[string]int{}}
 	start := now.Add(-*backfill)
-	g := sim.New(sim.Options{Start: start, Seed: s, Rate: *rate, AgentVersion: *version, SeqBase: now.UnixMilli()})
+	g := sim.New(sim.Options{Start: start, Seed: s, Rate: *rate, AgentVersion: *version, SeqBase: now.UnixMilli(),
+		PrivateDNSHost: f.PrivateDNSHost})
 
 	if *backfill > 0 {
 		g.PlanScenario(start, now)
