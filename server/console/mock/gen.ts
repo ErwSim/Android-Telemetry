@@ -70,6 +70,8 @@ function along(path: LatLon[], f: number): LatLon {
   return { lat: lerp(a.lat, b.lat, x - i), lon: lerp(a.lon, b.lon, x - i) };
 }
 
+export const COLLECTORS = { location: 'running', connectivity: 'running', dns: 'running', connect: 'running', usage: 'running', apps: 'running', posture: 'running', security_log: 'running', ble_tracker: 'unavailable', notifications: 'disabled' };
+
 export function generate(now: number, seed = 20261115): Generated {
   const rng = makeRng(seed);
   const dev = DEVICE_MAIN.device_id;
@@ -203,7 +205,7 @@ export function generate(now: number, seed = 20261115): Generated {
   push(nofix[0]!.end, 'location.provider', 1, { provider: 'gps', enabled: true });
 
   // ---------- Heartbeats, batterie, écran ----------
-  const collectors = { location: 'running', connectivity: 'running', dns: 'running', connect: 'running', usage: 'running', apps: 'running', posture: 'running', security_log: 'running', ble_tracker: 'unavailable', notifications: 'disabled' };
+  const collectors = COLLECTORS;
   let battery = 78;
   for (let t = t0; t <= horizon; t += 15 * MIN) {
     const h = new Date(t).getUTCHours();
@@ -518,7 +520,7 @@ export function liveEvent(rng: Rng, t: number, seq: number, bootId: string, last
     data = { lat: +lastPos.lat.toFixed(6), lon: +lastPos.lon.toFixed(6), acc_m: +between(rng, 8, 60).toFixed(1), speed_mps: 0, provider: 'fused', mock: false, fix_ts: new Date(t).toISOString() };
   } else if (kind === 'hb') {
     type = 'agent.heartbeat';
-    data = { battery_pct: Math.round(between(rng, 40, 90)), charging: false, uptime_ms: 123456789, queue_depth: 0, queue_bytes: 0, dropped_total: 41, device_owner: true, collectors: { location: 'running', dns: 'running', connect: 'running' } };
+    data = { battery_pct: Math.round(between(rng, 40, 90)), charging: false, uptime_ms: 123456789, queue_depth: Math.round(between(rng, 0, 12)), queue_bytes: Math.round(between(rng, 0, 20000)), dropped_total: 41, device_owner: true, collectors: COLLECTORS, last_upload_ts: new Date(t - 30_000).toISOString() };
   } else if (kind === 'sec') {
     type = 'security.log';
     sev = 1;

@@ -96,11 +96,11 @@ export function Badge({ tone = 'neutral', children, title }: { tone?: Tone; chil
 }
 
 const SEV_TONE: Tone[] = ['neutral', 'info', 'warn', 'bad'];
-export function SevBadge({ sev }: { sev: number }) {
+export function SevBadge({ sev, short = false }: { sev: number; short?: boolean }) {
   const i = Math.max(0, Math.min(3, Math.trunc(sev)));
   return (
     <Badge tone={SEV_TONE[i] ?? 'neutral'} title={`Sévérité ${i} : ${sevLabel(i)}`}>
-      {i} · {sevLabel(i)}
+      {short ? i : `${i} · ${sevLabel(i)}`}
     </Badge>
   );
 }

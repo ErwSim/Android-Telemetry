@@ -54,7 +54,7 @@ export function EventTable({
                     </time>
                   </td>
                   <td className="c-sev">
-                    <SevBadge sev={ev.sev} />
+                    <SevBadge sev={ev.sev} short={compact} />
                   </td>
                   <td className="c-type">
                     {typeLabel(ev.type)}

@@ -1358,7 +1358,7 @@ table.tbl {
 }
 @media (min-width: 861px) {
   .tbl td.break {
-    min-width: 180px;
+    min-width: 150px;
   }
 }
 
@@ -1409,4 +1409,17 @@ table.tbl {
   .tbl-stack tr.sev-2 td:first-child {
     box-shadow: none;
   }
+}
+
+@media (max-width: 860px) {
+  .tbl-stack td.c-type br {
+    display: none;
+  }
+  .tbl-stack td.c-type .mono {
+    margin-left: 8px;
+  }
+}
+
+.tbl td.c-type .mono {
+  overflow-wrap: anywhere;
 }
