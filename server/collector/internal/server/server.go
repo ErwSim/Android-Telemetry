@@ -1,0 +1,173 @@
+// Package server implements the HTTP side of the collector: ingestion API
+// (contract §3), console API (§6), console files and health check.
+package server
+
+import (
+	"context"
+	"errors"
+	"io/fs"
+	"log/slog"
+	"net"
+	"net/http"
+	"time"
+
+	"github.com/erwsim/android-telemetry/server/collector/internal/config"
+	"github.com/erwsim/android-telemetry/server/collector/internal/export"
+	"github.com/erwsim/android-telemetry/server/collector/internal/ratelimit"
+	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+)
+
+// Server holds the HTTP handlers and their dependencies.
+type Server struct {
+	cfg      *config.Config
+	st       *store.Store
+	log      *slog.Logger
+	exporter *export.Exporter // nil when export is disabled
+	broker   *Broker
+	alerts   *AlertsClient
+	static   http.Handler
+	csp      string
+	now      func() time.Time
+
+	ingestAuthFail *ratelimit.Limiter // per client IP, failed device authentications
+	ingestDevice   *ratelimit.Limiter // per device, requests
+	ingestSlots    chan struct{}      // concurrent ingestion requests
+	loginIP        *ratelimit.Limiter // per client IP, failed logins
+	loginUser      *ratelimit.Limiter // per username, failed logins
+	hashSlots      chan struct{}      // concurrent argon2 computations
+}
+
+// Options are the optional dependencies of New.
+type Options struct {
+	Exporter  *export.Exporter
+	ConsoleFS fs.FS // console files (index.html at the root)
+	Now       func() time.Time
+}
+
+// New builds a server.
+func New(cfg *config.Config, st *store.Store, log *slog.Logger, opt Options) (*Server, error) {
+	now := opt.Now
+	if now == nil {
+		now = time.Now
+	}
+	alerts, err := NewAlertsClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+	s := &Server{
+		cfg: cfg, st: st, log: log, exporter: opt.Exporter, broker: NewBroker(64),
+		alerts: alerts, csp: buildCSP(cfg.MapTileOrigins), now: now,
+		ingestAuthFail: ratelimit.New(1.0/30, 10, 100000),
+		ingestDevice:   ratelimit.New(5, 60, 10000),
+		ingestSlots:    make(chan struct{}, 8),
+		loginIP:        ratelimit.New(1.0/60, 10, 100000),
+		loginUser:      ratelimit.New(1.0/60, 10, 10000),
+		hashSlots:      make(chan struct{}, 2),
+	}
+	if opt.ConsoleFS != nil {
+		s.static = newStaticHandler(opt.ConsoleFS)
+	} else {
+		s.static = http.NotFoundHandler()
+	}
+	return s, nil
+}
+
+// Broker returns the live event broker (SSE).
+func (s *Server) Broker() *Broker { return s.broker }
+
+// Handler returns the root HTTP handler.
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+
+	// Ingestion (phone -> server). There is deliberately no endpoint that sends
+	// anything but acknowledgements back to the agent (one-way flow).
+	mux.HandleFunc("POST /api/v1/ingest", s.handleIngest)
+	mux.HandleFunc("GET /api/v1/ping", s.handlePing)
+	mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, http.StatusNotFound, "not_found", "point d'API inconnu")
+	})
+
+	// Console API.
+	mux.HandleFunc("POST /api/console/login", s.csrf(s.handleLogin))
+	mux.HandleFunc("POST /api/console/logout", s.csrf(s.handleLogout))
+	mux.HandleFunc("GET /api/console/me", s.auth(s.handleMe))
+	mux.HandleFunc("GET /api/console/devices", s.auth(s.handleDevices))
+	mux.HandleFunc("GET /api/console/events", s.auth(s.handleEvents))
+	mux.HandleFunc("GET /api/console/events/{id}", s.auth(s.handleEvent))
+	mux.HandleFunc("GET /api/console/locations", s.auth(s.handleLocations))
+	mux.HandleFunc("GET /api/console/stats/timeline", s.auth(s.handleTimeline))
+	mux.HandleFunc("GET /api/console/stats/top", s.auth(s.handleTop))
+	mux.HandleFunc("GET /api/console/apps", s.auth(s.handleApps))
+	mux.HandleFunc("GET /api/console/posture", s.auth(s.handlePosture))
+	mux.HandleFunc("GET /api/console/alerts", s.auth(s.handleAlerts))
+	mux.HandleFunc("GET /api/console/stream", s.auth(s.handleStream))
+	mux.HandleFunc("/api/console/", func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, http.StatusNotFound, "not_found", "point d'API inconnu")
+	})
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, http.StatusNotFound, "not_found", "point d'API inconnu")
+	})
+
+	mux.HandleFunc("GET /healthz", s.handleHealth)
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "méthode non autorisée", http.StatusMethodNotAllowed)
+			return
+		}
+		s.static.ServeHTTP(w, r)
+	}))
+
+	return s.withCommon(mux)
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if err := s.st.Ping(ctx); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("database unavailable\n"))
+		return
+	}
+	_, _ = w.Write([]byte("ok\n"))
+}
+
+// NewHTTPServer returns an http.Server with conservative timeouts.
+func (s *Server) NewHTTPServer(baseCtx context.Context) *http.Server {
+	return &http.Server{
+		Addr:              s.cfg.Listen,
+		Handler:           s.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      60 * time.Second, // SSE extends its own deadline per write
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    32 << 10,
+		BaseContext:       func(net.Listener) context.Context { return baseCtx },
+		ErrorLog:          slog.NewLogLogger(s.log.Handler(), slog.LevelWarn),
+	}
+}
+
+// RunRetention purges old data every interval until ctx is canceled.
+func (s *Server) RunRetention(ctx context.Context, interval time.Duration) {
+	t := time.NewTimer(time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		now := s.now()
+		cutoff := now.Add(-time.Duration(s.cfg.RetentionDays) * 24 * time.Hour)
+		res, err := s.st.Purge(ctx, cutoff, now, sessionIdle)
+		switch {
+		case err != nil && !errors.Is(err, context.Canceled):
+			s.log.Error("purge de rétention en échec", "err", err)
+		case res.Events > 0:
+			s.log.Info("purge de rétention", "events", res.Events, "cutoff", cutoff.UTC().Format(time.RFC3339))
+		}
+		t.Reset(interval)
+	}
+}
