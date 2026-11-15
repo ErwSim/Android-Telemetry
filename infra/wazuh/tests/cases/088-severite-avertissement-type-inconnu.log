@@ -1,3 +1,0 @@
-# Type inconnu, sévérité 2
-# attendu: 100106
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001092","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1092,"type":"net.unknown_future_type","domain":"net","sev":2,"data":{"x":1}}}

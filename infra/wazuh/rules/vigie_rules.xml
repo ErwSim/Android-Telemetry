@@ -82,7 +82,9 @@
     <group>vigie_agent,vigie_config,</group>
   </rule>
 
-  <rule id="100116" level="10">
+  <!-- Niveau 2 : la perte du Device Owner est alertée une fois par security.posture_change (100255) ;
+       le battement (toutes les 15 min) ne fait que marquer l'état. -->
+  <rule id="100116" level="2">
     <if_sid>100100</if_sid>
     <field name="vigie.type">^agent.heartbeat$</field>
     <field name="vigie.data.device_owner">^false$</field>
@@ -273,9 +275,9 @@
   </rule>
 
   <!-- ========================= sensor.* ========================= -->
-  <!-- « Micro/caméra utilisés écran éteint » n'est pas exprimable de façon fiable dans Wazuh
-       (pas d'état « écran toujours éteint » ; un appel téléphonique éteint l'écran par le capteur
-       de proximité). Voir infra/README.md. On marque l'usage pour les tableaux de bord. -->
+  <!-- Tout usage est marqué (niveau 2) pour les tableaux de bord. Les événements portent l'état de
+       l'écran (screen_on) et du verrouillage (locked) : un usage appareil verrouillé, ou écran
+       éteint hors appel (le capteur de proximité éteint l'écran pendant un appel), est alerté. -->
 
   <rule id="100170" level="2">
     <if_sid>100100</if_sid>
@@ -291,6 +293,35 @@
     <field name="vigie.data.in_use">^true$</field>
     <description>Vigie : caméra $(vigie.data.camera_id) utilisée par $(vigie.data.package)</description>
     <group>vigie_sensor,</group>
+  </rule>
+
+  <rule id="100172" level="10">
+    <if_sid>100170</if_sid>
+    <field name="vigie.data.locked">^true$</field>
+    <description>Vigie : micro utilisé par $(vigie.data.package) alors que l'appareil est verrouillé</description>
+    <group>vigie_sensor,vigie_hidden_capture,attack_mobile_T1429,</group>
+  </rule>
+
+  <rule id="100173" level="6">
+    <if_sid>100170</if_sid>
+    <field name="vigie.data.screen_on">^false$</field>
+    <field name="vigie.data.source" type="pcre2" negate="yes">^voice_(communication|call)$</field>
+    <description>Vigie : micro utilisé écran éteint, hors appel, par $(vigie.data.package) (source $(vigie.data.source))</description>
+    <group>vigie_sensor,vigie_hidden_capture,attack_mobile_T1429,</group>
+  </rule>
+
+  <rule id="100174" level="10">
+    <if_sid>100171</if_sid>
+    <field name="vigie.data.locked">^true$</field>
+    <description>Vigie : caméra $(vigie.data.camera_id) utilisée par $(vigie.data.package) alors que l'appareil est verrouillé</description>
+    <group>vigie_sensor,vigie_hidden_capture,attack_mobile_T1512,</group>
+  </rule>
+
+  <rule id="100175" level="8">
+    <if_sid>100171</if_sid>
+    <field name="vigie.data.screen_on">^false$</field>
+    <description>Vigie : caméra $(vigie.data.camera_id) utilisée écran éteint par $(vigie.data.package)</description>
+    <group>vigie_sensor,vigie_hidden_capture,attack_mobile_T1512,</group>
   </rule>
 
   <!-- ========================= security.keyguard / ca_cert / policy ========================= -->
@@ -341,115 +372,259 @@
     <group>vigie_security,vigie_policy,</group>
   </rule>
 
-  <!-- ========================= security.posture ========================= -->
-  <!-- Ordre = gravité décroissante (une seule règle par événement). -->
+  <!-- ========================= security.posture (état complet) ========================= -->
+  <!-- Chaque CHANGEMENT de posture arrive aussi en security.posture_change (un événement par champ)
+       et y est alerté (règles 100250-100269). Pour ne pas alerter deux fois le même fait, les
+       constats sur l'état complet sont ici de niveau 2 : pas d'alerte, mais l'événement est marqué
+       (groupe vigie_posture_state) pour les tableaux de bord. Seul l'âge du correctif, qui n'est pas
+       un changement de l'appareil, alerte ici (au plus une fois par semaine).
+       Limite : un défaut DÉJÀ présent à l'enrôlement ne produit pas de changement, donc pas
+       d'alerte : vérifier la posture initiale dans la console après l'enrôlement. -->
 
   <rule id="100190" level="0">
     <if_sid>100100</if_sid>
     <field name="vigie.type">^security.posture$</field>
     <description>Vigie : posture de sécurité de $(vigie.device_name)</description>
-    <group>vigie_posture,</group>
+    <group>vigie_posture,vigie_posture_state,</group>
   </rule>
 
-  <rule id="100191" level="12">
+  <rule id="100191" level="2">
     <if_sid>100190</if_sid>
     <field name="vigie.data.verified_boot_state" type="pcre2">(?i)^(orange|yellow|red)$</field>
     <description>Vigie : démarrage vérifié « $(vigie.data.verified_boot_state) » (chargeur d'amorçage déverrouillé ou système modifié)</description>
-    <group>vigie_posture,</group>
+    <group>vigie_posture,vigie_posture_state,</group>
   </rule>
 
-  <rule id="100192" level="10">
+  <rule id="100192" level="2">
     <if_sid>100190</if_sid>
     <field name="vigie.data.encrypted">^false$</field>
     <description>Vigie : stockage de l'appareil non chiffré</description>
-    <group>vigie_posture,</group>
+    <group>vigie_posture,vigie_posture_state,</group>
   </rule>
 
-  <rule id="100193" level="10">
+  <rule id="100193" level="2">
     <if_sid>100190</if_sid>
     <field name="vigie.data.device_owner">^false$</field>
     <description>Vigie : l'agent n'est pas (ou plus) Device Owner (protections locales inactives)</description>
-<group>vigie_posture,attack_mobile_T1629,</group>
+<group>vigie_posture,vigie_posture_state,attack_mobile_T1629,</group>
   </rule>
 
-  <rule id="100194" level="10">
+  <rule id="100194" level="2">
     <if_sid>100190</if_sid>
     <field name="vigie.data.private_dns_mode" type="pcre2">^(?!hostname$|provider_hostname$)</field>
     <description>Vigie : DNS privé désactivé ou non strict (mode $(vigie.data.private_dns_mode))</description>
-<group>vigie_posture,vigie_dns,attack_mobile_T1629,</group>
+<group>vigie_posture,vigie_posture_state,vigie_dns,attack_mobile_T1629,</group>
   </rule>
 
-  <rule id="100195" level="10">
+  <rule id="100195" level="2">
     <if_sid>100190</if_sid>
     <list field="vigie.data.private_dns_host" lookup="not_match_key">etc/lists/vigie-private-dns-hosts</list>
     <description>Vigie : DNS privé pointé vers un hôte inattendu ($(vigie.data.private_dns_host))</description>
-<group>vigie_posture,vigie_dns,attack_mobile_T1638,</group>
+<group>vigie_posture,vigie_posture_state,vigie_dns,attack_mobile_T1638,</group>
   </rule>
 
-  <rule id="100196" level="9">
+  <rule id="100196" level="2">
     <if_sid>100190</if_sid>
     <field name="vigie.data.adb_wifi_enabled">^true$</field>
     <description>Vigie : débogage ADB sans fil activé</description>
-    <group>vigie_posture,vigie_adb,</group>
+    <group>vigie_posture,vigie_posture_state,vigie_adb,</group>
   </rule>
 
-  <rule id="100197" level="7">
+  <rule id="100197" level="2">
     <if_sid>100190</if_sid>
     <field name="vigie.data.adb_enabled">^true$</field>
     <description>Vigie : débogage USB (ADB) activé</description>
-    <group>vigie_posture,vigie_adb,</group>
+    <group>vigie_posture,vigie_posture_state,vigie_adb,</group>
   </rule>
 
-  <rule id="100198" level="8">
+  <rule id="100198" level="2">
     <if_sid>100190</if_sid>
     <field name="vigie.data.lock_secure">^false$</field>
     <description>Vigie : aucun verrouillage d'écran sécurisé</description>
-    <group>vigie_posture,</group>
+    <group>vigie_posture,vigie_posture_state,</group>
   </rule>
 
-  <rule id="100199" level="7">
+  <rule id="100199" level="2">
     <if_sid>100190</if_sid>
     <field name="vigie.data.user_ca_certs" type="pcre2">[0-9a-f]{64}</field>
     <description>Vigie : au moins une autorité de certification utilisateur est installée</description>
-<group>vigie_posture,vigie_ca,attack_mobile_T1638,</group>
+<group>vigie_posture,vigie_posture_state,vigie_ca,attack_mobile_T1638,</group>
   </rule>
 
-  <rule id="100200" level="9">
+  <rule id="100200" level="9" ignore="604800">
     <if_sid>100190</if_sid>
     <field name="vigie.data.patch_age_days" type="pcre2">^(18[1-9]|19\d|[2-9]\d\d|\d{4,})$</field>
     <description>Vigie : correctif de sécurité vieux de $(vigie.data.patch_age_days) jours (plus de 6 mois)</description>
-    <group>vigie_posture,vigie_patch,</group>
+    <group>vigie_posture,vigie_posture_state,vigie_patch,</group>
   </rule>
 
-  <rule id="100201" level="6">
+  <rule id="100201" level="2">
     <if_sid>100190</if_sid>
     <field name="vigie.data.unknown_sources">^true$</field>
     <description>Vigie : installation depuis des sources inconnues autorisée</description>
-    <group>vigie_posture,vigie_sideload,</group>
+    <group>vigie_posture,vigie_posture_state,vigie_sideload,</group>
   </rule>
 
-  <rule id="100202" level="6">
+  <rule id="100202" level="6" ignore="604800">
     <if_sid>100190</if_sid>
     <field name="vigie.data.patch_age_days" type="pcre2">^(9[1-9]|1[0-7]\d|180)$</field>
     <description>Vigie : correctif de sécurité vieux de $(vigie.data.patch_age_days) jours (plus de 3 mois)</description>
-    <group>vigie_posture,vigie_patch,</group>
+    <group>vigie_posture,vigie_posture_state,vigie_patch,</group>
   </rule>
 
-  <rule id="100203" level="5">
+  <rule id="100203" level="2">
     <if_sid>100190</if_sid>
     <field name="vigie.data.play_protect">^false$</field>
     <description>Vigie : Play Protect désactivé</description>
-    <group>vigie_posture,</group>
+    <group>vigie_posture,vigie_posture_state,</group>
   </rule>
 
-  <rule id="100204" level="4">
+  <rule id="100204" level="2">
     <if_sid>100190</if_sid>
     <field name="vigie.data.dev_options">^true$</field>
     <description>Vigie : options pour les développeurs activées</description>
-    <group>vigie_posture,vigie_adb,</group>
+    <group>vigie_posture,vigie_posture_state,vigie_adb,</group>
+  </rule>
+
+  <!-- ========================= security.posture_change (un champ modifié) ========================= -->
+  <!-- Contrat §2 (précisions) : field, old, new, valeurs converties en chaînes. Une alerte par
+       changement. Les retours à la normale tombent dans la règle de base (niveau 3). -->
+
+  <rule id="100250" level="3">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^security.posture_change$</field>
+    <description>Vigie : posture modifiée, $(vigie.data.field) : « $(vigie.data.old) » -> « $(vigie.data.new) »</description>
+    <group>vigie_posture,vigie_posture_change,</group>
+  </rule>
+
+  <rule id="100251" level="9">
+    <if_sid>100250</if_sid>
+    <field name="vigie.data.field">^adb_wifi_enabled$</field>
+    <field name="vigie.data.new">^true$</field>
+    <description>Vigie : débogage ADB sans fil activé</description>
+    <group>vigie_posture,vigie_posture_change,vigie_adb,</group>
+  </rule>
+
+  <rule id="100252" level="7">
+    <if_sid>100250</if_sid>
+    <field name="vigie.data.field">^adb_enabled$</field>
+    <field name="vigie.data.new">^true$</field>
+    <description>Vigie : débogage USB (ADB) activé</description>
+    <group>vigie_posture,vigie_posture_change,vigie_adb,</group>
+  </rule>
+
+  <rule id="100253" level="4">
+    <if_sid>100250</if_sid>
+    <field name="vigie.data.field">^dev_options$</field>
+    <field name="vigie.data.new">^true$</field>
+    <description>Vigie : options pour les développeurs activées</description>
+    <group>vigie_posture,vigie_posture_change,vigie_adb,</group>
+  </rule>
+
+  <rule id="100254" level="6">
+    <if_sid>100250</if_sid>
+    <field name="vigie.data.field">^unknown_sources$</field>
+    <field name="vigie.data.new">^true$</field>
+    <description>Vigie : installation depuis des sources inconnues autorisée</description>
+    <group>vigie_posture,vigie_posture_change,vigie_sideload,</group>
+  </rule>
+
+  <rule id="100255" level="10">
+    <if_sid>100250</if_sid>
+    <field name="vigie.data.field">^device_owner$</field>
+    <field name="vigie.data.new">^false$</field>
+    <description>Vigie : l'agent n'est plus Device Owner (protections locales inactives)</description>
+    <group>vigie_posture,vigie_posture_change,attack_mobile_T1629,</group>
+  </rule>
+
+  <rule id="100256" level="10">
+    <if_sid>100250</if_sid>
+    <field name="vigie.data.field">^encrypted$</field>
+    <field name="vigie.data.new">^false$</field>
+    <description>Vigie : le stockage de l'appareil n'est plus chiffré</description>
+    <group>vigie_posture,vigie_posture_change,</group>
+  </rule>
+
+  <rule id="100257" level="8">
+    <if_sid>100250</if_sid>
+    <field name="vigie.data.field">^lock_secure$</field>
+    <field name="vigie.data.new">^false$</field>
+    <description>Vigie : verrouillage d'écran sécurisé supprimé</description>
+    <group>vigie_posture,vigie_posture_change,</group>
+  </rule>
+
+  <rule id="100258" level="5">
+    <if_sid>100250</if_sid>
+    <field name="vigie.data.field">^play_protect$</field>
+    <field name="vigie.data.new">^false$</field>
+    <description>Vigie : Play Protect désactivé</description>
+    <group>vigie_posture,vigie_posture_change,</group>
+  </rule>
+
+  <rule id="100259" level="12">
+    <if_sid>100250</if_sid>
+    <field name="vigie.data.field">^verified_boot_state$</field>
+    <field name="vigie.data.new" type="pcre2">(?i)^(?!green$)</field>
+    <description>Vigie : démarrage vérifié passé de « $(vigie.data.old) » à « $(vigie.data.new) » (chargeur d'amorçage déverrouillé ou système modifié)</description>
+    <group>vigie_posture,vigie_posture_change,</group>
+  </rule>
+
+  <rule id="100260" level="10">
+    <if_sid>100250</if_sid>
+    <field name="vigie.data.field">^private_dns_mode$</field>
+    <field name="vigie.data.new" type="pcre2">^(?!hostname$|provider_hostname$)</field>
+    <description>Vigie : DNS privé désactivé ou non strict (mode « $(vigie.data.new) », avant « $(vigie.data.old) »)</description>
+    <group>vigie_posture,vigie_posture_change,vigie_dns,attack_mobile_T1629,</group>
+  </rule>
+
+  <!-- Hôte DNS privé remplacé par un hôte hors de la liste attendue (vide = mode non strict,
+       déjà couvert par 100260). -->
+  <rule id="100261" level="10">
+    <if_sid>100250</if_sid>
+    <field name="vigie.data.field">^private_dns_host$</field>
+    <field name="vigie.data.new">\S</field>
+    <list field="vigie.data.new" lookup="not_match_key">etc/lists/vigie-private-dns-hosts</list>
+    <description>Vigie : DNS privé pointé vers un hôte inattendu (« $(vigie.data.new) »)</description>
+    <group>vigie_posture,vigie_posture_change,vigie_dns,attack_mobile_T1638,</group>
+  </rule>
+
+  <!-- Liste des AC utilisateur modifiée avec au moins une AC présente. Niveau 2 : l'ajout est
+       alerté une fois par security.ca_cert (100185), qui porte le sujet de l'AC. -->
+  <rule id="100262" level="2">
+    <if_sid>100250</if_sid>
+    <field name="vigie.data.field">^user_ca_certs$</field>
+    <field name="vigie.data.new" type="pcre2">[0-9a-f]{64}</field>
+    <description>Vigie : AC utilisateur ajoutée (liste : $(vigie.data.new))</description>
+    <group>vigie_posture,vigie_posture_change,vigie_ca,attack_mobile_T1638,</group>
+  </rule>
+
+  <!-- Hôte DNS privé vidé : accompagne le passage en mode non strict, déjà alerté par 100260. -->
+  <rule id="100264" level="2">
+    <if_sid>100250</if_sid>
+    <field name="vigie.data.field">^private_dns_host$</field>
+    <match>"new":""</match>
+    <description>Vigie : hôte DNS privé vidé (ancien : $(vigie.data.old))</description>
+    <group>vigie_posture,vigie_posture_change,vigie_dns,</group>
+  </rule>
+
+  <!-- AC utilisateur retirées : déjà signalé par security.ca_cert (100186). -->
+  <rule id="100265" level="2">
+    <if_sid>100250</if_sid>
+    <field name="vigie.data.field">^user_ca_certs$</field>
+    <description>Vigie : liste des AC utilisateur modifiée (« $(vigie.data.old) » -> « $(vigie.data.new) »)</description>
+    <group>vigie_posture,vigie_posture_change,vigie_ca,</group>
+  </rule>
+
+  <!-- Mise à jour de sécurité installée (information). -->
+  <rule id="100263" level="3">
+    <if_sid>100250</if_sid>
+    <field name="vigie.data.field">^security_patch$</field>
+    <description>Vigie : niveau de correctif de sécurité passé de $(vigie.data.old) à $(vigie.data.new)</description>
+    <group>vigie_posture,vigie_posture_change,vigie_patch,</group>
   </rule>
 
   <!-- ========================= security.log (journal de sécurité Android) ========================= -->
+  <!-- Noms des champs de fields : table du contrat §2 (précisions du catalogue). -->
 
   <rule id="100210" level="0">
     <if_sid>100100</if_sid>
@@ -494,10 +669,11 @@
 <group>vigie_securitylog,vigie_keyguard,authentication_failures,attack_mobile_T1461,</group>
   </rule>
 
-  <rule id="100216" level="10">
+  <!-- Niveau 2 : l'ajout d'une AC est alerté une fois par security.ca_cert (100185). -->
+  <rule id="100216" level="2">
     <if_sid>100210</if_sid>
     <field name="vigie.data.tag">^cert_authority_installed$</field>
-    <description>Vigie : autorité de certification installée (journal de sécurité)</description>
+    <description>Vigie : autorité de certification installée (journal de sécurité) : $(vigie.data.fields.subject)</description>
 <group>vigie_securitylog,vigie_ca,attack_mobile_T1638,</group>
   </rule>
 
@@ -518,7 +694,7 @@
   <rule id="100219" level="12">
     <if_sid>100210</if_sid>
     <field name="vigie.data.tag">^key_integrity_violation$</field>
-    <description>Vigie : violation d'intégrité d'une clé du magasin de clés Android</description>
+    <description>Vigie : violation d'intégrité de la clé « $(vigie.data.fields.alias) » (uid $(vigie.data.fields.uid))</description>
     <group>vigie_securitylog,</group>
   </rule>
 
@@ -540,21 +716,54 @@
   <rule id="100222" level="5">
     <if_sid>100210</if_sid>
     <field name="vigie.data.tag">^user_restriction_removed$</field>
-    <description>Vigie : restriction utilisateur retirée ($(vigie.data.fields.restriction))</description>
+    <description>Vigie : restriction utilisateur retirée ($(vigie.data.fields.restriction)) par $(vigie.data.fields.admin_package)</description>
     <group>vigie_securitylog,vigie_policy,</group>
   </rule>
 
   <rule id="100223" level="3">
     <if_sid>100210</if_sid>
     <field name="vigie.data.tag">^media_mount$</field>
-    <description>Vigie : support de stockage amovible monté</description>
+    <description>Vigie : support amovible monté ($(vigie.data.fields.label), $(vigie.data.fields.mount_point))</description>
     <group>vigie_securitylog,</group>
   </rule>
 
   <rule id="100224" level="7">
     <if_sid>100210</if_sid>
     <field name="vigie.data.tag">^cert_validation_failure$</field>
-    <description>Vigie : échec de validation de certificat signalé par le système</description>
+    <description>Vigie : échec de validation de certificat signalé par le système ($(vigie.data.fields.reason))</description>
+    <group>vigie_securitylog,</group>
+  </rule>
+
+  <!-- Démarrage avec un état de démarrage vérifié dégradé. Niveau 2 : le passage à cet état est
+       alerté une fois par security.posture_change (100259) ; chaque démarrage est ici marqué. -->
+  <rule id="100225" level="2">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag">^os_startup$</field>
+    <field name="vigie.data.fields.verified_boot_state" type="pcre2">(?i)^(orange|yellow|red)$</field>
+    <description>Vigie : démarrage avec l'état « $(vigie.data.fields.verified_boot_state) » (dm-verity $(vigie.data.fields.dm_verity_mode))</description>
+    <group>vigie_securitylog,vigie_posture_state,</group>
+  </rule>
+
+  <rule id="100226" level="7">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag">^os_startup$</field>
+    <field name="vigie.data.fields.dm_verity_mode" type="pcre2">(?i)^(?!enforcing$)</field>
+    <description>Vigie : dm-verity non appliqué au démarrage (mode $(vigie.data.fields.dm_verity_mode))</description>
+    <group>vigie_securitylog,</group>
+  </rule>
+
+  <rule id="100227" level="3">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag">^password_changed$</field>
+    <description>Vigie : code de verrouillage modifié (complexité $(vigie.data.fields.complexity))</description>
+    <group>vigie_securitylog,vigie_keyguard,</group>
+  </rule>
+
+  <rule id="100228" level="5">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag" type="pcre2">^key_(generated|import|destruction)$</field>
+    <field name="vigie.data.fields.success" type="pcre2">^(false|0)$</field>
+    <description>Vigie : échec d'opération sur la clé « $(vigie.data.fields.alias) » ($(vigie.data.tag))</description>
     <group>vigie_securitylog,</group>
   </rule>
 
@@ -621,7 +830,7 @@
   <rule id="100105" level="10">
     <if_sid>100100</if_sid>
     <field name="vigie.sev">^3$</field>
-    <field name="vigie.type" type="pcre2" negate="yes">^(agent\.(tamper|stopped|buffer_overflow|collector_error|config_changed|heartbeat)|device\.(time_changed|usb)|location\.fix|net\.(cell_security|ble_tracker|wifi|connectivity|dns)|app\.(installed|removed|special_access|permission_changed)|sensor\.(microphone|camera)|security\.(keyguard|ca_cert|policy|posture|log)|app\.inventory\.app|net\.usage\.app|net\.wifi_scan\.ap)$</field>
+    <field name="vigie.type" type="pcre2" negate="yes">^(agent\.(tamper|stopped|buffer_overflow|collector_error|config_changed|heartbeat)|device\.(time_changed|usb)|location\.fix|net\.(cell_security|ble_tracker|wifi|connectivity|dns)|app\.(installed|removed|special_access|permission_changed)|sensor\.(microphone|camera)|security\.(keyguard|ca_cert|policy|posture|posture_change|log)|app\.inventory\.app|net\.usage\.app|net\.wifi_scan\.ap)$</field>
     <description>Vigie : événement critique signalé par l'agent ($(vigie.type))</description>
     <group>vigie_sev,</group>
   </rule>
@@ -629,7 +838,7 @@
   <rule id="100106" level="6">
     <if_sid>100100</if_sid>
     <field name="vigie.sev">^2$</field>
-    <field name="vigie.type" type="pcre2" negate="yes">^(agent\.(tamper|stopped|buffer_overflow|collector_error|config_changed|heartbeat)|device\.(time_changed|usb)|location\.fix|net\.(cell_security|ble_tracker|wifi|connectivity|dns)|app\.(installed|removed|special_access|permission_changed)|sensor\.(microphone|camera)|security\.(keyguard|ca_cert|policy|posture|log)|app\.inventory\.app|net\.usage\.app|net\.wifi_scan\.ap)$</field>
+    <field name="vigie.type" type="pcre2" negate="yes">^(agent\.(tamper|stopped|buffer_overflow|collector_error|config_changed|heartbeat)|device\.(time_changed|usb)|location\.fix|net\.(cell_security|ble_tracker|wifi|connectivity|dns)|app\.(installed|removed|special_access|permission_changed)|sensor\.(microphone|camera)|security\.(keyguard|ca_cert|policy|posture|posture_change|log)|app\.inventory\.app|net\.usage\.app|net\.wifi_scan\.ap)$</field>
     <description>Vigie : avertissement signalé par l'agent ($(vigie.type))</description>
     <group>vigie_sev,</group>
   </rule>

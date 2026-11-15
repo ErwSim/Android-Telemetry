@@ -1,3 +1,3 @@
 # Restriction utilisateur retirée
 # attendu: 100222
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001088","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1088,"type":"security.log","domain":"security","sev":0,"data":{"tag":"user_restriction_removed","level":"info","log_id":12345,"fields":{"admin":"io.github.erwsim.vigie","restriction":"no_debugging_features"}}}}
+{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001088","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1088,"type":"security.log","domain":"security","sev":0,"data":{"tag":"user_restriction_removed","level":"info","log_id":12345,"fields":{"admin_package":"io.github.erwsim.vigie","user_id":0,"restriction":"no_debugging_features"}}}}

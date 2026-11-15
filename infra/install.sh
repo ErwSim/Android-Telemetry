@@ -358,7 +358,8 @@ info "Collecteur…"
 dc up -d collector
 wait_healthy collector 120 || die "le collecteur ne démarre pas : docker compose logs collector"
 
-# Le fichier d'export doit exister AVANT que le manager ne le surveille : un fichier apparu après
+# Le fichier d'export doit exister AVANT que le manager ne le surveille (le collecteur le crée dès
+# son démarrage ; ceci couvre une image plus ancienne) : un fichier apparu après
 # coup est ouvert en fin de fichier par wazuh-logcollector (les premières lignes seraient perdues).
 COLLECTOR_USER="$(docker image inspect -f '{{.Config.User}}' "$COLLECTOR_IMAGE" 2>/dev/null || true)"
 docker run --rm --user "${COLLECTOR_USER:-0:0}" -v vigie_vigie_export:/e --entrypoint sh "$CADDY_BASE_IMAGE" \

@@ -242,11 +242,13 @@ sans ip6tables), ce qui rouvrirait le résolveur.
 
 | Domaine | Détections (niveau) |
 |---|---|
-| Agent | altération `agent.tamper` (12), perte du Device Owner (10), collecte ou envoi désactivé (5), tampon saturé (6), arrêt (3) |
+| Agent | altération `agent.tamper` (12), collecte ou envoi désactivé (5), tampon saturé (6), arrêt (3) |
 | Absence | aucun événement depuis 60 min (7, `VIGIE_WATCH_SILENCE_MIN`), reprise (3), trous de séquence (6, ou 3 si expliqués par une purge), compteur revenu en arrière (8) — sonde `wazuh/watch/vigie_watch.py` toutes les 10 min |
-| Posture | démarrage vérifié non vert (12), stockage non chiffré (10), DNS privé désactivé/non strict (10) ou vers un hôte inattendu (10, liste CDB générée), ADB sans fil (9), ADB (7), pas de verrouillage (8), AC utilisateur présente (7), correctif > 6 mois (9) / > 3 mois (6), sources inconnues (6), Play Protect désactivé (5), options développeur (4) |
+| Posture (`security.posture_change`, une alerte par champ modifié) | démarrage vérifié dégradé (12), chiffrement perdu (10), perte du Device Owner (10), DNS privé désactivé/non strict (10) ou vers un hôte inattendu (10, liste CDB générée), ADB sans fil (9), verrouillage sécurisé supprimé (8), ADB (7), sources inconnues (6), Play Protect désactivé (5), options développeur (4), correctif installé et retours à la normale (3) |
+| Posture (`security.posture`, état complet) | correctif > 6 mois (9) / > 3 mois (6), au plus une fois par semaine ; les autres constats sont marqués sans alerte (niveau 2, groupe `vigie_posture_state`) pour ne pas doubler les alertes de changement |
+| Capteurs | micro (10) ou caméra (10) utilisés appareil verrouillé ; micro hors appel (6) ou caméra (8) utilisés écran éteint ; tout usage marqué (2) |
 | Apps | installée hors Play/Galaxy Store (8) ou sans installateur/ADB (8), nouvelle app d'accessibilité (10), administrateur de l'appareil (10), écoute des notifications (8), VPN (7), permission sensible accordée (5) |
-| Sécurité | AC utilisateur ajoutée (10), déverrouillages échoués répétés (10 : 5 en 10 min, ou ≥ 10 consécutifs), `security.log` : shell ADB (10), commande/transfert ADB (8), AC installée (10), journalisation arrêtée (12), tampon critique (7), violation d'intégrité de clé (12), autotest crypto (10), échec d'effacement (8), restriction retirée (5), support monté (3) |
+| Sécurité | AC utilisateur ajoutée (10, une seule alerte : `security.ca_cert` ; le journal système et la posture sont marqués), déverrouillages échoués répétés (10 : 5 en 10 min, ou ≥ 10 consécutifs), `security.log` (champs nommés selon la table du contrat) : shell ADB (10), commande/transfert ADB (8), journalisation arrêtée (12), tampon critique (7), violation d'intégrité de clé (12), autotest crypto (10), dm-verity non appliqué (7), échec d'effacement (8), restriction retirée (5), échec d'opération sur une clé (5), support monté (3), code modifié (3) |
 | Réseau | chiffrement cellulaire nul (12), rétrogradation 2G / IMSI-catcher (10), traceur BLE qui suit (10), position simulée (9), Wi-Fi ouvert (4), réseau sans DNS privé (5), changement d'heure ≥ 1 h (5), USB avec ADB (5) |
 | Pistage | requête DNS d'une app vers la télémétrie Google/Samsung (2 : sans alerte, marquée pour les tableaux) |
 | AdGuard | domaine du flux de menaces demandé (10), répété (12), rafale de blocages (5) |
@@ -256,15 +258,16 @@ Correspondances MITRE ATT&CK **Mobile** (T1629.003, T1638, T1461, T1453, T1517, 
 MITRE embarquée dans Wazuh ne connaît que la matrice Entreprise (une balise `<mitre>` mobile est
 rejetée et disparaît de l'alerte) ; elles sont donc portées par les groupes `attack_mobile_<ID>`.
 
-**Tests** : `wazuh/tests/cases/*.log` (93 cas, un fichier par cas, la dernière ligne doit déclencher
+**Tests** : `wazuh/tests/cases/*.log` (121 cas, un fichier par cas, la dernière ligne doit déclencher
 la règle attendue) ; `./wazuh/tests/run-tests.sh` les rejoue avec `wazuh-logtest` dans le manager ;
 `wazuh/tests/generer-cas.py` les régénère.
 
 Limites (de Wazuh, documentées dans les règles) : un événement ne déclenche qu'**une** règle (les
-règles filles sont essayées par niveau décroissant) — une posture qui cumule plusieurs défauts montre
-le plus grave ; « micro/caméra utilisés écran éteint » n'est pas exprimable de façon fiable (pas
-d'état « écran toujours éteint », et un appel éteint l'écran) : l'usage est marqué (niveau 2) ;
-`wazuh-logtest` n'applique pas l'option `ignore` des règles (vérifiée dans le flux réel).
+règles filles sont essayées par niveau décroissant), d'où les événements `security.posture_change`
+(un par champ) ; un défaut **déjà présent à l'enrôlement** ne produit pas de changement, donc pas
+d'alerte : vérifier la posture initiale dans la console. Un micro utilisé écran éteint pendant un
+appel (source `voice_communication`, capteur de proximité) n'alerte pas. `wazuh-logtest` n'applique
+pas l'option `ignore` des règles (vérifiée dans le flux réel).
 
 ### 7.3 Rétention, carte, tableaux de bord
 
@@ -381,13 +384,14 @@ L'URL doit être en `https://` avec les marqueurs `{z}`, `{x}`, `{y}`.
 Environnement : Docker 29, 16 Go de RAM, sans accès Internet sortant pour les conteneurs. Prouvé :
 installation complète puis rejouée (idempotente) ; indexeur, manager, dashboard sains avec les mots de
 passe générés (anciens et comptes de démonstration refusés) ; rotation des mots de passe ; collecteur
-réel : enrôlement, simulateur (47 types) envoyé à travers Caddy en mTLS, 4 648 lignes exportées =
-4 648 documents dans `wazuh-archives-*`, alertes dans `wazuh-alerts-*` lues par la console
+réel : enrôlement, simulateur (48 types, dont `security.posture_change` et les capteurs avec état de
+l'écran) envoyé à travers Caddy en mTLS, 13 131 lignes exportées = 13 131 documents dans
+`wazuh-archives-*` (aucun rejet de l'indexeur), alertes dans `wazuh-alerts-*` lues par la console
 (`/api/console/alerts`) ; rotation par renommage sans perte ni alerte ; mTLS (refus sans certificat
 et avec une autre AC, acceptation avec le certificat enrôlé) ; DoT avec le certificat de Caddy,
 blocage d'un domaine de `vigie-base.txt`, rechargement du certificat renouvelé sans redémarrage ;
 mode ClientID (identifiant inconnu → REFUSED) ; geo_point ; import et affichage des tableaux de bord ;
-sauvegarde puis restauration après destruction totale ; 93 cas de règles.
+sauvegarde puis restauration après destruction totale ; 121 cas de règles.
 
 Non vérifié ici (limites de l'environnement) : Let's Encrypt (pas d'accès entrant/sortant), défi
 DNS-01 et image Caddy à module DNS, téléchargement des listes HaGeZi et résolution par Quad9 (pas
