@@ -166,7 +166,7 @@ for k in WAZUH_INDEXER_HEAP:2g WAZUH_INDEXER_MEM_LIMIT:3g WAZUH_MANAGER_MEM_LIMI
   WAZUH_DASHBOARD_MEM_LIMIT:1g WAZUH_DASHBOARD_NODE_HEAP_MB:640 \
   WAZUH_ALERTS_RETENTION_DAYS:180 WAZUH_ARCHIVES_RETENTION_DAYS:90 VIGIE_RETENTION_DAYS:90 \
   VIGIE_WATCH_SILENCE_MIN:60 VIGIE_ARCHIVES_FILE_DAYS:14 \
-  VIGIE_SUBNET:172.31.250.0/24 VIGIE_CADDY_IP:172.31.250.10 VIGIE_ADGUARD_IP:172.31.250.53; do
+  VIGIE_SUBNET:172.31.250.0/24 VIGIE_CADDY_IP:172.31.250.10 VIGIE_ADGUARD_IP:172.31.250.53 VIGIE_WG_IP:172.31.250.20; do
   [[ -n "$(env_get "${k%%:*}")" ]] || env_set "${k%%:*}" "${k#*:}"
 done
 
@@ -263,7 +263,9 @@ ADGUARD_FILTERS="$(
   filter /opt/adguardhome/work/userfilters/perso/regles-perso.txt "Règles personnelles" 90
 )"
 if [[ "$CLIENTID_MODE" == true ]]; then
-  ADGUARD_ALLOWED_CLIENTS=$'\n'"    - $VIGIE_DNS_CLIENTID"$'\n'"    - $(env_get VIGIE_SUBNET)"$'\n'"    - 127.0.0.0/8"
+  # Jamais le sous-réseau Docker entier : sa passerelle (.1) est l'adresse vue pour toute connexion
+  # relayée par docker-proxy (IPv6 sans ip6tables, accès local), ce qui ouvrirait le résolveur.
+  ADGUARD_ALLOWED_CLIENTS=$'\n'"    - $VIGIE_DNS_CLIENTID"$'\n'"    - $(env_get VIGIE_WG_IP)/32"$'\n'"    - 127.0.0.0/8"
   ADGUARD_CLIENTS="
     - name: Telephone
       ids:

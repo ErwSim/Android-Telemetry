@@ -309,7 +309,10 @@ services:
       - "127.0.0.1:51821:51821/tcp"
     volumes:
       - wireguard_data:/etc/wireguard
-    networks: [vigie]
+    networks:
+      vigie:
+        # Adresse fixe : seule adresse interne autorisée par AdGuard en mode ClientID.
+        ipv4_address: ${VIGIE_WG_IP:-172.31.250.20}
     mem_limit: 256m
     logging: *logging
 
