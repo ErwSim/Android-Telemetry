@@ -540,7 +540,14 @@ class PolicyEngine(
             Dpm.DNS_MODE_HOSTNAME -> mode == Dpm.DNS_MODE_HOSTNAME && safe { gateway.privateDnsHost() } == prevHost
             else -> mode == Dpm.DNS_MODE_OPPORTUNISTIC
         }
-        report += outcome("private_dns_set", target, record.profile, restored, if (restored) null else error ?: "aucun effet constaté")
+        var failure = if (restored) null else error ?: "aucun effet constaté"
+        // Could not restore "off" or the previous host: at least stop imposing our host (automatic mode),
+        // so that the phone never stays bound to a server Vigie no longer manages. Kept for a retry.
+        if (!restored && mode == Dpm.DNS_MODE_HOSTNAME && safe { gateway.privateDnsHost() } == record.target) {
+            attempt { Dpm.dnsSetError(gateway.setPrivateDnsOpportunistic()) }
+            if (safe { gateway.privateDnsMode() } == Dpm.DNS_MODE_OPPORTUNISTIC) failure += " ; mode automatique appliqué à la place"
+        }
+        report += outcome("private_dns_set", target, record.profile, restored, failure)
         val current = store.state().records.firstOrNull { it.id == record.id } ?: record
         if (restored && !current.dnsLockedByUs) removeRecord(record.id) else putRecord(current.copy(lastError = report.failed.lastOrNull()))
         return report

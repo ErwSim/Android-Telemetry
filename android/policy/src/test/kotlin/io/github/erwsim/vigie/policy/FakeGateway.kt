@@ -125,8 +125,11 @@ class FakeGateway : DevicePolicyGateway {
         return Dpm.DNS_SET_OK
     }
 
+    var failDnsOff = false
+
     override fun setPrivateDnsOff() {
         calls += "dns off"
+        if (failDnsOff) throw SecurityException("private_dns_mode not in allowlist")
         dnsMode = Dpm.DNS_MODE_OFF
         dnsHost = null
     }

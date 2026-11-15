@@ -60,7 +60,7 @@
     <string name="policy_remove_owner">Retirer le Device Owner</string>
     <string name="policy_remove_owner_desc">Rétablit tout, coupe les journaux réseau et de sécurité, retire la protection contre l\'arrêt forcé, puis abandonne le rôle de Device Owner. Irréversible depuis l\'app : il faudra repasser par ADB (sans comptes sur le téléphone) pour le réactiver.</string>
     <string name="policy_rescue_title">Issue de secours par ADB</string>
-    <string name="policy_rescue_desc">Si l\'app ne s\'ouvre plus : « scripts/rescue-revert.sh » (ou .ps1) depuis un ordinateur relié en débogage USB déclenche « Tout rétablir » ; « --remove-owner » retire aussi le Device Owner. Seuls le shell ADB et le système peuvent envoyer cet ordre, aucune autre app.</string>
+    <string name="policy_rescue_desc">Si l\'app ne s\'ouvre plus : « scripts/rescue-revert.sh » (ou .ps1) depuis un ordinateur relié en débogage USB déclenche « Tout rétablir » ; avec l\'option « remove-owner » (-RemoveOwner en PowerShell), il retire aussi le Device Owner. Seuls le shell ADB et le système peuvent envoyer cet ordre, aucune autre app.</string>
 
     <string name="policy_confirm_title">Confirmer</string>
     <string name="policy_confirm_apply">Appliquer</string>

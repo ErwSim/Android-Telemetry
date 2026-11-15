@@ -397,6 +397,19 @@ class PolicyEngineTest {
     }
 
     @Test
+    fun `if the previous DNS mode cannot be restored, the host is no longer imposed and a retry finishes the job`() {
+        val e = engine()
+        e.apply(PolicySelection(Profile.BALANCED))
+        gw.failDnsOff = true
+        assertFalse(e.revertAll().allOk)
+        assertEquals(Dpm.DNS_MODE_OPPORTUNISTIC, gw.dnsMode)
+        assertTrue(e.state().records.any { it.id == "dns" && it.lastError != null })
+        gw.failDnsOff = false
+        assertTrue(e.revertAll().allOk)
+        assertEquals(Dpm.DNS_MODE_OFF, gw.dnsMode)
+    }
+
+    @Test
     fun `journal keeps every action with its outcome`() {
         engine().apply(PolicySelection(Profile.BALANCED))
         val journal = engine().journal()
