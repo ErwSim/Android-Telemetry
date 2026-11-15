@@ -48,8 +48,8 @@ android {
                 storePassword = releaseStorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
-                // v3 makes a future key rotation possible (signing certificate lineage).
-                enableV2Signing = true
+                // v3 (Android 9+) makes a future key rotation possible (signing certificate lineage).
+                // With minSdk 36 apksigner then omits v2, which is not needed.
                 enableV3Signing = true
             }
         }

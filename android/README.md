@@ -59,7 +59,7 @@ git). On peut aussi fournir `VIGIE_KEYSTORE_FILE`, `VIGIE_KEYSTORE_PASSWORD`, `V
 > **Sauvegardez la clé (chiffrée, hors de l'ordinateur).** Android n'accepte une mise à jour que signée par
 > la même clé. Pour un Device Owner, il n'y a pas de contournement : sans la clé d'origine, il faut retirer le
 > Device Owner (ou réinitialiser le téléphone) avant d'installer une version signée autrement. L'APK est
-> signé en schéma v2 + v3 (v3 permet une rotation de clé future).
+> signé en schéma v3 (suffisant pour Android 9+, et permet une rotation de clé future).
 
 ### Paramètres de construction
 
@@ -149,7 +149,7 @@ Vérifié dans l'environnement de développement (Linux, sans émulateur ni appa
 `./gradlew lint test assembleDebug assembleRelease` réussit ; 73 tests JVM (tampon Room sur SQLite JVM :
 séquence après redémarrage, transaction interrompue, purge par sévérité/âge ; envoi contre MockWebServer :
 tous les codes du contrat, gzip, lots, 1 Mio, Wi-Fi, reprise ; sérialisation exacte du §1 ; analyse des
-fichiers `.vigie` et mTLS avec épinglage ; isolation des pannes des collecteurs) ; APK release signé (v2+v3)
+fichiers `.vigie` et mTLS avec épinglage ; isolation des pannes des collecteurs) ; APK release signé (schéma v3, vérifié par `apksigner`)
 et manifeste fusionné inspectés (aucun service d'écoute des notifications, d'accessibilité, SMS, journal
 d'appels ni superposition).
 
