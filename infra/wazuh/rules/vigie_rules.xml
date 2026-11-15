@@ -218,15 +218,20 @@
   </rule>
 
   <!-- Accès spéciaux : l'événement est émis à chaque changement ET une fois par jour. On alerte
-       quand la liste diffère de celle d'un événement précédent du même appareil (48 h). -->
-  <rule id="100155" level="0">
+       quand la liste diffère de celle d'un événement précédent du même appareil (fenêtre de 25 h,
+       qui couvre la réémission quotidienne). « ignore » évite de réalerter à chaque réémission
+       pendant 25 h ; contrepartie : un second changement de la même liste dans ces 25 h n'alerte pas
+       (la console Vigie garde l'historique complet de la posture).
+       Niveau 1 (et non 0) : Wazuh ne mémorise pas les événements de niveau 0 pour les règles de
+       corrélation (if_matched_sid) ; le niveau 1 reste sous le seuil d'alerte. -->
+  <rule id="100155" level="1">
     <if_sid>100100</if_sid>
     <field name="vigie.type">^app.special_access$</field>
     <description>Vigie : état des accès spéciaux des apps</description>
     <group>vigie_app,</group>
   </rule>
 
-  <rule id="100156" level="10" frequency="2" timeframe="172800">
+  <rule id="100156" level="10" frequency="2" timeframe="90000" ignore="90000">
     <if_matched_sid>100155</if_matched_sid>
     <same_field>vigie.device_id</same_field>
     <different_field>vigie.data.accessibility_services</different_field>
@@ -234,7 +239,7 @@
 <group>vigie_app,vigie_special_access,attack_mobile_T1453,</group>
   </rule>
 
-  <rule id="100157" level="10" frequency="2" timeframe="172800">
+  <rule id="100157" level="10" frequency="2" timeframe="90000" ignore="90000">
     <if_matched_sid>100155</if_matched_sid>
     <same_field>vigie.device_id</same_field>
     <different_field>vigie.data.device_admins</different_field>
@@ -242,7 +247,7 @@
 <group>vigie_app,vigie_special_access,attack_mobile_T1626.001,</group>
   </rule>
 
-  <rule id="100158" level="8" frequency="2" timeframe="172800">
+  <rule id="100158" level="8" frequency="2" timeframe="90000" ignore="90000">
     <if_matched_sid>100155</if_matched_sid>
     <same_field>vigie.device_id</same_field>
     <different_field>vigie.data.notification_listeners</different_field>
@@ -250,7 +255,7 @@
 <group>vigie_app,vigie_special_access,attack_mobile_T1517,</group>
   </rule>
 
-  <rule id="100159" level="7" frequency="2" timeframe="172800">
+  <rule id="100159" level="7" frequency="2" timeframe="90000" ignore="90000">
     <if_matched_sid>100155</if_matched_sid>
     <same_field>vigie.device_id</same_field>
     <different_field>vigie.data.vpn_apps</different_field>

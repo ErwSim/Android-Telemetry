@@ -20,7 +20,8 @@
     <group>vigie_dns,</group>
   </rule>
 
-  <rule id="100401" level="0">
+  <!-- Niveau 1 (pas d'alerte) et non 0 : nécessaire aux règles de corrélation ci-dessous. -->
+  <rule id="100401" level="1">
     <if_sid>100400</if_sid>
     <field name="Result.IsFiltered">^true$</field>
     <description>AdGuard : requête bloquée $(QH)</description>

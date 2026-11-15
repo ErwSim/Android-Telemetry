@@ -16,6 +16,7 @@
 #   --yes                 aucune question (valeurs par défaut ou de .env)
 #   --no-start            génère tout sans démarrer la pile
 #   --rotate-passwords    régénère tous les mots de passe (indexeur, API, AdGuard, admin…)
+#   --build               reconstruit l'image du collecteur (sinon : seulement si absente)
 #
 # Rejouable sans risque : les secrets existants (.env, secrets/) sont conservés ; les fichiers de
 # configuration générés (data/) sont réécrits à partir des gabarits versionnés.
@@ -31,7 +32,7 @@ CADDY_BASE_IMAGE="caddy:2.11.9-alpine"
 CADDY_VERSION="2.11.9"
 
 ARG_DOMAIN="" ARG_EMAIL="" ARG_TLS="" ARG_PROFILE="" ARG_CLIENTID="" ARG_DNS_PROVIDER="" ARG_DNS_TOKEN=""
-ARG_ADMIN_ALLOW="" ASSUME_YES=0 NO_START=0 ROTATE=0
+ARG_ADMIN_ALLOW="" ASSUME_YES=0 NO_START=0 ROTATE=0 BUILD=0
 while (($#)); do
   case "$1" in
     --domain) ARG_DOMAIN="$2"; shift 2 ;;
@@ -46,6 +47,7 @@ while (($#)); do
     --yes | -y) ASSUME_YES=1; shift ;;
     --no-start) NO_START=1; shift ;;
     --rotate-passwords) ROTATE=1; shift ;;
+    --build) BUILD=1; shift ;;
     -h | --help) sed -n '2,25p' "$0"; exit 0 ;;
     *) die "option inconnue : $1 (voir --help)" ;;
   esac
@@ -318,8 +320,10 @@ volume_cat() { # volume_cat <volume> <chemin> : lit un fichier dans un volume no
   docker run --rm -v "vigie_$1:/v:ro" --entrypoint cat "$CADDY_BASE_IMAGE" "/v/$2" 2>/dev/null
 }
 
-if [[ -f "$INFRA_DIR/../server/Dockerfile" ]]; then
-  info "Construction de l'image du collecteur…"
+COLLECTOR_IMAGE=vigie-collector:local
+if ((BUILD)) || ! docker image inspect "$COLLECTOR_IMAGE" >/dev/null 2>&1; then
+  [[ -f "$INFRA_DIR/../server/Dockerfile" ]] || die "server/Dockerfile introuvable : clonez le dépôt complet"
+  info "Construction de l'image du collecteur (quelques minutes)…"
   dc build -q collector
 fi
 
@@ -348,9 +352,23 @@ info "Mots de passe de l'indexeur actifs (admin vérifié)."
 info "Modèles d'index et politique de rétention…"
 bash "$INFRA_DIR/wazuh/setup/indexer-setup.sh"
 
-info "Manager et dashboard Wazuh, collecteur…"
-dc up -d wazuh.manager wazuh.dashboard collector
+info "Collecteur…"
+dc up -d collector
 wait_healthy collector 120 || die "le collecteur ne démarre pas : docker compose logs collector"
+
+# Le fichier d'export doit exister AVANT que le manager ne le surveille : un fichier apparu après
+# coup est ouvert en fin de fichier par wazuh-logcollector (les premières lignes seraient perdues).
+COLLECTOR_USER="$(docker image inspect -f '{{.Config.User}}' "$COLLECTOR_IMAGE" 2>/dev/null || true)"
+docker run --rm --user "${COLLECTOR_USER:-0:0}" -v vigie_vigie_export:/e --entrypoint sh "$CADDY_BASE_IMAGE" \
+  -c '[ -e /e/events.ndjson ] || { touch /e/events.ndjson && chmod 640 /e/events.ndjson; }'
+docker volume inspect vigie_adguard_querylog >/dev/null 2>&1 ||
+  docker volume create --label com.docker.compose.project=vigie \
+    --label com.docker.compose.volume=adguard_querylog vigie_adguard_querylog >/dev/null
+docker run --rm -v vigie_adguard_querylog:/q --entrypoint sh "$CADDY_BASE_IMAGE" \
+  -c '[ -e /q/querylog.json ] || { touch /q/querylog.json && chmod 600 /q/querylog.json; }'
+
+info "Manager et dashboard Wazuh…"
+dc up -d wazuh.manager wazuh.dashboard
 
 # AC des certificats clients (créée par le collecteur au premier démarrage) -> Caddy (mTLS)
 CLIENT_CA="$(volume_cat collector_data pki/ca.crt || true)"

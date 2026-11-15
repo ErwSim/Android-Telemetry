@@ -230,6 +230,7 @@ services:
       - ./wazuh/manager/ossec.conf:/wazuh-config-mount/etc/ossec.conf:ro
       - ./wazuh/rules:/wazuh-config-mount/etc/rules:ro
       - ./wazuh/manager/entrypoint-scripts:/entrypoint-scripts:ro
+      - ./wazuh/manager/cont-init/00-vigie-pre:/etc/cont-init.d/00-vigie-pre:ro
       - ./wazuh/watch:/vigie/watch:ro
       - ./wazuh/tests:/vigie/tests:ro
       - vigie_export:/var/vigie:ro
