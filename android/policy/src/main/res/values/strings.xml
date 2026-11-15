@@ -41,5 +41,5 @@
     <string name="setting_network_log_connect_summary">Enregistrer aussi les connexions (adresse et port), pas seulement le DNS.</string>
 
     <string name="collector_posture_title">Posture de sécurité</string>
-    <string name="collector_posture_desc">État de sécurité : correctif, chiffrement, verrouillage, débogage ADB (USB et sans fil), options développeur, sources inconnues, DNS privé, VPN permanent, Device Owner, démarrage vérifié, autorités de certification ajoutées, Play Protect, signal USB. Au démarrage, une fois par jour et à chaque changement (un événement par champ modifié). Signale aussi l\'ajout ou le retrait d\'une autorité de certification et les échecs de déverrouillage. Un champ illisible est omis.</string>
+    <string name="collector_posture_desc">État de sécurité : correctif, chiffrement, verrouillage, débogage ADB (USB et sans fil), options développeur, sources inconnues, DNS privé, VPN permanent, Device Owner, démarrage vérifié, autorités de certification ajoutées, signal USB (Play Protect : aucune lecture fiable, omis). Au démarrage, une fois par jour et à chaque changement (un événement par champ modifié). Signale aussi l\'ajout ou le retrait d\'une autorité de certification et les échecs de déverrouillage. Un champ illisible est omis.</string>
 </resources>

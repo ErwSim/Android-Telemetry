@@ -58,7 +58,9 @@ class PostureReader(private val context: Context) {
         p["device_owner"] = owner
         p["verified_boot_state"] = verifiedBootState
         p["user_ca_certs"] = userCas.map { it.sha256 }.sorted()
-        p["play_protect"] = playProtect()
+        // play_protect: deliberately absent. No public API exposes the Play Protect switch and the
+        // hidden key once used (package_verifier_user_consent) is gone from AOSP: a stale value would
+        // raise false alerts. The contract allows absent fields.
         p["usb_data_signaling"] = if (owner) tryOrNull { dpm?.isUsbDataSignalingEnabled } else null
         return p
     }
@@ -113,18 +115,6 @@ class PostureReader(private val context: Context) {
     }
 
     /**
-     * `package_verifier_user_consent` (hidden Global key written when the user turns Play Protect
-     * scanning on/off): 1 = on, -1 = off. Anything else, or unreadable: left out.
-     */
-    private fun playProtect(): Boolean? = tryOrNull {
-        when (Settings.Global.getString(context.contentResolver, KEY_PLAY_PROTECT)?.trim()) {
-            "1" -> true
-            "-1" -> false
-            else -> null
-        }
-    }
-
-    /**
      * "Unknown sources": false when installs from unknown sources are forbidden by a user
      * restriction; otherwise true if at least one app is allowed to install APKs
      * (`REQUEST_INSTALL_PACKAGES` app-op allowed). Unreadable → left out.
@@ -164,7 +154,6 @@ class PostureReader(private val context: Context) {
         const val KEY_ADB_WIFI = "adb_wifi_enabled"
         const val KEY_DNS_MODE = "private_dns_mode"
         const val KEY_DNS_SPECIFIER = "private_dns_specifier"
-        const val KEY_PLAY_PROTECT = "package_verifier_user_consent"
         private const val PERM_INSTALL_PACKAGES = "android.permission.INSTALL_PACKAGES"
 
         /** Hidden constant `AppOpsManager.OPSTR_REQUEST_INSTALL_PACKAGES` (string ops are resolved by name). */

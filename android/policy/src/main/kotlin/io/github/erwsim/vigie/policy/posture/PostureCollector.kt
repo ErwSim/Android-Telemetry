@@ -29,7 +29,7 @@ import kotlinx.serialization.builtins.serializer
  * `security.posture` at start, daily and on change, plus one `security.posture_change` per changed
  * field; `security.ca_cert` when a user CA appears or disappears; `security.keyguard` (unlock
  * failures/successes reported to the device admin). Change triggers: settings observers (ADB,
- * developer options, private DNS, Play Protect), trust store and Device Owner broadcasts, password
+ * developer options, private DNS), trust store and Device Owner broadcasts, password
  * changes and CA entries of the security log. No polling.
  *
  * Works without Device Owner (fewer fields: those that need it are left out).
@@ -170,7 +170,6 @@ class PostureCollector : Collector {
             PostureReader.KEY_ADB_WIFI,
             PostureReader.KEY_DNS_MODE,
             PostureReader.KEY_DNS_SPECIFIER,
-            PostureReader.KEY_PLAY_PROTECT,
         )
     }
 }
