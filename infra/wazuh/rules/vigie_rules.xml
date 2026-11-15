@@ -7,7 +7,7 @@
   d'alerte) ; 3-5 = information/notable ; 6-9 = à examiner ; 10-12 = sérieux ; 13+ non utilisé.
 
   Limite importante de Wazuh : un événement ne déclenche qu'UNE règle (la première règle fille
-  qui correspond). Pour security.posture, les constats sont donc ordonnés du plus grave au moins
+  qui correspond, les filles étant essayées par niveau décroissant). Pour security.posture, les constats sont donc ordonnés du plus grave au moins
   grave ; un défaut moins grave apparaît quand le plus grave est corrigé (et chaque jour, la
   posture étant réémise quotidiennement).
 
@@ -609,11 +609,14 @@
   </rule>
 
   <!-- ========================= Sévérité signalée par l'agent ========================= -->
-  <!-- Définies en dernier : ne s'appliquent qu'aux types sans règle dédiée. -->
+  <!-- Wazuh essaie les règles filles par niveau DÉCROISSANT (pas dans l'ordre du fichier) : une
+       règle générique de niveau 10 passerait avant une règle dédiée de niveau 8. Ces règles ne
+       s'appliquent donc qu'aux types SANS règle dédiée (types futurs ou rares). -->
 
   <rule id="100105" level="10">
     <if_sid>100100</if_sid>
     <field name="vigie.sev">^3$</field>
+    <field name="vigie.type" type="pcre2" negate="yes">^(agent\.(tamper|stopped|buffer_overflow|collector_error|config_changed|heartbeat)|device\.(time_changed|usb)|location\.fix|net\.(cell_security|ble_tracker|wifi|connectivity|dns)|app\.(installed|removed|special_access|permission_changed)|sensor\.(microphone|camera)|security\.(keyguard|ca_cert|policy|posture|log)|app\.inventory\.app|net\.usage\.app|net\.wifi_scan\.ap)$</field>
     <description>Vigie : événement critique signalé par l'agent ($(vigie.type))</description>
     <group>vigie_sev,</group>
   </rule>
@@ -621,6 +624,7 @@
   <rule id="100106" level="6">
     <if_sid>100100</if_sid>
     <field name="vigie.sev">^2$</field>
+    <field name="vigie.type" type="pcre2" negate="yes">^(agent\.(tamper|stopped|buffer_overflow|collector_error|config_changed|heartbeat)|device\.(time_changed|usb)|location\.fix|net\.(cell_security|ble_tracker|wifi|connectivity|dns)|app\.(installed|removed|special_access|permission_changed)|sensor\.(microphone|camera)|security\.(keyguard|ca_cert|policy|posture|log)|app\.inventory\.app|net\.usage\.app|net\.wifi_scan\.ap)$</field>
     <description>Vigie : avertissement signalé par l'agent ($(vigie.type))</description>
     <group>vigie_sev,</group>
   </rule>

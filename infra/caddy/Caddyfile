@@ -78,8 +78,9 @@ ingest.{$VIGIE_DOMAIN} {
 	import securite
 	import journal
 	request_body {
-		# Contrat §3 : 1 Mio compressé par lot.
-		max_size 2MB
+		# Contrat §3 : 1 Mio compressé, 8 Mio décompressé ; un lot non compressé est permis.
+		# Le collecteur applique les limites fines (413).
+		max_size 9MB
 	}
 	handle /api/v1/* {
 		reverse_proxy collector:8080 {

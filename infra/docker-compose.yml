@@ -83,6 +83,8 @@ services:
       VIGIE_WAZUH_INDEXER_USER: vigie_reader
       VIGIE_WAZUH_INDEXER_PASSWORD: ${WAZUH_READER_PASSWORD:?}
       VIGIE_WAZUH_INDEXER_CA_FILE: /etc/vigie/wazuh-root-ca.pem
+      VIGIE_TILE_URL: ${VIGIE_TILE_URL:-}
+      VIGIE_LOG_LEVEL: ${VIGIE_LOG_LEVEL:-info}
     volumes:
       - collector_data:/data
       - vigie_export:/export
