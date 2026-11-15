@@ -116,6 +116,16 @@ Note : `app.notification` n'est **pas** produit par l'APK principal en v1 (un se
   qui change : `field`, `old`, `new` (valeurs converties en chaînes). Permet une alerte par changement.
 - `sensor.camera` et `sensor.microphone` portent aussi `screen_on` (bool) et `locked` (bool) au moment de
   l'événement.
+- `security.policy.action` admet aussi `permission_granted` (auto-attribution par le Device Owner),
+  `force_stop_protection`, `always_on_vpn`, `backup_service`, `policy_reverted` (tout défaire) et
+  `device_owner_cleared`.
+- Valeurs retenues par le socle Android : `agent.started.reason` ∈ `boot`/`app`/`update`/`watchdog`/`restart` ;
+  `agent.stopped.reason` ∈ `user`/`system` ; `agent.tamper.kind` ∈ `admin_disable_requested`/`admin_disabled`/
+  `permission_revoked`/`force_stop`/`device_owner_lost` ; `device.shutdown.reason` ∈ `shutdown`/`reboot` ;
+  l'enrôlement émet `agent.config_changed` avec `key = "enrollment.device_id"`.
+- Côté agent : une réponse `200` dont les compteurs ne totalisent pas la taille du lot est traitée comme une
+  erreur (on garde tout) ; un `413` sur un événement seul le supprime (compté dans `dropped_total`) ; `403`
+  est traité comme `401`.
 - `security.log` : `fields` nomme la charge utile du tag ainsi (les indicateurs 0/1 de réussite deviennent des
   booléens `success`) ; tout tag non listé utilise `arg0`, `arg1`… dans l'ordre de la charge utile.
 
