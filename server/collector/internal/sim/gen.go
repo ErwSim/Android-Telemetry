@@ -53,6 +53,7 @@ type Options struct {
 // Generator produces events chronologically.
 type Generator struct {
 	rng     *rand.Rand
+	seed    int64
 	loc     *time.Location
 	rate    float64
 	version string
@@ -104,7 +105,7 @@ func New(opts Options) *Generator {
 	}
 	start := opts.Start.UTC().Truncate(time.Millisecond)
 	g := &Generator{
-		rng: rand.New(rand.NewSource(opts.Seed)), loc: loc, rate: rate, version: opts.AgentVersion,
+		rng: rand.New(rand.NewSource(opts.Seed)), seed: opts.Seed, loc: loc, rate: rate, version: opts.AgentVersion,
 		cur: start, seq: opts.SeqBase, battery: 64, plugged: "none", usage: map[string]*usageAcc{},
 	}
 	g.lastBatt = int(g.battery)

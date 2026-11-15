@@ -43,6 +43,11 @@ func (s *Store) Purge(ctx context.Context, cutoff, now time.Time, idle time.Dura
 	}
 	// Orphan rows of events from devices that no longer exist are not expected
 	// (devices are never deleted), so per-device deletion is complete.
+	// The latest heartbeat, posture, position and inventory are copies of events:
+	// they follow the same retention.
+	if _, err := s.w.ExecContext(ctx, `DELETE FROM device_latest WHERE ts_ms < ?`, c); err != nil {
+		return res, err
+	}
 	hourCut := c - mod(c, hourMS)
 	for _, q := range []string{
 		`DELETE FROM event_counts WHERE hour_ms < ?`,

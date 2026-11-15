@@ -183,7 +183,9 @@ func writeDerived(ctx context.Context, tx *sql.Tx, deviceID string, counts map[c
 				k.hour, k.device, k.typ, k.sev, v.count)
 		} else {
 			_, err = tx.ExecContext(ctx, `INSERT INTO top_counts(kind, hour_ms, device_id, package, key, count, bytes) VALUES(?,?,?,?,?,?,?)
-				ON CONFLICT(kind, hour_ms, device_id, package, key) DO UPDATE SET count = count + excluded.count, bytes = bytes + excluded.bytes`,
+				ON CONFLICT(kind, hour_ms, device_id, package, key) DO UPDATE SET count = count + excluded.count,
+				bytes = CASE WHEN top_counts.bytes > 9223372036854775807 - excluded.bytes THEN 9223372036854775807
+					ELSE top_counts.bytes + excluded.bytes END`,
 				k.kind, k.hour, k.device, k.pkg, k.key, v.count, v.bytes)
 		}
 		if err != nil {
@@ -317,7 +319,8 @@ func topKeys(ev *model.Event) []topKey {
 			}
 			rx, _ := model.Int(m, "rx_bytes")
 			tx, _ := model.Int(m, "tx_bytes")
-			b := max(rx, 0) + max(tx, 0)
+			// Clamped so that hostile values can neither wrap around nor make the SQL sums overflow.
+			b := clampBytes(rx) + clampBytes(tx)
 			out = append(out, topKey{kind: TopUsagePackage, pkg: clip(p, maxKeyLen), key: clip(p, maxKeyLen), bytes: b})
 		}
 		return out
@@ -352,6 +355,12 @@ func connectDest(d map[string]any) string {
 	}
 	return ip + ":" + strconv.FormatInt(port, 10)
 }
+
+// maxCountedBytes bounds one byte counter (2^53 - 1, the largest integer exactly
+// representable in JSON numbers on the console side).
+const maxCountedBytes = 1<<53 - 1
+
+func clampBytes(n int64) int64 { return min(max(n, 0), maxCountedBytes) }
 
 func clip(s string, n int) string {
 	if len(s) <= n {

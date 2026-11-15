@@ -108,3 +108,74 @@ func TestSchemaVersion(t *testing.T) {
 	}
 	st.Close()
 }
+
+func ingestAt(t *testing.T, st *Store, ts time.Time, typ string, data map[string]any) {
+	t.Helper()
+	ingestSeq++
+	raw, _ := json.Marshal(map[string]any{"id": fmt.Sprintf("01JCQ8Z3K4M5N6P7Q8R9T%05d", ingestSeq), "ts": model.FormatTS(ts),
+		"seq": ingestSeq, "boot_id": "b", "elapsed_ms": 1, "sev": 0, "type": typ, "data": data})
+	e, err := model.ParseEvent(raw, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.Ingest(context.Background(), "dev_1", "", []*model.Event{e}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+var ingestSeq int
+
+func apps(names ...string) []any {
+	var out []any
+	for _, n := range names {
+		out = append(out, map[string]any{"package": n})
+	}
+	return out
+}
+
+// LatestApps groups the parts of an inventory by inventory_id when present,
+// even when the parts are far apart in time or interleaved with another
+// inventory having the same number of parts; the heuristic remains for agents
+// that do not send inventory_id.
+func TestLatestAppsByInventoryID(t *testing.T) {
+	ctx := context.Background()
+	st, err := Open(ctx, filepath.Join(t.TempDir(), "vigie.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	base := time.Now().UTC().Add(-48 * time.Hour)
+
+	// Older agent without inventory_id: heuristic grouping.
+	ingestAt(t, st, base, "app.inventory", map[string]any{"part": 1, "parts": 2, "apps": apps("a", "b")})
+	ingestAt(t, st, base.Add(time.Second), "app.inventory", map[string]any{"part": 2, "parts": 2, "apps": apps("c")})
+	snap, err := st.LatestApps(ctx, "dev_1")
+	if err != nil || len(snap.Apps) != 3 || !snap.Complete {
+		t.Fatalf("heuristic: %+v %v", snap, err)
+	}
+
+	// Inventory X: part 1 sent, part 2 arrives 2 h later (after a retry).
+	// Inventory Y (incomplete, same parts count) is interleaved in between.
+	t0 := base.Add(24 * time.Hour)
+	ingestAt(t, st, t0, "app.inventory", map[string]any{"inventory_id": "X", "part": 1, "parts": 2, "apps": apps("x1")})
+	ingestAt(t, st, t0.Add(10*time.Minute), "app.inventory", map[string]any{"inventory_id": "Y", "part": 1, "parts": 2, "apps": apps("y1")})
+	ingestAt(t, st, t0.Add(2*time.Hour), "app.inventory", map[string]any{"inventory_id": "X", "part": 2, "parts": 2, "apps": apps("x2")})
+	snap, err = st.LatestApps(ctx, "dev_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := fmt.Sprint(snap.Apps)
+	if got != "[map[package:x1] map[package:x2]]" || !snap.Complete || snap.PartsReceived != 2 {
+		t.Fatalf("by inventory_id: %s %+v", got, snap)
+	}
+
+	// A newer inventory Z, still incomplete: reported as such, without mixing in X or Y.
+	ingestAt(t, st, t0.Add(3*time.Hour), "app.inventory", map[string]any{"inventory_id": "Z", "part": 2, "parts": 2, "apps": apps("z2")})
+	snap, err = st.LatestApps(ctx, "dev_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fmt.Sprint(snap.Apps); got != "[map[package:z2]]" || snap.Complete || snap.PartsReceived != 1 {
+		t.Fatalf("incomplete Z: %s %+v", got, snap)
+	}
+}

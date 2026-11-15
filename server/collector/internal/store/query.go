@@ -471,7 +471,9 @@ func (s *Store) StatsTop(ctx context.Context, deviceID, kind, pkg string, fromMS
 		query = `SELECT type, SUM(count), 0 FROM event_counts WHERE hour_ms >= ? AND hour_ms <= ?`
 		args = []any{start, toMS}
 	} else {
-		query = `SELECT key, SUM(count), SUM(bytes) FROM top_counts WHERE kind = ? AND hour_ms >= ? AND hour_ms <= ?`
+		// TOTAL (floating point) never fails on overflow, unlike SUM; the cast saturates.
+		query = `SELECT key, SUM(count), CAST(min(TOTAL(bytes), 9.2e18) AS INTEGER) FROM top_counts
+			WHERE kind = ? AND hour_ms >= ? AND hour_ms <= ?`
 		args = []any{kind, start, toMS}
 	}
 	if deviceID != "" {

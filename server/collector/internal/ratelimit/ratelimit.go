@@ -100,6 +100,18 @@ func (l *Limiter) Consume(key string) {
 	b.tokens = math.Max(0, b.tokens-1)
 }
 
+// Refund gives back one token taken by Allow (capped at the burst), for an
+// attempt that turned out not to count (success, server busy).
+func (l *Limiter) Refund(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if _, ok := l.buckets[key]; !ok {
+		return
+	}
+	b := l.get(key, l.now())
+	b.tokens = math.Min(l.burst, b.tokens+1)
+}
+
 // Reset forgets key.
 func (l *Limiter) Reset(key string) {
 	l.mu.Lock()

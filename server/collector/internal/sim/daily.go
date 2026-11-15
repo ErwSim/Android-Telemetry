@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"math/rand"
 	"sort"
 	"time"
 )
@@ -86,9 +87,12 @@ func (g *Generator) daily(t time.Time, updates bool) {
 				"package": a.pkg, "version_name": a.version, "version_code": a.code, "installer": a.installer, "signer_sha256": sha256Hex("signer:" + a.pkg)})
 		}
 	}
-	// Inventory split into parts.
+	// Inventory split into parts, all carrying the same inventory_id (contract §2).
+	// The identifier has its own random source so that adding it did not change
+	// the rest of a seeded simulation.
 	const perPart = 11
 	parts := (len(apps) + perPart - 1) / perPart
+	inventoryID := NewULID(t, rand.New(rand.NewSource(g.seed^t.UnixNano())))
 	for p := range parts {
 		var list []any
 		for _, a := range apps[p*perPart : min(len(apps), (p+1)*perPart)] {
@@ -107,7 +111,7 @@ func (g *Generator) daily(t time.Time, updates bool) {
 				"signer_sha256": sha256Hex("signer:" + a.pkg), "granted_dangerous": dang,
 			})
 		}
-		g.emit(t.Add(time.Duration(1000+p*20)*time.Millisecond), "app.inventory", 0, map[string]any{"part": p + 1, "parts": parts, "apps": list})
+		g.emit(t.Add(time.Duration(1000+p*20)*time.Millisecond), "app.inventory", 0, map[string]any{"inventory_id": inventoryID, "part": p + 1, "parts": parts, "apps": list})
 	}
 	g.emit(t.Add(1500*time.Millisecond), "app.special_access", 0, map[string]any{
 		"accessibility_services": []any{},

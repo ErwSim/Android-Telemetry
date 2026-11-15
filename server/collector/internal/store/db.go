@@ -52,6 +52,9 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("création du répertoire de données : %w", err)
 	}
+	if err := restrictFiles(path); err != nil {
+		return nil, err
+	}
 	w, err := sql.Open("sqlite", dsn(path, false))
 	if err != nil {
 		return nil, err
@@ -64,7 +67,6 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		w.Close()
 		return nil, err
 	}
-	_ = os.Chmod(path, 0o600)
 	r, err := sql.Open("sqlite", dsn(path, true))
 	if err != nil {
 		w.Close()
@@ -75,6 +77,26 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	r.SetConnMaxIdleTime(5 * time.Minute)
 	s.r = r
 	return s, nil
+}
+
+// restrictFiles makes the database file (created empty if needed) and any
+// leftover -wal/-shm/-journal files private to the owner before SQLite opens
+// them. SQLite creates its WAL and shared-memory files with the mode of the
+// database file, so creating the database 0600 first keeps the WAL, which holds
+// the most recent events, from being readable by other local users.
+func restrictFiles(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return fmt.Errorf("ouverture de la base : %w", err)
+	}
+	f.Close()
+	for _, p := range []string{path, path + "-wal", path + "-shm", path + "-journal"} {
+		if st, err := os.Stat(p); err == nil && st.Mode().Perm()&0o077 != 0 {
+			// Best effort: a CLI run by another user may not own the files.
+			_ = os.Chmod(p, st.Mode().Perm()&0o700)
+		}
+	}
+	return nil
 }
 
 // Close closes the database.

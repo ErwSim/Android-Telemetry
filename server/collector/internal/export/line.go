@@ -59,6 +59,10 @@ func Lines(ev store.StoredEvent, deviceName string) [][]byte {
 
 	main := base
 	clean := sanitize(data, 0)
+	// data.location is reserved for the collector's geo point (mapped as
+	// geo_point by the indexer): a device-supplied value of another shape would
+	// make the indexer reject the whole document.
+	delete(clean, "location")
 	if ev.Type == "location.fix" {
 		lat, ok1 := model.Num(data, "lat")
 		lon, ok2 := model.Num(data, "lon")
@@ -76,6 +80,7 @@ func Lines(ev store.StoredEvent, deviceName string) [][]byte {
 				continue
 			}
 			flat := sanitize(m, 0)
+			delete(flat, "location")
 			if ev.Type == "net.usage" {
 				for _, k := range []string{"from", "to"} {
 					if v, ok := data[k]; ok && isScalar(v) {

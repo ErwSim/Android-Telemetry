@@ -98,13 +98,19 @@ type AppsSnapshot struct {
 	Apps          []any   `json:"apps"`
 }
 
-// inventoryWindow bounds how far apart the parts of one inventory may be.
+// inventoryWindow bounds how far apart the parts of one inventory may be when
+// they carry no inventory_id (older agents).
 const inventoryWindow = time.Hour
 
+// maxInventoryParts bounds the number of part events read for one inventory.
+const maxInventoryParts = 1000
+
 // LatestApps reassembles the most recent app inventory from its parts.
-// The contract gives no snapshot identifier: parts are grouped as the newest
-// event of each "part" value with the same "parts" count, within one hour
-// before the newest inventory event.
+// Parts are grouped by data.inventory_id (contract §2) when the newest part
+// carries one. Otherwise (older agents) they are grouped heuristically: the
+// newest event of each "part" value with the same "parts" count, within one
+// hour before the newest inventory event, ignoring parts that belong to an
+// identified inventory.
 func (s *Store) LatestApps(ctx context.Context, deviceID string) (*AppsSnapshot, error) {
 	snap := &AppsSnapshot{Apps: []any{}}
 	last, err := s.EventsOfType(ctx, deviceID, "app.inventory", 0, 1<<62, 1)
@@ -116,13 +122,22 @@ func (s *Store) LatestApps(ctx context.Context, deviceID string) (*AppsSnapshot,
 	lm := decode(l.Data)
 	parts, _ := model.Int(lm, "parts")
 	snap.Parts = parts
-	evs, err := s.EventsOfType(ctx, deviceID, "app.inventory", l.TSms-inventoryWindow.Milliseconds(), l.TSms, 1000)
+	invID, _ := model.Str(lm, "inventory_id")
+	var evs []StoredEvent
+	if invID != "" {
+		evs, err = s.inventoryParts(ctx, deviceID, invID)
+	} else {
+		evs, err = s.EventsOfType(ctx, deviceID, "app.inventory", l.TSms-inventoryWindow.Milliseconds(), l.TSms, maxInventoryParts)
+	}
 	if err != nil {
 		return nil, err
 	}
 	byPart := map[int64]map[string]any{}
 	for _, e := range evs { // newest first
 		m := decode(e.Data)
+		if id, _ := model.Str(m, "inventory_id"); id != invID {
+			continue
+		}
 		p, _ := model.Int(m, "parts")
 		if p != parts {
 			continue
@@ -155,6 +170,26 @@ func (s *Store) LatestApps(ctx context.Context, deviceID string) (*AppsSnapshot,
 	snap.PartsReceived = len(byPart)
 	snap.Complete = parts <= 0 || int64(len(byPart)) >= parts
 	return snap, nil
+}
+
+// inventoryParts returns the app.inventory events of one inventory, newest first.
+func (s *Store) inventoryParts(ctx context.Context, deviceID, inventoryID string) ([]StoredEvent, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT `+eventCols+` FROM events INDEXED BY events_dev_type_ts
+		WHERE device_id = ? AND type = 'app.inventory' AND json_extract(data, '$.inventory_id') = ?
+		ORDER BY ts_ms DESC, pk DESC LIMIT ?`, deviceID, inventoryID, maxInventoryParts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []StoredEvent
+	for rows.Next() {
+		e, err := scanEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 // PostureChange is one field change between consecutive posture events.

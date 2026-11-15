@@ -127,6 +127,27 @@ func TestLineLocation(t *testing.T) {
 	}
 }
 
+// Regression: a device-supplied data.location (any type, or a location.fix
+// without valid coordinates) was exported as is, although the indexer maps
+// vigie.data.location as geo_point and rejects the whole document otherwise.
+func TestLineLocationReserved(t *testing.T) {
+	for _, c := range []struct{ typ, data string }{
+		{"net.dns", `{"hostname":"x","location":"ailleurs"}`},
+		{"location.fix", `{"lat":"x","location":{"lat":"nord"}}`},
+		{"net.wifi_scan", `{"aps":[{"ssid":"a","location":[1,2,3]}]}`},
+	} {
+		for i, line := range Lines(stored(c.typ, 0, c.data), "") {
+			if v, ok := parse(t, line).Vigie.Data["location"]; ok {
+				t.Errorf("%s line %d: device-supplied location exported: %v", c.typ, i, v)
+			}
+		}
+	}
+	l := parse(t, Lines(stored("location.fix", 0, `{"lat":1.5,"lon":2.5,"location":"x"}`), "")[0]).Vigie
+	if loc, ok := l.Data["location"].(map[string]any); !ok || loc["lat"] != 1.5 || loc["lon"] != 2.5 {
+		t.Fatalf("collector location replaced: %v", l.Data["location"])
+	}
+}
+
 func TestLineTruncated(t *testing.T) {
 	big := fmt.Sprintf(`{"text":%q}`, strings.Repeat("é", 20000))
 	lines := Lines(stored("app.notification", 1, big), "s25")

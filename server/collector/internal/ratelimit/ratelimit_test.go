@@ -55,3 +55,33 @@ func TestBoundedMemory(t *testing.T) {
 		t.Fatalf("%d buckets kept", len(l.buckets))
 	}
 }
+
+func TestRefund(t *testing.T) {
+	l := New(0, 2, 10)
+	l.Refund("unknown") // no bucket created
+	if ok, _ := l.Allow("k"); !ok {
+		t.Fatal("first")
+	}
+	if ok, _ := l.Allow("k"); !ok {
+		t.Fatal("second")
+	}
+	if ok, _ := l.Allow("k"); ok {
+		t.Fatal("burst exceeded")
+	}
+	l.Refund("k")
+	if ok, _ := l.Allow("k"); !ok {
+		t.Fatal("refunded token not available")
+	}
+	l.Refund("k")
+	l.Refund("k")
+	l.Refund("k")
+	if ok, _ := l.Allow("k"); !ok {
+		t.Fatal("after refunds")
+	}
+	if ok, _ := l.Allow("k"); !ok {
+		t.Fatal("after refunds (2)")
+	}
+	if ok, _ := l.Allow("k"); ok {
+		t.Fatal("refund exceeded the burst")
+	}
+}

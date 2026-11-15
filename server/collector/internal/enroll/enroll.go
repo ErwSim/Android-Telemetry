@@ -114,6 +114,11 @@ func (f *File) Write(path string, force bool) error {
 	if err != nil {
 		return err
 	}
+	// An existing file keeps its mode when truncated: restrict it before writing secrets.
+	if err := fh.Chmod(0o600); err != nil {
+		fh.Close()
+		return err
+	}
 	if _, err := fh.Write(b); err != nil {
 		fh.Close()
 		return err

@@ -64,3 +64,32 @@ func TestCreateWriteRead(t *testing.T) {
 		t.Fatalf("read back: %v", err)
 	}
 }
+
+// Regression: --force rewrote an existing file in place and kept its mode, so
+// the device token and private key could land in a world-readable file.
+func TestWriteForceKeepsSecretsPrivate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "s25.vigie")
+	if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := &File{Version: 1, DeviceID: "dev_1", DeviceToken: "secret"}
+	if err := f.Write(path, false); err == nil {
+		t.Fatal("existing file overwritten without force")
+	}
+	if err := f.Write(path, true); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o600 {
+		t.Fatalf("mode %v after --force", fi.Mode().Perm())
+	}
+	if g, err := Read(path); err != nil || g.DeviceToken != "secret" {
+		t.Fatalf("%+v %v", g, err)
+	}
+}

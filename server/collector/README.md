@@ -73,19 +73,25 @@ Variables : celles du contrat §7, plus `VIGIE_TILE_URL` (§6, défaut OpenStree
   absent ne la ralentit jamais, et un redémarrage reprend au curseur (au moins une fois : quelques lignes
   peuvent être dupliquées après un arrêt brutal). Au premier démarrage, l'historique n'est pas rejoué.
   Rotation par renommage (`.1`…`.KEEP`), jamais de troncature ; une ligne partielle laissée par un arrêt
-  brutal est terminée par `\n` (ligne ignorée par Wazuh, événement réexporté).
+  brutal est terminée par `\n` (ligne ignorée par Wazuh, événement réexporté). `vigie.data.location` est
+  réservé au point `geo_point` posé par le collecteur sur `location.fix` : une clé `location` venue de
+  l'appareil est retirée de l'export (elle ferait rejeter le document entier par l'indexeur).
 - **Console** : sessions par cookie (`__Host-vigie_session` en HTTPS) opaques, hachées en base, 12 h
   d'inactivité, 7 jours au plus ; argon2id (m=64 Mio, t=3, p=2, 2 calculs simultanés au plus) ; 10 échecs
-  par IP et par compte puis 1/min (`429` + `Retry-After`). `X-Requested-With: vigie` exigé sur toute requête
+  par IP et par compte puis 1/min (`429` + `Retry-After`), le jeton étant pris avant la vérification du mot
+  de passe (des tentatives simultanées ne contournent pas la limite) et rendu en cas de succès. `X-Requested-With: vigie` exigé sur toute requête
   modifiante. CSP exacte du contrat, `nosniff`, `DENY`, etc. SSE : abonné trop lent déconnecté (le
   navigateur se reconnecte), flux fermé à l'expiration de la session.
 - **Flux à sens unique** : `/api/v1` n'a que `ingest` et `ping` ; aucune réponse ne transporte d'ordre.
+- **Fichiers** : base, WAL et `-shm` en 0600 (la base est créée 0600 avant que SQLite n'en dérive les
+  autres), `.vigie` en 0600 même avec `--force`. La purge de rétention s'applique aussi aux dernières
+  valeurs par appareil (position, heartbeat, posture) affichées par `/devices`.
 - **PKI** : AC ECDSA P-256 (20 ans) dans `pki/ca.{crt,key}` (clé 0600), certificats clients 2 ans,
   `CN=<device_id>`, `clientAuth`.
 - **Simulateur** : journée type autour de Paris (domicile 11e, métro ligne 1 jusqu'à La Défense en semaine,
   vélo et bois de Vincennes le week-end), Wi-Fi/cellules, écran et applications au premier plan, DNS et
   connexions par paquets Google/Samsung/tiers (~10 000 `net.dns` par jour avec `--rate 1`), usage horaire,
-  inventaires quotidiens, et un scénario plaçant tous les types rares (redémarrage, traceur BLE, 2G, AC
+  inventaires quotidiens (parties liées par `inventory_id`), et un scénario plaçant tous les types rares (redémarrage, traceur BLE, 2G, AC
   utilisateur, `agent.tamper`, ADB, USB, appli installée hors Play Store, position simulée…) dans la fenêtre
   de `--backfill` (ou dans la première heure du mode continu). `seq` part de l'heure Unix en ms.
 
@@ -93,8 +99,8 @@ Variables : celles du contrat §7, plus `VIGIE_TILE_URL` (§6, défaut OpenStree
 
 - Agrégats « top » et timeline horaire/journalière alignés sur des heures/jours **UTC** pleins : les bornes
   `from`/`to` sont arrondies à l'heure.
-- `/apps` regroupe les parties d'inventaire par heuristique (même `parts`, moins d'une heure d'écart) : le
-  contrat ne donne pas d'identifiant d'inventaire.
+- `/apps` regroupe les parties d'inventaire par `inventory_id` (contrat §2) ; pour un agent qui ne l'envoie
+  pas, repli sur une heuristique (même `parts`, moins d'une heure d'écart).
 - Un événement dont `ts` dépasse l'heure du serveur de plus de 24 h ou précède 2000 est rejeté
   (`invalid_ts`, définitif) ; la purge de rétention se fait sur `ts`.
 - Limitation de débit en mémoire (réinitialisée au redémarrage, propre à une instance).

@@ -14,3 +14,6 @@ collector/web/dist
 **/*.p12
 **/.env
 **/.git
+collector/.dev
+**/*.ndjson
+**/*.ndjson.*

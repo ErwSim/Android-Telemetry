@@ -97,36 +97,47 @@ type loginRequest struct {
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := s.clientIP(r)
-	if blocked, wait := s.loginIP.Blocked(ip); blocked {
+	// Every attempt takes its token before any verification and gets it back
+	// only when it did not count. Checking first and charging after the slow
+	// password hash would let concurrent attempts all pass the check.
+	if ok, wait := s.loginIP.Allow(ip); !ok {
 		writeRetry(w, wait, "trop de tentatives de connexion")
 		return
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4096))
 	if err != nil {
+		s.loginIP.Refund(ip)
 		writeError(w, http.StatusRequestEntityTooLarge, "too_large", "requête trop volumineuse")
 		return
 	}
 	var req loginRequest
 	if err := json.Unmarshal(body, &req); err != nil {
+		s.loginIP.Refund(ip)
 		writeError(w, http.StatusBadRequest, "invalid_json", "JSON { username, password } attendu")
 		return
 	}
 	if !auth.ValidUsername(req.Username) || req.Password == "" || len(req.Password) > auth.MaxPasswordLen {
-		s.loginIP.Consume(ip)
 		writeError(w, http.StatusUnauthorized, "invalid_credentials", "identifiants invalides")
 		return
 	}
-	if blocked, wait := s.loginUser.Blocked(req.Username); blocked {
+	if ok, wait := s.loginUser.Allow(req.Username); !ok {
+		s.loginIP.Refund(ip)
 		writeRetry(w, wait, "trop de tentatives de connexion pour ce compte")
 		return
+	}
+	refund := func() {
+		s.loginIP.Refund(ip)
+		s.loginUser.Refund(req.Username)
 	}
 
 	// Bound concurrent argon2 computations (64 MiB each).
 	select {
 	case s.hashSlots <- struct{}{}:
 	case <-r.Context().Done():
+		refund()
 		return
 	case <-time.After(10 * time.Second):
+		refund()
 		writeRetry(w, 5*time.Second, "serveur occupé")
 		return
 	}
@@ -136,6 +147,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		hash = user.PasswordHash
 	} else if !errors.Is(err, store.ErrNotFound) {
 		<-s.hashSlots
+		refund()
 		s.log.Error("connexion : lecture du compte impossible", "err", err)
 		writeError(w, http.StatusServiceUnavailable, "unavailable", "service momentanément indisponible")
 		return
@@ -146,8 +158,6 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.log.Error("connexion : empreinte de mot de passe illisible", "username", req.Username)
 	}
 	if user == nil || !ok {
-		s.loginIP.Consume(ip)
-		s.loginUser.Consume(req.Username)
 		s.log.Warn("échec de connexion à la console", "username", req.Username, "ip", ip)
 		writeError(w, http.StatusUnauthorized, "invalid_credentials", "identifiants invalides")
 		return
@@ -167,6 +177,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.loginUser.Reset(req.Username)
+	s.loginIP.Refund(ip)
 	http.SetCookie(w, &http.Cookie{
 		Name: s.cookieName(), Value: token, Path: "/", Expires: expires, MaxAge: int(sessionLifetime.Seconds()),
 		HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: http.SameSiteStrictMode,

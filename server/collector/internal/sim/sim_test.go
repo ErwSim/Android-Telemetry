@@ -120,3 +120,29 @@ func TestULID(t *testing.T) {
 		t.Fatalf("timestamp %d != %d", ms, ts.UnixMilli())
 	}
 }
+
+// The parts of one inventory share an inventory_id (contract §2), distinct per inventory.
+func TestInventoryID(t *testing.T) {
+	start := time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC)
+	byID := map[string][]int{}
+	parts := 0
+	for _, e := range generate(t, start, 48*time.Hour) {
+		if e.Type != "app.inventory" {
+			continue
+		}
+		id, _ := e.Data["inventory_id"].(string)
+		if len(id) != 26 {
+			t.Fatalf("inventory_id %q", e.Data["inventory_id"])
+		}
+		byID[id] = append(byID[id], e.Data["part"].(int))
+		parts = e.Data["parts"].(int)
+	}
+	if len(byID) < 2 {
+		t.Fatalf("%d inventories in 48 h", len(byID))
+	}
+	for id, ps := range byID {
+		if len(ps) != parts {
+			t.Fatalf("inventory %s has parts %v, want %d", id, ps, parts)
+		}
+	}
+}
