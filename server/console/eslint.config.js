@@ -18,6 +18,10 @@ export default tseslint.config(
     },
   },
   {
+    files: ['public/*.js'],
+    languageOptions: { globals: globals.browser },
+  },
+  {
     files: ['mock/**/*.ts', 'vite.config.ts'],
     languageOptions: { globals: globals.node },
   },

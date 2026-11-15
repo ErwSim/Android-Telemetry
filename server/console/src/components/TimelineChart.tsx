@@ -118,8 +118,7 @@ export default function TimelineChart({ data, bucket, order, labelOf = defaultLa
               const row = document.createElement('div');
               row.className = 'tip-row';
               const sw = document.createElement('span');
-              sw.className = 'swatch';
-              sw.style.background = seriesColor(k);
+              sw.className = `swatch sw-${seriesIndex(k)}`;
               const lab = document.createElement('span');
               lab.textContent = `${labelOf(k)} : ${fmtNumber(v)}`;
               row.append(sw, lab);
@@ -159,7 +158,7 @@ export default function TimelineChart({ data, bucket, order, labelOf = defaultLa
       <ul className="legend">
         {stacked.keys.map((k, i) => (
           <li key={k}>
-            <span className="swatch" style={{ background: seriesColor(k) }} aria-hidden="true" />
+            <span className={`swatch sw-${seriesIndex(k)}`} aria-hidden="true" />
             {labelOf(k)} <span className="muted">{fmtNumber(stacked.sums[i] ?? 0)}</span>
           </li>
         ))}

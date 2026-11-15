@@ -22,6 +22,11 @@ export function onUnauthorized(fn: Listener): () => void {
   return () => unauthorizedListeners.delete(fn);
 }
 
+/** Signale une session expirée détectée hors de `request` (flux SSE). */
+export function signalUnauthorized(): void {
+  unauthorizedListeners.forEach((fn) => fn());
+}
+
 export type Query = Record<string, string | number | boolean | undefined | null>;
 
 export function buildQuery(q?: Query): string {

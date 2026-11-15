@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { loadConfig, DEFAULT_CONFIG, type AppConfig } from '../lib/config.ts';
@@ -74,7 +74,7 @@ function applyColors(map: maplibregl.Map) {
   const muted = cssVar('--text-muted', '#667');
   const surface = cssVar('--surface', '#fff');
   const set = (l: string, p: string, v: unknown) => {
-    if (map.getLayer(l)) map.setPaintProperty(l, p, v);
+    if (map.getLayer(l)) map.setPaintProperty(l, p as 'line-color', v as string);
   };
   set('route', 'line-color', accent);
   set('trail', 'line-color', accent);
