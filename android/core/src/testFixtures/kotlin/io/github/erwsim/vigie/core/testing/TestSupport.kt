@@ -1,4 +1,4 @@
-package io.github.erwsim.vigie.core
+package io.github.erwsim.vigie.core.testing
 
 import android.content.Context
 import android.content.ContextWrapper
@@ -22,10 +22,17 @@ class FakeClock(var now: Long = 1_763_242_983_974L, var elapsed: Long = 86_400_1
     }
 }
 
-/** Minimal Context for Room on the JVM: only the database path is needed. */
+/**
+ * Minimal Context for JVM tests: database path, in-memory SharedPreferences. Everything else is
+ * an Android stub returning default values (null system services, etc.).
+ */
 class TestContext(private val dir: File) : ContextWrapper(null) {
+    private val prefs = HashMap<String, MemoryPrefs>()
     override fun getDatabasePath(name: String): File = File(dir, name)
     override fun getApplicationContext(): Context = this
+    override fun getPackageName(): String = "io.github.erwsim.vigie"
+    override fun getSharedPreferences(name: String, mode: Int): SharedPreferences =
+        synchronized(prefs) { prefs.getOrPut(name) { MemoryPrefs() } }
 }
 
 /** Opens the real outbox schema on the JVM with the bundled SQLite driver (file-backed). */

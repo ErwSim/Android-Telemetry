@@ -1,8 +1,8 @@
 package io.github.erwsim.vigie.core.collector
 
-import io.github.erwsim.vigie.core.FakeClock
-import io.github.erwsim.vigie.core.MemoryPrefs
-import io.github.erwsim.vigie.core.TestContext
+import io.github.erwsim.vigie.core.testing.FakeClock
+import io.github.erwsim.vigie.core.testing.MemoryPrefs
+import io.github.erwsim.vigie.core.testing.TestContext
 import io.github.erwsim.vigie.core.capability.Capabilities
 import io.github.erwsim.vigie.core.settings.AgentSettings
 import io.github.erwsim.vigie.core.settings.SettingKey

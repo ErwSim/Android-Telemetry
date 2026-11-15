@@ -1,10 +1,10 @@
 package io.github.erwsim.vigie.core.sink
 
-import io.github.erwsim.vigie.core.FakeClock
+import io.github.erwsim.vigie.core.testing.FakeClock
 import io.github.erwsim.vigie.core.event.Event
 import io.github.erwsim.vigie.core.event.Severity
 import io.github.erwsim.vigie.core.event.VigieJson
-import io.github.erwsim.vigie.core.openTestDatabase
+import io.github.erwsim.vigie.core.testing.openTestDatabase
 import io.github.erwsim.vigie.core.outbox.Outbox
 import io.github.erwsim.vigie.core.outbox.OutboxDatabase
 import kotlinx.coroutines.CoroutineScope

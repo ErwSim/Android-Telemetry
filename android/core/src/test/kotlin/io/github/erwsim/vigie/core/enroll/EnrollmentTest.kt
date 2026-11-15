@@ -1,7 +1,7 @@
 package io.github.erwsim.vigie.core.enroll
 
-import io.github.erwsim.vigie.core.FakeClock
-import io.github.erwsim.vigie.core.MemoryPrefs
+import io.github.erwsim.vigie.core.testing.FakeClock
+import io.github.erwsim.vigie.core.testing.MemoryPrefs
 import io.github.erwsim.vigie.core.upload.IngestHttp
 import io.github.erwsim.vigie.core.upload.IngestTarget
 import io.github.erwsim.vigie.core.upload.PingResult

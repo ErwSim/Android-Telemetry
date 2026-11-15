@@ -3,7 +3,7 @@ package io.github.erwsim.vigie.core.outbox
 import io.github.erwsim.vigie.core.event.Severity
 import io.github.erwsim.vigie.core.event.UlidGenerator
 import io.github.erwsim.vigie.core.event.eventData
-import io.github.erwsim.vigie.core.openTestDatabase
+import io.github.erwsim.vigie.core.testing.openTestDatabase
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals

@@ -127,7 +127,7 @@ class CollectorContext internal constructor(
             }
         }
         val flags = if (exported) ContextCompat.RECEIVER_EXPORTED else ContextCompat.RECEIVER_NOT_EXPORTED
-        ContextCompat.registerReceiver(appContext, receiver, filter, null, handler, flags)
+        ContextCompat.registerReceiver(appContext, receiver, filter, null, threading.handler, flags)
         onStop {
             try {
                 appContext.unregisterReceiver(receiver)

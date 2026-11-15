@@ -92,3 +92,31 @@ class ReferenceCollectorsTest {
         assertEquals(3, collectors.map { it.id }.toSet().size)
     }
 }
+
+class HeartbeatHarnessTest {
+    @Test
+    fun heartbeatCarriesTheContractFields() {
+        io.github.erwsim.vigie.core.testing.CollectorHarness(
+            io.github.erwsim.vigie.collectors.heartbeat.HeartbeatCollector(),
+        ).use { h ->
+            h.startAll()
+            assertTrue(h.scheduled.contains("+heartbeat"))
+            val beat = h.eventsOf("agent.heartbeat").single().data
+            listOf("uptime_ms", "queue_depth", "queue_bytes", "dropped_total", "device_owner", "collectors").forEach {
+                assertTrue("missing $it in $beat", beat.containsKey(it))
+            }
+            // No battery service on the JVM and no upload yet: absent, never null.
+            assertTrue(!beat.containsKey("battery_pct") && !beat.containsKey("last_upload_ts"))
+            assertEquals("\"running\"", beat["collectors"]!!.let { (it as kotlinx.serialization.json.JsonObject)["heartbeat"].toString() })
+        }
+    }
+
+    @Test
+    fun locationIsUnavailableWithoutPermission() {
+        io.github.erwsim.vigie.core.testing.CollectorHarness(LocationCollector()).use { h ->
+            h.startAll()
+            assertEquals(io.github.erwsim.vigie.core.collector.CollectorRunState.UNAVAILABLE, h.status("location").state)
+            assertTrue(h.status("location").reason!!.contains("ACCESS_FINE_LOCATION"))
+        }
+    }
+}

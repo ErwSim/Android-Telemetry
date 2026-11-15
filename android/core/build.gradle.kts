@@ -18,6 +18,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // Shared JVM test helpers (FakeClock, MemoryPrefs, CollectorHarness…) for :collectors and :policy tests.
+    testFixtures {
+        enable = true
+    }
+
     testOptions {
         // Plain JVM unit tests (no emulator, no Robolectric): Android stubs return defaults,
         // Room runs on the bundled JVM SQLite driver.
@@ -38,6 +43,10 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.room.runtime)
     ksp(libs.room.compiler)
+
+    testFixturesImplementation(libs.junit)
+    testFixturesImplementation(libs.sqlite.bundled.jvm)
+    testFixturesImplementation(libs.room.runtime)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
