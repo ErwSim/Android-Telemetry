@@ -198,7 +198,7 @@ function Inventory({ apps }: { apps: AppInfo[] }) {
                             <AppName pkg={a.package} label={a.label} />
                           </td>
                           <td className="hide-sm">{a.version_name ?? '—'}</td>
-                          <td>{installerLabel(a.installer)}</td>
+                          <td>{a.system && !a.installer ? 'Préinstallée' : installerLabel(a.installer)}</td>
                           <td>
                             <span className="chip-list">
                               {a.system ? <Badge>système</Badge> : <Badge tone="info">utilisateur</Badge>}

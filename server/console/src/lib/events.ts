@@ -28,10 +28,10 @@ export function domainLabel(d: string): string {
 }
 
 /** Index de couleur stable pour un domaine (variables CSS --series-N). */
-const DOMAIN_ORDER = ['net', 'location', 'app', 'device', 'security', 'agent', 'sensor'];
+const DOMAIN_ORDER = ['net', 'location', 'app', 'device', 'security', 'agent', 'sensor', 'net.dns', 'net.connect'];
 export function seriesIndex(key: string): number {
   const i = DOMAIN_ORDER.indexOf(key);
-  return i >= 0 ? i : DOMAIN_ORDER.length + (hash(key) % 3);
+  return i >= 0 ? (i === 7 ? 0 : i === 8 ? 1 : i) : 9 + (hash(key) % 2);
 }
 function hash(s: string): number {
   let h = 0;

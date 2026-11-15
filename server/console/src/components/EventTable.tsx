@@ -23,7 +23,7 @@ export function EventTable({
   const cols = 4 + (showDevice ? 1 : 0);
   return (
     <div className="table-wrap">
-      <table className="tbl">
+      <table className="tbl tbl-stack">
         <thead>
           <tr>
             <th scope="col">Heure</th>
@@ -39,7 +39,7 @@ export function EventTable({
             return (
               <Fragment key={ev.id}>
                 <tr className={`sev-${Math.min(3, Math.max(0, Math.trunc(ev.sev)))}${newIds?.has(ev.id) ? ' new-row' : ''}`}>
-                  <td className="nowrap">
+                  <td className="nowrap c-time">
                     <button
                       type="button"
                       className="expander"
@@ -53,10 +53,10 @@ export function EventTable({
                       {compact ? fmtDateTimeShort(ev.ts) : fmtDateTime(ev.ts)}
                     </time>
                   </td>
-                  <td>
+                  <td className="c-sev">
                     <SevBadge sev={ev.sev} />
                   </td>
-                  <td>
+                  <td className="c-type">
                     {typeLabel(ev.type)}
                     {typeLabel(ev.type) !== ev.type && (
                       <>
@@ -65,8 +65,8 @@ export function EventTable({
                       </>
                     )}
                   </td>
-                  {showDevice && <td className="mono">{ev.device_id ?? '—'}</td>}
-                  <td className="break">{describe(ev) || <span className="muted">—</span>}</td>
+                  {showDevice && <td className="mono c-dev">{ev.device_id ?? '—'}</td>}
+                  <td className="break c-detail">{describe(ev) || <span className="muted">—</span>}</td>
                 </tr>
                 {isOpen && (
                   <tr>

@@ -15,6 +15,13 @@ export default defineConfig({
     cssCodeSplit: false,
     assetsInlineLimit: 0,
     chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        // Le worker MapLibre (.mjs) est publié en .js : tout serveur de fichiers le sert en text/javascript.
+        assetFileNames: (info) =>
+          (info.names?.[0] ?? '').endsWith('.mjs') ? 'assets/[name]-[hash].js' : 'assets/[name]-[hash][extname]',
+      },
+    },
   },
   server: {
     port: 5173,

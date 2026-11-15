@@ -123,7 +123,7 @@ function PostureView({ current, ts, changes }: { current: Posture; ts: string | 
                       <td className="nowrap">{fmtDateTime(c.ts)}</td>
                       <td>{POSTURE_LABELS[c.field] ?? c.field}</td>
                       <td className="break">
-                        {fmtValue(c.old)} → <strong>{fmtValue(c.new)}</strong>
+                        {fmtChangeValue(c.old)} → <strong>{fmtChangeValue(c.new)}</strong>
                       </td>
                     </tr>
                   ))}
@@ -135,6 +135,15 @@ function PostureView({ current, ts, changes }: { current: Posture; ts: string | 
       </Card>
     </div>
   );
+}
+
+/** Valeur d'un changement de posture ; les listes d'empreintes sont abrégées. */
+function fmtChangeValue(v: unknown): string {
+  if (Array.isArray(v)) {
+    if (v.length === 0) return 'aucun';
+    return v.map((x) => (typeof x === 'string' && x.length > 20 ? `${x.slice(0, 12)}…` : fmtValue(x))).join(', ');
+  }
+  return fmtValue(v);
 }
 
 function SensorsTab() {

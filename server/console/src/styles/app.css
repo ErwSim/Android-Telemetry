@@ -1352,3 +1352,61 @@ table.tbl {
   margin-bottom: 14px;
   max-width: 560px;
 }
+
+.grid-start {
+  align-items: start;
+}
+@media (min-width: 861px) {
+  .tbl td.break {
+    min-width: 180px;
+  }
+}
+
+/* Téléphone : les lignes d'événements deviennent des fiches (heure + sévérité, type, détail). */
+@media (max-width: 860px) {
+  .tbl-stack thead {
+    display: none;
+  }
+  .tbl-stack,
+  .tbl-stack tbody {
+    display: block;
+  }
+  .tbl-stack tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 3px 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+  }
+  .tbl-stack tbody td {
+    display: block;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+  .tbl-stack tbody td.c-sev {
+    justify-self: end;
+  }
+  .tbl-stack tbody td.c-type,
+  .tbl-stack tbody td.c-detail,
+  .tbl-stack tbody td.c-dev,
+  .tbl-stack tbody td.detail-cell {
+    grid-column: 1 / -1;
+  }
+  .tbl-stack tbody td.detail-cell {
+    padding: 8px;
+    border-radius: 6px;
+  }
+  .tbl-stack tr.sev-3,
+  .tbl-stack tr.sev-2 {
+    box-shadow: inset 3px 0 0 var(--warn);
+  }
+  .tbl-stack tr.sev-3 {
+    box-shadow: inset 3px 0 0 var(--bad);
+  }
+  .tbl-stack tr.sev-3 td:first-child,
+  .tbl-stack tr.sev-2 td:first-child {
+    box-shadow: none;
+  }
+}

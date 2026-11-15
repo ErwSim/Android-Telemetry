@@ -84,10 +84,15 @@ export function classifyGap(gap: Gap, act: Activity | undefined): GapKind {
   if (!act || act.starts.length === 0) return 'unknown';
   let inside = 0;
   let active = 0;
+  // Les tranches des extrémités contiennent les événements émis juste avant/après le trou : on les écarte
+  // quand le trou est assez long pour qu'il en reste.
+  const margin = gap.durationMs > 3 * act.bucketMs ? act.bucketMs : 0;
+  const lo = gap.start + margin;
+  const hi = gap.end - margin;
   for (let i = 0; i < act.starts.length; i++) {
     const s = act.starts[i] ?? 0;
     const e = s + act.bucketMs;
-    if (s >= gap.start && e <= gap.end) {
+    if (s >= lo && e <= hi) {
       inside++;
       if ((act.totals[i] ?? 0) > 0) active++;
     }

@@ -115,6 +115,7 @@ export default function MapView({
   useEffect(() => {
     let disposed = false;
     let map: maplibregl.Map | null = null;
+    let resizer: ResizeObserver | undefined;
     void loadConfig().then((cfg) => {
       if (disposed || !host.current) return;
       try {
@@ -133,6 +134,10 @@ export default function MapView({
         return;
       }
       mapRef.current = map;
+      const m = map;
+      const ro = new ResizeObserver(() => m.resize());
+      ro.observe(host.current);
+      resizer = ro;
       if (interactive) map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
       map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
       let tileErrors = 0;
@@ -212,6 +217,7 @@ export default function MapView({
     });
     return () => {
       disposed = true;
+      resizer?.disconnect();
       setReady(false);
       map?.remove();
       mapRef.current = null;

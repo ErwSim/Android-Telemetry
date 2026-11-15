@@ -154,7 +154,7 @@ function TrackView({
   const vmax = speeds.length ? Math.max(...speeds) : 0;
 
   return (
-    <div className="grid">
+    <div className="grid grid-start">
       <Card
         title={`Trace · ${fmtNumber(n)} position${n > 1 ? 's' : ''}`}
         className="span-8"
