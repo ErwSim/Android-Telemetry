@@ -199,6 +199,126 @@ Détails et limites :
 - **Non écrits** (choix) : écoute des notifications, accessibilité, SMS/appels (principe 4) ; tout ce qui exige
   le Device Owner (journaux réseau et sécurité, posture, politique : module `:policy`).
 
+## Politique Device Owner
+
+Module `:policy`, écran **Réglages › Device Owner › Politique**. **Rien n'est appliqué automatiquement** : en
+dehors du socle (auto-attribution des permissions de Vigie, protection contre l'arrêt forcé) et des journaux
+ci-dessous, c'est le propriétaire qui choisit un profil, ajuste les éléments, lit l'aperçu (« Ce qui va
+changer ») et applique. Chaque action émet `security.policy` (`action`, `target`, `profile` = `equilibre`/
+`strict`, `ok`, `error`) et une ligne du journal local de l'écran. L'état appliqué (avec l'état antérieur de
+chaque élément) est écrit **avant** chaque changement (SharedPreferences `vigie_policy`, `commit()`), puis
+confirmé après relecture de l'effet : il survit aux mises à jour de l'app et aux redémarrages, et « Rétablir »
+remet exactement l'état d'avant. Un échec (exception, refus Samsung, effet non constaté) donne `ok=false` avec
+l'erreur et n'empêche pas les autres éléments. Aucune politique ne vient du serveur.
+
+### Journaux et posture (collecteurs, onglet Collecteurs)
+
+| Collecteur (id) | Émet | Remarques |
+|---|---|---|
+| Journal de sécurité (`security_log`) | `security.log` | lots livrés par le système (≤ 2 h) ; `fields` selon la table du contrat (`argN` sinon) ; `app_process_start` agrégé par heure (désactivable) ; connexions Wi-Fi/Bluetooth désactivables ; journaux d'avant redémarrage lus une fois par démarrage si l'appareil les fournit (`pre_reboot: true`) |
+| Journal réseau (`network_log`) | `net.dns`, `net.connect` | lots ≤ 1200 entrées (≤ 1 h 30) ; paquet et uid (uid partagés : `android.uid.system`…) ; agrégation des requêtes identiques par fenêtre (10 min, réglable : `count`, `last_event_ts`) ; émission par paquets de 100 ; lot notifié pendant l'arrêt de l'agent récupéré au démarrage suivant ; lots perdus signalés en `agent.collector_error` |
+| Posture (`posture`) | `security.posture`, `security.posture_change`, `security.ca_cert`, `security.keyguard` | au démarrage, chaque jour et à chaque changement (observateurs de réglages, magasin de certificats, Device Owner, changement de code) ; un champ illisible est omis ; fonctionne partiellement sans Device Owner |
+
+Ces trois collecteurs sont actifs par défaut (comme tout collecteur). Couper `network_log` ou `security_log`
+dans l'onglet Collecteurs coupe aussi la journalisation du système (`security.policy` `network_logging` /
+`security_logging`). Le journal réseau fait afficher par Android la mention « réseau surveillé ». `event_ts`
+porte l'heure d'origine d'une entrée de journal (le `ts` de l'événement est l'heure de récupération).
+
+### Profils
+
+| | Équilibré (par défaut) | Strict (= équilibré + …) |
+|---|---|---|
+| Paquets | 35 (28 cochés) : Customization Service, Knox Analytics, DSMS, Device Quality Agent, diagnostics réseau et journaux Samsung, Device ID Service (OAID), AdServices / On-Device Personalization / Federated Compute de Google, Market Feedback, Partner Setup, apps Meta préinstallées… ; optionnels : Bixby, Samsung Free, Android System Intelligence, Gemini | 22 (8 cochés) : compte Samsung, Samsung Cloud, Experience Service, Samsung Push, Update Center, OMC Agent, KLMS, Appli Google ; optionnels : Find My Mobile, Samsung Wallet/Pay/Pass, Galaxy Store, Entretien de l'appareil, Services Google Play, GSF, Play Store |
+| Permissions refusées | localisation de l'Appli Google (+ optionnel : Samsung Internet, Météo) | micro/caméra/contacts de l'Appli Google, Bixby ; optionnel : localisation d'arrière-plan et appareils à proximité des Services Google Play, capteurs de Samsung Health |
+| Restrictions | pas d'ajout d'utilisateur, pas de 2G, pas de sources inconnues, pas de capture ni de suggestions de contenu | + pas d'ajout de certificats, pas de mode sans échec, pas de contenu envoyé à l'assistant, UWB, Thread, partage Bluetooth, nouveaux administrateurs ; optionnel : eSIM, transfert USB, NFC |
+| Réglages | recherche Bluetooth permanente coupée (`ble_scan_always_enabled=0`, si WRITE_SECURE_SETTINGS) ; sauvegarde Android réactivée | sauvegarde laissée coupée |
+| DNS privé | imposé vers l'hôte de l'enrôlement (`private_dns_host`), verrouillé | idem |
+
+**Ce que le strict casse** (cochés par défaut) : compte Samsung, Galaxy Store, Samsung Cloud, Find My Mobile
+(via le compte), notifications Samsung, Appli Google / Assistant / Entourer pour chercher, recherche vocale,
+mode sans échec, ajout de certificats (Wi-Fi d'entreprise). Les éléments à risque élevé ou critique (Services
+Google Play, Play Store, paiement, antivol, NFC) ne sont **jamais cochés par défaut**.
+
+Données : `policy/src/main/res/raw/policy_catalog.json` (versionné, lisible : paquet, éditeur, rôle, risque,
+effet connu, méthode, profil), tiré de `docs/research/android-plateforme.md` §7. Un paquet absent est ignoré.
+Méthode : **masquer** (`setApplicationHidden`, services arrêtés) pour les agents d'arrière-plan, **suspendre**
+(`setPackagesSuspended`, icône grisée) pour les apps visibles.
+
+### Garde-fous (codés en dur, plus forts que le catalogue)
+
+- **Liste de refus** des paquets (`PackageDenyList`) : `kgclient` et `sm.policy` (verrouillage jusqu'à
+  réinitialisation), paquets OTA (`soagent`, `wssyncmldm`…), attestation (`rkpdapp`, `knox.attestation`),
+  modules système (permissions, réseau, WebView, `ext.services`, `configupdater`), `diagmonagent` (boucle de
+  relance), `securitylogagent`, Routines, clavier Samsung, lanceur, téléphone, SMS, alertes d'urgence,
+  installeurs, Paramètres, SystemUI, `com.android.shell` (ADB), fournisseurs de contenu, Vigie ; plus, lus à
+  l'exécution : lanceur(s), composeur, app SMS, claviers activés, installeurs, administrateurs actifs, VPN
+  permanent. Vérifiée à l'aperçu **et** au moment d'appliquer.
+- **Restrictions jamais posées** : `no_debugging_features` (couperait ADB), `no_share_location`,
+  `no_factory_reset`, comptes, installation d'apps, réseau mobile, Wi-Fi, VPN… ; le signal de données USB
+  n'est jamais coupé (aucun appel à `setUsbDataSignalingEnabled(false)`).
+- Un élément déjà en place sans Vigie (paquet déjà masqué, restriction déjà posée, permission déjà refusée)
+  n'est ni touché ni enregistré : « Tout rétablir » ne le défait donc pas.
+
+### DNS privé imposé
+
+1. Vigie vérifie d'abord, depuis le téléphone, que l'hôte répond : poignée de main TLS sur le port 853
+   (AC système, vérification du nom) **et** une requête DNS dans la session. Sinon rien n'est changé
+   (`private_dns_set` `ok=false`, « vérification préalable »).
+2. `setGlobalPrivateDnsModeSpecifiedHost` (hors fil principal) ; codes `HOST_NOT_SERVING` /
+   `FAILURE_SETTING` rapportés ; relecture du mode.
+3. Verrou optionnel `disallow_config_private_dns`.
+4. **Repli** (Réglages › Device Owner) : si le réseau n'est plus validé **et** que le contrôle DoT de l'hôte
+   (par ses dernières adresses connues) échoue sans interruption pendant 15 min (5 à 240), le DNS repasse en
+   mode automatique pour garder Internet ; `security.policy` sév. 2 (alerte Wazuh). Dès que l'hôte répond de
+   nouveau, il est réimposé (réglable). Compromis : un attaquant qui bloque le port 853 obtient ce repli, mais
+   jamais en silence ; désactiver le repli fait primer la protection (plus d'Internet tant que le serveur ne
+   répond pas : « Tout rétablir » ou l'issue de secours ADB le défait).
+5. Rétablir remet le mode d'avant (`off` par `setGlobalSetting(private_dns_mode)`, automatique ou hôte
+   précédent).
+
+Recherche Wi-Fi permanente, diagnostics Samsung et identifiant publicitaire Google n'ont pas de clé de
+réglage dont l'effet soit établi (stockés hors des Paramètres depuis Android 11, ou propres à Samsung/GMS) :
+non gérés, à couper à la main (Paramètres › Localisation › Services de localisation ; Paramètres › Google ›
+Annonces). VPN permanent : choisir une app VPN installée (option « bloquer sans VPN » à n'utiliser qu'avec
+un VPN fiable).
+
+### Tout défaire
+
+- **Tout rétablir** (écran Politique, confirmation) : défait tout ce que Vigie a appliqué, du plus récent au
+  plus ancien ; un élément qui résiste reste listé avec son erreur (réessayer). Les journaux restent actifs.
+- **Retirer le Device Owner** (confirmation + case « J'ai compris ») : tout rétablir, couper journaux réseau
+  et sécurité, retirer la protection contre l'arrêt forcé, `device_owner_cleared`, puis
+  `clearDeviceOwnerApp`. S'arrête avant le retrait si quelque chose n'a pas pu être rétabli (« Retirer quand
+  même » possible). Fonctionne aussi avec un APK non testOnly. `agent.tamper` `device_owner_lost` suit
+  (attendu).
+
+### Issue de secours sans interface (ADB)
+
+```bash
+./scripts/rescue-revert.sh                  # « Tout rétablir »   (PowerShell : .\scripts\rescue-revert.ps1)
+./scripts/rescue-revert.sh --remove-owner   # + retirer le Device Owner (-RemoveOwner)
+```
+
+Le script envoie une diffusion explicite à `…policy.rescue.RescueReceiver`. Ce récepteur exige que
+l'expéditeur détienne `android.permission.FORCE_STOP_PACKAGES`, de niveau `signature|privileged` sans
+drapeau `development` ni `appop` (vérifié dans le manifeste du framework android-37) : aucune app tierce ne
+peut l'obtenir, même par `pm grant` ; seuls le shell ADB (qui la détient pour `am force-stop`) et le système
+peuvent déclencher l'ordre. Le récepteur ne peut que **défaire**. Résultat rendu à `am broadcast` : 1 tout
+rétabli, 2 partiel (détail), 3 Vigie n'est plus Device Owner (le script propose alors `pm unhide` /
+`pm unsuspend` pour les paquets qu'elle avait désactivés), 4 délai dépassé (l'opération continue).
+Dernier recours si l'app ne démarre plus du tout : `adb shell pm unhide <paquet>` pour chaque paquet de
+l'écran (liste dans le catalogue), puis `remove-device-owner.sh` (APK testOnly).
+
+### À vérifier sur le téléphone avant d'appliquer un profil
+
+1. `dpm set-device-owner`, puis l'écran Politique : « Mode Device Owner : Oui », journaux actifs.
+2. `./scripts/rescue-revert.sh` à vide (réponse « Tout est rétabli (reverted=0…) ») : l'issue de secours
+   fonctionne **avant** d'en avoir besoin.
+3. DNS privé seul (décocher le reste) : application, navigation, puis coupure du serveur pour voir le repli.
+4. Un seul paquet à faible risque (ex. Astuces), « Rétablir », puis le profil équilibré ; redémarrer ; tester
+   push, Play Store, banque, paiement ; « Tout rétablir » et comparer.
+5. Seulement ensuite, le profil strict, élément par élément.
+
 ## Ce qui est vérifié, ce qui ne l'est pas
 
 Vérifié dans l'environnement de développement (Linux, sans émulateur ni appareil) :
