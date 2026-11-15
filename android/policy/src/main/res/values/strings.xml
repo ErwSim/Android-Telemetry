@@ -5,4 +5,41 @@
     <string name="policy_disable_warning">Désactiver l\'administrateur Vigie arrête la protection de l\'appareil. Cette action est enregistrée et signalée au serveur.</string>
     <string name="setting_force_stop_protection">Protection contre l\'arrêt forcé</string>
     <string name="setting_force_stop_protection_summary">En mode Device Owner, empêche « Forcer l\'arrêt » et « Effacer les données » sur Vigie, et exempte Vigie de la mise en veille des applications. Réversible ici.</string>
+
+    <!-- Private DNS fallback (policy settings) -->
+    <string name="setting_dns_fallback">Repli automatique du DNS privé</string>
+    <string name="setting_dns_fallback_summary">Si le serveur DNS imposé reste injoignable (réseau non validé et contrôle DNS sur TLS en échec), Vigie repasse le DNS privé en mode automatique pour garder Internet. Le repli est signalé (sévérité 2). Désactivé : la protection prime, le téléphone reste sans Internet jusqu\'au retour du serveur ou à l\'annulation du DNS.</string>
+    <string name="setting_dns_fallback_min">Délai avant le repli</string>
+    <string name="setting_dns_fallback_min_summary">Durée d\'échec continue avant de basculer en mode automatique.</string>
+    <string name="setting_dns_auto_restore">Réimposer le DNS quand le serveur répond</string>
+    <string name="setting_dns_auto_restore_summary">Après un repli, réimpose l\'hôte dès qu\'il répond de nouveau (vérifié avant).</string>
+
+    <!-- Results of policy operations (screen) -->
+    <string name="policy_msg_applied">Politique appliquée : %1$d action(s) réussie(s).</string>
+    <string name="policy_msg_reverted">Rétabli : %1$d action(s) réussie(s).</string>
+    <string name="policy_msg_removed">Device Owner retiré : %1$d action(s) réussie(s).</string>
+    <string name="policy_msg_failures">%1$d échec(s) :\n%2$s</string>
+    <string name="policy_msg_error">Erreur : %1$s</string>
+
+    <!-- Collectors -->
+    <string name="collector_security_log_title">Journal de sécurité du système</string>
+    <string name="collector_security_log_desc">Journal de sécurité d\'Android (Device Owner) : commandes et transferts ADB, démarrages et arrêts, déverrouillages réussis ou non, clés et autorités de certification, montage de supports, restrictions, installations d\'apps, connexions Wi-Fi et Bluetooth, démarrages de processus. Livré par le système par lots (au plus toutes les 2 h), sans relevé périodique. Volume : quelques centaines d\'entrées par heure, surtout des démarrages de processus (agrégés par défaut).</string>
+    <string name="setting_security_log_app_process">Démarrages de processus</string>
+    <string name="setting_security_log_app_process_summary">Chaque démarrage de processus avec l\'empreinte de son APK (le tag le plus bavard).</string>
+    <string name="setting_security_log_aggregate">Agréger les démarrages de processus</string>
+    <string name="setting_security_log_aggregate_summary">Un seul événement par processus et par heure, avec le nombre de démarrages.</string>
+    <string name="setting_security_log_radio">Connexions Wi-Fi et Bluetooth</string>
+    <string name="setting_security_log_radio_summary">Connexions et déconnexions Wi-Fi et Bluetooth vues par le journal de sécurité.</string>
+
+    <string name="collector_network_log_title">Journal réseau du système</string>
+    <string name="collector_network_log_desc">Journal réseau d\'Android (Device Owner) : chaque requête DNS (nom demandé, adresses) et chaque connexion TCP sortante (adresse, port), avec l\'app qui l\'a faite. Livré par lots (au plus 1200 entrées ou toutes les 1 h 30). Ne voit pas l\'UDP sans connexion (QUIC), les adresses codées en dur ni le DNS chiffré par les apps. Active la mention « réseau surveillé » du système. Volume : jusqu\'à plusieurs centaines d\'entrées par heure (réduit par l\'agrégation).</string>
+    <string name="setting_network_log_aggregate">Agréger les requêtes identiques</string>
+    <string name="setting_network_log_aggregate_summary">Une même requête (même app, même nom ou même adresse et port) répétée dans la fenêtre devient un seul événement avec un compteur.</string>
+    <string name="setting_network_log_window">Fenêtre d\'agrégation</string>
+    <string name="setting_network_log_window_summary">Durée pendant laquelle les requêtes identiques sont regroupées.</string>
+    <string name="setting_network_log_connect">Connexions TCP</string>
+    <string name="setting_network_log_connect_summary">Enregistrer aussi les connexions (adresse et port), pas seulement le DNS.</string>
+
+    <string name="collector_posture_title">Posture de sécurité</string>
+    <string name="collector_posture_desc">État de sécurité : correctif, chiffrement, verrouillage, débogage ADB (USB et sans fil), options développeur, sources inconnues, DNS privé, VPN permanent, Device Owner, démarrage vérifié, autorités de certification ajoutées, Play Protect, signal USB. Au démarrage, une fois par jour et à chaque changement (un événement par champ modifié). Signale aussi l\'ajout ou le retrait d\'une autorité de certification et les échecs de déverrouillage. Un champ illisible est omis.</string>
 </resources>

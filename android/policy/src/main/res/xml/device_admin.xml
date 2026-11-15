@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     Device Owner APIs (logs, permissions, restrictions, private DNS…) do not depend on this list.
-    Legacy policies are not requested.
+    watch-login: delivers onPasswordFailed/onPasswordSucceeded (security.keyguard) and allows
+    getCurrentFailedPasswordAttempts. No other legacy policy is requested (no wipe, no reset password,
+    no camera or keyguard control).
 -->
 <device-admin>
-    <uses-policies />
+    <uses-policies>
+        <watch-login />
+    </uses-policies>
 </device-admin>

@@ -1,13 +1,16 @@
 package io.github.erwsim.vigie.policy
 
 import android.app.admin.DeviceAdminReceiver
+import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
+import android.os.UserHandle
 import io.github.erwsim.vigie.core.Agent
 
 /**
  * Device admin receiver, promoted to Device Owner by ADB (`dpm set-device-owner`).
  * Runs on the main thread: keep every callback short and delegate to [PolicyModule].
+ * Password callbacks need `<watch-login />` in `res/xml/device_admin.xml`.
  */
 class VigieAdminReceiver : DeviceAdminReceiver() {
     override fun onEnabled(context: Context, intent: Intent) {
@@ -40,5 +43,24 @@ class VigieAdminReceiver : DeviceAdminReceiver() {
 
     override fun onSecurityLogsAvailable(context: Context, intent: Intent) {
         PolicyModule.onSecurityLogsAvailable(context)
+    }
+
+    override fun onPasswordFailed(context: Context, intent: Intent, user: UserHandle) {
+        PolicyModule.onPasswordFailed(failedAttempts(context))
+    }
+
+    override fun onPasswordSucceeded(context: Context, intent: Intent, user: UserHandle) {
+        PolicyModule.onPasswordSucceeded(failedAttempts(context))
+    }
+
+    override fun onPasswordChanged(context: Context, intent: Intent, user: UserHandle) {
+        PolicyModule.onPasswordChanged()
+    }
+
+    /** Failed attempts since the last successful unlock (needs the watch-login policy); null if refused. */
+    private fun failedAttempts(context: Context): Int? = try {
+        context.getSystemService(DevicePolicyManager::class.java)?.currentFailedPasswordAttempts
+    } catch (_: Exception) {
+        null
     }
 }

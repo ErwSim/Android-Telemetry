@@ -1,5 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
+    // Applied state and the package catalog (res/raw/policy_catalog.json) are (de)serialized with kotlinx.serialization.
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -17,6 +19,7 @@ android {
     }
 
     testOptions {
+        // Plain JVM unit tests: Android stubs return default values.
         unitTests.isReturnDefaultValues = true
     }
 }
@@ -24,6 +27,7 @@ android {
 dependencies {
     implementation(project(":core"))
 
+    testImplementation(testFixtures(project(":core")))
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }
