@@ -1,0 +1,222 @@
+# Contrat Vigie v1 — événements et API
+
+Référence commune de l'agent Android, du collecteur, de la console et des règles Wazuh.
+Toute évolution passe d'abord par ce fichier.
+
+## 1. Événement
+
+```json
+{
+  "id": "01JCQ8Z3K4M5N6P7Q8R9S0T1V2",
+  "ts": "2026-11-15T21:43:03.974Z",
+  "seq": 18234,
+  "boot_id": "b7e1…",
+  "elapsed_ms": 86400123,
+  "type": "location.fix",
+  "sev": 0,
+  "data": { }
+}
+```
+
+| Champ | Type | Règle |
+|---|---|---|
+| `id` | chaîne | ULID (26 car.) généré sur l'appareil. Clé d'idempotence. |
+| `ts` | chaîne | Horodatage de l'événement, RFC 3339 UTC, millisecondes. |
+| `seq` | entier | Compteur strictement croissant par appareil, persistant (détection de trous). |
+| `boot_id` | chaîne | Identifiant aléatoire régénéré à chaque démarrage de l'appareil. |
+| `elapsed_ms` | entier | `SystemClock.elapsedRealtime()` au moment de l'événement (correction d'horloge). |
+| `type` | chaîne | `<domaine>.<nom>`, minuscules, `[a-z0-9_.]`, voir catalogue. |
+| `sev` | entier | Indice côté appareil : 0 info, 1 notable, 2 avertissement, 3 critique. |
+| `data` | objet | Charge propre au type. Clés en `snake_case`. Champs absents plutôt que `null`. |
+
+Conventions de `data` : durées en millisecondes (`*_ms`), tailles en octets (`*_bytes`), identifiants de paquet
+Android dans `package` (et `uid` si connu), adresses MAC en minuscules avec `:`, empreintes en hexadécimal
+minuscule SHA-256. Le collecteur accepte tout `type` conforme et stocke `data` tel quel (schéma à la lecture) ;
+un type inconnu n'est jamais rejeté.
+
+## 2. Catalogue des types (v1)
+
+Les champs listés sont le minimum ; un collecteur peut en ajouter et doit alors compléter ce tableau.
+
+### agent.*
+| Type | Quand | `data` |
+|---|---|---|
+| `agent.started` / `agent.stopped` | démarrage/arrêt du service | `reason`, `agent_version` |
+| `agent.heartbeat` | toutes les 15 min | `battery_pct`, `charging`, `uptime_ms`, `queue_depth`, `queue_bytes`, `dropped_total`, `device_owner` (bool), `collectors` (objet id → `running`/`disabled`/`unavailable`), `last_upload_ts` |
+| `agent.buffer_overflow` | purge du tampon | `dropped`, `oldest_ts`, `newest_ts` |
+| `agent.collector_error` | exception d'un collecteur | `collector`, `error` |
+| `agent.config_changed` | réglage modifié dans l'app | `key`, `old`, `new` |
+| `agent.tamper` (sev 3) | tentative de désactivation, permission retirée, arrêt forcé détecté | `kind`, `detail` |
+
+### device.*
+| Type | `data` |
+|---|---|
+| `device.inventory` (quotidien + au démarrage) | `manufacturer`, `model`, `android_release`, `sdk_int`, `security_patch`, `build_fingerprint`, `one_ui`, `kernel`, `bootloader`, `verified_boot_state`, `total_storage_bytes`, `total_ram_bytes` |
+| `device.boot` / `device.shutdown` | `reason` |
+| `device.screen` | `state` (`on`/`off`/`unlocked`) |
+| `device.battery` | `pct`, `plugged` (`none`/`ac`/`usb`/`wireless`), `status`, `temperature_c`, `health` |
+| `device.power_save` | `enabled` |
+| `device.storage` | `free_bytes`, `total_bytes` |
+| `device.thermal` | `status` |
+| `device.time_changed` / `device.timezone_changed` | `delta_ms` / `tz` |
+| `device.usb` | `connected`, `configured`, `functions`, `accessory`/`device` (objet) |
+| `device.airplane_mode` | `enabled` |
+
+### location.*
+| Type | `data` |
+|---|---|
+| `location.fix` | `lat`, `lon`, `acc_m`, `alt_m`, `speed_mps`, `bearing_deg`, `provider`, `mock` (bool), `fix_ts` |
+| `location.provider` | `provider`, `enabled` |
+
+### net.*
+| Type | `data` |
+|---|---|
+| `net.connectivity` | `transports` (liste : `wifi`,`cellular`,`vpn`,`ethernet`,`bluetooth`), `validated`, `metered`, `vpn`, `private_dns_active`, `private_dns_server`, `dns_servers`, `interface` |
+| `net.wifi` | `event` (`connected`/`disconnected`), `ssid`, `bssid`, `rssi`, `freq_mhz`, `security`, `standard` |
+| `net.wifi_scan` (optionnel) | `aps` : liste `{ssid,bssid,rssi,freq_mhz,security}` |
+| `net.cell` | `tech`, `mcc`, `mnc`, `tac`, `ci`, `pci`, `band`, `signal_dbm`, `roaming`, `operator` |
+| `net.cell_security` (sev ≥ 2) | `kind` (`downgrade_2g`, `null_cipher`, `identifier_disclosure`), `detail` |
+| `net.dns` (Device Owner) | `package`, `uid`, `hostname`, `addresses`, `address_count` |
+| `net.connect` (Device Owner) | `package`, `uid`, `ip`, `port` |
+| `net.usage` (horaire) | `from`, `to`, `apps` : liste `{package,uid,rx_bytes,tx_bytes,transport}` |
+| `net.bluetooth` | `event` (`state`/`connected`/`disconnected`), `enabled`, `name`, `address`, `type` |
+| `net.ble_tracker` (sev 2) | `address`, `kind` (`airtag`,`smarttag`,`tile`,`unknown`), `rssi`, `first_seen`, `sightings` |
+| `net.hotspot` / `net.nfc` | `enabled` |
+
+### app.*
+| Type | `data` |
+|---|---|
+| `app.inventory` (quotidien, découpé en plusieurs événements) | `part`, `parts`, `apps` : liste `{package,label,version_name,version_code,installer,system,enabled,suspended,hidden,target_sdk,first_install,last_update,signer_sha256,granted_dangerous}` |
+| `app.installed` / `app.updated` / `app.removed` | `package`, `version_name`, `version_code`, `installer`, `signer_sha256` |
+| `app.foreground` | `package`, `class`, `event` (`resumed`/`paused`) |
+| `app.permission_changed` | `package`, `permission`, `granted` |
+| `app.special_access` (au changement + quotidien) | `accessibility_services`, `notification_listeners`, `device_admins`, `overlay_apps`, `unknown_sources_apps`, `usage_access_apps`, `vpn_apps`, `default_apps` (objet) |
+| `app.notification` | `package`, `event` (`posted`/`removed`), `category`, `channel`, `ongoing`, et seulement si l'option contenu est activée : `title`, `text` |
+
+### sensor.*
+| Type | `data` |
+|---|---|
+| `sensor.camera` | `camera_id`, `in_use`, `package` (si connu) |
+| `sensor.microphone` | `recording`, `source`, `package` (si connu), `silenced` |
+
+### security.*
+| Type | `data` |
+|---|---|
+| `security.log` (Device Owner) | `tag` (nom de la constante `SecurityLog.TAG_*` en minuscules sans préfixe), `level`, `log_id`, `fields` (objet nommé selon le tag) |
+| `security.posture` (au changement + quotidien) | `security_patch`, `patch_age_days`, `encrypted`, `lock_secure`, `adb_enabled`, `adb_wifi_enabled`, `dev_options`, `unknown_sources`, `private_dns_mode`, `private_dns_host`, `always_on_vpn`, `device_owner`, `verified_boot_state`, `user_ca_certs` (liste d'empreintes), `play_protect`, `usb_data_signaling` |
+| `security.keyguard` | `event` (`unlock_failed`/`unlock_succeeded`), `failed_attempts` |
+| `security.ca_cert` (sev 2) | `event` (`added`/`removed`), `sha256`, `subject` |
+| `security.policy` | `action` (`private_dns_set`,`package_disabled`,`package_enabled`,`permission_denied`,`restriction_set`,`restriction_cleared`,`network_logging`,`security_logging`), `target`, `profile`, `ok`, `error` |
+
+## 3. API d'ingestion (téléphone → serveur)
+
+Hôte dédié (ex. `ingest.exemple.fr`), TLS avec **certificat client obligatoire** (terminé par Caddy, CA privée
+Vigie) **et** en-tête `Authorization: Bearer <jeton_appareil>`.
+
+### `POST /api/v1/ingest`
+
+En-têtes : `Content-Type: application/json`, `Content-Encoding: gzip` (recommandé).
+Limites : 500 événements par lot, 1 Mio compressé, 8 Mio décompressé.
+
+```json
+{
+  "device_id": "dev_8f3a…",
+  "agent_version": "1.0.0",
+  "sent_at": "2026-11-15T21:45:00.000Z",
+  "events": [ { "id": "…", "ts": "…", "seq": 1, "boot_id": "…", "elapsed_ms": 1, "type": "…", "sev": 0, "data": {} } ]
+}
+```
+
+Réponse `200` :
+
+```json
+{ "accepted": 498, "duplicates": 2, "rejected": [ { "id": "…", "reason": "invalid_type" } ], "server_time": "2026-11-15T21:45:00.412Z" }
+```
+
+- Le lot est traité de façon atomique par événement : `accepted` + `duplicates` + `rejected` = nombre reçu.
+  L'agent supprime de son tampon les `accepted`, les `duplicates` **et** les `rejected` (un rejet est définitif).
+- `401` jeton/certificat invalide ou appareil révoqué (l'agent garde ses données et réessaie plus tard),
+  `413` lot trop gros (l'agent réduit la taille du lot), `429`/`5xx` réessayer avec backoff
+  (respecter `Retry-After`).
+- `device_id` doit correspondre au jeton, sinon `401`.
+
+### `GET /api/v1/ping`
+
+Même authentification. Réponse `200` `{ "server_time": "…", "device_id": "…" }`. Sert au test d'enrôlement.
+
+Il n'existe **aucun** point d'API permettant au serveur d'envoyer une commande ou une configuration à l'agent.
+
+## 4. Fichier d'enrôlement `.vigie`
+
+Produit par `vigie-collector enroll`, importé dans l'app (sélecteur de fichier). JSON :
+
+```json
+{
+  "version": 1,
+  "ingest_url": "https://ingest.exemple.fr",
+  "device_id": "dev_8f3a…",
+  "device_token": "…",
+  "client_cert_p12_b64": "…",
+  "client_cert_password": "…",
+  "server_ca_pem": "… (optionnel : épinglage de l'AC serveur)",
+  "private_dns_host": "dns.exemple.fr"
+}
+```
+
+Le fichier contient des secrets : à transférer par câble (ADB) ou canal chiffré, puis à supprimer.
+
+## 5. Export vers Wazuh
+
+Le collecteur ajoute une ligne JSON par événement accepté dans un fichier NDJSON (volume partagé avec le
+manager Wazuh). Tout est sous la clé racine `vigie` pour éviter les collisions de champs :
+
+```json
+{"vigie":{"device_id":"dev_8f3a…","device_name":"s25","id":"…","ts":"…","received_at":"…","seq":18234,"type":"net.dns","domain":"net","sev":0,"data":{"package":"com.google.android.gms","hostname":"app-measurement.com"}}}
+```
+
+`domain` est la partie de `type` avant le premier point. Les règles Wazuh filtrent sur `vigie.type`,
+`vigie.sev` et `vigie.data.*`.
+
+Contraintes du décodeur JSON de Wazuh (vérifiées, voir `docs/research/serveur-siem-dns.md`) :
+
+- Chaque ligne commence par `{"` et ne dépasse jamais 32 Kio (Wazuh tronque, donc perd, au-delà de ~65 Ko) :
+  au-delà, `data` est remplacé par `{"truncated": true}` dans l'export (l'événement complet reste dans la
+  base du collecteur).
+- Les **tableaux d'objets ne sont pas décodés**. Dans l'export, tout tableau d'objets de `data` est donc
+  retiré et remplacé par `<clé>_count` ; pour les types ci-dessous le collecteur émet en plus **une ligne par
+  élément**, avec un type dérivé et l'élément à plat dans `data` :
+
+  | Type d'origine | Clé | Type dérivé (export seulement) |
+  |---|---|---|
+  | `app.inventory` | `apps` | `app.inventory.app` |
+  | `net.usage` | `apps` | `net.usage.app` (avec `from`, `to`) |
+  | `net.wifi_scan` | `aps` | `net.wifi_scan.ap` |
+
+  Les lignes dérivées portent l'`id` d'origine suffixé de `#<index>`. Les tableaux de scalaires sont conservés.
+- `location.fix` porte en plus `vigie.data.location = {"lat": …, "lon": …}` pour un éventuel mapping
+  `geo_point` côté indexeur.
+- Rotation du fichier **par renommage** uniquement (jamais de troncature : elle déclenche la règle Wazuh 592
+  de niveau 8).
+
+## 6. API console (navigateur → collecteur)
+
+Préfixe `/api/console`. Session par cookie (`HttpOnly`, `Secure`, `SameSite=Strict`) obtenue par
+`POST /api/console/login` `{ "username", "password" }` → `204` ; `POST /api/console/logout` ;
+`GET /api/console/me` → `{ "username" }` ou `401`. Toutes les requêtes modifiantes exigent l'en-tête
+`X-Requested-With: vigie`. Les dates sont en RFC 3339 ; `from`/`to` sont requis sauf mention contraire.
+
+| Méthode et chemin | Paramètres | Réponse |
+|---|---|---|
+| `GET /devices` | — | `{ "devices": [ { "device_id", "name", "enrolled_at", "last_seen", "agent_version", "revoked", "last_heartbeat": {…data}, "last_location": { "ts","lat","lon","acc_m" }, "last_posture": {…data} } ] }` |
+| `GET /events` | `device_id`, `type` (préfixes séparés par des virgules, ex. `net.,security.log`), `sev_min`, `from`, `to`, `q` (texte dans `data`), `limit` (≤ 500, défaut 100), `cursor` | `{ "events": [ {événement + "received_at"} ], "next_cursor": "…" }` (du plus récent au plus ancien) |
+| `GET /events/{id}` | — | événement complet |
+| `GET /locations` | `device_id`, `from`, `to`, `max_points` (défaut 2000, sous-échantillonnage régulier) | `{ "points": [ { "ts","lat","lon","acc_m","speed_mps","provider" } ] }` |
+| `GET /stats/timeline` | `device_id`, `from`, `to`, `bucket` (`minute`/`hour`/`day`), `by` (`domain`/`type`/`sev`) | `{ "buckets": ["…"], "series": [ { "key": "net", "counts": [ … ] } ] }` |
+| `GET /stats/top` | `device_id`, `from`, `to`, `kind` (`dns_hostname`,`dns_package`,`connect_dest`,`connect_package`,`usage_package`,`foreground_package`,`notification_package`,`event_type`), `limit` (défaut 20) | `{ "items": [ { "key", "count", "bytes" (si pertinent) } ] }` |
+| `GET /apps` | `device_id` | dernier inventaire reconstitué : `{ "ts", "apps": [ … ] }` |
+| `GET /posture` | `device_id` | `{ "current": {…}, "ts", "changes": [ { "ts", "field", "old", "new" } ] }` |
+| `GET /alerts` | `from`, `to`, `level_min`, `limit` | `{ "wazuh": true, "alerts": [ { "ts","level","rule_id","description","type","device_id" } ] }` ; `{ "wazuh": false, "alerts": [] }` si l'indexeur n'est pas configuré |
+| `GET /stream` | `device_id` (optionnel) | Server-Sent Events : un événement JSON par message |
+| `GET /health` (sans auth, hors préfixe console : `/healthz`) | — | `200 ok` |
+
+Erreurs : JSON `{ "error": "code", "message": "…" }` avec le code HTTP adéquat.

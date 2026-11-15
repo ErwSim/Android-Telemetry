@@ -1,0 +1,38 @@
+# Secrets et données générées
+.env
+*.vigie
+*.p12
+*.pfx
+*.key
+*.pem
+!**/testdata/**
+infra/data/
+infra/secrets/
+infra/pki/out/
+
+# Android
+android/.gradle/
+android/**/build/
+android/local.properties
+android/captures/
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# Go
+server/collector/bin/
+server/collector/web/dist/
+*.db
+*.db-shm
+*.db-wal
+
+# Node
+node_modules/
+server/console/dist/
+
+# Divers
+.idea/
+.vscode/
+*.iml
+.DS_Store
