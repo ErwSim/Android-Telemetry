@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Device Owner APIs (logs, permissions, restrictions, private DNS…) do not depend on this list.
+    Legacy policies are not requested.
+-->
+<device-admin>
+    <uses-policies />
+</device-admin>

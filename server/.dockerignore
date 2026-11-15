@@ -1,0 +1,16 @@
+# Contexte de build : server/
+**/node_modules
+console/dist
+console/verify-out
+console/**/*.tsbuildinfo
+collector/bin
+collector/web/dist
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/*.vigie
+**/*.key
+**/*.pem
+**/*.p12
+**/.env
+**/.git

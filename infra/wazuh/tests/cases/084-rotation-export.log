@@ -1,0 +1,3 @@
+# Rotation par renommage de l'export : pas d'alerte
+# attendu: 100290
+ossec: File rotated (inode changed): '/var/vigie/events.ndjson'.

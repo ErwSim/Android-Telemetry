@@ -1,0 +1,3 @@
+# Sources inconnues autorisées
+# attendu: 100201
+{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001068","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1068,"type":"security.posture","domain":"security","sev":0,"data":{"security_patch":"2026-10-01","patch_age_days":45,"encrypted":true,"lock_secure":true,"adb_enabled":false,"adb_wifi_enabled":false,"dev_options":false,"unknown_sources":true,"private_dns_mode":"hostname","private_dns_host":"@@DNS_HOST@@","always_on_vpn":false,"device_owner":true,"verified_boot_state":"green","user_ca_certs":[],"play_protect":true,"usb_data_signaling":true}}}

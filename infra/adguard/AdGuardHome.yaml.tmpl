@@ -110,7 +110,9 @@ querylog:
   dir_path: /opt/adguardhome/querylog
   ignored: []
   interval: 168h
-  size_memory: 1000
+  # Écrit chaque requête sur disque sans attendre (sinon le journal arrive par paquets de 1000
+  # dans Wazuh, avec un retard de plusieurs heures sur un seul téléphone).
+  size_memory: 1
   enabled: true
   ignored_enabled: false
   file_enabled: true

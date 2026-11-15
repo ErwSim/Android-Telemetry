@@ -12,7 +12,10 @@
   posture étant réémise quotidiennement).
 
   Les valeurs JSON sont vues par Wazuh comme des chaînes : booléens « true »/« false »,
-  nombres en décimal. Les correspondances MITRE ATT&CK sont celles de la matrice Mobile.
+  nombres en décimal. Les correspondances MITRE ATT&CK sont celles de la matrice MOBILE ; la base
+  MITRE embarquée dans Wazuh ne connaît que la matrice Entreprise (une balise <mitre> T1461 y est
+  rejetée : « Mitre Technique ID not found in database » et disparaît de l'alerte). Elles sont donc
+  portées par un groupe « attack_mobile_<ID> » (rule.groups), filtrable dans le dashboard.
   Tests : infra/wazuh/tests/run-tests.sh (wazuh-logtest dans le conteneur manager).
 -->
 
@@ -40,10 +43,7 @@
     <if_sid>100100</if_sid>
     <field name="vigie.type">^agent.tamper$</field>
     <description>Vigie : tentative d'altération de l'agent ($(vigie.data.kind)) sur $(vigie.device_name)</description>
-    <mitre>
-      <id>T1629.003</id>
-    </mitre>
-    <group>vigie_agent,vigie_tamper,</group>
+<group>vigie_agent,vigie_tamper,attack_mobile_T1629.003,</group>
   </rule>
 
   <rule id="100111" level="3">
@@ -87,10 +87,7 @@
     <field name="vigie.type">^agent.heartbeat$</field>
     <field name="vigie.data.device_owner">^false$</field>
     <description>Vigie : l'agent n'est plus Device Owner sur $(vigie.device_name) (protections locales inactives)</description>
-    <mitre>
-      <id>T1629</id>
-    </mitre>
-    <group>vigie_agent,vigie_posture,</group>
+<group>vigie_agent,vigie_posture,attack_mobile_T1629,</group>
   </rule>
 
   <!-- ========================= device.* ========================= -->
@@ -128,40 +125,28 @@
     <if_sid>100100</if_sid>
     <field name="vigie.type">^net.cell_security$</field>
     <description>Vigie : anomalie de sécurité cellulaire ($(vigie.data.kind))</description>
-    <mitre>
-      <id>T1638</id>
-    </mitre>
-    <group>vigie_network,vigie_cellular,</group>
+<group>vigie_network,vigie_cellular,attack_mobile_T1638,</group>
   </rule>
 
   <rule id="100141" level="10">
     <if_sid>100140</if_sid>
     <field name="vigie.data.kind">^downgrade_2g$</field>
     <description>Vigie : rétrogradation forcée en 2G (station de base factice possible)</description>
-    <mitre>
-      <id>T1638</id>
-    </mitre>
-    <group>vigie_network,vigie_cellular,</group>
+<group>vigie_network,vigie_cellular,attack_mobile_T1638,</group>
   </rule>
 
   <rule id="100142" level="12">
     <if_sid>100140</if_sid>
     <field name="vigie.data.kind">^null_cipher$</field>
     <description>Vigie : connexion cellulaire sans chiffrement (chiffrement nul)</description>
-    <mitre>
-      <id>T1638</id>
-    </mitre>
-    <group>vigie_network,vigie_cellular,</group>
+<group>vigie_network,vigie_cellular,attack_mobile_T1638,</group>
   </rule>
 
   <rule id="100143" level="10">
     <if_sid>100140</if_sid>
     <field name="vigie.data.kind">^identifier_disclosure$</field>
     <description>Vigie : divulgation de l'identifiant d'abonné demandée par le réseau (IMSI-catcher possible)</description>
-    <mitre>
-      <id>T1638</id>
-    </mitre>
-    <group>vigie_network,vigie_cellular,</group>
+<group>vigie_network,vigie_cellular,attack_mobile_T1638,</group>
   </rule>
 
   <rule id="100145" level="10">
@@ -186,10 +171,7 @@
     <field name="vigie.data.validated">^true$</field>
     <field name="vigie.data.private_dns_active">^false$</field>
     <description>Vigie : réseau actif sans DNS privé (les requêtes DNS échappent au filtrage)</description>
-    <mitre>
-      <id>T1629</id>
-    </mitre>
-    <group>vigie_network,vigie_dns,</group>
+<group>vigie_network,vigie_dns,attack_mobile_T1629,</group>
   </rule>
 
   <!-- Requêtes DNS d'une app vers des domaines de télémétrie/publicité Google ou Samsung.
@@ -249,10 +231,7 @@
     <same_field>vigie.device_id</same_field>
     <different_field>vigie.data.accessibility_services</different_field>
     <description>Vigie : la liste des services d'accessibilité a changé : $(vigie.data.accessibility_services)</description>
-    <mitre>
-      <id>T1453</id>
-    </mitre>
-    <group>vigie_app,vigie_special_access,</group>
+<group>vigie_app,vigie_special_access,attack_mobile_T1453,</group>
   </rule>
 
   <rule id="100157" level="10" frequency="2" timeframe="172800">
@@ -260,10 +239,7 @@
     <same_field>vigie.device_id</same_field>
     <different_field>vigie.data.device_admins</different_field>
     <description>Vigie : la liste des administrateurs de l'appareil a changé : $(vigie.data.device_admins)</description>
-    <mitre>
-      <id>T1626.001</id>
-    </mitre>
-    <group>vigie_app,vigie_special_access,</group>
+<group>vigie_app,vigie_special_access,attack_mobile_T1626.001,</group>
   </rule>
 
   <rule id="100158" level="8" frequency="2" timeframe="172800">
@@ -271,10 +247,7 @@
     <same_field>vigie.device_id</same_field>
     <different_field>vigie.data.notification_listeners</different_field>
     <description>Vigie : la liste des apps qui lisent les notifications a changé : $(vigie.data.notification_listeners)</description>
-    <mitre>
-      <id>T1517</id>
-    </mitre>
-    <group>vigie_app,vigie_special_access,</group>
+<group>vigie_app,vigie_special_access,attack_mobile_T1517,</group>
   </rule>
 
   <rule id="100159" level="7" frequency="2" timeframe="172800">
@@ -329,20 +302,14 @@
     <if_matched_sid>100180</if_matched_sid>
     <same_field>vigie.device_id</same_field>
     <description>Vigie : déverrouillages échoués répétés (5 en 10 min) sur $(vigie.device_name)</description>
-    <mitre>
-      <id>T1461</id>
-    </mitre>
-    <group>vigie_security,vigie_keyguard,authentication_failures,</group>
+<group>vigie_security,vigie_keyguard,authentication_failures,attack_mobile_T1461,</group>
   </rule>
 
   <rule id="100182" level="10">
     <if_sid>100180</if_sid>
     <field name="vigie.data.failed_attempts" type="pcre2">^([1-9]\d+)$</field>
     <description>Vigie : $(vigie.data.failed_attempts) échecs de déverrouillage consécutifs</description>
-    <mitre>
-      <id>T1461</id>
-    </mitre>
-    <group>vigie_security,vigie_keyguard,authentication_failures,</group>
+<group>vigie_security,vigie_keyguard,authentication_failures,attack_mobile_T1461,</group>
   </rule>
 
   <rule id="100185" level="10">
@@ -350,10 +317,7 @@
     <field name="vigie.type">^security.ca_cert$</field>
     <field name="vigie.data.event">^added$</field>
     <description>Vigie : autorité de certification utilisateur ajoutée ($(vigie.data.subject))</description>
-    <mitre>
-      <id>T1638</id>
-    </mitre>
-    <group>vigie_security,vigie_ca,</group>
+<group>vigie_security,vigie_ca,attack_mobile_T1638,</group>
   </rule>
 
   <rule id="100186" level="3">
@@ -400,30 +364,21 @@
     <if_sid>100190</if_sid>
     <field name="vigie.data.device_owner">^false$</field>
     <description>Vigie : l'agent n'est pas (ou plus) Device Owner (protections locales inactives)</description>
-    <mitre>
-      <id>T1629</id>
-    </mitre>
-    <group>vigie_posture,</group>
+<group>vigie_posture,attack_mobile_T1629,</group>
   </rule>
 
   <rule id="100194" level="10">
     <if_sid>100190</if_sid>
     <field name="vigie.data.private_dns_mode" type="pcre2">^(?!hostname$|provider_hostname$)</field>
     <description>Vigie : DNS privé désactivé ou non strict (mode $(vigie.data.private_dns_mode))</description>
-    <mitre>
-      <id>T1629</id>
-    </mitre>
-    <group>vigie_posture,vigie_dns,</group>
+<group>vigie_posture,vigie_dns,attack_mobile_T1629,</group>
   </rule>
 
   <rule id="100195" level="10">
     <if_sid>100190</if_sid>
     <list field="vigie.data.private_dns_host" lookup="not_match_key">etc/lists/vigie-private-dns-hosts</list>
     <description>Vigie : DNS privé pointé vers un hôte inattendu ($(vigie.data.private_dns_host))</description>
-    <mitre>
-      <id>T1638</id>
-    </mitre>
-    <group>vigie_posture,vigie_dns,</group>
+<group>vigie_posture,vigie_dns,attack_mobile_T1638,</group>
   </rule>
 
   <rule id="100196" level="9">
@@ -451,10 +406,7 @@
     <if_sid>100190</if_sid>
     <field name="vigie.data.user_ca_certs" type="pcre2">[0-9a-f]{64}</field>
     <description>Vigie : au moins une autorité de certification utilisateur est installée</description>
-    <mitre>
-      <id>T1638</id>
-    </mitre>
-    <group>vigie_posture,vigie_ca,</group>
+<group>vigie_posture,vigie_ca,attack_mobile_T1638,</group>
   </rule>
 
   <rule id="100200" level="9">
@@ -534,30 +486,21 @@
     <if_matched_sid>100214</if_matched_sid>
     <same_field>vigie.device_id</same_field>
     <description>Vigie : échecs répétés d'authentification à l'écran de verrouillage (journal de sécurité)</description>
-    <mitre>
-      <id>T1461</id>
-    </mitre>
-    <group>vigie_securitylog,vigie_keyguard,authentication_failures,</group>
+<group>vigie_securitylog,vigie_keyguard,authentication_failures,attack_mobile_T1461,</group>
   </rule>
 
   <rule id="100216" level="10">
     <if_sid>100210</if_sid>
     <field name="vigie.data.tag">^cert_authority_installed$</field>
     <description>Vigie : autorité de certification installée (journal de sécurité)</description>
-    <mitre>
-      <id>T1638</id>
-    </mitre>
-    <group>vigie_securitylog,vigie_ca,</group>
+<group>vigie_securitylog,vigie_ca,attack_mobile_T1638,</group>
   </rule>
 
   <rule id="100217" level="12">
     <if_sid>100210</if_sid>
     <field name="vigie.data.tag">^logging_stopped$</field>
     <description>Vigie : journalisation de sécurité Android arrêtée</description>
-    <mitre>
-      <id>T1629.003</id>
-    </mitre>
-    <group>vigie_securitylog,vigie_tamper,</group>
+<group>vigie_securitylog,vigie_tamper,attack_mobile_T1629.003,</group>
   </rule>
 
   <rule id="100218" level="7">
@@ -623,10 +566,7 @@
     <if_sid>100300</if_sid>
     <field name="vigie_watch.check">^silence$</field>
     <description>Vigie : aucun événement de $(vigie_watch.device_name) depuis $(vigie_watch.silence_min) min (appareil éteint, hors ligne ou agent arrêté ?)</description>
-    <mitre>
-      <id>T1629.003</id>
-    </mitre>
-    <group>vigie_watch,vigie_silence,</group>
+<group>vigie_watch,vigie_silence,attack_mobile_T1629.003,</group>
   </rule>
 
   <rule id="100302" level="3">

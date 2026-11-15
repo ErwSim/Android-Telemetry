@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!--
+            Device admin receiver. Activated as Device Owner by ADB only:
+            adb shell dpm set-device-owner io.github.erwsim.vigie/io.github.erwsim.vigie.policy.VigieAdminReceiver
+        -->
+        <receiver
+            android:name=".VigieAdminReceiver"
+            android:description="@string/policy_admin_description"
+            android:exported="true"
+            android:label="@string/policy_admin_label"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

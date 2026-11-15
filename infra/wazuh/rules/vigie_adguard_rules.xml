@@ -1,0 +1,55 @@
+<!--
+  Règles Wazuh Vigie — journal des requêtes d'AdGuard Home (querylog.json, une ligne JSON par
+  requête : T horodatage, QH nom demandé, QT type, CP protocole client, IP client, CID ClientID,
+  Result.IsFiltered, Result.Reason, Result.Rules[] (non décodé par Wazuh : tableau d'objets),
+  Elapsed en ns). Le champ Answer (réponse DNS en base64) est retiré avant l'indexation par
+  Filebeat (voir manager/entrypoint-scripts/vigie-init.sh).
+  Identifiants 100400-100449. Toutes les requêtes sont archivées (wazuh-archives-*, niveau 0) ;
+  seules les situations remarquables donnent une alerte.
+  Identifiants de listes AdGuard fixés par install.sh : 1 Vigie base, 2 Vigie strict,
+  10 HaGeZi Pro/Pro++, 20 HaGeZi Samsung, 30 HaGeZi TIF (menaces), 90 règles personnelles.
+-->
+
+<group name="vigie,adguard,dns,">
+
+  <rule id="100400" level="0">
+    <decoded_as>json</decoded_as>
+    <field name="QH">\S</field>
+    <field name="T">^\d\d\d\d-\d\d-\d\dT</field>
+    <description>AdGuard : requête DNS $(QH) ($(QT)) de $(IP)</description>
+    <group>vigie_dns,</group>
+  </rule>
+
+  <rule id="100401" level="0">
+    <if_sid>100400</if_sid>
+    <field name="Result.IsFiltered">^true$</field>
+    <description>AdGuard : requête bloquée $(QH)</description>
+    <group>vigie_dns,vigie_dns_blocked,</group>
+  </rule>
+
+  <!-- Domaine présent dans le flux de menaces HaGeZi TIF (maliciel, hameçonnage, C2) -->
+  <rule id="100402" level="10">
+    <if_sid>100401</if_sid>
+    <match type="pcre2">"FilterListID":30[,}]</match>
+    <description>AdGuard : domaine malveillant connu demandé et bloqué : $(QH)</description>
+    <group>vigie_dns,vigie_dns_threat,</group>
+  </rule>
+
+  <!-- Rafale de blocages : une app qui insiste (télémétrie en boucle, publicité) ou un
+       comportement anormal. Seuil : 60 requêtes bloquées en 2 min pour un même client. -->
+  <rule id="100403" level="5" frequency="60" timeframe="120" ignore="600">
+    <if_matched_sid>100401</if_matched_sid>
+    <same_field>IP</same_field>
+    <description>AdGuard : rafale de requêtes bloquées depuis $(IP) (dernière : $(QH))</description>
+    <group>vigie_dns,vigie_dns_burst,</group>
+  </rule>
+
+  <!-- Rafale de requêtes vers des domaines du flux de menaces : appareil probablement infecté -->
+  <rule id="100404" level="12" frequency="5" timeframe="600" ignore="1800">
+    <if_matched_sid>100402</if_matched_sid>
+    <same_field>IP</same_field>
+    <description>AdGuard : requêtes répétées vers des domaines malveillants depuis $(IP)</description>
+    <group>vigie_dns,vigie_dns_threat,</group>
+  </rule>
+
+</group>

@@ -1,0 +1,3 @@
+# Rotation du journal AdGuard : pas d'alerte
+# attendu: 100290
+ossec: File rotated (inode changed): '/var/adguard/querylog.json'.

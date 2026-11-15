@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="collector_heartbeat_title">Battement de cœur</string>
+    <string name="collector_heartbeat_desc">Toutes les 15 minutes : état de l\'agent (batterie, événements en attente, événements perdus, collecteurs actifs, dernier envoi, mode Device Owner).</string>
+
+    <string name="collector_device_title">Appareil</string>
+    <string name="collector_device_desc">Écran allumé, éteint ou déverrouillé ; batterie ; économie d\'énergie ; démarrage et arrêt ; inventaire (modèle, version d\'Android et de One UI, correctif de sécurité, état du démarrage vérifié) ; stockage libre ; changements d\'heure et de fuseau ; mode avion ; état thermique.</string>
+
+    <string name="collector_location_title">Localisation</string>
+    <string name="collector_location_desc">Positions GPS et positions obtenues passivement par les autres apps, sans aucun service Google. Cadence rapide en mouvement, ralentie à l\'arrêt. Signale les positions fictives et l\'activation ou la désactivation du GPS.</string>
+    <string name="collector_location_no_gps">Pas de récepteur GPS sur cet appareil</string>
+    <string name="setting_location_moving_interval">Intervalle GPS en mouvement</string>
+    <string name="setting_location_moving_interval_summary">Délai entre deux positions GPS quand l\'appareil se déplace.</string>
+    <string name="setting_location_stationary_interval">Intervalle GPS à l\'arrêt</string>
+    <string name="setting_location_stationary_interval_summary">Délai entre deux positions GPS quand l\'appareil est immobile (économise la batterie).</string>
+    <string name="setting_location_passive">Positions passives</string>
+    <string name="setting_location_passive_summary">Enregistrer aussi les positions demandées par les autres apps (sans coût énergétique).</string>
+    <string name="setting_location_passive_interval">Intervalle minimal des positions passives</string>
+</resources>
