@@ -4,7 +4,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
-import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.security.PrivateKey
 import java.security.SecureRandom
@@ -48,7 +47,8 @@ class EnrollmentException(val error: EnrollmentError, val detail: String? = null
 
 /** Validated enrollment, still holding the private key in memory (until imported into the Keystore). */
 class ParsedEnrollment(
-    val ingestUrl: HttpUrl,
+    /** Validated `https` base URL. */
+    val ingestUrl: String,
     val deviceId: String,
     val deviceName: String?,
     val deviceToken: String,
@@ -131,7 +131,7 @@ object EnrollmentParser {
         }
 
         return ParsedEnrollment(
-            ingestUrl = url,
+            ingestUrl = url.toString(),
             deviceId = deviceId,
             deviceName = raw.deviceName?.takeIf { it.isNotBlank() },
             deviceToken = token,

@@ -213,6 +213,14 @@ services:
       - wazuh_etc:/var/ossec/etc
       - wazuh_logs:/var/ossec/logs
       - wazuh_queue:/var/ossec/queue
+      # Volumes attendus par le script d'initialisation de l'image (sans eux, un simple
+      # redémarrage du conteneur interrompt l'initialisation avant la copie de la configuration).
+      - wazuh_var_multigroups:/var/ossec/var/multigroups
+      - wazuh_integrations:/var/ossec/integrations
+      - wazuh_active_response:/var/ossec/active-response/bin
+      - wazuh_agentless:/var/ossec/agentless
+      - wazuh_wodles:/var/ossec/wodles
+      - filebeat_etc:/etc/filebeat
       - filebeat_var:/var/lib/filebeat
       - ./secrets/wazuh-certs/root-ca.pem:/etc/ssl/root-ca.pem:ro
       - ./secrets/wazuh-certs/wazuh.manager.pem:/etc/ssl/filebeat.pem:ro
@@ -321,6 +329,12 @@ volumes:
   wazuh_etc:
   wazuh_logs:
   wazuh_queue:
+  wazuh_var_multigroups:
+  wazuh_integrations:
+  wazuh_active_response:
+  wazuh_agentless:
+  wazuh_wodles:
+  filebeat_etc:
   filebeat_var:
   wazuh_dashboard_custom:
   wireguard_data:

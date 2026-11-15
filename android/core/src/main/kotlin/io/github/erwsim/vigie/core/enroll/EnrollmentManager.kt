@@ -51,7 +51,7 @@ class EnrollmentManager(
         val previous = _state.value
         credentials.import(parsed.privateKey, parsed.clientChain)
         val enrollment = Enrollment(
-            ingestUrl = parsed.ingestUrl.toString(),
+            ingestUrl = parsed.ingestUrl,
             deviceId = parsed.deviceId,
             deviceName = parsed.deviceName,
             serverCaPem = parsed.serverCa.takeIf { it.isNotEmpty() }?.let(Pem::encodeCertificates),

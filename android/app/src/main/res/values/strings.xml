@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Vigie</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Accueil</string>
+    <string name="nav_collectors">Collecteurs</string>
+    <string name="nav_journal">Journal local</string>
+    <string name="nav_settings">Réglages</string>
+    <string name="screen_enrollment">Enrôlement</string>
+    <string name="screen_policy">Politique</string>
+    <string name="action_back">Retour</string>
+
+    <!-- Notification -->
+    <string name="notif_title">Vigie collecte…</string>
+    <string name="notif_channel_name">Collecte en cours</string>
+    <string name="notif_channel_description">Notification permanente : Vigie collecte des événements sur cet appareil et les envoie à votre serveur.</string>
+    <plurals name="notif_pending">
+        <item quantity="one">%1$d événement en attente</item>
+        <item quantity="many">%1$d événements en attente</item>
+        <item quantity="other">%1$d événements en attente</item>
+    </plurals>
+    <string name="notif_not_enrolled">non enrôlé, tout reste sur l\'appareil</string>
+    <string name="notif_last_upload">dernier envoi à %1$s</string>
+    <string name="notif_never_uploaded">aucun envoi pour l\'instant</string>
+
+    <!-- Common -->
+    <string name="yes">Oui</string>
+    <string name="no">Non</string>
+    <string name="never">Jamais</string>
+    <string name="state_running">Actif</string>
+    <string name="state_stopped">Arrêté</string>
+    <string name="state_active">Active</string>
+    <string name="state_inactive">Inactive</string>
+    <string name="state_allowed">Autorisées</string>
+    <string name="state_denied">Refusées</string>
+    <string name="state_unavailable">Indisponible</string>
+    <string name="state_waiting">Activé (agent arrêté)</string>
+    <string name="state_disabled">Désactivé</string>
+    <string name="action_enroll">Enrôler cet appareil</string>
+    <string name="action_upload_now">Envoyer maintenant</string>
+    <string name="action_details">Détails</string>
+    <string name="action_allow">Autoriser</string>
+    <string name="action_grant">Accorder les permissions</string>
+    <string name="action_battery_exempt">Désactiver l\'optimisation</string>
+    <string name="action_open">Ouvrir</string>
+    <string name="action_save">Enregistrer</string>
+    <string name="action_cancel">Annuler</string>
+    <string name="action_test_connection">Tester la connexion</string>
+    <string name="action_unenroll">Désenrôler</string>
+    <string name="action_import_file">Importer un fichier .vigie</string>
+
+    <!-- Home -->
+    <string name="home_agent_title">Agent</string>
+    <string name="home_agent_switch">Collecte active</string>
+    <string name="home_service">Service de premier plan</string>
+    <string name="home_collectors_active">Collecteurs actifs</string>
+    <string name="home_pending">Événements en attente d\'envoi</string>
+    <string name="home_server_title">Serveur</string>
+    <string name="home_not_enrolled">Cet appareil n\'est pas enrôlé : les événements sont conservés sur l\'appareil (dans la limite du tampon) et rien n\'est envoyé.</string>
+    <string name="home_server">Serveur</string>
+    <string name="home_device">Appareil</string>
+    <string name="home_last_upload">Dernier envoi réussi</string>
+    <string name="home_last_error">Dernière erreur</string>
+    <string name="home_next_attempt">Prochain essai</string>
+    <string name="home_rejected">Événements rejetés</string>
+    <string name="home_owner_title">Administration de l\'appareil</string>
+    <string name="home_device_owner">Mode Device Owner</string>
+    <string name="home_force_stop_protection">Protection contre l\'arrêt forcé</string>
+    <string name="home_degraded_mode">Mode dégradé : sans Device Owner, les journaux réseau et de sécurité, l\'attribution automatique des permissions et la protection contre l\'arrêt forcé sont indisponibles. L\'activation se fait par ADB (voir le README).</string>
+    <string name="home_system_title">Système</string>
+    <string name="home_notifications">Notifications</string>
+    <string name="home_battery_optimization">Optimisation de la batterie</string>
+    <string name="battery_exempt">Désactivée pour Vigie</string>
+    <string name="battery_optimized">Active (Vigie peut être retardée)</string>
+    <string name="home_samsung_sleep_hint">Sur Samsung, ajoutez aussi Vigie à « Applications jamais en veille » (Paramètres › Batterie › Limites d\'utilisation en arrière-plan) : aucune API ne permet de le faire automatiquement.</string>
+    <string name="home_errors_title">Erreurs</string>
+    <string name="home_transparency_title">Ce que fait Vigie</string>
+    <string name="home_transparency">Vigie ne collecte que ce qui est décrit dans l\'onglet Collecteurs, et chaque collecteur peut être désactivé. Les événements ne partent que vers le serveur enrôlé, que vous administrez. Le serveur ne peut envoyer aucune commande ni configuration au téléphone : tout se règle ici. Aucun contenu de SMS, d\'appel, de notification, de frappe ou d\'écran n\'est collecté. L\'onglet Journal local montre exactement ce qui est émis.</string>
+
+    <!-- Collectors -->
+    <string name="collectors_intro">Chaque collecteur peut être désactivé. Un collecteur « indisponible » attend une permission, le mode Device Owner ou un matériel absent.</string>
+    <string name="collectors_event_types">Événements produits</string>
+    <string name="collectors_missing">Permissions non accordées : %1$s</string>
+    <string name="collectors_last_error">Dernière erreur : %1$s</string>
+
+    <!-- Journal -->
+    <string name="journal_tab_recent">Émis récemment</string>
+    <string name="journal_tab_pending">En attente (%1$d)</string>
+    <string name="journal_recent_intro">Derniers événements écrits par l\'agent depuis son démarrage, tels qu\'ils seront envoyés. Touchez un événement pour voir toutes ses données.</string>
+    <string name="journal_pending_intro">Les 200 événements les plus récents encore dans le tampon de l\'appareil.</string>
+    <string name="journal_empty">Aucun événement.</string>
+
+    <!-- Settings -->
+    <string name="settings_buffer_title">Tampon et envoi</string>
+    <string name="setting_buffer_max">Taille maximale du tampon</string>
+    <string name="setting_buffer_max_summary">Au-delà, les événements les plus anciens et les moins graves sont supprimés (signalé par agent.buffer_overflow).</string>
+    <string name="setting_buffer_age">Âge maximal des événements en attente</string>
+    <string name="setting_buffer_age_summary">Les événements non envoyés plus anciens sont supprimés.</string>
+    <string name="setting_upload_interval">Intervalle d\'envoi</string>
+    <string name="setting_upload_interval_summary">Envoi groupé périodique (15 min minimum). Les événements graves et le retour du réseau déclenchent un envoi plus tôt.</string>
+    <string name="setting_wifi_only">Gros volumes en Wi-Fi seulement</string>
+    <string name="setting_wifi_only_summary">Sur un réseau mesuré, si le tampon dépasse le seuil, seuls les événements graves sont envoyés ; le reste attend un réseau non mesuré.</string>
+    <string name="setting_large_threshold">Seuil « gros volume »</string>
+    <string name="setting_large_threshold_summary">Volume en attente au-delà duquel l\'option Wi-Fi s\'applique.</string>
+    <string name="setting_range">Entre %1$d et %2$d</string>
+    <string name="settings_owner_title">Device Owner</string>
+    <string name="settings_enrollment_summary">Serveur de destination, test de connexion, désenrôlement.</string>
+    <string name="settings_about_title">À propos</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_build_type">Variante</string>
+    <string name="settings_test_only">APK « testOnly »</string>
+    <string name="settings_test_only_summary">Un APK testOnly peut perdre son rôle de Device Owner par « adb shell dpm remove-active-admin » : c\'est la porte de sortie par ADB.</string>
+
+    <!-- Enrollment -->
+    <string name="enroll_new_title">Enrôler cet appareil</string>
+    <string name="enroll_explanation">Choisissez le fichier .vigie produit par « vigie-collector enroll » sur votre serveur (copié par câble, par exemple dans Téléchargements). La clé privée est importée dans le Keystore Android (non exportable) puis oubliée ; le jeton est chiffré sur l\'appareil.</string>
+    <string name="enroll_confirm_title">Vérifier avant d\'enrôler</string>
+    <string name="enroll_current_title">Enrôlement actuel</string>
+    <string name="enroll_url">Adresse d\'ingestion</string>
+    <string name="enroll_device_id">Identifiant</string>
+    <string name="enroll_device_name">Nom</string>
+    <string name="enroll_date">Enrôlé le</string>
+    <string name="enroll_cert_expiry">Certificat valide jusqu\'au</string>
+    <string name="enroll_ca">Autorité du serveur</string>
+    <string name="enroll_ca_system">Autorités publiques du système</string>
+    <string name="enroll_ca_pinned">AC privée épinglée (seule acceptée)</string>
+    <string name="enroll_dns">DNS privé</string>
+    <string name="enroll_warning">Attention : %1$s</string>
+    <string name="enroll_error">Fichier refusé : %1$s %2$s</string>
+    <string name="enroll_read_error">Lecture du fichier impossible : %1$s</string>
+    <string name="enroll_import_error">Import impossible : %1$s</string>
+    <string name="enroll_done_deleted">Appareil enrôlé. Le fichier .vigie a été supprimé.</string>
+    <string name="enroll_done_not_deleted">Appareil enrôlé. Supprimez maintenant le fichier .vigie : il contient des secrets.</string>
+    <string name="enroll_result_title">Résultat</string>
+    <string name="enroll_security_title">Sécurité</string>
+    <string name="enroll_security">Seule l\'adresse enrôlée reçoit des données, en HTTPS avec certificat client. Les redirections sont refusées, les autorités ajoutées par l\'utilisateur ne sont jamais acceptées et le trafic en clair est interdit.</string>
+    <string name="enroll_unenroll_confirm">La clé, le certificat et le jeton seront effacés, ainsi que les %1$d événements en attente d\'envoi. La collecte continue localement.</string>
+    <string name="enroll_unenrolled">Appareil désenrôlé.</string>
+    <string name="enroll_err_too_large">fichier trop volumineux.</string>
+    <string name="enroll_err_not_json">ce n\'est pas un fichier .vigie (JSON invalide).</string>
+    <string name="enroll_err_version">version de fichier non prise en charge.</string>
+    <string name="enroll_err_missing">champ obligatoire manquant :</string>
+    <string name="enroll_err_url">adresse d\'ingestion invalide :</string>
+    <string name="enroll_err_insecure">l\'adresse d\'ingestion doit être en https :</string>
+    <string name="enroll_err_cert">certificat client illisible.</string>
+    <string name="enroll_err_cert_expired">certificat client expiré :</string>
+    <string name="enroll_err_key">clé privée illisible (PKCS#8 attendu).</string>
+    <string name="enroll_err_key_curve">la clé doit être ECDSA P-256.</string>
+    <string name="enroll_err_mismatch">la clé ne correspond pas au certificat.</string>
+    <string name="enroll_err_ca">autorité du serveur illisible.</string>
+    <string name="enroll_err_dns">nom d\'hôte DNS privé invalide :</string>
+    <string name="ping_ok">Connexion réussie (heure du serveur : %1$s).</string>
+    <string name="ping_device_mismatch">Le serveur répond, mais pour un autre identifiant d\'appareil.</string>
+    <string name="ping_unauthorized">Refusé par le serveur (%1$d) : jeton ou certificat invalide, ou appareil révoqué. Les données sont conservées.</string>
+    <string name="ping_http_error">Le serveur a répondu avec l\'erreur HTTP %1$d.</string>
+    <string name="ping_network_error">Serveur injoignable : %1$s</string>
+    <string name="ping_not_enrolled">Appareil non enrôlé.</string>
+
+    <!-- Policy (placeholder of the :policy screen) -->
+    <string name="policy_placeholder">Le moteur de politique (DNS privé imposé, désactivation de paquets, restrictions de sécurité) arrive dans une prochaine version. Chaque action sera journalisée et réversible depuis cet écran.</string>
+    <string name="policy_removal_title">Retrait du Device Owner</string>
+    <string name="policy_removal">Avec un APK testOnly : « adb shell dpm remove-active-admin io.github.erwsim.vigie/io.github.erwsim.vigie.policy.VigieAdminReceiver » (script remove-device-owner). Voir le README.</string>
+</resources>

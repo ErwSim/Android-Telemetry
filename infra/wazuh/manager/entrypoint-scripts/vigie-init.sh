@@ -5,6 +5,12 @@ set -euo pipefail
 
 FB=/etc/filebeat/filebeat.yml
 
+# 0. Contournement d'un défaut de l'image 4.14.10 : au REDÉMARRAGE d'un conteneur existant
+#    (reboot de l'hôte, « docker compose restart »), 0-wazuh-init voit le volume multigroups vide,
+#    tente de le recopier depuis un répertoire temporaire supprimé, échoue et s'arrête AVANT de
+#    copier ossec.conf et les règles. Un fichier témoin suffit à le faire passer.
+touch /var/ossec/var/multigroups/.vigie-init
+
 # 1. Archives : indexer TOUS les événements (archives.json -> wazuh-archives-4.x-*).
 #    Le fichier est réécrit depuis l'image à chaque démarrage, on le modifie donc à chaque fois.
 sed -i '/^    archives:/{n;s/enabled: false/enabled: true/}' "$FB"
