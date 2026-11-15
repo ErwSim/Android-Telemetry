@@ -1,0 +1,130 @@
+# Caddy — frontal TLS de Vigie.
+# Variables (fichier infra/.env, passées par docker compose) :
+#   VIGIE_DOMAIN, VIGIE_TLS_MODE (acme|internal), VIGIE_ACME_EMAIL, VIGIE_ADMIN_ALLOW (CIDR autorisés
+#   pour siem./adguard., séparés par des espaces ; « 0.0.0.0/0 ::/0 » = partout).
+# Fichiers générés par install.sh dans infra/data/caddy (montés dans /etc/caddy-generated) :
+#   admin-auth.caddy (compte basic_auth des interfaces d'administration),
+#   vigie-client-ca.crt (AC des certificats clients du collecteur), wazuh-root-ca.pem,
+#   dns-site.caddy (site DNS) et, en mode ClientID, dns-challenge.caddy.
+{
+	import /etc/caddy/tls-{$VIGIE_TLS_MODE}.caddy
+	admin localhost:2019
+	servers {
+		# HTTP/3 désactivé : un seul port 443/tcp à ouvrir.
+		protocols h1 h2
+		timeouts {
+			read_body 30s
+			read_header 10s
+			idle 2m
+		}
+	}
+}
+
+(securite) {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		-Server
+		-X-Powered-By
+	}
+	# Aucun en-tête X-Vigie-* venu de l'extérieur n'atteint les services.
+	request_header -X-Vigie-*
+}
+
+(journal) {
+	log {
+		output file /data/logs/access.log {
+			roll_size 50MiB
+			roll_keep 10
+		}
+		format json
+	}
+}
+
+# Interfaces d'administration : liste d'adresses autorisées puis authentification HTTP.
+(admin_protege) {
+	@hors_liste not client_ip {$VIGIE_ADMIN_ALLOW}
+	respond @hors_liste "Accès refusé" 403
+	import /etc/caddy-generated/admin-auth.caddy
+}
+
+# ---------------------------------------------------------------------------------------------
+# Console Vigie : fichiers statiques + /api/console/* + /healthz (authentification du collecteur)
+console.{$VIGIE_DOMAIN} {
+	import securite
+	import journal
+	request_body {
+		max_size 1MB
+	}
+	# L'ingestion ne passe que par ingest.<domaine> (mTLS).
+	@ingestion path /api/v1/*
+	respond @ingestion 404
+	reverse_proxy collector:8080
+}
+
+# ---------------------------------------------------------------------------------------------
+# Ingestion : certificat client OBLIGATOIRE (AC privée du collecteur), /api/v1/* uniquement.
+ingest.{$VIGIE_DOMAIN} {
+	tls {
+		client_auth {
+			mode require_and_verify
+			trust_pool file /etc/caddy-generated/vigie-client-ca.crt
+		}
+	}
+	import securite
+	import journal
+	request_body {
+		# Contrat §3 : 1 Mio compressé par lot.
+		max_size 2MB
+	}
+	handle /api/v1/* {
+		reverse_proxy collector:8080 {
+			# Empreinte SHA-256 (hex minuscule) du certificat client vérifié par Caddy.
+			header_up X-Vigie-Client-Cert-Sha256 {http.request.tls.client.fingerprint}
+		}
+	}
+	handle {
+		respond 404
+	}
+}
+
+# ---------------------------------------------------------------------------------------------
+# Dashboard Wazuh (OpenSearch Dashboards), HTTPS interne avec l'AC Wazuh.
+siem.{$VIGIE_DOMAIN} {
+	import securite
+	import journal
+	import admin_protege
+	request_body {
+		max_size 10MB
+	}
+	reverse_proxy https://wazuh.dashboard:5601 {
+		# L'en-tête Basic de Caddy ne doit pas être pris pour des identifiants de l'indexeur.
+		header_up -Authorization
+		transport http {
+			tls_trust_pool file /etc/caddy-generated/wazuh-root-ca.pem
+			tls_server_name wazuh.dashboard
+		}
+	}
+}
+
+# ---------------------------------------------------------------------------------------------
+# Administration d'AdGuard Home (qui garde aussi son propre compte).
+adguard.{$VIGIE_DOMAIN} {
+	import securite
+	import journal
+	import admin_protege
+	request_body {
+		max_size 5MB
+	}
+	reverse_proxy adguardhome:3000 {
+		header_up -Authorization
+	}
+}
+
+# ---------------------------------------------------------------------------------------------
+# dns.<domaine> : Caddy obtient le certificat que AdGuard Home sert en DoT sur le port 853.
+import /etc/caddy-generated/dns-site.caddy

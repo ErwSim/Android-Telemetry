@@ -1,0 +1,5 @@
+# Mode par défaut : certificat pour dns.<domaine> seul (défi HTTP-01).
+dns.{$VIGIE_DOMAIN} {
+	import securite
+	respond "Vigie : résolveur DNS-over-TLS sur le port 853." 200
+}

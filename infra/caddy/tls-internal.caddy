@@ -1,0 +1,5 @@
+# Mode TLS « internal » : AC interne de Caddy (tests locaux, réseau local, pas de domaine public).
+# Le téléphone doit faire confiance à cette AC (fichier root.crt, voir README) ; le fichier .vigie
+# la contient (VIGIE_SERVER_CA_FILE) pour l'agent.
+local_certs
+skip_install_trust

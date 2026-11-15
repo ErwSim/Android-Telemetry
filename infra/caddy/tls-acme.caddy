@@ -1,0 +1,5 @@
+# Mode TLS « acme » : certificats Let's Encrypt (défi HTTP-01 ou TLS-ALPN-01, ports 80/443).
+# Émetteur unique (pas de repli ZeroSSL) : AdGuard Home lit le certificat de dns.<domaine> à un
+# chemin fixe dans le stockage de Caddy (certificates/acme-v02.api.letsencrypt.org-directory/).
+email {$VIGIE_ACME_EMAIL}
+cert_issuer acme

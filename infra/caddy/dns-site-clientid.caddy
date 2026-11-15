@@ -1,0 +1,8 @@
+# Mode ClientID : certificat joker *.dns.<domaine>, nécessaire pour que le téléphone se présente
+# comme <clientid>.dns.<domaine> (SNI). En mode acme, il exige le défi DNS-01, donc une image
+# Caddy compilée avec le module du fournisseur DNS (voir caddy/Dockerfile.dns et README).
+dns.{$VIGIE_DOMAIN}, *.dns.{$VIGIE_DOMAIN} {
+	import /etc/caddy-generated/dns-challenge.caddy
+	import securite
+	respond "Vigie : résolveur DNS-over-TLS sur le port 853." 200
+}

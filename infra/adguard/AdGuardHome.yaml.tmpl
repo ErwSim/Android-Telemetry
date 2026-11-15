@@ -1,0 +1,203 @@
+# AdGuard Home — configuration Vigie, GÉNÉRÉE par infra/install.sh à partir de
+# infra/adguard/AdGuardHome.yaml.tmpl. AdGuard réécrit ce fichier au démarrage (migrations) ;
+# install.sh le régénère à chaque exécution : les réglages faits dans l'interface web sont
+# écrasés, sauf les règles personnelles (infra/data/adguard/userfilters/regles-perso.txt).
+schema_version: 34
+http:
+  # Interface web derrière Caddy (adguard.<domaine>), jamais publiée.
+  address: 0.0.0.0:3000
+  session_ttl: 24h
+  doh:
+    routes: []
+    insecure_enabled: false
+  pprof:
+    enabled: false
+    port: 6060
+users:
+  - name: admin
+    password: '@@ADGUARD_ADMIN_HASH@@'
+auth_attempts: 5
+block_auth_min: 15
+language: fr
+theme: auto
+dns:
+  bind_hosts:
+    - 0.0.0.0
+  # DNS en clair : seulement sur le réseau Docker interne (WireGuard, diagnostics). Jamais publié.
+  port: 53
+  serve_plain_dns: true
+  anonymize_client_ip: false
+  # Limitation de débit par client (/24 en IPv4, /56 en IPv6) : protège contre l'abus du
+  # résolveur exposé en DoT. Le téléphone fait rarement plus de quelques requêtes par seconde.
+  ratelimit: 50
+  ratelimit_subnet_len_ipv4: 24
+  ratelimit_subnet_len_ipv6: 56
+  ratelimit_whitelist: []
+  refuse_any: true
+  # Amont chiffré respectueux de la vie privée : Quad9 (fondation suisse, pas de journalisation
+  # des IP, validation DNSSEC, sans ECS sur dns.quad9.net), en DoH et en DoT.
+  # Secours (si Quad9 est injoignable) : Mullvad DNS (sans filtrage, sans journalisation).
+  upstream_dns:@@ADGUARD_UPSTREAMS@@
+  upstream_dns_file: ""
+  bootstrap_dns:
+    - 9.9.9.9
+    - 149.112.112.112
+    - 2620:fe::fe
+  fallback_dns:
+    - https://dns.mullvad.net/dns-query
+  upstream_mode: load_balance
+  fastest_timeout: 1s
+  # Clients autorisés : vide = tous (mode par défaut) ; en mode ClientID : l'identifiant du
+  # téléphone + le réseau Docker interne. Les autres reçoivent REFUSED.
+  allowed_clients:@@ADGUARD_ALLOWED_CLIENTS@@
+  disallowed_clients: []
+  blocked_hosts:
+    - version.bind
+    - id.server
+    - hostname.bind
+  trusted_proxies:
+    - 127.0.0.0/8
+    - ::1/128
+  cache_enabled: true
+  cache_size: 4194304
+  cache_ttl_min: 0
+  cache_ttl_max: 0
+  cache_optimistic: false
+  bogus_nxdomain: []
+  aaaa_disabled: false
+  # Demande DNSSEC à l'amont (bit DO) ; la validation est faite par Quad9 (réponse SERVFAIL si
+  # la signature est invalide) et le bit AD est transmis au téléphone.
+  enable_dnssec: true
+  edns_client_subnet:
+    custom_ip: ""
+    enabled: false
+    use_custom: false
+  max_goroutines: 300
+  handle_ddr: false
+  ipset: []
+  ipset_file: ""
+  bootstrap_prefer_ipv6: false
+  upstream_timeout: 10s
+  private_networks: []
+  use_private_ptr_resolvers: false
+  local_ptr_upstreams: []
+  use_dns64: false
+  dns64_prefixes: []
+  serve_http3: false
+  use_http3_upstreams: false
+  hostsfile_enabled: false
+  pending_requests:
+    enabled: true
+tls:
+  enabled: true
+  server_name: dns.@@VIGIE_DOMAIN@@
+  force_https: false
+  port_https: 0
+  port_dns_over_tls: 853
+  port_dns_over_quic: 0
+  port_dnscrypt: 0
+  dnscrypt_config_file: ""
+  certificate_chain: ""
+  private_key: ""
+  # Certificat obtenu et renouvelé par Caddy (volume caddy_data monté en lecture seule) ;
+  # AdGuard Home surveille ces fichiers et les recharge à chaque renouvellement.
+  certificate_path: @@ADGUARD_CERT_PATH@@
+  private_key_path: @@ADGUARD_KEY_PATH@@
+  strict_sni_check: false
+querylog:
+  # Journal des requêtes : lu par le manager Wazuh (volume adguard_querylog), rotation par
+  # renommage en querylog.json.1 à chaque intervalle.
+  dir_path: /opt/adguardhome/querylog
+  ignored: []
+  interval: 168h
+  size_memory: 1000
+  enabled: true
+  ignored_enabled: false
+  file_enabled: true
+statistics:
+  dir_path: ""
+  ignored: []
+  interval: 168h
+  enabled: true
+  ignored_enabled: false
+# Listes de blocage (profil « @@VIGIE_DNS_PROFILE@@ »). Les identifiants sont fixes : les règles
+# Wazuh s'en servent (FilterListID 30 = flux de menaces).
+filters:@@ADGUARD_FILTERS@@
+whitelist_filters: []
+user_rules: []
+dhcp:
+  enabled: false
+  interface_name: ""
+  local_domain_name: lan
+  dhcpv4:
+    gateway_ip: ""
+    subnet_mask: ""
+    range_start: ""
+    range_end: ""
+    lease_duration: 86400
+    icmp_timeout_msec: 1000
+    options: []
+  dhcpv6:
+    range_start: ""
+    lease_duration: 86400
+    ra_slaac_only: false
+    ra_allow_slaac: false
+filtering:
+  blocking_ipv4: ""
+  blocking_ipv6: ""
+  blocked_services:
+    schedule:
+      time_zone: UTC
+    ids: []
+  protection_disabled_until: null
+  safe_search:
+    enabled: false
+    bing: true
+    duckduckgo: true
+    ecosia: true
+    google: true
+    pixabay: true
+    yandex: true
+    youtube: true
+  # Réponse 0.0.0.0 / :: pour un domaine bloqué.
+  blocking_mode: default
+  parental_block_host: family-block.dns.adguard.com
+  safebrowsing_block_host: standard-block.dns.adguard.com
+  rewrites: []
+  # Les listes locales (règles Vigie versionnées) ne sont lues que dans ce répertoire.
+  safe_fs_patterns:
+    - /opt/adguardhome/work/userfilters/vigie/*.txt
+    - /opt/adguardhome/work/userfilters/perso/*.txt
+  max_http_size: 256MB
+  safebrowsing_cache_size: 1048576
+  safesearch_cache_size: 1048576
+  parental_cache_size: 1048576
+  cache_time: 30
+  filters_update_interval: 12
+  blocked_response_ttl: 10
+  filtering_enabled: true
+  rewrites_enabled: false
+  parental_enabled: false
+  safebrowsing_enabled: false
+  protection_enabled: true
+clients:
+  runtime_sources:
+    whois: false
+    arp: false
+    rdns: false
+    dhcp: false
+    hosts: false
+  persistent:@@ADGUARD_CLIENTS@@
+log:
+  enabled: true
+  file: ""
+  max_backups: 0
+  max_size: 100
+  max_age: 3
+  compress: false
+  local_time: false
+  verbose: false
+os:
+  group: ""
+  user: ""
+  rlimit_nofile: 0

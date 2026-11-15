@@ -1,0 +1,26 @@
+---
+# Généré par infra/install.sh — NE PAS MODIFIER À LA MAIN (régénéré à chaque installation).
+# Utilisateurs internes de l'indexeur Wazuh. Les utilisateurs de démonstration de l'image
+# (kibanaro, logstash, readall, snapshotrestore : mots de passe publics) sont supprimés.
+_meta:
+  type: "internalusers"
+  config_version: 2
+
+admin:
+  hash: "@@HASH_ADMIN@@"
+  reserved: true
+  backend_roles:
+    - "admin"
+  description: "Administrateur (dashboard, Filebeat du manager, scripts d'installation)"
+
+kibanaserver:
+  hash: "@@HASH_KIBANASERVER@@"
+  reserved: true
+  description: "Compte de service du dashboard Wazuh"
+
+vigie_reader:
+  hash: "@@HASH_READER@@"
+  reserved: false
+  backend_roles:
+    - "readall"
+  description: "Lecture seule pour le collecteur Vigie (GET /api/console/alerts)"

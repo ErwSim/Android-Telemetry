@@ -1,0 +1,688 @@
+<!--
+  Règles Wazuh Vigie — événements de l'agent Android (export NDJSON du collecteur, contrat §5).
+  Plage d'identifiants : 100100-100299 (événements de l'appareil), 100300-100349 (sonde
+  vigie_watch.py), 100400-100449 (AdGuard Home, fichier vigie_adguard_rules.xml).
+
+  Niveaux : 0 = archivé seulement ; 2 = indicateur pour les tableaux de bord (sous le seuil
+  d'alerte) ; 3-5 = information/notable ; 6-9 = à examiner ; 10-12 = sérieux ; 13+ non utilisé.
+
+  Limite importante de Wazuh : un événement ne déclenche qu'UNE règle (la première règle fille
+  qui correspond). Pour security.posture, les constats sont donc ordonnés du plus grave au moins
+  grave ; un défaut moins grave apparaît quand le plus grave est corrigé (et chaque jour, la
+  posture étant réémise quotidiennement).
+
+  Les valeurs JSON sont vues par Wazuh comme des chaînes : booléens « true »/« false »,
+  nombres en décimal. Les correspondances MITRE ATT&CK sont celles de la matrice Mobile.
+  Tests : infra/wazuh/tests/run-tests.sh (wazuh-logtest dans le conteneur manager).
+-->
+
+<group name="vigie,">
+
+  <!-- ========================= Base ========================= -->
+
+  <rule id="100100" level="0">
+    <decoded_as>json</decoded_as>
+    <field name="vigie.type" type="pcre2">^[a-z0-9_]+\.[a-z0-9_.]+$</field>
+    <description>Vigie : $(vigie.type) ($(vigie.device_name))</description>
+  </rule>
+
+  <!-- Lignes dérivées de l'export (un élément d'inventaire, d'usage réseau ou de scan Wi-Fi) -->
+  <rule id="100101" level="0">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type" type="pcre2">^(app\.inventory\.app|net\.usage\.app|net\.wifi_scan\.ap)$</field>
+    <description>Vigie : élément d'inventaire $(vigie.type)</description>
+    <group>vigie_inventory,</group>
+  </rule>
+
+  <!-- ========================= agent.* ========================= -->
+
+  <rule id="100110" level="12">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^agent.tamper$</field>
+    <description>Vigie : tentative d'altération de l'agent ($(vigie.data.kind)) sur $(vigie.device_name)</description>
+    <mitre>
+      <id>T1629.003</id>
+    </mitre>
+    <group>vigie_agent,vigie_tamper,</group>
+  </rule>
+
+  <rule id="100111" level="3">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^agent.stopped$</field>
+    <description>Vigie : agent arrêté ($(vigie.data.reason)) sur $(vigie.device_name)</description>
+    <group>vigie_agent,</group>
+  </rule>
+
+  <rule id="100112" level="6">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^agent.buffer_overflow$</field>
+    <description>Vigie : tampon de l'agent saturé, $(vigie.data.dropped) événements purgés sur $(vigie.device_name)</description>
+    <group>vigie_agent,vigie_data_loss,</group>
+  </rule>
+
+  <rule id="100113" level="3">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^agent.collector_error$</field>
+    <description>Vigie : erreur du collecteur $(vigie.data.collector) de l'agent</description>
+    <group>vigie_agent,</group>
+  </rule>
+
+  <rule id="100114" level="3">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^agent.config_changed$</field>
+    <description>Vigie : réglage de l'agent modifié ($(vigie.data.key) : $(vigie.data.old) -> $(vigie.data.new))</description>
+    <group>vigie_agent,vigie_config,</group>
+  </rule>
+
+  <rule id="100115" level="5">
+    <if_sid>100114</if_sid>
+    <field name="vigie.data.key" type="pcre2">(?i)collector|upload|ingest|enabled</field>
+    <field name="vigie.data.new" type="pcre2">^(false|disabled|off)$</field>
+    <description>Vigie : une collecte ou l'envoi a été désactivé dans l'agent ($(vigie.data.key))</description>
+    <group>vigie_agent,vigie_config,</group>
+  </rule>
+
+  <rule id="100116" level="10">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^agent.heartbeat$</field>
+    <field name="vigie.data.device_owner">^false$</field>
+    <description>Vigie : l'agent n'est plus Device Owner sur $(vigie.device_name) (protections locales inactives)</description>
+    <mitre>
+      <id>T1629</id>
+    </mitre>
+    <group>vigie_agent,vigie_posture,</group>
+  </rule>
+
+  <!-- ========================= device.* ========================= -->
+
+  <!-- Changement d'heure d'au moins une heure (3 600 000 ms) -->
+  <rule id="100120" level="5">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^device.time_changed$</field>
+    <field name="vigie.data.delta_ms" type="pcre2">^-?(3[6-9]\d{5}|[4-9]\d{6}|\d{8,})$</field>
+    <description>Vigie : horloge de l'appareil modifiée de $(vigie.data.delta_ms) ms</description>
+    <group>vigie_device,</group>
+  </rule>
+
+  <rule id="100121" level="5">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^device.usb$</field>
+    <field name="vigie.data.functions" type="pcre2">\badb\b</field>
+    <description>Vigie : connexion USB avec la fonction de débogage ADB active</description>
+    <group>vigie_device,vigie_adb,</group>
+  </rule>
+
+  <!-- ========================= location.* ========================= -->
+
+  <rule id="100130" level="9">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^location.fix$</field>
+    <field name="vigie.data.mock">^true$</field>
+    <description>Vigie : position simulée (mock location) reçue du fournisseur $(vigie.data.provider)</description>
+    <group>vigie_location,</group>
+  </rule>
+
+  <!-- ========================= net.* ========================= -->
+
+  <rule id="100140" level="8">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^net.cell_security$</field>
+    <description>Vigie : anomalie de sécurité cellulaire ($(vigie.data.kind))</description>
+    <mitre>
+      <id>T1638</id>
+    </mitre>
+    <group>vigie_network,vigie_cellular,</group>
+  </rule>
+
+  <rule id="100141" level="10">
+    <if_sid>100140</if_sid>
+    <field name="vigie.data.kind">^downgrade_2g$</field>
+    <description>Vigie : rétrogradation forcée en 2G (station de base factice possible)</description>
+    <mitre>
+      <id>T1638</id>
+    </mitre>
+    <group>vigie_network,vigie_cellular,</group>
+  </rule>
+
+  <rule id="100142" level="12">
+    <if_sid>100140</if_sid>
+    <field name="vigie.data.kind">^null_cipher$</field>
+    <description>Vigie : connexion cellulaire sans chiffrement (chiffrement nul)</description>
+    <mitre>
+      <id>T1638</id>
+    </mitre>
+    <group>vigie_network,vigie_cellular,</group>
+  </rule>
+
+  <rule id="100143" level="10">
+    <if_sid>100140</if_sid>
+    <field name="vigie.data.kind">^identifier_disclosure$</field>
+    <description>Vigie : divulgation de l'identifiant d'abonné demandée par le réseau (IMSI-catcher possible)</description>
+    <mitre>
+      <id>T1638</id>
+    </mitre>
+    <group>vigie_network,vigie_cellular,</group>
+  </rule>
+
+  <rule id="100145" level="10">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^net.ble_tracker$</field>
+    <description>Vigie : traceur Bluetooth ($(vigie.data.kind)) qui suit l'appareil, vu $(vigie.data.sightings) fois</description>
+    <group>vigie_network,vigie_stalking,</group>
+  </rule>
+
+  <rule id="100146" level="4">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^net.wifi$</field>
+    <field name="vigie.data.event">^connected$</field>
+    <field name="vigie.data.security" type="pcre2">(?i)^(open|none|wep|owe_transition)$</field>
+    <description>Vigie : connexion à un réseau Wi-Fi ouvert ou faible ($(vigie.data.ssid), $(vigie.data.security))</description>
+    <group>vigie_network,</group>
+  </rule>
+
+  <rule id="100147" level="5">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^net.connectivity$</field>
+    <field name="vigie.data.validated">^true$</field>
+    <field name="vigie.data.private_dns_active">^false$</field>
+    <description>Vigie : réseau actif sans DNS privé (les requêtes DNS échappent au filtrage)</description>
+    <mitre>
+      <id>T1629</id>
+    </mitre>
+    <group>vigie_network,vigie_dns,</group>
+  </rule>
+
+  <!-- Requêtes DNS d'une app vers des domaines de télémétrie/publicité Google ou Samsung.
+       Niveau 2 : pas d'alerte, mais l'événement est marqué (rule.id, groupe vigie_telemetry) dans
+       wazuh-archives-* pour les tableaux de bord « qui piste quoi ». -->
+  <rule id="100148" level="2">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^net.dns$</field>
+    <field name="vigie.data.hostname" type="pcre2">(?i)(^|\.)(app-measurement\.com|firebaselogging(-pa)?\.googleapis\.com|firebasecrashlytics\.googleapis\.com|crashlyticsreports-pa\.googleapis\.com|crashlytics\.com|google-analytics\.com|googletagmanager\.com|doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.com|play-services-telemetry\.googleapis\.com|clientmetrics-pa\.googleapis\.com|samsungads\.com|dc\.di\.atlas\.samsung\.com|analytics\.samsungknox\.com|gos-gsp\.io)$</field>
+    <description>Vigie : $(vigie.data.package) contacte un domaine de télémétrie ($(vigie.data.hostname))</description>
+    <group>vigie_network,vigie_telemetry,</group>
+  </rule>
+
+  <!-- ========================= app.* ========================= -->
+
+  <rule id="100150" level="3">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^app.installed$</field>
+    <description>Vigie : app installée $(vigie.data.package) $(vigie.data.version_name) (installateur $(vigie.data.installer))</description>
+    <group>vigie_app,</group>
+  </rule>
+
+  <!-- Installée par autre chose que le Play Store ou le Galaxy Store -->
+  <rule id="100151" level="8">
+    <if_sid>100150</if_sid>
+    <field name="vigie.data.installer" type="pcre2" negate="yes">^(com\.android\.vending|com\.sec\.android\.app\.samsungapps)$</field>
+    <description>Vigie : app installée hors Play Store : $(vigie.data.package) (installateur $(vigie.data.installer))</description>
+    <group>vigie_app,vigie_sideload,</group>
+  </rule>
+
+  <!-- Aucun installateur déclaré : typiquement « adb install » -->
+  <rule id="100152" level="8">
+    <if_sid>100150</if_sid>
+    <match type="pcre2" negate="yes">"installer":</match>
+    <description>Vigie : app installée sans installateur déclaré (ADB ?) : $(vigie.data.package)</description>
+    <group>vigie_app,vigie_sideload,vigie_adb,</group>
+  </rule>
+
+  <rule id="100153" level="3">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^app.removed$</field>
+    <description>Vigie : app désinstallée $(vigie.data.package)</description>
+    <group>vigie_app,</group>
+  </rule>
+
+  <!-- Accès spéciaux : l'événement est émis à chaque changement ET une fois par jour. On alerte
+       quand la liste diffère de celle d'un événement précédent du même appareil (48 h). -->
+  <rule id="100155" level="0">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^app.special_access$</field>
+    <description>Vigie : état des accès spéciaux des apps</description>
+    <group>vigie_app,</group>
+  </rule>
+
+  <rule id="100156" level="10" frequency="2" timeframe="172800">
+    <if_matched_sid>100155</if_matched_sid>
+    <same_field>vigie.device_id</same_field>
+    <different_field>vigie.data.accessibility_services</different_field>
+    <description>Vigie : la liste des services d'accessibilité a changé : $(vigie.data.accessibility_services)</description>
+    <mitre>
+      <id>T1453</id>
+    </mitre>
+    <group>vigie_app,vigie_special_access,</group>
+  </rule>
+
+  <rule id="100157" level="10" frequency="2" timeframe="172800">
+    <if_matched_sid>100155</if_matched_sid>
+    <same_field>vigie.device_id</same_field>
+    <different_field>vigie.data.device_admins</different_field>
+    <description>Vigie : la liste des administrateurs de l'appareil a changé : $(vigie.data.device_admins)</description>
+    <mitre>
+      <id>T1626.001</id>
+    </mitre>
+    <group>vigie_app,vigie_special_access,</group>
+  </rule>
+
+  <rule id="100158" level="8" frequency="2" timeframe="172800">
+    <if_matched_sid>100155</if_matched_sid>
+    <same_field>vigie.device_id</same_field>
+    <different_field>vigie.data.notification_listeners</different_field>
+    <description>Vigie : la liste des apps qui lisent les notifications a changé : $(vigie.data.notification_listeners)</description>
+    <mitre>
+      <id>T1517</id>
+    </mitre>
+    <group>vigie_app,vigie_special_access,</group>
+  </rule>
+
+  <rule id="100159" level="7" frequency="2" timeframe="172800">
+    <if_matched_sid>100155</if_matched_sid>
+    <same_field>vigie.device_id</same_field>
+    <different_field>vigie.data.vpn_apps</different_field>
+    <description>Vigie : la liste des apps VPN a changé : $(vigie.data.vpn_apps)</description>
+    <group>vigie_app,vigie_special_access,</group>
+  </rule>
+
+  <rule id="100160" level="5">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^app.permission_changed$</field>
+    <field name="vigie.data.granted">^true$</field>
+    <field name="vigie.data.permission" type="pcre2">(ACCESS_BACKGROUND_LOCATION|RECORD_AUDIO|CAMERA|READ_SMS|RECEIVE_SMS|READ_CALL_LOG|READ_CONTACTS|BODY_SENSORS|MANAGE_EXTERNAL_STORAGE|SYSTEM_ALERT_WINDOW|REQUEST_INSTALL_PACKAGES)$</field>
+    <description>Vigie : permission sensible accordée à $(vigie.data.package) ($(vigie.data.permission))</description>
+    <group>vigie_app,vigie_permission,</group>
+  </rule>
+
+  <!-- ========================= sensor.* ========================= -->
+  <!-- « Micro/caméra utilisés écran éteint » n'est pas exprimable de façon fiable dans Wazuh
+       (pas d'état « écran toujours éteint » ; un appel téléphonique éteint l'écran par le capteur
+       de proximité). Voir infra/README.md. On marque l'usage pour les tableaux de bord. -->
+
+  <rule id="100170" level="2">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^sensor.microphone$</field>
+    <field name="vigie.data.recording">^true$</field>
+    <description>Vigie : micro utilisé par $(vigie.data.package)</description>
+    <group>vigie_sensor,</group>
+  </rule>
+
+  <rule id="100171" level="2">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^sensor.camera$</field>
+    <field name="vigie.data.in_use">^true$</field>
+    <description>Vigie : caméra $(vigie.data.camera_id) utilisée par $(vigie.data.package)</description>
+    <group>vigie_sensor,</group>
+  </rule>
+
+  <!-- ========================= security.keyguard / ca_cert / policy ========================= -->
+
+  <rule id="100180" level="3">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^security.keyguard$</field>
+    <field name="vigie.data.event">^unlock_failed$</field>
+    <description>Vigie : échec de déverrouillage de l'écran ($(vigie.data.failed_attempts) tentatives)</description>
+    <group>vigie_security,vigie_keyguard,authentication_failed,</group>
+  </rule>
+
+  <rule id="100181" level="10" frequency="5" timeframe="600">
+    <if_matched_sid>100180</if_matched_sid>
+    <same_field>vigie.device_id</same_field>
+    <description>Vigie : déverrouillages échoués répétés (5 en 10 min) sur $(vigie.device_name)</description>
+    <mitre>
+      <id>T1461</id>
+    </mitre>
+    <group>vigie_security,vigie_keyguard,authentication_failures,</group>
+  </rule>
+
+  <rule id="100182" level="10">
+    <if_sid>100180</if_sid>
+    <field name="vigie.data.failed_attempts" type="pcre2">^([1-9]\d+)$</field>
+    <description>Vigie : $(vigie.data.failed_attempts) échecs de déverrouillage consécutifs</description>
+    <mitre>
+      <id>T1461</id>
+    </mitre>
+    <group>vigie_security,vigie_keyguard,authentication_failures,</group>
+  </rule>
+
+  <rule id="100185" level="10">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^security.ca_cert$</field>
+    <field name="vigie.data.event">^added$</field>
+    <description>Vigie : autorité de certification utilisateur ajoutée ($(vigie.data.subject))</description>
+    <mitre>
+      <id>T1638</id>
+    </mitre>
+    <group>vigie_security,vigie_ca,</group>
+  </rule>
+
+  <rule id="100186" level="3">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^security.ca_cert$</field>
+    <field name="vigie.data.event">^removed$</field>
+    <description>Vigie : autorité de certification utilisateur retirée ($(vigie.data.subject))</description>
+    <group>vigie_security,vigie_ca,</group>
+  </rule>
+
+  <rule id="100187" level="5">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^security.policy$</field>
+    <field name="vigie.data.ok">^false$</field>
+    <description>Vigie : échec d'une action de politique Device Owner ($(vigie.data.action) $(vigie.data.target))</description>
+    <group>vigie_security,vigie_policy,</group>
+  </rule>
+
+  <!-- ========================= security.posture ========================= -->
+  <!-- Ordre = gravité décroissante (une seule règle par événement). -->
+
+  <rule id="100190" level="0">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^security.posture$</field>
+    <description>Vigie : posture de sécurité de $(vigie.device_name)</description>
+    <group>vigie_posture,</group>
+  </rule>
+
+  <rule id="100191" level="12">
+    <if_sid>100190</if_sid>
+    <field name="vigie.data.verified_boot_state" type="pcre2">(?i)^(orange|yellow|red)$</field>
+    <description>Vigie : démarrage vérifié « $(vigie.data.verified_boot_state) » (chargeur d'amorçage déverrouillé ou système modifié)</description>
+    <group>vigie_posture,</group>
+  </rule>
+
+  <rule id="100192" level="10">
+    <if_sid>100190</if_sid>
+    <field name="vigie.data.encrypted">^false$</field>
+    <description>Vigie : stockage de l'appareil non chiffré</description>
+    <group>vigie_posture,</group>
+  </rule>
+
+  <rule id="100193" level="10">
+    <if_sid>100190</if_sid>
+    <field name="vigie.data.device_owner">^false$</field>
+    <description>Vigie : l'agent n'est pas (ou plus) Device Owner (protections locales inactives)</description>
+    <mitre>
+      <id>T1629</id>
+    </mitre>
+    <group>vigie_posture,</group>
+  </rule>
+
+  <rule id="100194" level="10">
+    <if_sid>100190</if_sid>
+    <field name="vigie.data.private_dns_mode" type="pcre2">^(?!hostname$|provider_hostname$)</field>
+    <description>Vigie : DNS privé désactivé ou non strict (mode $(vigie.data.private_dns_mode))</description>
+    <mitre>
+      <id>T1629</id>
+    </mitre>
+    <group>vigie_posture,vigie_dns,</group>
+  </rule>
+
+  <rule id="100195" level="10">
+    <if_sid>100190</if_sid>
+    <list field="vigie.data.private_dns_host" lookup="not_match_key">etc/lists/vigie-private-dns-hosts</list>
+    <description>Vigie : DNS privé pointé vers un hôte inattendu ($(vigie.data.private_dns_host))</description>
+    <mitre>
+      <id>T1638</id>
+    </mitre>
+    <group>vigie_posture,vigie_dns,</group>
+  </rule>
+
+  <rule id="100196" level="9">
+    <if_sid>100190</if_sid>
+    <field name="vigie.data.adb_wifi_enabled">^true$</field>
+    <description>Vigie : débogage ADB sans fil activé</description>
+    <group>vigie_posture,vigie_adb,</group>
+  </rule>
+
+  <rule id="100197" level="7">
+    <if_sid>100190</if_sid>
+    <field name="vigie.data.adb_enabled">^true$</field>
+    <description>Vigie : débogage USB (ADB) activé</description>
+    <group>vigie_posture,vigie_adb,</group>
+  </rule>
+
+  <rule id="100198" level="8">
+    <if_sid>100190</if_sid>
+    <field name="vigie.data.lock_secure">^false$</field>
+    <description>Vigie : aucun verrouillage d'écran sécurisé</description>
+    <group>vigie_posture,</group>
+  </rule>
+
+  <rule id="100199" level="7">
+    <if_sid>100190</if_sid>
+    <field name="vigie.data.user_ca_certs" type="pcre2">[0-9a-f]{64}</field>
+    <description>Vigie : au moins une autorité de certification utilisateur est installée</description>
+    <mitre>
+      <id>T1638</id>
+    </mitre>
+    <group>vigie_posture,vigie_ca,</group>
+  </rule>
+
+  <rule id="100200" level="9">
+    <if_sid>100190</if_sid>
+    <field name="vigie.data.patch_age_days" type="pcre2">^(18[1-9]|19\d|[2-9]\d\d|\d{4,})$</field>
+    <description>Vigie : correctif de sécurité vieux de $(vigie.data.patch_age_days) jours (plus de 6 mois)</description>
+    <group>vigie_posture,vigie_patch,</group>
+  </rule>
+
+  <rule id="100201" level="6">
+    <if_sid>100190</if_sid>
+    <field name="vigie.data.unknown_sources">^true$</field>
+    <description>Vigie : installation depuis des sources inconnues autorisée</description>
+    <group>vigie_posture,vigie_sideload,</group>
+  </rule>
+
+  <rule id="100202" level="6">
+    <if_sid>100190</if_sid>
+    <field name="vigie.data.patch_age_days" type="pcre2">^(9[1-9]|1[0-7]\d|180)$</field>
+    <description>Vigie : correctif de sécurité vieux de $(vigie.data.patch_age_days) jours (plus de 3 mois)</description>
+    <group>vigie_posture,vigie_patch,</group>
+  </rule>
+
+  <rule id="100203" level="5">
+    <if_sid>100190</if_sid>
+    <field name="vigie.data.play_protect">^false$</field>
+    <description>Vigie : Play Protect désactivé</description>
+    <group>vigie_posture,</group>
+  </rule>
+
+  <rule id="100204" level="4">
+    <if_sid>100190</if_sid>
+    <field name="vigie.data.dev_options">^true$</field>
+    <description>Vigie : options pour les développeurs activées</description>
+    <group>vigie_posture,vigie_adb,</group>
+  </rule>
+
+  <!-- ========================= security.log (journal de sécurité Android) ========================= -->
+
+  <rule id="100210" level="0">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^security.log$</field>
+    <description>Vigie : journal de sécurité Android ($(vigie.data.tag))</description>
+    <group>vigie_securitylog,</group>
+  </rule>
+
+  <rule id="100211" level="10">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag">^adb_shell_interactive$</field>
+    <description>Vigie : shell ADB interactif ouvert sur l'appareil</description>
+    <group>vigie_securitylog,vigie_adb,</group>
+  </rule>
+
+  <rule id="100212" level="8">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag">^adb_shell_cmd$</field>
+    <description>Vigie : commande exécutée par ADB : $(vigie.data.fields.command)</description>
+    <group>vigie_securitylog,vigie_adb,</group>
+  </rule>
+
+  <rule id="100213" level="8">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag" type="pcre2">^sync_(send|recv)_file$</field>
+    <description>Vigie : transfert de fichier par ADB ($(vigie.data.tag)) : $(vigie.data.fields.path)</description>
+    <group>vigie_securitylog,vigie_adb,</group>
+  </rule>
+
+  <rule id="100214" level="3">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag">^keyguard_dismiss_auth_attempt$</field>
+    <field name="vigie.data.fields.success" type="pcre2">^(false|0)$</field>
+    <description>Vigie : échec d'authentification à l'écran de verrouillage (journal de sécurité)</description>
+    <group>vigie_securitylog,vigie_keyguard,authentication_failed,</group>
+  </rule>
+
+  <rule id="100215" level="10" frequency="5" timeframe="600">
+    <if_matched_sid>100214</if_matched_sid>
+    <same_field>vigie.device_id</same_field>
+    <description>Vigie : échecs répétés d'authentification à l'écran de verrouillage (journal de sécurité)</description>
+    <mitre>
+      <id>T1461</id>
+    </mitre>
+    <group>vigie_securitylog,vigie_keyguard,authentication_failures,</group>
+  </rule>
+
+  <rule id="100216" level="10">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag">^cert_authority_installed$</field>
+    <description>Vigie : autorité de certification installée (journal de sécurité)</description>
+    <mitre>
+      <id>T1638</id>
+    </mitre>
+    <group>vigie_securitylog,vigie_ca,</group>
+  </rule>
+
+  <rule id="100217" level="12">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag">^logging_stopped$</field>
+    <description>Vigie : journalisation de sécurité Android arrêtée</description>
+    <mitre>
+      <id>T1629.003</id>
+    </mitre>
+    <group>vigie_securitylog,vigie_tamper,</group>
+  </rule>
+
+  <rule id="100218" level="7">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag">^log_buffer_size_critical$</field>
+    <description>Vigie : tampon du journal de sécurité presque plein (risque de perte d'événements)</description>
+    <group>vigie_securitylog,vigie_data_loss,</group>
+  </rule>
+
+  <rule id="100219" level="12">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag">^key_integrity_violation$</field>
+    <description>Vigie : violation d'intégrité d'une clé du magasin de clés Android</description>
+    <group>vigie_securitylog,</group>
+  </rule>
+
+  <rule id="100220" level="10">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag">^crypto_self_test_completed$</field>
+    <field name="vigie.data.fields.success" type="pcre2">^(false|0)$</field>
+    <description>Vigie : échec de l'autotest cryptographique du système</description>
+    <group>vigie_securitylog,</group>
+  </rule>
+
+  <rule id="100221" level="8">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag">^wipe_failure$</field>
+    <description>Vigie : échec d'un effacement de l'appareil</description>
+    <group>vigie_securitylog,</group>
+  </rule>
+
+  <rule id="100222" level="5">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag">^user_restriction_removed$</field>
+    <description>Vigie : restriction utilisateur retirée ($(vigie.data.fields.restriction))</description>
+    <group>vigie_securitylog,vigie_policy,</group>
+  </rule>
+
+  <rule id="100223" level="3">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag">^media_mount$</field>
+    <description>Vigie : support de stockage amovible monté</description>
+    <group>vigie_securitylog,</group>
+  </rule>
+
+  <rule id="100224" level="7">
+    <if_sid>100210</if_sid>
+    <field name="vigie.data.tag">^cert_validation_failure$</field>
+    <description>Vigie : échec de validation de certificat signalé par le système</description>
+    <group>vigie_securitylog,</group>
+  </rule>
+
+  <!-- ========================= vigie_watch.py (absence, séquence) ========================= -->
+
+  <rule id="100300" level="0">
+    <decoded_as>json</decoded_as>
+    <field name="vigie_watch.check">\w</field>
+    <description>Vigie : sonde de surveillance</description>
+    <group>vigie_watch,</group>
+  </rule>
+
+  <rule id="100301" level="7">
+    <if_sid>100300</if_sid>
+    <field name="vigie_watch.check">^silence$</field>
+    <description>Vigie : aucun événement de $(vigie_watch.device_name) depuis $(vigie_watch.silence_min) min (appareil éteint, hors ligne ou agent arrêté ?)</description>
+    <mitre>
+      <id>T1629.003</id>
+    </mitre>
+    <group>vigie_watch,vigie_silence,</group>
+  </rule>
+
+  <rule id="100302" level="3">
+    <if_sid>100300</if_sid>
+    <field name="vigie_watch.check">^resumed$</field>
+    <description>Vigie : $(vigie_watch.device_name) émet de nouveau</description>
+    <group>vigie_watch,</group>
+  </rule>
+
+  <rule id="100303" level="6">
+    <if_sid>100300</if_sid>
+    <field name="vigie_watch.check">^seq_gap$</field>
+    <description>Vigie : $(vigie_watch.missing_count) événements manquants dans la séquence de $(vigie_watch.device_name)</description>
+    <group>vigie_watch,vigie_data_loss,</group>
+  </rule>
+
+  <rule id="100304" level="3">
+    <if_sid>100303</if_sid>
+    <field name="vigie_watch.explained">^buffer_overflow$</field>
+    <description>Vigie : $(vigie_watch.missing_count) événements manquants (purge du tampon de l'agent)</description>
+    <group>vigie_watch,vigie_data_loss,</group>
+  </rule>
+
+  <rule id="100305" level="8">
+    <if_sid>100300</if_sid>
+    <field name="vigie_watch.check">^seq_reset$</field>
+    <description>Vigie : compteur de séquence de $(vigie_watch.device_name) revenu en arrière (agent réinstallé ou données effacées ?)</description>
+    <group>vigie_watch,vigie_tamper,</group>
+  </rule>
+
+  <!-- ========================= Rotation des fichiers lus ========================= -->
+
+  <!-- Rotation par renommage de l'export Vigie ou du journal AdGuard : normale, pas d'alerte.
+       (La troncature, elle, reste signalée par la règle 592, niveau 8.) -->
+  <rule id="100290" level="0">
+    <if_sid>591</if_sid>
+    <match type="pcre2">/var/(vigie|adguard)/</match>
+    <description>Vigie : rotation normale d'un fichier lu par Wazuh</description>
+    <group>vigie_rotation,</group>
+  </rule>
+
+  <!-- ========================= Sévérité signalée par l'agent ========================= -->
+  <!-- Définies en dernier : ne s'appliquent qu'aux types sans règle dédiée. -->
+
+  <rule id="100105" level="10">
+    <if_sid>100100</if_sid>
+    <field name="vigie.sev">^3$</field>
+    <description>Vigie : événement critique signalé par l'agent ($(vigie.type))</description>
+    <group>vigie_sev,</group>
+  </rule>
+
+  <rule id="100106" level="6">
+    <if_sid>100100</if_sid>
+    <field name="vigie.sev">^2$</field>
+    <description>Vigie : avertissement signalé par l'agent ($(vigie.type))</description>
+    <group>vigie_sev,</group>
+  </rule>
+
+</group>

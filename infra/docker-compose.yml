@@ -1,0 +1,326 @@
+# Vigie — pile serveur (VPS 8 Go+). Ne pas lancer directement la première fois : utiliser
+# ./install.sh, qui génère .env, les secrets, les certificats et les configurations.
+#
+# Exposé sur Internet : 80/tcp et 443/tcp (Caddy), 853/tcp (DNS-over-TLS d'AdGuard Home),
+# 51820/udp seulement avec le profil « wireguard ». Rien d'autre (pas de 1514/1515/55000/9200).
+#
+# Mémoire (limites, pas des réservations) : indexeur 2 Go de tas + 1 Go hors tas, manager 1,5 Go,
+# dashboard 1 Go, AdGuard 768 Mo, collecteur 512 Mo, Caddy 256 Mo. Voir README.
+
+name: vigie
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "3"
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  # ------------------------------------------------------------------------------------------
+  caddy:
+    image: ${VIGIE_CADDY_IMAGE:-caddy:2.11.9-alpine}
+    restart: unless-stopped
+    <<: *hardening
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+    environment:
+      VIGIE_DOMAIN: ${VIGIE_DOMAIN:?}
+      VIGIE_TLS_MODE: ${VIGIE_TLS_MODE:-acme}
+      VIGIE_ACME_EMAIL: ${VIGIE_ACME_EMAIL:-}
+      VIGIE_ADMIN_ALLOW: ${VIGIE_ADMIN_ALLOW:-0.0.0.0/0 ::/0}
+      VIGIE_ACME_DNS_TOKEN: ${VIGIE_ACME_DNS_TOKEN:-}
+    volumes:
+      - ./caddy:/etc/caddy:ro
+      - ./data/caddy:/etc/caddy-generated:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      vigie:
+        ipv4_address: ${VIGIE_CADDY_IP:-172.31.250.10}
+    depends_on:
+      collector:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: 256m
+    logging: *logging
+
+  # ------------------------------------------------------------------------------------------
+  collector:
+    build:
+      context: ../server
+    image: vigie-collector:local
+    restart: unless-stopped
+    <<: *hardening
+    cap_drop: [ALL]
+    command: ["serve"]
+    environment:
+      VIGIE_LISTEN: ":8080"
+      VIGIE_DATA_DIR: /data
+      VIGIE_EXPORT_NDJSON: /export/events.ndjson
+      VIGIE_EXPORT_MAX_BYTES: ${VIGIE_EXPORT_MAX_BYTES:-52428800}
+      VIGIE_EXPORT_KEEP: ${VIGIE_EXPORT_KEEP:-5}
+      # Seul Caddy (adresse fixe sur le réseau interne) peut poser X-Vigie-Client-Cert-Sha256.
+      VIGIE_TRUSTED_PROXIES: ${VIGIE_CADDY_IP:-172.31.250.10}/32
+      VIGIE_REQUIRE_CLIENT_CERT: "true"
+      VIGIE_PUBLIC_INGEST_URL: https://ingest.${VIGIE_DOMAIN:?}
+      VIGIE_PRIVATE_DNS_HOST: ${VIGIE_PRIVATE_DNS_HOST:-}
+      VIGIE_SERVER_CA_FILE: ${VIGIE_SERVER_CA_FILE:-}
+      VIGIE_RETENTION_DAYS: ${VIGIE_RETENTION_DAYS:-90}
+      VIGIE_COOKIE_SECURE: "true"
+      VIGIE_WAZUH_INDEXER_URL: https://wazuh.indexer:9200
+      VIGIE_WAZUH_INDEXER_USER: vigie_reader
+      VIGIE_WAZUH_INDEXER_PASSWORD: ${WAZUH_READER_PASSWORD:?}
+      VIGIE_WAZUH_INDEXER_CA_FILE: /etc/vigie/wazuh-root-ca.pem
+    volumes:
+      - collector_data:/data
+      - vigie_export:/export
+      - ./secrets/wazuh-certs/root-ca.pem:/etc/vigie/wazuh-root-ca.pem:ro
+      - ./data/caddy:/etc/vigie/caddy:ro
+    networks: [vigie]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/vigie-collector", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: 512m
+    logging: *logging
+
+  # ------------------------------------------------------------------------------------------
+  adguardhome:
+    image: adguard/adguardhome:v0.107.80
+    restart: unless-stopped
+    <<: *hardening
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE, CHOWN, FOWNER, DAC_OVERRIDE]
+    # Attend que Caddy ait obtenu le certificat de dns.<domaine> avant de démarrer (sinon le
+    # DoT ne s'active pas).
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        i=0; until [ -s "$$VIGIE_AGH_CERT" ]; do
+        i=$$((i+1)); [ $$i -gt 300 ] && { echo "certificat $$VIGIE_AGH_CERT absent" >&2; exit 1; };
+        sleep 2; done;
+        exec /opt/adguardhome/AdGuardHome --no-check-update
+        -c /opt/adguardhome/conf/AdGuardHome.yaml -w /opt/adguardhome/work
+    environment:
+      VIGIE_AGH_CERT: ${VIGIE_AGH_CERT_PATH:?}
+    ports:
+      - "853:853/tcp"
+    volumes:
+      - ./data/adguard/conf:/opt/adguardhome/conf
+      - adguard_work:/opt/adguardhome/work
+      - adguard_querylog:/opt/adguardhome/querylog
+      - ./adguard:/opt/adguardhome/work/userfilters/vigie:ro
+      - ./data/adguard/userfilters:/opt/adguardhome/work/userfilters/perso:ro
+      # Uniquement le répertoire du certificat DNS (pas les autres clés de Caddy).
+      - type: volume
+        source: caddy_data
+        target: /certs
+        read_only: true
+        volume:
+          subpath: ${VIGIE_AGH_CERT_SUBPATH:?}
+    networks:
+      vigie:
+        ipv4_address: ${VIGIE_ADGUARD_IP:-172.31.250.53}
+    depends_on:
+      caddy:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/login.html && nc -z 127.0.0.1 853"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    mem_limit: 768m
+    logging: *logging
+
+  # ------------------------------------------------------------------------------------------
+  wazuh.indexer:
+    image: wazuh/wazuh-indexer:4.14.10
+    hostname: wazuh.indexer
+    restart: unless-stopped
+    <<: *hardening
+    environment:
+      OPENSEARCH_JAVA_OPTS: -Xms${WAZUH_INDEXER_HEAP:-2g} -Xmx${WAZUH_INDEXER_HEAP:-2g}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - wazuh_indexer_data:/var/lib/wazuh-indexer
+      - ./secrets/wazuh-certs/root-ca.pem:/usr/share/wazuh-indexer/config/certs/root-ca.pem:ro
+      - ./secrets/wazuh-certs/wazuh.indexer-key.pem:/usr/share/wazuh-indexer/config/certs/wazuh.indexer.key:ro
+      - ./secrets/wazuh-certs/wazuh.indexer.pem:/usr/share/wazuh-indexer/config/certs/wazuh.indexer.pem:ro
+      - ./secrets/wazuh-certs/admin.pem:/usr/share/wazuh-indexer/config/certs/admin.pem:ro
+      - ./secrets/wazuh-certs/admin-key.pem:/usr/share/wazuh-indexer/config/certs/admin-key.pem:ro
+      - ./wazuh/indexer/opensearch.yml:/usr/share/wazuh-indexer/config/opensearch.yml:ro
+      - ./data/wazuh/internal_users.yml:/usr/share/wazuh-indexer/config/opensearch-security/internal_users.yml:ro
+    networks: [vigie]
+    healthcheck:
+      # Authentification par le certificat admin : aucun mot de passe dans la configuration.
+      test: ["CMD-SHELL", "curl -s --cacert config/certs/root-ca.pem --cert config/certs/admin.pem --key config/certs/admin-key.pem https://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    mem_limit: ${WAZUH_INDEXER_MEM_LIMIT:-3g}
+    logging: *logging
+
+  # ------------------------------------------------------------------------------------------
+  wazuh.manager:
+    image: wazuh/wazuh-manager:4.14.10
+    hostname: wazuh.manager
+    restart: unless-stopped
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 655360
+        hard: 655360
+    environment:
+      INDEXER_URL: https://wazuh.indexer:9200
+      INDEXER_USERNAME: admin
+      INDEXER_PASSWORD: ${WAZUH_ADMIN_PASSWORD:?}
+      FILEBEAT_SSL_VERIFICATION_MODE: full
+      SSL_CERTIFICATE_AUTHORITIES: /etc/ssl/root-ca.pem
+      SSL_CERTIFICATE: /etc/ssl/filebeat.pem
+      SSL_KEY: /etc/ssl/filebeat.key
+      API_USERNAME: wazuh-wui
+      API_PASSWORD: ${WAZUH_API_PASSWORD:?}
+      VIGIE_PRIVATE_DNS_HOSTS: ${VIGIE_PRIVATE_DNS_HOSTS:-}
+      VIGIE_WATCH_SILENCE_MIN: ${VIGIE_WATCH_SILENCE_MIN:-60}
+      VIGIE_ARCHIVES_FILE_DAYS: ${VIGIE_ARCHIVES_FILE_DAYS:-14}
+    volumes:
+      - wazuh_api_configuration:/var/ossec/api/configuration
+      - wazuh_etc:/var/ossec/etc
+      - wazuh_logs:/var/ossec/logs
+      - wazuh_queue:/var/ossec/queue
+      - filebeat_var:/var/lib/filebeat
+      - ./secrets/wazuh-certs/root-ca.pem:/etc/ssl/root-ca.pem:ro
+      - ./secrets/wazuh-certs/wazuh.manager.pem:/etc/ssl/filebeat.pem:ro
+      - ./secrets/wazuh-certs/wazuh.manager-key.pem:/etc/ssl/filebeat.key:ro
+      - ./wazuh/manager/ossec.conf:/wazuh-config-mount/etc/ossec.conf:ro
+      - ./wazuh/rules:/wazuh-config-mount/etc/rules:ro
+      - ./wazuh/manager/entrypoint-scripts:/entrypoint-scripts:ro
+      - ./wazuh/watch:/vigie/watch:ro
+      - ./wazuh/tests:/vigie/tests:ro
+      - vigie_export:/var/vigie:ro
+      - adguard_querylog:/var/adguard:ro
+    networks: [vigie]
+    depends_on:
+      wazuh.indexer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "/var/ossec/bin/wazuh-control status | grep -q 'wazuh-analysisd is running' && /var/ossec/bin/wazuh-control status | grep -q 'wazuh-logcollector is running'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    mem_limit: ${WAZUH_MANAGER_MEM_LIMIT:-1536m}
+    logging: *logging
+
+  # ------------------------------------------------------------------------------------------
+  wazuh.dashboard:
+    image: wazuh/wazuh-dashboard:4.14.10
+    hostname: wazuh.dashboard
+    restart: unless-stopped
+    <<: *hardening
+    environment:
+      INDEXER_USERNAME: admin
+      INDEXER_PASSWORD: ${WAZUH_ADMIN_PASSWORD:?}
+      WAZUH_API_URL: https://wazuh.manager
+      DASHBOARD_USERNAME: kibanaserver
+      DASHBOARD_PASSWORD: ${WAZUH_DASHBOARD_PASSWORD:?}
+      API_USERNAME: wazuh-wui
+      API_PASSWORD: ${WAZUH_API_PASSWORD:?}
+      NODE_OPTIONS: --max-old-space-size=${WAZUH_DASHBOARD_NODE_HEAP_MB:-640}
+    volumes:
+      - ./secrets/wazuh-certs/wazuh.dashboard.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem:ro
+      - ./secrets/wazuh-certs/wazuh.dashboard-key.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem:ro
+      - ./secrets/wazuh-certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem:ro
+      - ./wazuh/dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:ro
+      - ./data/wazuh/wazuh.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
+      - wazuh_dashboard_custom:/usr/share/wazuh-dashboard/plugins/wazuh/public/assets/custom
+    networks: [vigie]
+    depends_on:
+      wazuh.indexer:
+        condition: service_healthy
+      wazuh.manager:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sk -o /dev/null -w '%{http_code}' https://localhost:5601/api/status | grep -qE '^(200|401)$'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+    mem_limit: ${WAZUH_DASHBOARD_MEM_LIMIT:-1g}
+    logging: *logging
+
+  # ------------------------------------------------------------------------------------------
+  # Option : tunnel WireGuard (profil « wireguard »). Voir README : inconvénients importants.
+  wireguard:
+    profiles: ["wireguard"]
+    image: ghcr.io/wg-easy/wg-easy:15
+    restart: unless-stopped
+    cap_add: [NET_ADMIN, SYS_MODULE]
+    sysctls:
+      net.ipv4.ip_forward: "1"
+      net.ipv4.conf.all.src_valid_mark: "1"
+    environment:
+      INIT_ENABLED: "true"
+      INIT_USERNAME: admin
+      INIT_PASSWORD: ${WG_ADMIN_PASSWORD:-}
+      INIT_HOST: wg.${VIGIE_DOMAIN:?}
+      INIT_PORT: "51820"
+      INIT_DNS: ${VIGIE_ADGUARD_IP:-172.31.250.53}
+      # Interface web accessible seulement par tunnel SSH (127.0.0.1:51821) : pas de TLS.
+      INSECURE: "true"
+    ports:
+      - "51820:51820/udp"
+      - "127.0.0.1:51821:51821/tcp"
+    volumes:
+      - wireguard_data:/etc/wireguard
+    networks: [vigie]
+    mem_limit: 256m
+    logging: *logging
+
+networks:
+  vigie:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${VIGIE_SUBNET:-172.31.250.0/24}
+
+volumes:
+  caddy_data:
+  caddy_config:
+  collector_data:
+  vigie_export:
+  adguard_work:
+  adguard_querylog:
+  wazuh_indexer_data:
+  wazuh_api_configuration:
+  wazuh_etc:
+  wazuh_logs:
+  wazuh_queue:
+  filebeat_var:
+  wazuh_dashboard_custom:
+  wireguard_data:
