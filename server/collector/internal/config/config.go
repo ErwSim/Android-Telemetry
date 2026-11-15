@@ -25,7 +25,8 @@ type Config struct {
 	RetentionDays     int
 	ConsoleDir        string
 	CookieSecure      bool
-	MapTileOrigins    []string
+	TileURL           string // VIGIE_TILE_URL, served by GET /config.json
+	TileOrigin        string // origin of TileURL, allowed in the CSP connect-src
 
 	WazuhIndexerURL      string
 	WazuhIndexerUser     string
@@ -104,17 +105,46 @@ func FromLookup(lookup func(string) (string, bool)) (*Config, error) {
 		}
 		c.TrustedProxies = append(c.TrustedProxies, p)
 	}
-	for _, s := range strings.FieldsFunc(get("VIGIE_MAP_TILE_ORIGINS", "https://tile.openstreetmap.org"), splitList) {
-		if !validOrigin(s) {
-			errs = append(errs, fmt.Sprintf("VIGIE_MAP_TILE_ORIGINS : %q n'est pas une origine https://hôte[:port]", s))
-			continue
-		}
-		c.MapTileOrigins = append(c.MapTileOrigins, s)
+	c.TileURL = get("VIGIE_TILE_URL", DefaultTileURL)
+	if o, err := TileOrigin(c.TileURL); err != nil {
+		errs = append(errs, "VIGIE_TILE_URL : "+err.Error())
+	} else {
+		c.TileOrigin = o
 	}
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("configuration invalide : %s", strings.Join(errs, " ; "))
 	}
 	return c, nil
+}
+
+// DefaultTileURL is the default map tile template (contract §6).
+const DefaultTileURL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+
+// TileOrigin derives the CSP origin of a tile URL template such as
+// "https://{s}.tile.example.org/{z}/{x}/{y}.png" (a "{s}" host label becomes "*").
+func TileOrigin(tileURL string) (string, error) {
+	if len(tileURL) > 512 || strings.ContainsAny(tileURL, " \t\r\n;,'\"") {
+		return "", fmt.Errorf("%q : URL invalide", tileURL)
+	}
+	rest, ok := strings.CutPrefix(tileURL, "https://")
+	if !ok {
+		return "", fmt.Errorf("%q : URL https:// attendue", tileURL)
+	}
+	host := rest
+	if i := strings.IndexAny(rest, "/?#"); i >= 0 {
+		host = rest[:i]
+	}
+	labels := strings.Split(host, ".")
+	for i, l := range labels {
+		if strings.HasPrefix(l, "{") && strings.HasSuffix(l, "}") && i == 0 {
+			labels[i] = "*"
+		}
+	}
+	origin := "https://" + strings.Join(labels, ".")
+	if !validOrigin(origin) || strings.Contains(origin[len("https://"):], "*") && !strings.HasPrefix(origin, "https://*.") {
+		return "", fmt.Errorf("%q : hôte invalide", tileURL)
+	}
+	return origin, nil
 }
 
 func splitList(r rune) bool { return r == ',' || r == ' ' || r == '\t' || r == '\n' }

@@ -75,6 +75,7 @@ type countKey struct {
 	typ    string
 	sev    int
 	kind   string
+	pkg    string
 	key    string
 	device string
 }
@@ -142,7 +143,7 @@ func (s *Store) Ingest(ctx context.Context, deviceID, agentVersion string, evs [
 		add(countKey{hour: hour, typ: ev.Type, sev: ev.Sev, device: deviceID}, 0)
 		types[ev.Type] = true
 		for _, tk := range topKeys(ev) {
-			add(countKey{hour: hour, kind: tk.kind, key: tk.key, device: deviceID}, tk.bytes)
+			add(countKey{hour: hour, kind: tk.kind, pkg: tk.pkg, key: tk.key, device: deviceID}, tk.bytes)
 		}
 		if kind := latestKind(ev.Type); kind != "" {
 			if cur, ok := latest[kind]; !ok || tsMS >= cur.TSms {
@@ -181,9 +182,9 @@ func writeDerived(ctx context.Context, tx *sql.Tx, deviceID string, counts map[c
 				ON CONFLICT(hour_ms, device_id, type, sev) DO UPDATE SET count = count + excluded.count`,
 				k.hour, k.device, k.typ, k.sev, v.count)
 		} else {
-			_, err = tx.ExecContext(ctx, `INSERT INTO top_counts(kind, hour_ms, device_id, key, count, bytes) VALUES(?,?,?,?,?,?)
-				ON CONFLICT(kind, hour_ms, device_id, key) DO UPDATE SET count = count + excluded.count, bytes = bytes + excluded.bytes`,
-				k.kind, k.hour, k.device, k.key, v.count, v.bytes)
+			_, err = tx.ExecContext(ctx, `INSERT INTO top_counts(kind, hour_ms, device_id, package, key, count, bytes) VALUES(?,?,?,?,?,?,?)
+				ON CONFLICT(kind, hour_ms, device_id, package, key) DO UPDATE SET count = count + excluded.count, bytes = bytes + excluded.bytes`,
+				k.kind, k.hour, k.device, k.pkg, k.key, v.count, v.bytes)
 		}
 		if err != nil {
 			return err
@@ -273,6 +274,7 @@ func locationFrom(pk int64, device string, ts int64, d map[string]any) (location
 
 type topKey struct {
 	kind  string
+	pkg   string // data.package of the event ("" if absent), for /stats/top?package=
 	key   string
 	bytes int64
 }
@@ -286,19 +288,19 @@ func topKeys(ev *model.Event) []topKey {
 	case "net.dns":
 		var out []topKey
 		if h, ok := model.Str(d, "hostname"); ok && h != "" {
-			out = append(out, topKey{kind: TopDNSHostname, key: clip(strings.TrimSuffix(strings.ToLower(h), "."), maxKeyLen)})
+			out = append(out, topKey{kind: TopDNSHostname, pkg: pkg, key: clip(strings.TrimSuffix(strings.ToLower(h), "."), maxKeyLen)})
 		}
 		if pkg != "" {
-			out = append(out, topKey{kind: TopDNSPackage, key: pkg})
+			out = append(out, topKey{kind: TopDNSPackage, pkg: pkg, key: pkg})
 		}
 		return out
 	case "net.connect":
 		var out []topKey
 		if dest := connectDest(d); dest != "" {
-			out = append(out, topKey{kind: TopConnectDest, key: dest})
+			out = append(out, topKey{kind: TopConnectDest, pkg: pkg, key: dest})
 		}
 		if pkg != "" {
-			out = append(out, topKey{kind: TopConnectPackage, key: pkg})
+			out = append(out, topKey{kind: TopConnectPackage, pkg: pkg, key: pkg})
 		}
 		return out
 	case "net.usage":
@@ -316,16 +318,16 @@ func topKeys(ev *model.Event) []topKey {
 			rx, _ := model.Int(m, "rx_bytes")
 			tx, _ := model.Int(m, "tx_bytes")
 			b := max(rx, 0) + max(tx, 0)
-			out = append(out, topKey{kind: TopUsagePackage, key: clip(p, maxKeyLen), bytes: b})
+			out = append(out, topKey{kind: TopUsagePackage, pkg: clip(p, maxKeyLen), key: clip(p, maxKeyLen), bytes: b})
 		}
 		return out
 	case "app.foreground":
 		if e, _ := model.Str(d, "event"); e == "resumed" && pkg != "" {
-			return []topKey{{kind: TopForegroundPackage, key: pkg}}
+			return []topKey{{kind: TopForegroundPackage, pkg: pkg, key: pkg}}
 		}
 	case "app.notification":
 		if e, _ := model.Str(d, "event"); e == "posted" && pkg != "" {
-			return []topKey{{kind: TopNotificationPackge, key: pkg}}
+			return []topKey{{kind: TopNotificationPackge, pkg: pkg, key: pkg}}
 		}
 	}
 	return nil

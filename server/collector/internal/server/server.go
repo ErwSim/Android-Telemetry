@@ -56,7 +56,7 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger, opt Options) (*S
 	}
 	s := &Server{
 		cfg: cfg, st: st, log: log, exporter: opt.Exporter, broker: NewBroker(64),
-		alerts: alerts, csp: buildCSP(cfg.MapTileOrigins), now: now,
+		alerts: alerts, csp: buildCSP(cfg.TileOrigin), now: now,
 		ingestAuthFail: ratelimit.New(1.0/30, 10, 100000),
 		ingestDevice:   ratelimit.New(5, 60, 10000),
 		ingestSlots:    make(chan struct{}, 8),
@@ -109,6 +109,10 @@ func (s *Server) Handler() http.Handler {
 	})
 
 	mux.HandleFunc("GET /healthz", s.handleHealth)
+	// Runtime configuration of the console; takes precedence over its static file.
+	mux.HandleFunc("GET /config.json", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"tileUrl": s.cfg.TileURL})
+	})
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")

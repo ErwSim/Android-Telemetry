@@ -163,23 +163,22 @@ func (s *Server) withCommon(next http.Handler) http.Handler {
 	})
 }
 
-// buildCSP returns the policy of the console pages: no inline script, no CDN;
-// map tiles may come from the configured origins (MapLibre also needs blob: workers).
-func buildCSP(tileOrigins []string) string {
-	tiles := strings.Join(tileOrigins, " ")
-	if tiles != "" {
-		tiles = " " + tiles
+// buildCSP returns the policy of the console pages (contract §6, exact header
+// expected by the console): no inline script or style, no CDN; map tiles are
+// fetched from the configured tile origin.
+func buildCSP(tileOrigin string) string {
+	connect := "connect-src 'self'"
+	if tileOrigin != "" {
+		connect += " " + tileOrigin
 	}
 	return strings.Join([]string{
-		"default-src 'self'",
+		"default-src 'none'",
 		"script-src 'self'",
-		"style-src 'self' 'unsafe-inline'",
-		"img-src 'self' data: blob:" + tiles,
-		"connect-src 'self'" + tiles,
-		"font-src 'self' data:",
-		"worker-src 'self' blob:",
-		"child-src 'self' blob:",
-		"object-src 'none'",
+		"style-src 'self'",
+		"img-src 'self' data:",
+		connect,
+		"worker-src 'self'",
+		"font-src 'self'",
 		"base-uri 'none'",
 		"form-action 'self'",
 		"frame-ancestors 'none'",

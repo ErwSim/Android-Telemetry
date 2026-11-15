@@ -108,6 +108,25 @@ func deviceParam(v url.Values, required bool) (string, error) {
 
 var typePrefixRe = regexp.MustCompile(`^[a-z0-9_.]{1,64}$`)
 
+// typePrefixes parses the "type" parameter: comma-separated type prefixes.
+func typePrefixes(v url.Values) ([]string, error) {
+	var out []string
+	for _, p := range strings.Split(v.Get("type"), ",") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if !typePrefixRe.MatchString(p) || len(out) >= 32 {
+			return nil, paramErr("invalid_parameter", "paramètre type : préfixes [a-z0-9_.] séparés par des virgules")
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// packageRe matches an Android package name (or a similar identifier).
+var packageRe = regexp.MustCompile(`^[A-Za-z0-9_.:-]{1,255}$`)
+
 func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
 	defer cancel()
@@ -152,18 +171,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	if t := v.Get("type"); t != "" {
-		for _, p := range strings.Split(t, ",") {
-			p = strings.TrimSpace(p)
-			if p == "" {
-				continue
-			}
-			if !typePrefixRe.MatchString(p) || len(q.TypePrefixes) >= 32 {
-				s.fail(w, paramErr("invalid_parameter", "paramètre type : préfixes [a-z0-9_.] séparés par des virgules"))
-				return
-			}
-			q.TypePrefixes = append(q.TypePrefixes, p)
-		}
+	if q.TypePrefixes, err = typePrefixes(v); err != nil {
+		s.fail(w, err)
+		return
 	}
 	if q.SevMin, err = intParam(v, "sev_min", 0, 0, 3); err != nil {
 		s.fail(w, err)
@@ -267,6 +277,10 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, paramErr("invalid_parameter", "bucket : minute, hour ou day"))
 		return
 	}
+	if q.TypePrefixes, err = typePrefixes(v); err != nil {
+		s.fail(w, err)
+		return
+	}
 	switch by := v.Get("by"); by {
 	case "", "domain":
 		q.By = "domain"
@@ -316,9 +330,14 @@ func (s *Server) handleTop(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	pkg := v.Get("package")
+	if pkg != "" && (!packageRe.MatchString(pkg) || kind == store.TopEventType) {
+		s.fail(w, paramErr("invalid_parameter", "paramètre package invalide (non applicable à kind=event_type)"))
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
 	defer cancel()
-	items, err := s.st.StatsTop(ctx, dev, kind, from, to, limit)
+	items, err := s.st.StatsTop(ctx, dev, kind, pkg, from, to, limit)
 	if err != nil {
 		s.fail(w, err)
 		return

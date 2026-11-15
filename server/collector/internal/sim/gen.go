@@ -309,7 +309,7 @@ func (g *Generator) fix(t time.Time) {
 		g.mockFixAt = time.Time{}
 		data["mock"] = true
 		data["provider"] = "gps"
-		data["lat"], data["lon"] = 40.71277, -74.00597
+		data["lat"], data["lon"] = 48.80490, 2.12040 // Versailles: spoofed but plausible
 		sev = 2
 	}
 	g.emit(t, "location.fix", sev, data)

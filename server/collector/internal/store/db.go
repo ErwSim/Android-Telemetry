@@ -195,6 +195,61 @@ CREATE TABLE kv (
 	value TEXT NOT NULL
 );
 `,
+	// 2: top_counts gains a package dimension (/stats/top?package=), rebuilt from events.
+	`
+DROP TABLE top_counts;
+CREATE TABLE top_counts (
+	kind      TEXT NOT NULL,
+	hour_ms   INTEGER NOT NULL,
+	device_id TEXT NOT NULL,
+	package   TEXT NOT NULL,
+	key       TEXT NOT NULL,
+	count     INTEGER NOT NULL,
+	bytes     INTEGER NOT NULL,
+	PRIMARY KEY (kind, hour_ms, device_id, package, key)
+) WITHOUT ROWID;
+
+INSERT INTO top_counts
+SELECT 'dns_hostname', h, device_id, pkg, k, COUNT(*), 0 FROM (
+	SELECT ts_ms - ts_ms % 3600000 AS h, device_id,
+		COALESCE(CASE WHEN json_type(data, '$.package') = 'text' THEN substr(json_extract(data, '$.package'), 1, 255) END, '') AS pkg,
+		substr(lower(rtrim(json_extract(data, '$.hostname'), '.')), 1, 255) AS k
+	FROM events WHERE type = 'net.dns' AND json_type(data, '$.hostname') = 'text' AND json_extract(data, '$.hostname') <> '')
+GROUP BY h, device_id, pkg, k;
+
+INSERT INTO top_counts
+SELECT kind, h, device_id, pkg, pkg, COUNT(*), 0 FROM (
+	SELECT CASE type WHEN 'net.dns' THEN 'dns_package' WHEN 'net.connect' THEN 'connect_package'
+		WHEN 'app.foreground' THEN 'foreground_package' ELSE 'notification_package' END AS kind,
+		ts_ms - ts_ms % 3600000 AS h, device_id, substr(json_extract(data, '$.package'), 1, 255) AS pkg
+	FROM events
+	WHERE json_type(data, '$.package') = 'text' AND json_extract(data, '$.package') <> '' AND (
+		type IN ('net.dns', 'net.connect')
+		OR (type = 'app.foreground' AND json_extract(data, '$.event') = 'resumed')
+		OR (type = 'app.notification' AND json_extract(data, '$.event') = 'posted')))
+GROUP BY kind, h, device_id, pkg;
+
+INSERT INTO top_counts
+SELECT 'connect_dest', h, device_id, pkg, k, COUNT(*), 0 FROM (
+	SELECT ts_ms - ts_ms % 3600000 AS h, device_id,
+		COALESCE(CASE WHEN json_type(data, '$.package') = 'text' THEN substr(json_extract(data, '$.package'), 1, 255) END, '') AS pkg,
+		CASE WHEN json_type(data, '$.port') = 'integer' THEN
+			CASE WHEN instr(json_extract(data, '$.ip'), ':') > 0
+				THEN '[' || substr(json_extract(data, '$.ip'), 1, 64) || ']:' || json_extract(data, '$.port')
+				ELSE substr(json_extract(data, '$.ip'), 1, 64) || ':' || json_extract(data, '$.port') END
+		ELSE substr(json_extract(data, '$.ip'), 1, 64) END AS k
+	FROM events WHERE type = 'net.connect' AND json_type(data, '$.ip') = 'text' AND json_extract(data, '$.ip') <> '')
+GROUP BY h, device_id, pkg, k;
+
+INSERT INTO top_counts
+SELECT 'usage_package', h, device_id, pkg, pkg, COUNT(*), SUM(b) FROM (
+	SELECT e.ts_ms - e.ts_ms % 3600000 AS h, e.device_id, substr(json_extract(a.value, '$.package'), 1, 255) AS pkg,
+		max(COALESCE(CASE WHEN json_type(a.value, '$.rx_bytes') = 'integer' THEN json_extract(a.value, '$.rx_bytes') END, 0), 0) +
+		max(COALESCE(CASE WHEN json_type(a.value, '$.tx_bytes') = 'integer' THEN json_extract(a.value, '$.tx_bytes') END, 0), 0) AS b
+	FROM events e, json_each(e.data, '$.apps') a
+	WHERE e.type = 'net.usage' AND a.type = 'object' AND json_type(a.value, '$.package') = 'text' AND json_extract(a.value, '$.package') <> '')
+GROUP BY h, device_id, pkg;
+`,
 }
 
 // SchemaVersion is the schema version this binary expects.

@@ -717,6 +717,16 @@ func TestConsoleLocationsStatsAppsPosture(t *testing.T) {
 	if sumMin != 300+150+30+10 {
 		t.Fatalf("minute total %d", sumMin)
 	}
+	tq := with("type", "security.,agent.tamper")
+	tq.Set("by", "type")
+	tlt := decodeJSON[timeline](t, e.get(c, "/api/console/stats/timeline", tq))
+	if len(tlt.Series) != 3 {
+		t.Fatalf("timeline type filter: %+v", tlt.Series)
+	}
+	tq.Set("bucket", "minute")
+	if tlt = decodeJSON[timeline](t, e.get(c, "/api/console/stats/timeline", tq)); len(tlt.Series) != 3 {
+		t.Fatalf("minute timeline type filter: %+v", tlt.Series)
+	}
 	tls := decodeJSON[timeline](t, e.get(c, "/api/console/stats/timeline", with("by", "sev")))
 	if len(tls.Series) != 4 {
 		t.Fatalf("by sev: %+v", tls.Series)
@@ -753,6 +763,36 @@ func TestConsoleLocationsStatsAppsPosture(t *testing.T) {
 		if tp := decodeJSON[top](t, e.get(c, "/api/console/stats/top", with("kind", k))); len(tp.Items) != 1 {
 			t.Fatalf("top %s: %+v", k, tp.Items)
 		}
+	}
+	// package filter (contract §6, Précisions).
+	pq := with("kind", "dns_hostname")
+	pq.Set("package", "com.google.android.gms")
+	if tp := decodeJSON[top](t, e.get(c, "/api/console/stats/top", pq)); len(tp.Items) != 3 {
+		t.Fatalf("top dns for gms: %+v", tp.Items)
+	}
+	pq.Set("package", "com.whatsapp")
+	if tp := decodeJSON[top](t, e.get(c, "/api/console/stats/top", pq)); len(tp.Items) != 0 {
+		t.Fatalf("top dns for whatsapp: %+v", tp.Items)
+	}
+	pq = with("kind", "connect_dest")
+	pq.Set("package", "com.whatsapp")
+	if tp := decodeJSON[top](t, e.get(c, "/api/console/stats/top", pq)); len(tp.Items) != 1 || tp.Items[0].Count != 150 {
+		t.Fatalf("top connect for whatsapp: %+v", tp.Items)
+	}
+	pq = with("kind", "usage_package")
+	pq.Set("package", "com.whatsapp")
+	if tp := decodeJSON[top](t, e.get(c, "/api/console/stats/top", pq)); len(tp.Items) != 1 || *tp.Items[0].Bytes != 20 || tp.Items[0].Count != 1 {
+		t.Fatalf("top usage for whatsapp: %+v", tp.Items)
+	}
+	pq = with("kind", "event_type")
+	pq.Set("package", "com.whatsapp")
+	if rec := e.get(c, "/api/console/stats/top", pq); rec.Code != http.StatusBadRequest {
+		t.Fatal("package with event_type accepted")
+	}
+	pq = with("kind", "dns_hostname")
+	pq.Set("package", "a b'")
+	if rec := e.get(c, "/api/console/stats/top", pq); rec.Code != http.StatusBadRequest {
+		t.Fatal("bad package accepted")
 	}
 	if rec := e.get(c, "/api/console/stats/top", with("kind", "nope")); rec.Code != http.StatusBadRequest {
 		t.Fatal("bad kind accepted")
@@ -894,6 +934,17 @@ func TestStreamRequiresSession(t *testing.T) {
 	}
 }
 
+func TestTileURL(t *testing.T) {
+	e := newEnv(t, map[string]string{"VIGIE_TILE_URL": "https://{s}.tiles.example.org/carte/{z}/{x}/{y}.png"})
+	rec := e.do(http.MethodGet, "/", nil)
+	if !strings.Contains(rec.Header().Get("Content-Security-Policy"), "connect-src 'self' https://*.tiles.example.org;") {
+		t.Fatalf("CSP %q", rec.Header().Get("Content-Security-Policy"))
+	}
+	if b := e.do(http.MethodGet, "/config.json", nil).Body.String(); !strings.Contains(b, `"tileUrl":"https://{s}.tiles.example.org/carte/{z}/{x}/{y}.png"`) {
+		t.Fatalf("config.json %s", b)
+	}
+}
+
 func TestStaticAndHeaders(t *testing.T) {
 	e := newEnv(t, nil)
 	rec := e.do(http.MethodGet, "/", nil)
@@ -901,13 +952,10 @@ func TestStaticAndHeaders(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<title>Vigie") {
 		t.Fatalf("index: %d", rec.Code)
 	}
-	for _, want := range []string{"script-src 'self'", "https://tile.openstreetmap.org", "frame-ancestors 'none'", "object-src 'none'"} {
-		if !strings.Contains(csp, want) {
-			t.Fatalf("CSP %q lacks %q", csp, want)
-		}
-	}
-	if strings.Contains(csp, "unsafe-eval") || strings.Contains(strings.Split(csp, "script-src")[1], "unsafe-inline;") {
-		t.Fatal("unsafe script policy")
+	// Exact header of contract §6 "Précisions".
+	want := "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://tile.openstreetmap.org; worker-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+	if csp != want {
+		t.Fatalf("CSP %q", csp)
 	}
 	if rec.Header().Get("X-Content-Type-Options") != "nosniff" || rec.Header().Get("X-Frame-Options") != "DENY" {
 		t.Fatal("security headers")
@@ -920,8 +968,13 @@ func TestStaticAndHeaders(t *testing.T) {
 		t.Fatalf("missing asset: %d", rec.Code)
 	}
 	a := e.do(http.MethodGet, "/assets/app-1234.js", nil)
-	if a.Code != http.StatusOK || !strings.Contains(a.Header().Get("Cache-Control"), "immutable") {
-		t.Fatalf("asset: %d %s", a.Code, a.Header().Get("Cache-Control"))
+	if a.Code != http.StatusOK || !strings.Contains(a.Header().Get("Cache-Control"), "immutable") ||
+		!strings.HasPrefix(a.Header().Get("Content-Type"), "text/javascript") {
+		t.Fatalf("asset: %d %s %s", a.Code, a.Header().Get("Cache-Control"), a.Header().Get("Content-Type"))
+	}
+	cfgJSON := e.do(http.MethodGet, "/config.json", nil)
+	if cfgJSON.Code != http.StatusOK || strings.TrimSpace(cfgJSON.Body.String()) != `{"tileUrl":"https://tile.openstreetmap.org/{z}/{x}/{y}.png"}` {
+		t.Fatalf("config.json: %d %s", cfgJSON.Code, cfgJSON.Body)
 	}
 	if rec := e.do(http.MethodGet, "/../../etc/passwd", nil); rec.Code == http.StatusOK && !strings.Contains(rec.Body.String(), "<title>Vigie") {
 		t.Fatal("path traversal")
@@ -963,8 +1016,25 @@ func TestRetentionPurge(t *testing.T) {
 	if len(pts) != 0 {
 		t.Fatal("derived locations not purged")
 	}
-	items, _ := e.st.StatsTop(context.Background(), "", store.TopDNSHostname, 0, now.UnixMilli()+1, 10)
+	items, _ := e.st.StatsTop(context.Background(), "", store.TopDNSHostname, "", 0, now.UnixMilli()+1, 10)
 	if len(items) != 1 || items[0].Key != "y" {
 		t.Fatalf("aggregates not purged: %+v", items)
+	}
+}
+
+func TestSessionIdleExpiry(t *testing.T) {
+	e := newEnv(t, nil)
+	c := e.session()
+	if rec := e.get(c, "/api/console/me", nil); rec.Code != http.StatusOK {
+		t.Fatalf("fresh session: %d", rec.Code)
+	}
+	start := time.Now()
+	e.srv.now = func() time.Time { return start.Add(11 * time.Hour) }
+	if rec := e.get(c, "/api/console/me", nil); rec.Code != http.StatusOK {
+		t.Fatalf("11 h idle: %d", rec.Code) // activity refreshes last_seen
+	}
+	e.srv.now = func() time.Time { return start.Add(11*time.Hour + 12*time.Hour + time.Minute) }
+	if rec := e.get(c, "/api/console/me", nil); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("12 h idle: %d", rec.Code)
 	}
 }

@@ -13,7 +13,7 @@ func TestDefaults(t *testing.T) {
 	}
 	if c.Listen != ":8080" || c.DataDir != "/data" || c.ExportMaxBytes != 52428800 || c.ExportKeep != 5 || !c.RequireClientCert ||
 		c.RetentionDays != 90 || !c.CookieSecure || len(c.TrustedProxies) != 1 || c.TrustedProxies[0].String() != "127.0.0.1/32" ||
-		len(c.MapTileOrigins) != 1 || c.DBPath() != "/data/vigie.db" || c.PKIDir() != "/data/pki" {
+		c.TileURL != DefaultTileURL || c.TileOrigin != "https://tile.openstreetmap.org" || c.DBPath() != "/data/vigie.db" || c.PKIDir() != "/data/pki" {
 		t.Fatalf("defaults: %+v", c)
 	}
 }
@@ -21,12 +21,12 @@ func TestDefaults(t *testing.T) {
 func TestParse(t *testing.T) {
 	c, err := FromLookup(lookup(map[string]string{
 		"VIGIE_TRUSTED_PROXIES": "172.18.0.0/16, 10.0.0.5 ::1", "VIGIE_REQUIRE_CLIENT_CERT": "false",
-		"VIGIE_MAP_TILE_ORIGINS": "https://tiles.example.org https://a.tile.example.org:8443",
+		"VIGIE_TILE_URL": "https://{s}.tile.example.org:8443/osm/{z}/{x}/{y}.png",
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(c.TrustedProxies) != 3 || c.RequireClientCert || len(c.MapTileOrigins) != 2 {
+	if len(c.TrustedProxies) != 3 || c.RequireClientCert || c.TileOrigin != "https://*.tile.example.org:8443" {
 		t.Fatalf("%+v", c)
 	}
 }
@@ -37,8 +37,9 @@ func TestInvalid(t *testing.T) {
 		{"VIGIE_RETENTION_DAYS": "0"},
 		{"VIGIE_EXPORT_KEEP": "x"},
 		{"VIGIE_COOKIE_SECURE": "peut-être"},
-		{"VIGIE_MAP_TILE_ORIGINS": "https://evil.example; script-src *"},
-		{"VIGIE_MAP_TILE_ORIGINS": "http://tiles.example.org"},
+		{"VIGIE_TILE_URL": "https://evil.example; script-src *"},
+		{"VIGIE_TILE_URL": "http://tiles.example.org/{z}/{x}/{y}.png"},
+		{"VIGIE_TILE_URL": "https://*/{z}.png"},
 	} {
 		if _, err := FromLookup(lookup(m)); err == nil {
 			t.Fatalf("accepted %v", m)

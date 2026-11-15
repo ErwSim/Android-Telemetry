@@ -89,11 +89,11 @@ func TestCoverageAndValidity(t *testing.T) {
 func TestTrackStaysAroundParis(t *testing.T) {
 	start := time.Date(2026, 11, 21, 0, 0, 0, 0, time.UTC) // Saturday
 	for _, e := range generate(t, start, 24*time.Hour) {
-		if e.Type != "location.fix" || e.Data["mock"] == true {
+		if e.Type != "location.fix" {
 			continue
 		}
 		lat, lon := e.Data["lat"].(float64), e.Data["lon"].(float64)
-		if lat < 48.80 || lat > 48.92 || lon < 2.20 || lon > 2.46 {
+		if lat < 48.80 || lat > 48.92 || lon < 2.10 || lon > 2.46 {
 			t.Fatalf("fix outside Paris: %v,%v", lat, lon)
 		}
 	}

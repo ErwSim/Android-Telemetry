@@ -169,6 +169,18 @@ func (s *Store) typesFor(ctx context.Context, dev string, prefixes []string) ([]
 	return out, rows.Err()
 }
 
+func matchPrefixes(t string, prefixes []string) bool {
+	if len(prefixes) == 0 {
+		return true
+	}
+	for _, p := range prefixes {
+		if strings.HasPrefix(t, p) {
+			return true
+		}
+	}
+	return false
+}
+
 func likeEscape(s string) string {
 	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 	return r.Replace(s)
@@ -319,6 +331,7 @@ type TimelineQuery struct {
 	FromMS, ToMS int64
 	BucketMS     int64 // 60000, 3600000 or 86400000
 	By           string
+	TypePrefixes []string // optional filter, as in /events
 }
 
 // MaxTimelineBuckets bounds the size of a timeline answer.
@@ -338,7 +351,7 @@ func (s *Store) StatsTimeline(ctx context.Context, q TimelineQuery) (*Timeline, 
 	}
 	series := map[string]*TimelineSerie{}
 	addCount := func(ts int64, typ string, sev int, c int64) {
-		if ts < start || ts > q.ToMS {
+		if ts < start || ts > q.ToMS || !matchPrefixes(typ, q.TypePrefixes) {
 			return
 		}
 		idx := int((ts - start) / q.BucketMS)
@@ -447,8 +460,10 @@ func ValidTopKind(kind string) bool {
 	return false
 }
 
-// StatsTop returns the most frequent keys of a kind over the hours overlapping [from, to].
-func (s *Store) StatsTop(ctx context.Context, deviceID, kind string, fromMS, toMS int64, limit int) ([]TopItem, error) {
+// StatsTop returns the most frequent keys of a kind over the hours overlapping
+// [from, to], optionally restricted to events whose data.package is pkg
+// (not supported for event_type).
+func (s *Store) StatsTop(ctx context.Context, deviceID, kind, pkg string, fromMS, toMS int64, limit int) ([]TopItem, error) {
 	start := fromMS - mod(fromMS, hourMS)
 	var query string
 	var args []any
@@ -462,6 +477,10 @@ func (s *Store) StatsTop(ctx context.Context, deviceID, kind string, fromMS, toM
 	if deviceID != "" {
 		query += " AND device_id = ?"
 		args = append(args, deviceID)
+	}
+	if pkg != "" && kind != TopEventType {
+		query += " AND package = ?"
+		args = append(args, pkg)
 	}
 	order := "2 DESC, 1"
 	if kind == TopUsagePackage {
