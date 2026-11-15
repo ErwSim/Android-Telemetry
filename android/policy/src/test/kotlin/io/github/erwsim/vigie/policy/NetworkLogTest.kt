@@ -103,4 +103,13 @@ class NetworkLogTest {
         assertEquals(2L, NetworkLogProcessor.lostBatches(4, 7))
         assertEquals(0L, NetworkLogProcessor.lostBatches(9, 1)) // logging restarted (reboot, re-enable)
     }
+
+    @Test
+    fun `batches finalized while paused are fetched, those beyond the 5-batch window are lost`() {
+        assertEquals(NetworkLogProcessor.FetchPlan(listOf(5L), 0), NetworkLogProcessor.tokensToFetch(0, 5))
+        assertEquals(NetworkLogProcessor.FetchPlan(listOf(5L), 0), NetworkLogProcessor.tokensToFetch(4, 5))
+        assertEquals(NetworkLogProcessor.FetchPlan(listOf(5L, 6L, 7L), 0), NetworkLogProcessor.tokensToFetch(4, 7))
+        assertEquals(NetworkLogProcessor.FetchPlan(listOf(16L, 17L, 18L, 19L, 20L), 11), NetworkLogProcessor.tokensToFetch(4, 20))
+        assertEquals(NetworkLogProcessor.FetchPlan(listOf(1L), 0), NetworkLogProcessor.tokensToFetch(9, 1))
+    }
 }

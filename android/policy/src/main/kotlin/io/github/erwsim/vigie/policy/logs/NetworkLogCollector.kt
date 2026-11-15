@@ -84,19 +84,26 @@ class NetworkLogCollector : Collector {
     private suspend fun process(ctx: CollectorContext, token: Long) = mutex.withLock {
         val processed = ctx.prefs.getLong(K_PROCESSED, 0)
         if (token == processed) return@withLock
-        val lost = NetworkLogProcessor.lostBatches(processed, token)
-        val events: List<NetworkEvent>? = try {
-            dpm(ctx)?.retrieveNetworkLogs(admin(ctx), token)
-        } catch (e: SecurityException) {
-            ctx.reportError(e, "retrieveNetworkLogs")
-            null
+        // Batches finalized while logging was paused are not notified one by one: fetch every
+        // token not yet processed that the system may still hold (at most 5).
+        val plan = NetworkLogProcessor.tokensToFetch(processed, token)
+        var missing = plan.lostBeforeWindow
+        val events = ArrayList<NetworkEvent>()
+        for (t in plan.tokens) {
+            val batch: List<NetworkEvent>? = try {
+                dpm(ctx)?.retrieveNetworkLogs(admin(ctx), t)
+            } catch (e: SecurityException) {
+                ctx.reportError(e, "retrieveNetworkLogs")
+                null
+            }
+            // Tokens only advance for non-empty batches: an absent batch was dropped by the system.
+            if (batch == null) missing++ else events += batch
         }
         ctx.prefs.edit { putLong(K_PROCESSED, token) }
-        if (lost > 0 || events == null) {
-            val missing = lost + if (events == null) 1 else 0
+        if (missing > 0) {
             ctx.reportError(IllegalStateException("$missing lot(s) de journaux réseau perdus (non récupérés à temps)"), "network_log")
         }
-        if (events.isNullOrEmpty()) return@withLock
+        if (events.isEmpty()) return@withLock
         val records = events.mapNotNull(::toRecord)
         val pm = ctx.appContext.packageManager
         val resolver = OwnerResolver(

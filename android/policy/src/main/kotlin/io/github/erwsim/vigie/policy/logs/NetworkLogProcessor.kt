@@ -122,4 +122,16 @@ object NetworkLogProcessor {
 
     /** Batch tokens are consecutive: a gap means batches were dropped by the system before retrieval. */
     fun lostBatches(lastProcessed: Long, token: Long): Long = if (lastProcessed <= 0 || token <= lastProcessed) 0 else token - lastProcessed - 1
+
+    /** Tokens to retrieve after notification [token], and batches already beyond the system's 5-batch window. */
+    data class FetchPlan(val tokens: List<Long>, val lostBeforeWindow: Long)
+
+    const val MAX_PENDING_BATCHES = 5
+
+    fun tokensToFetch(lastProcessed: Long, token: Long): FetchPlan {
+        // First batch ever, or logging restarted (tokens start again): only the notified batch.
+        if (lastProcessed <= 0 || token <= lastProcessed) return FetchPlan(listOf(token), 0)
+        val first = maxOf(lastProcessed + 1, token - MAX_PENDING_BATCHES + 1)
+        return FetchPlan((first..token).toList(), first - lastProcessed - 1)
+    }
 }
