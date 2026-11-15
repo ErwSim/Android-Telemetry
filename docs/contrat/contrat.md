@@ -227,6 +227,26 @@ Préfixe `/api/console`. Session par cookie (`HttpOnly`, `Secure`, `SameSite=Str
 
 Erreurs : JSON `{ "error": "code", "message": "…" }` avec le code HTTP adéquat.
 
+### Précisions (ajoutées après le développement de la console)
+
+- `GET /devices` : chaque appareil porte aussi `last_heartbeat_ts`, `last_posture_ts` (RFC 3339, absents si
+  inconnus).
+- `GET /stats/top` accepte `package` (optionnel) : restreint aux événements dont `data.package` vaut cette
+  valeur (ex. `kind=dns_hostname&package=com.google.android.gms` = domaines demandés par cette app).
+  `connect_dest` a pour clé `ip:port`. `usage_package` renvoie `count` et `bytes` (= rx + tx).
+- `GET /stats/timeline` accepte `type` (optionnel, préfixes séparés par des virgules, comme `/events`).
+- `cursor` est une chaîne opaque. `GET /stream` émet des messages SSE par défaut (`data: <événement JSON>`),
+  plus un commentaire de maintien toutes les 25 s.
+- `first_install` et `last_update` de l'inventaire sont en RFC 3339.
+- Sessions : expiration après 12 h d'inactivité (→ `401`) ; `POST /login` est limité en débit (→ `429` avec
+  `Retry-After`).
+- Fichiers statiques : un chemin avec extension inexistant renvoie `404` (pas `index.html`) ; les `.js` sont
+  servis en `text/javascript`. En-tête CSP exact attendu par la console :
+  `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' <origine des tuiles>; worker-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`.
+- Tuiles de carte : variable `VIGIE_TILE_URL` (défaut `https://tile.openstreetmap.org/{z}/{x}/{y}.png`).
+  L'origine des tuiles de la CSP en est déduite, et le collecteur répond lui-même à `GET /config.json` par
+  `{ "tileUrl": "<VIGIE_TILE_URL>" }` (prioritaire sur le fichier statique de la console).
+
 ## 7. Interface d'exploitation du collecteur
 
 Binaire unique `vigie-collector`, sous-commandes :
