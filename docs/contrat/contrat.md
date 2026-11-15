@@ -110,6 +110,41 @@ Note : `app.notification` n'est **pas** produit par l'APK principal en v1 (un se
 | `security.ca_cert` (sev 2) | `event` (`added`/`removed`), `sha256`, `subject` |
 | `security.policy` | `action` (`private_dns_set`,`package_disabled`,`package_enabled`,`permission_denied`,`restriction_set`,`restriction_cleared`,`network_logging`,`security_logging`), `target`, `profile`, `ok`, `error` |
 
+### Précisions du catalogue (ajoutées après le développement de l'infrastructure)
+
+- `security.posture_change` (sev selon le champ) : émis **en plus** de `security.posture` pour chaque champ
+  qui change : `field`, `old`, `new` (valeurs converties en chaînes). Permet une alerte par changement.
+- `sensor.camera` et `sensor.microphone` portent aussi `screen_on` (bool) et `locked` (bool) au moment de
+  l'événement.
+- `security.log` : `fields` nomme la charge utile du tag ainsi (les indicateurs 0/1 de réussite deviennent des
+  booléens `success`) ; tout tag non listé utilise `arg0`, `arg1`… dans l'ordre de la charge utile.
+
+  | Tag | `fields` |
+  |---|---|
+  | `adb_shell_interactive` | — |
+  | `adb_shell_cmd` | `command` |
+  | `sync_recv_file`, `sync_send_file` | `path` |
+  | `app_process_start` | `process`, `start_time`, `uid`, `pid`, `seinfo`, `apk_sha256` |
+  | `keyguard_dismissed`, `keyguard_secured` | — |
+  | `keyguard_dismiss_auth_attempt` | `success`, `strength` |
+  | `os_startup` | `verified_boot_state`, `dm_verity_mode` |
+  | `os_shutdown` | — |
+  | `logging_started`, `logging_stopped`, `log_buffer_size_critical` | — |
+  | `media_mount`, `media_unmount` | `mount_point`, `label` |
+  | `crypto_self_test_completed` | `success` |
+  | `key_generated`, `key_import`, `key_destruction` | `success`, `alias`, `uid` |
+  | `key_integrity_violation` | `alias`, `uid` |
+  | `cert_authority_installed`, `cert_authority_removed` | `success`, `subject`, `user_id` |
+  | `cert_validation_failure` | `reason` |
+  | `user_restriction_added`, `user_restriction_removed` | `admin_package`, `user_id`, `restriction` |
+  | `password_changed` | `complexity`, `user_id` |
+  | `wifi_connection` | `bssid`, `event_type`, `reason` |
+  | `wifi_disconnection` | `bssid`, `reason` |
+  | `bluetooth_connection` | `address`, `success`, `reason` |
+  | `bluetooth_disconnection` | `address`, `reason` |
+  | `package_installed`, `package_updated`, `package_uninstalled` | `package`, `version_code`, `user_id` |
+  | `wipe_failure`, `remote_lock`, `backup_service_toggled` | `arg0`… |
+
 ## 3. API d'ingestion (téléphone → serveur)
 
 Hôte dédié (ex. `ingest.exemple.fr`), TLS avec **certificat client obligatoire** (terminé par Caddy, CA privée
