@@ -160,7 +160,7 @@ de champs : `docs/contrat/contrat.md` §2 (vérifiés par les tests JVM de `:col
 | Réseaux Wi-Fi voisins (`wifi_scan`, **désactivé par défaut**) | `net.wifi_scan` (≤ 60 points d'accès) | localisation précise | passif (balayages des autres) ; actif optionnel ≥ 30 min ; ≤ 1 événement / 15 min |
 | Point d'accès mobile (`hotspot`) | `net.hotspot` | — | diffusion système |
 | NFC (`nfc`) | `net.nfc` | matériel NFC | diffusion système |
-| Réseau mobile (`cell`) | `net.cell`, `net.cell_security` (`downgrade_2g`, sév. 2) | téléphonie ; localisation précise pour les identifiants de cellule (optionnelle) | TelephonyCallback, ≤ 1 événement / 20 s hors changement de techno |
+| Réseau mobile (`cell`) | `net.cell`, `net.cell_security` (`downgrade_2g`, sév. 2) | téléphonie ; localisation précise pour les identifiants de cellule et « Téléphone » (READ_PHONE_STATE) pour le suivi cellule par cellule et le signal (optionnelles) | TelephonyCallback, ≤ 1 événement / 20 s hors changement de techno |
 | Bluetooth (`bluetooth`) | `net.bluetooth` (état, connexions) | « Appareils à proximité » pour les connexions (optionnelle) | diffusions, ≤ 120/h |
 | Traceurs (`ble_tracker`) | `net.ble_tracker` (sév. 2) | BLUETOOTH_SCAN + localisation précise | balayage BLE basse consommation filtré matériellement, résultats groupés 60 s, Bluetooth allumé |
 | Volumes réseau (`net_usage`) | `net.usage` horaire par app et transport | accès à l'utilisation (ADB) **ou** Device Owner | WorkManager 1 h, 2 requêtes |

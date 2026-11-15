@@ -11,6 +11,7 @@ import android.provider.Settings
 import android.provider.Telephony
 import android.telecom.TelecomManager
 import android.view.inputmethod.InputMethodManager
+import androidx.core.net.toUri
 import io.github.erwsim.vigie.policy.VigieAdminReceiver
 
 /**
@@ -51,7 +52,7 @@ class AndroidDevicePolicyGateway(private val context: Context) : DevicePolicyGat
         }
         // Package installers and active device admins (Find My Mobile…).
         try {
-            pm.queryIntentActivities(Intent(Intent.ACTION_INSTALL_PACKAGE).setDataAndType(android.net.Uri.parse("file:///x.apk"), "application/vnd.android.package-archive"), 0)
+            pm.queryIntentActivities(Intent(Intent.ACTION_INSTALL_PACKAGE).setDataAndType("file:///x.apk".toUri(), "application/vnd.android.package-archive"), 0)
                 .forEach { out += it.activityInfo.packageName }
         } catch (_: Exception) {
         }

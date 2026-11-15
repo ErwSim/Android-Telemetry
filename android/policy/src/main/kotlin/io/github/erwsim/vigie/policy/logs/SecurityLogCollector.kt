@@ -4,6 +4,7 @@ import android.app.admin.DevicePolicyManager
 import android.app.admin.SecurityLog
 import android.content.ComponentName
 import android.content.Context
+import androidx.core.content.edit
 import io.github.erwsim.vigie.core.collector.Collector
 import io.github.erwsim.vigie.core.collector.CollectorContext
 import io.github.erwsim.vigie.core.collector.Requirement
@@ -88,7 +89,7 @@ class SecurityLogCollector : Collector {
             ctx.reportError(e, "retrievePreRebootSecurityLogs")
             null
         }
-        ctx.prefs.edit().putString(K_PRE_REBOOT_BOOT, ctx.boot.bootId).apply()
+        ctx.prefs.edit { putString(K_PRE_REBOOT_BOOT, ctx.boot.bootId) }
         if (events.isNullOrEmpty()) return@withLock // null: not supported on this device
         val after = ctx.prefs.getLong(K_LAST_NANOS, Long.MIN_VALUE)
         // Without any previous retrieval, everything before the reboot would be a flood of old entries.
@@ -105,7 +106,7 @@ class SecurityLogCollector : Collector {
         )
         val outputs = SecurityLogProcessor.process(raw, filter, afterNanos, preReboot)
         val newest = raw.maxOf { it.timeNanos }
-        if (newest > ctx.prefs.getLong(K_LAST_NANOS, Long.MIN_VALUE)) ctx.prefs.edit().putLong(K_LAST_NANOS, newest).apply()
+        if (newest > ctx.prefs.getLong(K_LAST_NANOS, Long.MIN_VALUE)) ctx.prefs.edit { putLong(K_LAST_NANOS, newest) }
         for (chunk in outputs.chunked(CHUNK)) {
             chunk.forEach { ctx.sink.emit(SecurityLogProcessor.TYPE, it.sev, it.data) }
             delay(CHUNK_PAUSE_MS)

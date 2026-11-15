@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import androidx.core.content.edit
 import io.github.erwsim.vigie.core.event.AgentClock
 import io.github.erwsim.vigie.policy.engine.AppliedRecord
 import io.github.erwsim.vigie.policy.engine.PolicyEngine
@@ -131,7 +132,7 @@ class PrivateDnsGuard(
         val engine = engine() ?: return
         val record = engine.dnsRecord()
         if (record == null) {
-            prefs.edit().remove(K_FAILING_SINCE).apply()
+            prefs.edit { remove(K_FAILING_SINCE) }
             return
         }
         val cm = context.getSystemService(ConnectivityManager::class.java)
@@ -154,16 +155,16 @@ class PrivateDnsGuard(
             ),
         )
         when (decision) {
-            DnsGuardDecision.Healthy -> prefs.edit().remove(K_FAILING_SINCE).apply()
+            DnsGuardDecision.Healthy -> prefs.edit { remove(K_FAILING_SINCE) }
             DnsGuardDecision.Unknown -> Unit
             is DnsGuardDecision.Failing -> {
-                prefs.edit().putLong(K_FAILING_SINCE, decision.sinceMs).apply()
+                prefs.edit { putLong(K_FAILING_SINCE, decision.sinceMs) }
                 scheduleRecheck(decision.recheckAtMs - clock.nowMillis())
             }
             is DnsGuardDecision.Fallback -> {
                 val minutes = (clock.nowMillis() - decision.sinceMs) / 60_000
                 engine.dnsFallback("hôte ${record.target} injoignable depuis $minutes min (réseau non validé, contrôle DoT en échec)")
-                prefs.edit().remove(K_FAILING_SINCE).apply()
+                prefs.edit { remove(K_FAILING_SINCE) }
             }
             DnsGuardDecision.Reapply -> engine.dnsReapply()
         }

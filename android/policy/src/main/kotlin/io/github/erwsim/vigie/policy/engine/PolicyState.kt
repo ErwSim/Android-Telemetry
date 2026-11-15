@@ -1,5 +1,6 @@
 package io.github.erwsim.vigie.policy.engine
 
+import android.annotation.SuppressLint
 import android.content.SharedPreferences
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -114,6 +115,7 @@ data class JournalEntry(
  * with `commit()` (synchronous) so that the write-ahead record is on disk before the device is
  * changed. SharedPreferences survive app updates and reboots.
  */
+@SuppressLint("ApplySharedPref", "UseKtx") // commit() is deliberate: the write-ahead record must be on disk first.
 class PolicyStore(private val prefs: SharedPreferences) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false; explicitNulls = false }
 

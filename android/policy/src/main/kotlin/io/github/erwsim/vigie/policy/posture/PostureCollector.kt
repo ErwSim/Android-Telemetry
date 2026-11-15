@@ -6,6 +6,7 @@ import android.database.ContentObserver
 import android.net.Uri
 import android.provider.Settings
 import android.security.KeyChain
+import androidx.core.content.edit
 import io.github.erwsim.vigie.core.collector.CollectReason
 import io.github.erwsim.vigie.core.collector.Collector
 import io.github.erwsim.vigie.core.collector.CollectorContext
@@ -115,14 +116,14 @@ class PostureCollector : Collector {
                 put("subject", change.cert.subject)
             }
         }
-        ctx.prefs.edit().putString(K_CAS, encode(cas.associate { it.sha256 to it.subject })).apply()
+        ctx.prefs.edit { putString(K_CAS, encode(cas.associate { it.sha256 to it.subject })) }
 
         val current = PostureDiff.asStrings(posture)
         val previous = ctx.prefs.getString(K_POSTURE, null)?.let { decode(it) }
         val changes = PostureDiff.diff(previous, current)
         if (!always && changes.isEmpty()) {
             // Same posture; still remember newly readable fields.
-            ctx.prefs.edit().putString(K_POSTURE, encode(current)).apply()
+            ctx.prefs.edit { putString(K_POSTURE, encode(current)) }
             return@withLock
         }
         val sev = changes.maxOfOrNull { it.sev } ?: Severity.INFO
@@ -134,7 +135,7 @@ class PostureCollector : Collector {
                 put("new", c.new)
             }
         }
-        ctx.prefs.edit().putString(K_POSTURE, encode(current)).apply()
+        ctx.prefs.edit { putString(K_POSTURE, encode(current)) }
     }
 
     private fun postureData(p: Map<String, Any?>) = eventData {

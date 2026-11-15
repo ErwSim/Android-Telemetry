@@ -6,6 +6,7 @@ import android.app.admin.DnsEvent
 import android.app.admin.NetworkEvent
 import android.content.ComponentName
 import android.content.pm.PackageManager
+import androidx.core.content.edit
 import io.github.erwsim.vigie.core.collector.Collector
 import io.github.erwsim.vigie.core.collector.CollectorContext
 import io.github.erwsim.vigie.core.collector.Requirement
@@ -71,7 +72,7 @@ class NetworkLogCollector : Collector {
     /** From [VigieAdminReceiver] (main thread): must return fast. */
     fun onBatchAvailable(context: android.content.Context, token: Long) {
         context.getSharedPreferences("collector_$id", android.content.Context.MODE_PRIVATE)
-            .edit().putLong(K_NOTIFIED, token).apply()
+            .edit { putLong(K_NOTIFIED, token) }
         val c = ctx
         if (c != null) {
             c.scope.launch(Dispatchers.IO) { process(c, token) }
@@ -90,7 +91,7 @@ class NetworkLogCollector : Collector {
             ctx.reportError(e, "retrieveNetworkLogs")
             null
         }
-        ctx.prefs.edit().putLong(K_PROCESSED, token).apply()
+        ctx.prefs.edit { putLong(K_PROCESSED, token) }
         if (lost > 0 || events == null) {
             val missing = lost + if (events == null) 1 else 0
             ctx.reportError(IllegalStateException("$missing lot(s) de journaux réseau perdus (non récupérés à temps)"), "network_log")

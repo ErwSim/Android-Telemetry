@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Default network state (private DNS guard: validation of the network). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!--
         Package visibility: the policy engine checks which catalog packages are installed, resolves
         the uid of network log entries (including shared uids) and finds the default launcher,
