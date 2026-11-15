@@ -155,15 +155,19 @@ Produit par `vigie-collector enroll`, importé dans l'app (sélecteur de fichier
   "version": 1,
   "ingest_url": "https://ingest.exemple.fr",
   "device_id": "dev_8f3a…",
+  "device_name": "s25",
   "device_token": "…",
-  "client_cert_p12_b64": "…",
-  "client_cert_password": "…",
-  "server_ca_pem": "… (optionnel : épinglage de l'AC serveur)",
-  "private_dns_host": "dns.exemple.fr"
+  "client_cert_pem": "-----BEGIN CERTIFICATE-----…",
+  "client_key_pem": "-----BEGIN PRIVATE KEY-----… (PKCS#8, ECDSA P-256)",
+  "server_ca_pem": "… (optionnel : si présent, l'agent n'accepte que cette AC pour le serveur)",
+  "private_dns_host": "dns.exemple.fr (optionnel)"
 }
 ```
 
-Le fichier contient des secrets : à transférer par câble (ADB) ou canal chiffré, puis à supprimer.
+- La PKI cliente (AC privée ECDSA P-256 + un certificat par appareil, `CN=<device_id>`, usage `clientAuth`)
+  est gérée par le collecteur lui-même ; l'AC est créée au premier démarrage dans son répertoire de données.
+- L'agent importe la clé dans l'Android Keystore (non exportable) puis oublie le PEM.
+- Le fichier contient des secrets : à transférer par câble (ADB) ou canal chiffré, puis à supprimer.
 
 ## 5. Export vers Wazuh
 
@@ -220,3 +224,37 @@ Préfixe `/api/console`. Session par cookie (`HttpOnly`, `Secure`, `SameSite=Str
 | `GET /health` (sans auth, hors préfixe console : `/healthz`) | — | `200 ok` |
 
 Erreurs : JSON `{ "error": "code", "message": "…" }` avec le code HTTP adéquat.
+
+## 7. Interface d'exploitation du collecteur
+
+Binaire unique `vigie-collector`, sous-commandes :
+
+| Commande | Rôle |
+|---|---|
+| `serve` | Démarre le serveur HTTP (ingestion + API console + fichiers de la console). Crée la base et l'AC si absentes. |
+| `enroll --name <nom> --out <fichier.vigie>` | Crée un appareil (identifiant, jeton, certificat client) et écrit le fichier d'enrôlement. |
+| `devices` / `revoke <device_id>` | Liste / révoque (jeton et certificat refusés immédiatement). |
+| `user set-password <nom>` | Crée ou met à jour un compte console (mot de passe lu sur l'entrée standard). |
+| `sim --url … --enroll <fichier.vigie> [--rate …] [--backfill 24h]` | Simulateur : envoie par l'API d'ingestion des événements réalistes de tous les types du catalogue (tests, démonstration). |
+
+Configuration par variables d'environnement :
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `VIGIE_LISTEN` | `:8080` | Adresse d'écoute HTTP (en clair, derrière Caddy). |
+| `VIGIE_DATA_DIR` | `/data` | Base SQLite `vigie.db`, PKI `pki/ca.crt` et `pki/ca.key`. |
+| `VIGIE_EXPORT_NDJSON` | vide (désactivé) | Chemin du fichier NDJSON pour Wazuh. Rotation par renommage (`.1`…). |
+| `VIGIE_EXPORT_MAX_BYTES` / `VIGIE_EXPORT_KEEP` | `52428800` / `5` | Taille de rotation et nombre de fichiers conservés. |
+| `VIGIE_TRUSTED_PROXIES` | `127.0.0.1/32` | CIDR dont on accepte les en-têtes de proxy. |
+| `VIGIE_REQUIRE_CLIENT_CERT` | `true` | Exige que l'en-tête `X-Vigie-Client-Cert-Sha256` (posé par Caddy depuis un proxy de confiance : empreinte SHA-256 hex du certificat client vérifié) corresponde au certificat de l'appareil. |
+| `VIGIE_PUBLIC_INGEST_URL` | — | URL écrite dans les fichiers `.vigie`. |
+| `VIGIE_PRIVATE_DNS_HOST` | vide | Hôte DoT écrit dans les fichiers `.vigie`. |
+| `VIGIE_SERVER_CA_FILE` | vide | AC serveur à inclure dans `.vigie` (mode AC interne). |
+| `VIGIE_RETENTION_DAYS` | `90` | Purge des événements plus anciens. |
+| `VIGIE_CONSOLE_DIR` | vide | Sert la console depuis ce répertoire au lieu des fichiers embarqués (développement). |
+| `VIGIE_COOKIE_SECURE` | `true` | `false` uniquement en développement HTTP local. |
+| `VIGIE_WAZUH_INDEXER_URL`, `…_USER`, `…_PASSWORD`, `…_CA_FILE`, `…_INSECURE` | vides | Accès en lecture à l'indexeur Wazuh pour `GET /alerts`. |
+
+Côté Caddy : l'hôte d'ingestion n'expose que `/api/v1/*` (certificat client obligatoire, AC = `pki/ca.crt`
+du collecteur, montée en lecture seule) et pose `X-Vigie-Client-Cert-Sha256` ; l'hôte console n'expose que
+`/api/console/*`, `/healthz` et les fichiers statiques. Caddy supprime tout en-tête `X-Vigie-*` entrant.
