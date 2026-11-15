@@ -41,6 +41,20 @@ NUMERIC="$(
   echo "${f[*]}"
 )"
 
+# Feuilles de data.vigie.data.* et data.vigie_watch.* en keyword, quel que soit leur type JSON. Les
+# objets (security.log « fields », heartbeat « collectors »…) restent des objets : un modèle
+# « match_mapping_type: * » les capturerait aussi et ferait rejeter le document (constaté).
+DYN="$(
+  sep=""
+  for path in data.vigie.data data.vigie_watch; do
+    for t in string long double boolean; do
+      printf '%s{ "%s_%s_kw": { "path_match": "%s.*", "match_mapping_type": "%s", "mapping": { "type": "keyword", "ignore_above": 1024 } } }' \
+        "$sep" "${path//./_}" "$t" "$path" "$t"
+      sep=","
+    done
+  done
+)"
+
 info "Modèle d'index vigie (geo_point, keyword par défaut, 1 shard)"
 es PUT /_template/vigie body <<EOF | grep -q '"acknowledged":true' || die "échec du modèle d'index vigie"
 {
@@ -54,20 +68,7 @@ es PUT /_template/vigie body <<EOF | grep -q '"acknowledged":true' || die "éche
   },
   "mappings": {
     "dynamic_templates": [
-      {
-        "vigie_data_as_keyword": {
-          "path_match": "data.vigie.data.*",
-          "match_mapping_type": "*",
-          "mapping": { "type": "keyword", "ignore_above": 1024 }
-        }
-      },
-      {
-        "vigie_watch_as_keyword": {
-          "path_match": "data.vigie_watch.*",
-          "match_mapping_type": "*",
-          "mapping": { "type": "keyword", "ignore_above": 1024 }
-        }
-      }
+      $DYN
     ],
     "properties": {
       "data": {

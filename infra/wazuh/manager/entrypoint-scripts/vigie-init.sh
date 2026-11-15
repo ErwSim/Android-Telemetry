@@ -31,6 +31,14 @@ processors:
 EOF
 fi
 
+# 2b. Débit : la file entre wazuh-logcollector et l'analyse (1024 lignes par défaut) déborde quand
+#     le collecteur exporte d'un coup le tampon d'un téléphone resté hors ligne (« Target 'agent'
+#     message queue is full… Log lines may be lost », constaté à l'essai avec 3 h d'historique).
+printf '%s\n' "# Généré par vigie-init.sh à chaque démarrage." "logcollector.queue_size=65536" \
+  >/var/ossec/etc/local_internal_options.conf
+chown root:wazuh /var/ossec/etc/local_internal_options.conf
+chmod 640 /var/ossec/etc/local_internal_options.conf
+
 # 3. Liste CDB des hôtes DNS privés attendus (règle 100195).
 LIST=/var/ossec/etc/lists/vigie-private-dns-hosts
 : >"$LIST"
