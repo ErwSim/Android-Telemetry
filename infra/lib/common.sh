@@ -53,8 +53,13 @@ env_set() {
   local key="$1" value="$2" tmp
   touch "$ENV_FILE"; chmod 600 "$ENV_FILE"
   tmp="$(mktemp "$ENV_FILE.XXXXXX")"
-  grep -vE "^${key}=" "$ENV_FILE" >"$tmp" || true
-  printf "%s='%s'\n" "$key" "$value" >>"$tmp"
+  # Remplacement en place (ordre conservé : un .env inchangé reste identique octet pour octet)
+  KEY="$key" LINE="$key='$value'" awk '
+    BEGIN { k = ENVIRON["KEY"] "="; done = 0 }
+    index($0, k) == 1 { if (!done) print ENVIRON["LINE"]; done = 1; next }
+    { print }
+    END { if (!done) print ENVIRON["LINE"] }
+  ' "$ENV_FILE" >"$tmp"
   mv "$tmp" "$ENV_FILE"; chmod 600 "$ENV_FILE"
 }
 

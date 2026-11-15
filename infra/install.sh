@@ -383,7 +383,9 @@ fi
 info "Caddy (certificats TLS)…"
 dc up -d caddy
 wait_healthy caddy 120 || die "Caddy ne démarre pas : docker compose logs caddy"
-((CA_CHANGED)) && dc exec -T caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || true
+# Rechargement systématique : AC cliente, compte d'administration ou site DNS ont pu changer.
+dc exec -T caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || warn "rechargement de Caddy échoué"
+((CA_CHANGED)) && info "AC des certificats clients mise à jour dans Caddy."
 
 info "Attente du certificat de $CERT_NAME (jusqu'à 5 min)…"
 for _ in $(seq 1 60); do
