@@ -143,6 +143,62 @@ Même clé de signature obligatoire, `versionCode` strictement croissant. L'agen
 - **`agent.tamper`** : demande ou désactivation de l'administrateur, permission retirée, arrêt forcé détecté
   (`ApplicationExitInfo`), perte du rôle Device Owner.
 
+## Collecteurs
+
+Chaque collecteur est désactivable dans l'onglet Collecteurs ; s'il lui manque une capacité, il s'affiche
+« indisponible » avec la raison. Permissions « ADB » : `./scripts/grant-adb-permissions.sh`. Noms de types et
+de champs : `docs/contrat/contrat.md` §2 (vérifiés par les tests JVM de `:collectors`).
+
+| Collecteur (id) | Émet | Capacité requise | Coût |
+|---|---|---|---|
+| Battement de cœur (`heartbeat`) | `agent.heartbeat` | — | WorkManager 15 min |
+| Appareil (`device`) | `device.inventory`, `boot`, `shutdown`, `screen`, `battery`, `power_save`, `storage`, `thermal`, `time_changed`, `timezone_changed`, `airplane_mode` | — | diffusions + relevé quotidien |
+| USB (`usb`) | `device.usb` (câble, fonctions dont `adb`, appareil ou accessoire branché) | — | diffusions, ≤ 60/h |
+| Localisation (`location`) | `location.fix`, `location.provider` | localisation précise (+ arrière-plan) | GPS adaptatif + passif |
+| Connectivité (`connectivity`) | `net.connectivity` | — (ACCESS_NETWORK_STATE) | rappel système, ≤ 60/h |
+| Wi-Fi (`wifi`) | `net.wifi` connecté/déconnecté | localisation précise pour SSID/BSSID (sinon omis) | rappel système, aucun balayage |
+| Réseaux Wi-Fi voisins (`wifi_scan`, **désactivé par défaut**) | `net.wifi_scan` (≤ 60 points d'accès) | localisation précise | passif (balayages des autres) ; actif optionnel ≥ 30 min ; ≤ 1 événement / 15 min |
+| Point d'accès mobile (`hotspot`) | `net.hotspot` | — | diffusion système |
+| NFC (`nfc`) | `net.nfc` | matériel NFC | diffusion système |
+| Réseau mobile (`cell`) | `net.cell`, `net.cell_security` (`downgrade_2g`, sév. 2) | téléphonie ; localisation précise pour les identifiants de cellule (optionnelle) | TelephonyCallback, ≤ 1 événement / 20 s hors changement de techno |
+| Bluetooth (`bluetooth`) | `net.bluetooth` (état, connexions) | « Appareils à proximité » pour les connexions (optionnelle) | diffusions, ≤ 120/h |
+| Traceurs (`ble_tracker`) | `net.ble_tracker` (sév. 2) | BLUETOOTH_SCAN + localisation précise | balayage BLE basse consommation filtré matériellement, résultats groupés 60 s, Bluetooth allumé |
+| Volumes réseau (`net_usage`) | `net.usage` horaire par app et transport | accès à l'utilisation (ADB) **ou** Device Owner | WorkManager 1 h, 2 requêtes |
+| Applications (`apps`) | `app.inventory` (parties < 16 Kio, `inventory_id`), `app.installed/updated/removed`, `app.permission_changed` | — (QUERY_ALL_PACKAGES) | diffusions + parcours des paquets toutes les heures, libellés une fois par jour |
+| Accès spéciaux (`special_access`) | `app.special_access` | — | au changement (paquets, réglages, extinction d'écran ≤ 1/15 min) + quotidien |
+| App au premier plan (`foreground`) | `app.foreground` (changements d'app seulement) | accès à l'utilisation (ADB ou Paramètres) | relevé 60 s écran allumé uniquement + WorkManager 15 min ; 100 à 400/jour |
+| Caméra (`camera`) | `sensor.camera` (+ `screen_on`, `locked`) | — | rappel système, ≤ 120/h |
+| Microphone (`microphone`) | `sensor.microphone` (+ `screen_on`, `locked`) | — | rappel système, ≤ 120/h |
+
+Détails et limites :
+
+- **Champs absents** plutôt que valeurs factices : `<unknown ssid>`, `02:00:00:00:00:00`, `CellInfo.UNAVAILABLE`,
+  RSSI −127 ne sont jamais émis.
+- **`net.cell`** : `tech` = nom de `NETWORK_TYPE_*` en minuscules (`gsm`, `edge`, `umts`, `lte`, `nr`…) et
+  `none` hors service. **`net.cell_security`** : seule la rétrogradation vers la 2G (données ou voix) est
+  détectable sans privilège ; chiffrement nul et demande d'identifiant sont des API système. Mesure efficace :
+  `DISALLOW_CELLULAR_2G` (module `:policy`).
+- **`net.ble_tracker`** : AirTag/Find My « séparé du propriétaire », SmartTag (0xFD5A), Tile (0xFEED/0xFEEC),
+  Localiser de Google en mode anti-pistage (0xFEAA, trame 0x41). Alerte si vu ≥ 4 fois (une fois par minute au
+  plus), sur ≥ 30 min, pendant un déplacement ≥ 500 m (réglables), positions tirées du cache passif ; rien
+  sans position connue. Un changement d'adresse du traceur (rotation) remet le compte à zéro.
+- **`net.usage`** : le système compte par tranches d'environ 2 h et répartit au prorata : valeurs horaires
+  estimées, fenêtre terminée depuis au moins 30 min, rattrapage ≤ 24 h, 100 apps au plus par événement.
+- **`app.special_access`** : services d'accessibilité et administrateurs (API publiques) ; écouteurs de
+  notifications (réglage sécurisé `enabled_notification_listeners`, omis si illisible) ; superposition,
+  installation d'apps inconnues, accès à l'utilisation (app-op de chaque app qui demande la permission) ;
+  `vpn_apps` = apps qui **déclarent** un VpnService (le propriétaire du VPN actif n'est pas visible) ;
+  `default_apps` : navigateur, accueil, téléphone, SMS, clavier, assistant et saisie automatique si lisibles.
+- **`app.foreground`** : l'horodatage est celui du relevé (≤ 60 s de retard), le contrat n'ayant pas de champ
+  pour l'heure d'origine.
+- **Attribution expérimentale** (réglage « Attribution expérimentale (DUMP) » des collecteurs Caméra et
+  Microphone, désactivé par défaut) : avec `DUMP` accordée par ADB, `Debug.dumpService("appops", --op …)` est
+  analysé pour remplir `package` quand une seule app utilise la caméra ou le micro. Format texte non garanti,
+  refus SELinux possible : sans certitude, `package` reste absent. Pas d'attribution de la localisation (aucun
+  type au contrat).
+- **Non écrits** (choix) : écoute des notifications, accessibilité, SMS/appels (principe 4) ; tout ce qui exige
+  le Device Owner (journaux réseau et sécurité, posture, politique : module `:policy`).
+
 ## Ce qui est vérifié, ce qui ne l'est pas
 
 Vérifié dans l'environnement de développement (Linux, sans émulateur ni appareil) :

@@ -161,8 +161,5 @@
     <string name="ping_network_error">Serveur injoignable : %1$s</string>
     <string name="ping_not_enrolled">Appareil non enrôlé.</string>
 
-    <!-- Policy (placeholder of the :policy screen) -->
-    <string name="policy_placeholder">Le moteur de politique (DNS privé imposé, désactivation de paquets, restrictions de sécurité) arrive dans une prochaine version. Chaque action sera journalisée et réversible depuis cet écran.</string>
-    <string name="policy_removal_title">Retrait du Device Owner</string>
-    <string name="policy_removal">Avec un APK testOnly : « adb shell dpm remove-active-admin io.github.erwsim.vigie/io.github.erwsim.vigie.policy.VigieAdminReceiver » (script remove-device-owner). Voir le README.</string>
+    <!-- Policy screen: see strings_policy.xml -->
 </resources>
