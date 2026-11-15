@@ -10,10 +10,10 @@ Dernière mise à jour : 15/11/2026.
 | Architecture et contrat | `docs/` | fait | — |
 | Recherche pile serveur | `docs/research/serveur-siem-dns.md` | fait | sources web |
 | Recherche plateforme Android/Samsung | `docs/research/android-plateforme.md` | fait | sources web, rien testé sur appareil |
-| Collecteur Go | `server/collector/` | à faire | — |
-| Console web | `server/console/` | à faire | — |
-| Infrastructure Docker | `infra/` | à faire | — |
-| Agent Android | `android/` | à faire | — |
+| Collecteur Go | `server/collector/` | fait (revue à faire) | `go vet`, `go test -race`, essai réel avec simulateur, image Docker construite et lancée ; pas encore derrière Caddy/Wazuh réels |
+| Console web | `server/console/` | fait (revue à faire) | typage, lint, 43 tests, parcours Chromium contre serveur factice et contre le vrai collecteur ; tuiles OSM réelles non testées |
+| Infrastructure Docker | `infra/` | en cours | — |
+| Agent Android | `android/` | socle en cours ; collecteurs restants et politique Device Owner ensuite | — |
 | Guides d'installation | `docs/guides/` | à faire | — |
 
 ## Limites de l'environnement de développement cloud

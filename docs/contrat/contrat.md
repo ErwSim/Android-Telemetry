@@ -59,7 +59,7 @@ Les champs listés sont le minimum ; un collecteur peut en ajouter et doit alors
 | `device.storage` | `free_bytes`, `total_bytes` |
 | `device.thermal` | `status` |
 | `device.time_changed` / `device.timezone_changed` | `delta_ms` / `tz` |
-| `device.usb` | `connected`, `configured`, `functions`, `accessory`/`device` (objet) |
+| `device.usb` | `connected`, `configured`, `functions` (liste de chaînes), `accessory`/`device` (objet) |
 | `device.airplane_mode` | `enabled` |
 
 ### location.*
@@ -86,7 +86,7 @@ Les champs listés sont le minimum ; un collecteur peut en ajouter et doit alors
 ### app.*
 | Type | `data` |
 |---|---|
-| `app.inventory` (quotidien, découpé en plusieurs événements) | `part`, `parts`, `apps` : liste `{package,label,version_name,version_code,installer,system,enabled,suspended,hidden,target_sdk,first_install,last_update,signer_sha256,granted_dangerous}` |
+| `app.inventory` (quotidien, découpé en plusieurs événements) | `inventory_id` (identique pour toutes les parties d'un même inventaire), `part` (à partir de 1), `parts`, `apps` : liste `{package,label,version_name,version_code,installer,system,enabled,suspended,hidden,target_sdk,first_install,last_update,signer_sha256,granted_dangerous}` |
 | `app.installed` / `app.updated` / `app.removed` | `package`, `version_name`, `version_code`, `installer`, `signer_sha256` |
 | `app.foreground` | `package`, `class`, `event` (`resumed`/`paused`) |
 | `app.permission_changed` | `package`, `permission`, `granted` |
