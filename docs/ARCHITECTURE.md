@@ -75,6 +75,22 @@ Android dont l'utilisateur est le propriétaire** (cible : Samsung Galaxy S25+, 
 - **Enrôlement** : import d'un fichier `.vigie` produit par le serveur (URL, identifiant d'appareil, jeton,
   certificat client PKCS#12, hôte DNS privé).
 
+### Décisions issues de la recherche plateforme (`docs/research/android-plateforme.md`)
+
+- Cible : Android 16/17 (One UI 8/9), `minSdk 36`. Activation Device Owner par ADB uniquement.
+- L'APK principal ne contient **ni** service d'écoute des notifications, **ni** accessibilité, **ni** SMS, **ni**
+  superposition (déclencheurs Play Protect). Pas de Knox SDK en v1.
+- Journaux réseau du Device Owner = DNS + `connect()` TCP par app, remontés par lots (~1 h 30) ; UDP/QUIC y
+  échappent. On complète par le journal AdGuard côté serveur (tout le DNS, en direct) et par les volumes par app
+  (`NetworkStatsManager`). **Pas de VPN local en v1** (complexité, batterie, conflit avec WireGuard) : piste v2.
+- Localisation : GPS + fournisseur passif seulement (les fournisseurs « network »/« fused » passent par Play
+  Services).
+- Désactivation de paquets : liste de refus embarquée (jamais `kgclient`, paquets OTA, `rkpdapp`, lanceur,
+  composeur, Play Store en profil équilibré…) car `setApplicationHidden` n'a pas de garde-fou.
+- Jamais `DISALLOW_DEBUGGING_FEATURES` ni coupure du signal USB : ADB reste la porte de secours.
+- Variante de build `testOnly` par défaut pour pouvoir retirer le Device Owner par ADB
+  (`dpm remove-active-admin`) ; l'app sait aussi tout défaire puis `clearDeviceOwnerApp`.
+
 ## Serveur
 
 - **vigie-collector** valide (mTLS vérifié par Caddy + jeton), déduplique, stocke en SQLite, alimente la

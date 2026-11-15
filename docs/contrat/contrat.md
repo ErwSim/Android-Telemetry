@@ -93,6 +93,8 @@ Les champs listés sont le minimum ; un collecteur peut en ajouter et doit alors
 | `app.special_access` (au changement + quotidien) | `accessibility_services`, `notification_listeners`, `device_admins`, `overlay_apps`, `unknown_sources_apps`, `usage_access_apps`, `vpn_apps`, `default_apps` (objet) |
 | `app.notification` | `package`, `event` (`posted`/`removed`), `category`, `channel`, `ongoing`, et seulement si l'option contenu est activée : `title`, `text` |
 
+Note : `app.notification` n'est **pas** produit par l'APK principal en v1 (un service d'écoute des notifications dans un APK Device Owner déclenche Play Protect, voir `docs/research/android-plateforme.md`). Le type est réservé à un éventuel module séparé et optionnel.
+
 ### sensor.*
 | Type | `data` |
 |---|---|
