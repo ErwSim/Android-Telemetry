@@ -127,6 +127,13 @@ Note : `app.notification` n'est **pas** produit par l'APK principal en v1 (un se
 - Côté agent : une réponse `200` dont les compteurs ne totalisent pas la taille du lot est traitée comme une
   erreur (on garde tout) ; un `413` sur un événement seul le supprime (compté dans `dropped_total`) ; `403`
   est traité comme `401`.
+- Valeurs retenues par les collecteurs : `net.cell.tech` = nom `NETWORK_TYPE_*` en minuscules (`lte`, `nr`,
+  `gsm`…) ou `none` hors service ; `net.connectivity.transports` peut aussi contenir `usb`, `satellite`,
+  `thread`, `wifi_aware`, `lowpan` ; `device.usb.device` = `vendor_id`, `product_id`, `device_class`,
+  `manufacturer`, `product` ; `device.usb.accessory` = `manufacturer`, `model`, `version` ;
+  `net.cell_security.kind` n'est produit qu'avec `downgrade_2g` en v1 (les autres exigent des API système).
+- Événements relevés après coup (`app.foreground`, `net.dns`, `net.connect`, `security.log`) : `ts` est
+  l'heure **d'origine** de l'événement fournie par le système, pas l'heure du relevé.
 - `security.log` : `fields` nomme la charge utile du tag ainsi (les indicateurs 0/1 de réussite deviennent des
   booléens `success`) ; tout tag non listé utilise `arg0`, `arg1`… dans l'ordre de la charge utile.
 
