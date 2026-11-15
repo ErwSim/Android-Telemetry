@@ -82,7 +82,7 @@ func (g *Generator) daily(t time.Time, updates bool) {
 				continue
 			}
 			a.code++
-			g.emit(t.Add(-time.Duration(30+g.rng.Intn(600))*time.Minute), "app.updated", 0, map[string]any{
+			g.emit(t.Add(time.Duration(5+g.rng.Intn(600))*time.Second), "app.updated", 0, map[string]any{
 				"package": a.pkg, "version_name": a.version, "version_code": a.code, "installer": a.installer, "signer_sha256": sha256Hex("signer:" + a.pkg)})
 		}
 	}

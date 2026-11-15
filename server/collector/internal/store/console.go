@@ -15,15 +15,15 @@ type DeviceSummary struct {
 	DeviceID        string          `json:"device_id"`
 	Name            string          `json:"name"`
 	EnrolledAt      string          `json:"enrolled_at"`
-	LastSeen        *string         `json:"last_seen"`
-	AgentVersion    *string         `json:"agent_version"`
+	LastSeen        *string         `json:"last_seen,omitempty"`
+	AgentVersion    *string         `json:"agent_version,omitempty"`
 	Revoked         bool            `json:"revoked"`
 	RevokedAt       *string         `json:"revoked_at,omitempty"`
-	LastHeartbeat   json.RawMessage `json:"last_heartbeat"`
-	LastHeartbeatTS *string         `json:"last_heartbeat_ts"`
-	LastLocation    *LastLocation   `json:"last_location"`
-	LastPosture     json.RawMessage `json:"last_posture"`
-	LastPostureTS   *string         `json:"last_posture_ts"`
+	LastHeartbeat   json.RawMessage `json:"last_heartbeat,omitempty"`
+	LastHeartbeatTS *string         `json:"last_heartbeat_ts,omitempty"`
+	LastLocation    *LastLocation   `json:"last_location,omitempty"`
+	LastPosture     json.RawMessage `json:"last_posture,omitempty"`
+	LastPostureTS   *string         `json:"last_posture_ts,omitempty"`
 }
 
 // LastLocation is the last known position of a device.
@@ -31,7 +31,7 @@ type LastLocation struct {
 	TS   string   `json:"ts"`
 	Lat  float64  `json:"lat"`
 	Lon  float64  `json:"lon"`
-	AccM *float64 `json:"acc_m"`
+	AccM *float64 `json:"acc_m,omitempty"`
 }
 
 func strPtr(s string) *string { return &s }
@@ -46,7 +46,6 @@ func (s *Store) DeviceSummaries(ctx context.Context) ([]DeviceSummary, error) {
 	for _, d := range devs {
 		ds := DeviceSummary{
 			DeviceID: d.DeviceID, Name: d.Name, EnrolledAt: model.FormatTS(d.EnrolledAt), Revoked: d.Revoked(),
-			LastHeartbeat: json.RawMessage("null"), LastPosture: json.RawMessage("null"),
 		}
 		if d.LastSeen != nil {
 			ds.LastSeen = strPtr(model.FormatTS(*d.LastSeen))
@@ -92,7 +91,7 @@ func (s *Store) DeviceSummaries(ctx context.Context) ([]DeviceSummary, error) {
 
 // AppsSnapshot is the answer of GET /apps.
 type AppsSnapshot struct {
-	TS            *string `json:"ts"`
+	TS            *string `json:"ts,omitempty"`
 	Parts         int64   `json:"parts"`
 	PartsReceived int     `json:"parts_received"`
 	Complete      bool    `json:"complete"`
@@ -169,13 +168,13 @@ type PostureChange struct {
 // PostureAnswer is the answer of GET /posture.
 type PostureAnswer struct {
 	Current json.RawMessage `json:"current"`
-	TS      *string         `json:"ts"`
+	TS      *string         `json:"ts,omitempty"`
 	Changes []PostureChange `json:"changes"`
 }
 
 // Posture returns the current posture and the field changes in [from, to], newest first.
 func (s *Store) Posture(ctx context.Context, deviceID string, fromMS, toMS int64, maxChanges int) (*PostureAnswer, error) {
-	ans := &PostureAnswer{Current: json.RawMessage("null"), Changes: []PostureChange{}}
+	ans := &PostureAnswer{Current: json.RawMessage("{}"), Changes: []PostureChange{}}
 	latest, err := s.Latest(ctx, deviceID)
 	if err != nil {
 		return nil, err

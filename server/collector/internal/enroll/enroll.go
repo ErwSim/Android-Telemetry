@@ -46,7 +46,7 @@ func ValidName(n string) bool {
 		return false
 	}
 	for _, r := range n {
-		if !(unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune(" _.-", r)) {
+		if !(unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune(" _.-+()", r)) {
 			return false
 		}
 	}
@@ -66,7 +66,7 @@ func CheckIngestURL(s string) (*url.URL, error) {
 // Create registers a new device and returns its enrollment file.
 func Create(ctx context.Context, st *store.Store, ca *pki.CA, p Params, now time.Time) (*File, error) {
 	if !ValidName(p.Name) {
-		return nil, errors.New("nom d'appareil invalide (1 à 64 lettres, chiffres, espaces, « _ . - »)")
+		return nil, errors.New("nom d'appareil invalide (1 à 64 lettres, chiffres, espaces, « _ . - + ( ) »)")
 	}
 	if _, err := CheckIngestURL(p.IngestURL); err != nil {
 		return nil, err

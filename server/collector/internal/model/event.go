@@ -223,7 +223,9 @@ func Depth(v any) int {
 
 // parseInt accepts only JSON integers (no strings, no fractions) within the safe range.
 func parseInt(raw json.RawMessage) (int64, bool) {
-	if len(raw) == 0 {
+	raw = bytes.TrimSpace(raw)
+	// Only a JSON number literal (json.Number would also accept a quoted string).
+	if len(raw) == 0 || !(raw[0] == '-' || (raw[0] >= '0' && raw[0] <= '9')) {
 		return 0, false
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))

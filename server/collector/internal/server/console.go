@@ -193,15 +193,14 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	var next *string
-	if more && len(evs) > 0 {
-		c := encodeCursor(evs[len(evs)-1].TSms, evs[len(evs)-1].PK)
-		next = &c
-	}
 	if evs == nil {
 		evs = []store.StoredEvent{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"events": evs, "next_cursor": next})
+	resp := map[string]any{"events": evs}
+	if more && len(evs) > 0 {
+		resp["next_cursor"] = encodeCursor(evs[len(evs)-1].TSms, evs[len(evs)-1].PK)
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request) {
@@ -367,7 +366,8 @@ func (s *Server) handlePosture(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	v := r.URL.Query()
-	from, to, err := timeRange(v, true, s.now(), 0)
+	// from/to are optional here (default: the last 7 days).
+	from, to, err := timeRange(v, false, s.now(), 7*24*time.Hour)
 	if err != nil {
 		s.fail(w, err)
 		return

@@ -21,8 +21,8 @@ import (
 
 const crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
-// newULID returns a ULID for timestamp t.
-func newULID(t time.Time, rng *rand.Rand) string {
+// NewULID returns a ULID for timestamp t.
+func NewULID(t time.Time, rng *rand.Rand) string {
 	ms := uint64(t.UnixMilli())
 	var b [16]byte
 	for i := 5; i >= 0; i-- {

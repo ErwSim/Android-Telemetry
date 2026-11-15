@@ -86,6 +86,7 @@ type Generator struct {
 	mockFixAt  time.Time
 	uploadedAt time.Time
 	laters     []laterFn
+	floor      time.Time
 }
 
 // New returns a generator starting at opts.Start.
@@ -130,6 +131,9 @@ func (g *Generator) newBootID() string {
 
 // emit schedules an event.
 func (g *Generator) emit(ts time.Time, typ string, sev int, data map[string]any) {
+	if ts.Before(g.floor) { // never emit before what has already been returned
+		ts = g.floor
+	}
 	g.ord++
 	g.pend = append(g.pend, pending{ts: ts.UTC().Truncate(time.Millisecond), typ: typ, sev: sev, data: data, ord: g.ord})
 }
@@ -163,11 +167,12 @@ func (g *Generator) flush(to time.Time) []Event {
 		g.seq++
 		b := g.bootAt(p.ts)
 		out = append(out, Event{
-			ID: newULID(p.ts, g.rng), TS: p.ts.Format("2006-01-02T15:04:05.000Z07:00"), Seq: g.seq, BootID: b.id,
+			ID: NewULID(p.ts, g.rng), TS: p.ts.Format("2006-01-02T15:04:05.000Z07:00"), Seq: g.seq, BootID: b.id,
 			ElapsedMS: p.ts.Sub(b.at).Milliseconds(), Type: p.typ, Sev: p.sev, Data: p.data,
 		})
 	}
 	g.pend = append(g.pend[:0], g.pend[n:]...)
+	g.floor = to
 	return out
 }
 
@@ -467,7 +472,7 @@ func (g *Generator) foreground(t time.Time, a *app, event string) {
 	}
 	g.emit(t, "app.foreground", 0, map[string]any{"package": a.pkg, "class": a.pkg + ".MainActivity", "event": event})
 	if event == "resumed" && g.rng.Intn(3) == 0 {
-		g.emit(t.Add(-150*time.Millisecond), "security.log", 0, map[string]any{"tag": "app_process_start", "level": "info",
+		g.emit(t, "security.log", 0, map[string]any{"tag": "app_process_start", "level": "info",
 			"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"process": a.pkg, "start_time": t.UnixMilli(), "uid": a.uid,
 				"pid": 4000 + g.rng.Intn(28000), "seinfo": "default:targetSdkVersion=35:complete", "apk_hash": sha256Hex("apk:" + a.pkg + a.version)}})
 	}
@@ -505,7 +510,7 @@ func (g *Generator) notifications(t0, t1 time.Time) {
 		g.emit(at.Add(time.Duration(20+g.rng.Intn(3600))*time.Second), "app.notification", 0,
 			map[string]any{"package": a.pkg, "event": "removed", "category": cat, "channel": ch, "ongoing": false})
 		if a.pkg == "com.whatsapp" || a.pkg == "org.thoughtcrime.securesms" {
-			g.dns(a, at.Add(-2*time.Second))
+			g.dns(a, at.Add(300*time.Millisecond))
 		}
 	}
 }
