@@ -67,8 +67,11 @@ class AppsCollector : Collector {
         when {
             action == Intent.ACTION_PACKAGE_ADDED && !replacing -> {
                 val rec = withContext(Dispatchers.IO) { recordOf(pm, pkg, withInstaller = true) } ?: return@withLock
-                state[pkg] = rec
-                emitChange(ctx, TYPE_INSTALLED, rec)
+                val known = state.put(pkg, rec)
+                // Unhidden (DevicePolicyManager.setApplicationHidden) rather than installed: same app.
+                if (known == null || known.versionCode != rec.versionCode || known.signer != rec.signer) {
+                    emitChange(ctx, TYPE_INSTALLED, rec)
+                }
             }
             action == Intent.ACTION_PACKAGE_REPLACED -> {
                 val rec = withContext(Dispatchers.IO) { recordOf(pm, pkg, withInstaller = true) } ?: return@withLock
@@ -77,6 +80,8 @@ class AppsCollector : Collector {
                 if (old != null) AppInventoryLogic.permissionChanges(old, rec).forEach { emitPermission(ctx, it) }
             }
             action == Intent.ACTION_PACKAGE_REMOVED && !replacing -> {
+                // Hiding an app also broadcasts PACKAGE_REMOVED: it is still installed (and inventoried).
+                if (withContext(Dispatchers.IO) { isInstalled(pm, pkg) }) return@withLock
                 val old = state.remove(pkg) ?: AppRecord(pkg, null, 0, null, emptySet())
                 emitChange(ctx, TYPE_REMOVED, old)
             }
@@ -190,6 +195,14 @@ class AppsCollector : Collector {
         installer = installer,
         system = (info.applicationInfo?.flags ?: 0) and ApplicationInfo.FLAG_SYSTEM != 0,
     )
+
+    /** Installed for this user, possibly hidden. */
+    private fun isInstalled(pm: PackageManager, pkg: String): Boolean = try {
+        val info = pm.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()))
+        (info.applicationInfo?.flags ?: 0) and ApplicationInfo.FLAG_INSTALLED != 0
+    } catch (_: PackageManager.NameNotFoundException) {
+        false
+    }
 
     private fun installerOf(pm: PackageManager, pkg: String): String? = try {
         pm.getInstallSourceInfo(pkg).installingPackageName

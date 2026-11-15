@@ -29,8 +29,10 @@ import io.github.erwsim.vigie.core.event.Severity
  *
  * TelephonyCallback only (ServiceState + CellInfo, no SignalStrength listener, no polling). An
  * event when the serving cell or technology changes, at most one per 20 s for cell changes
- * (technology, network and roaming changes always pass). Without precise location, cell
- * identities are hidden by the system: only the technology, operator and roaming are reported,
+ * (technology, network and roaming changes always pass). The CellInfo listener (cell changes and
+ * signal) needs precise location and READ_PHONE_STATE; with location only, the cached cell list
+ * is read at each service state change. Without precise location, cell identities are hidden
+ * by the system: only the technology, operator and roaming are reported,
  * and 2G detection keeps working (it reads the registration state, not the cell).
  *
  * Not detectable without system privileges: null ciphering and identifier disclosure (Android
@@ -44,6 +46,7 @@ class CellCollector : Collector {
     override val requirements = listOf(
         Requirement.SystemFeature(PackageManager.FEATURE_TELEPHONY_RADIO_ACCESS),
         Requirement.Permission(Manifest.permission.ACCESS_FINE_LOCATION, optional = true),
+        Requirement.Permission(Manifest.permission.READ_PHONE_STATE, optional = true),
     )
 
     // Collectors' thread state, reset at each start.
@@ -52,6 +55,8 @@ class CellCollector : Collector {
     private var operatorName: String? = null
     private var operatorNumeric: String? = null
     private var serving: CellLogic.ServingCell? = null
+    private var fine = false
+    private var cellListener = false
     private val filter = CellLogic.ChangeFilter()
     private val downgrade = CellLogic.DowngradeDetector()
 
@@ -64,27 +69,43 @@ class CellCollector : Collector {
         downgrade.lastTech = ctx.prefs.getString("last_tech", null)
         downgrade.lastAlertMs = ctx.prefs.getLong("last_alert_ms", Long.MIN_VALUE / 2)
         val tm = ctx.appContext.getSystemService(TelephonyManager::class.java) ?: return
-        val fine = ctx.capabilities.hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+        fine = ctx.capabilities.hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+        // onCellInfoChanged needs READ_PHONE_STATE too (enforced for apps targeting Android 12+).
+        cellListener = fine && ctx.capabilities.hasPermission(Manifest.permission.READ_PHONE_STATE)
 
-        val callback: TelephonyCallback = if (fine) {
-            object : TelephonyCallback(), TelephonyCallback.ServiceStateListener, TelephonyCallback.CellInfoListener {
-                override fun onServiceStateChanged(ss: ServiceState) = onServiceState(ctx, tm, ss)
-                override fun onCellInfoChanged(cells: MutableList<CellInfo>) = onCells(ctx, cells)
+        val withCells = object : TelephonyCallback(), TelephonyCallback.ServiceStateListener, TelephonyCallback.CellInfoListener {
+            override fun onServiceStateChanged(ss: ServiceState) = onServiceState(ctx, tm, ss)
+            override fun onCellInfoChanged(cells: MutableList<CellInfo>) = onCells(ctx, cells)
+        }
+        val serviceOnly = object : TelephonyCallback(), TelephonyCallback.ServiceStateListener {
+            override fun onServiceStateChanged(ss: ServiceState) = onServiceState(ctx, tm, ss)
+        }
+        val callback: TelephonyCallback = if (cellListener) {
+            try {
+                tm.registerTelephonyCallback(ctx.executor, withCells)
+                withCells
+            } catch (_: SecurityException) {
+                cellListener = false
+                tm.registerTelephonyCallback(ctx.executor, serviceOnly)
+                serviceOnly
             }
         } else {
-            object : TelephonyCallback(), TelephonyCallback.ServiceStateListener {
-                override fun onServiceStateChanged(ss: ServiceState) = onServiceState(ctx, tm, ss)
-            }
+            tm.registerTelephonyCallback(ctx.executor, serviceOnly)
+            serviceOnly
         }
-        tm.registerTelephonyCallback(ctx.executor, callback)
         ctx.onStop { tm.unregisterTelephonyCallback(callback) }
-        if (fine) {
-            try {
-                tm.allCellInfo?.let { onCells(ctx, it) }
-            } catch (_: SecurityException) {
-                // Location switched off or permission just revoked: identities stay absent.
-            }
-        }
+        if (fine) refreshCells(ctx, tm)
+    }
+
+    /** Without the CellInfo listener, the cached cell list is read at each service state change. */
+    @SuppressLint("MissingPermission") // Only called with ACCESS_FINE_LOCATION.
+    private fun refreshCells(ctx: CollectorContext, tm: TelephonyManager) {
+        val cells = try {
+            tm.allCellInfo
+        } catch (_: SecurityException) {
+            null // Location switched off or permission just revoked: identities stay absent.
+        } ?: return
+        serving = cells.filter { it.isRegistered }.mapNotNull(::toServing).maxByOrNull { CellLogic.generation(it.tech) }
     }
 
     override suspend fun stop(ctx: CollectorContext) {
