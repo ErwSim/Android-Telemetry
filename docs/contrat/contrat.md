@@ -133,7 +133,16 @@ Note : `app.notification` n'est **pas** produit par l'APK principal en v1 (un se
   `manufacturer`, `product` ; `device.usb.accessory` = `manufacturer`, `model`, `version` ;
   `net.cell_security.kind` n'est produit qu'avec `downgrade_2g` en v1 (les autres exigent des API système).
 - Événements relevés après coup (`app.foreground`, `net.dns`, `net.connect`, `security.log`) : `ts` est
-  l'heure **d'origine** de l'événement fournie par le système, pas l'heure du relevé.
+  l'heure **d'origine** de l'événement fournie par le système, pas l'heure du relevé (il n'y a pas de champ
+  `event_ts`).
+- Agrégation : `net.dns`, `net.connect` et `security.log` peuvent porter `count` (entier ≥ 1, défaut 1 :
+  nombre d'occurrences identiques regroupées sur la fenêtre) et `last_event_ts` (heure de la dernière
+  occurrence) ; `ts` est alors l'heure de la première. Les statistiques du collecteur (`/stats/top`) pondèrent
+  par `count`.
+- `security.log` : `level` ∈ `info`/`warning`/`error` ; `pre_reboot` (bool) pour les journaux récupérés d'avant
+  redémarrage ; `start_time` de `app_process_start` en millisecondes.
+- `security.policy.action` admet aussi `permission_restored`, `setting_changed`, `setting_restored`.
+- `security.posture.play_protect` est omis par l'agent (aucune lecture fiable sur Android récent).
 - `security.log` : `fields` nomme la charge utile du tag ainsi (les indicateurs 0/1 de réussite deviennent des
   booléens `success`) ; tout tag non listé utilise `arg0`, `arg1`… dans l'ordre de la charge utile.
 

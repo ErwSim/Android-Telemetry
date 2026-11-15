@@ -13,7 +13,7 @@ Dernière mise à jour : 15/11/2026.
 | Collecteur Go | `server/collector/` | fait, revue de sécurité faite (6 défauts corrigés) | `go vet`, `go test -race`, essai réel avec simulateur, image Docker construite et lancée ; pas encore derrière Caddy/Wazuh réels |
 | Console web | `server/console/` | fait (revue à faire) | typage, lint, 43 tests, parcours Chromium contre serveur factice et contre le vrai collecteur ; tuiles OSM réelles non testées |
 | Infrastructure Docker | `infra/` | fait | pile réellement démarrée en TLS interne : mTLS, DoT, export → Wazuh (6220/6220 documents), 93/93 règles, rotation des mots de passe, sauvegarde/restauration. **Non testé** : Let's Encrypt/DNS-01, téléchargement des listes de blocage, WireGuard, RAM avec listes chargées |
-| Agent Android | `android/` | socle fait ; collecteurs restants et politique Device Owner en cours | `./gradlew lint test assembleDebug assembleRelease` vert (73 tests JVM, APK release 2,9 Mo signé). **Rien testé sur appareil.** Robolectric impossible ici (`gcp.mirrors.maven.org` bloqué par le proxy) |
+| Agent Android | `android/` | socle, 15 collecteurs et module Device Owner faits ; passe d'intégration puis revue indépendante en cours | `./gradlew lint test assembleDebug assembleRelease` vert (165 tests JVM). **Rien testé sur appareil.** Robolectric impossible ici (`gcp.mirrors.maven.org` bloqué par le proxy) |
 | Guides d'installation | `docs/guides/` | à faire | — |
 
 ## Limites de l'environnement de développement cloud
