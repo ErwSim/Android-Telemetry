@@ -101,6 +101,11 @@ class PolicyEngine(
                 wanted -> out += planItem(item, protected)
             }
         }
+        // Applied by an older version whose catalog no longer lists the item: undone, never left behind.
+        val known = catalog.items.map { it.id }.toSet() + setOf(PolicySelection.ID_DNS, PolicySelection.ID_BACKUP, PolicySelection.ID_VPN)
+        for (orphan in applied.values.filter { it.id !in known }) {
+            out += PlannedChange(orphan.id, orphan.kind, orphan.target, orphan.target, ChangeOp.REVERT, Risk.LOW, "retiré du catalogue")
+        }
         val dnsRecord = applied[PolicySelection.ID_DNS]
         val host = dnsHost()
         if (selection.privateDns) {
@@ -410,10 +415,10 @@ class PolicyEngine(
         val error = attempt { gateway.setAlwaysOnVpn(pkg, lockdown); null }
         val ok = safe { gateway.alwaysOnVpnPackage() == pkg && gateway.isAlwaysOnVpnLockdown() == lockdown } == true
         val target = if (lockdown) "$pkg (lockdown)" else pkg
-        if (ok) {
-            putRecord(record.copy(status = RecordStatus.APPLIED))
-        } else if (existing == null) {
-            removeRecord(record.id)
+        when {
+            ok -> putRecord(record.copy(status = RecordStatus.APPLIED))
+            existing == null -> removeRecord(record.id)
+            else -> putRecord(existing)
         }
         outcome("always_on_vpn", target, null, ok, if (ok) null else error ?: "aucun effet constaté")
     }

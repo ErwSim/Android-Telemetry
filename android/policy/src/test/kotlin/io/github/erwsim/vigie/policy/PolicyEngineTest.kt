@@ -364,6 +364,39 @@ class PolicyEngineTest {
     }
 
     @Test
+    fun `an item applied by an older version and gone from the catalog is undone, not forgotten`() {
+        gw.install("com.old.tracker")
+        gw.hidden += "com.old.tracker"
+        val store = PolicyStore(prefs)
+        store.saveState(
+            io.github.erwsim.vigie.policy.engine.AppliedState(
+                records = listOf(
+                    io.github.erwsim.vigie.policy.engine.AppliedRecord(
+                        id = "pkg:com.old.tracker", kind = io.github.erwsim.vigie.policy.engine.ItemKind.PACKAGE,
+                        target = "com.old.tracker", status = RecordStatus.APPLIED,
+                        method = io.github.erwsim.vigie.policy.engine.PackageMethod.HIDE,
+                    ),
+                ),
+            ),
+        )
+        val plan = engine().preview(PolicySelection(Profile.BALANCED)).associateBy { it.id }
+        assertEquals(ChangeOp.REVERT, plan.getValue("pkg:com.old.tracker").op)
+        engine().apply(PolicySelection(Profile.BALANCED))
+        assertFalse("com.old.tracker" in gw.hidden)
+    }
+
+    @Test
+    fun `persisted JSON tolerates unknown fields written by a newer version`() {
+        prefs.edit().putString(
+            "applied_state",
+            """{"version":2,"records":[{"id":"restr:no_cellular_2g","kind":"restriction","target":"no_cellular_2g","status":"applied","future_field":42}]}""",
+        ).commit()
+        gw.restrictions += "no_cellular_2g"
+        assertTrue(engine().revertAll().allOk)
+        assertFalse("no_cellular_2g" in gw.restrictions)
+    }
+
+    @Test
     fun `journal keeps every action with its outcome`() {
         engine().apply(PolicySelection(Profile.BALANCED))
         val journal = engine().journal()
