@@ -116,10 +116,8 @@ class BleTrackerCollector : Collector {
         startScan()
     }
 
-    override suspend fun stop(ctx: CollectorContext) {
-        scanning = false
-        detector.clear()
-    }
+    // `scanning` is left as is: the cleanup registered in start (run after stop) stops the scan.
+    override suspend fun stop(ctx: CollectorContext) = detector.clear()
 
     private fun onResult(ctx: CollectorContext, result: ScanResult) {
         val kind = TrackerSignatures.classify(result.scanRecord?.bytes) ?: return

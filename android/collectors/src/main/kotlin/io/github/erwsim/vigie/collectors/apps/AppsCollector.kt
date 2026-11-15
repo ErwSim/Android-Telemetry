@@ -105,6 +105,15 @@ class AppsCollector : Collector {
             diff.removed.forEach { emitChange(ctx, TYPE_REMOVED, it) }
             diff.permissionChanges.forEach { emitPermission(ctx, it) }
         }
+        if (inventoryDue) {
+            // The installer is read once per app version (daily inventory, installs and updates).
+            val missing = current.values.filter { it.installer == null }
+            if (missing.isNotEmpty()) {
+                current = current + withContext(Dispatchers.IO) {
+                    missing.mapNotNull { r -> installerOf(pm, r.pkg)?.let { r.pkg to r.copy(installer = it) } }
+                }
+            }
+        }
         if (old == null || old != current) {
             ctx.prefs.edit { putString(K_STATE, AppInventoryLogic.encode(current)) }
         }
