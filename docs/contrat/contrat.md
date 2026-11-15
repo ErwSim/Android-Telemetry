@@ -114,6 +114,7 @@ Note : `app.notification` n'est **pas** produit par l'APK principal en v1 (un se
 
 - `security.posture_change` (sev selon le champ) : émis **en plus** de `security.posture` pour chaque champ
   qui change : `field`, `old`, `new` (valeurs converties en chaînes). Permet une alerte par changement.
+  `patch_age_days` (dérivé de la date) ne produit pas de `security.posture_change`.
 - `sensor.camera` et `sensor.microphone` portent aussi `screen_on` (bool) et `locked` (bool) au moment de
   l'événement.
 - `security.policy.action` admet aussi `permission_granted` (auto-attribution par le Device Owner),
