@@ -1,5 +1,6 @@
 package io.github.erwsim.vigie.core.enroll
 
+import android.annotation.SuppressLint
 import android.content.SharedPreferences
 import java.util.Base64
 
@@ -18,6 +19,7 @@ data class Enrollment(
  * Persists the enrollment. The device token is stored only sealed by [SecretBox]
  * (Keystore AES-GCM key on the device); the client key lives in [ClientCredentialStore].
  */
+@SuppressLint("ApplySharedPref") // commit(): enrollment changes are synchronous and rare.
 class EnrollmentStore(
     private val prefs: SharedPreferences,
     private val secretBox: SecretBox,

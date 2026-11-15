@@ -1,5 +1,6 @@
 package io.github.erwsim.vigie.core.event
 
+import android.annotation.SuppressLint
 import android.content.SharedPreferences
 import java.security.SecureRandom
 
@@ -10,6 +11,7 @@ import java.security.SecureRandom
  * readable, when the estimated boot wall time (`now - elapsedRealtime`) moved by more than a
  * minute or `elapsedRealtime` went backwards. Computed once per process.
  */
+@SuppressLint("ApplySharedPref") // commit(): the boot id must be on disk before events of this boot are written.
 class BootIdentity(
     private val prefs: SharedPreferences,
     private val clock: AgentClock,

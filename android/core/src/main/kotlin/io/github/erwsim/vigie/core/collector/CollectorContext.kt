@@ -49,14 +49,18 @@ class CollectorContext internal constructor(
     val clock: AgentClock,
     val boot: BootInfo,
     val status: AgentStatusSource,
-    /** The collectors' thread. */
-    val looper: Looper,
-    val handler: Handler,
+    private val threading: CollectorThreading,
     /** Collector-scoped coroutines on the collectors' thread; exceptions are reported, not fatal. */
     val scope: CoroutineScope,
     private val errorReporter: (Throwable, String) -> Unit,
 ) {
     private val cleanups = ArrayList<() -> Unit>()
+
+    /** Looper of the collectors' thread (bind Android callbacks to it). */
+    val looper: Looper get() = threading.looper ?: error("no collectors Looper (JVM test)")
+
+    /** Handler of the collectors' thread. */
+    val handler: Handler get() = threading.handler ?: error("no collectors Handler (JVM test)")
 
     /** Private persistent state of this collector (not user settings). */
     val prefs: SharedPreferences by lazy {
@@ -104,7 +108,12 @@ class CollectorContext internal constructor(
 
     /** Executor running on the collectors' thread with error isolation (for LocationManager, etc.). */
     val executor: Executor = Executor { r ->
-        handler.post { guard("executor") { r.run() } }
+        val h = threading.handler
+        if (h != null) {
+            h.post { guard("executor") { r.run() } }
+        } else {
+            guard("executor") { r.run() }
+        }
     }
 
     /**

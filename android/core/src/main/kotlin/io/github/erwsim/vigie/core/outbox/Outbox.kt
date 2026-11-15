@@ -1,6 +1,7 @@
 package io.github.erwsim.vigie.core.outbox
 
-import androidx.room.withTransaction
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
 import io.github.erwsim.vigie.core.event.Event
 import io.github.erwsim.vigie.core.event.Rfc3339
 import io.github.erwsim.vigie.core.event.VigieJson
@@ -51,6 +52,10 @@ class Outbox(
     /** Cached count/bytes of buffered events (exact: maintained on every insert/delete). */
     val totals: StateFlow<OutboxTotals> = _totals.asStateFlow()
 
+    /** One immediate write transaction; DAO calls inside use the transaction's connection. */
+    private suspend fun <R> tx(block: suspend () -> R): R =
+        db.useWriterConnection { transactor -> transactor.immediateTransaction { block() } }
+
     private suspend fun ensureInit() {
         if (!initialized) {
             _totals.value = dao.totals()
@@ -64,7 +69,7 @@ class Outbox(
         return mutex.withLock {
             ensureInit()
             var addedBytes = 0L
-            val events = db.withTransaction {
+            val events = tx {
                 val last = dao.counter(COUNTER_LAST_SEQ) ?: 0L
                 val events = pending.mapIndexed { i, p ->
                     Event(
@@ -108,7 +113,7 @@ class Outbox(
             ensureInit()
             var removedCount = 0L
             var removedBytes = 0L
-            db.withTransaction {
+            tx {
                 rows.chunked(CHUNK).forEach { chunk ->
                     val seqs = chunk.map { it.seq }
                     removedBytes += dao.sizeOf(seqs)
@@ -132,7 +137,7 @@ class Outbox(
         var bytes = 0L
         var oldest = Long.MAX_VALUE
         var newest = Long.MIN_VALUE
-        db.withTransaction {
+        tx {
             val cutoff = nowMs - maxAgeMs
             val aged = dao.olderThan(cutoff)
             if (aged.count > 0) {
@@ -181,7 +186,7 @@ class Outbox(
     /** Counts events dropped outside of a purge (e.g. a single event the server refuses as too large). */
     suspend fun addDropped(n: Long) {
         mutex.withLock {
-            db.withTransaction {
+            tx {
                 val total = dao.counter(COUNTER_DROPPED) ?: 0L
                 dao.setCounter(CounterEntity(COUNTER_DROPPED, total + n))
             }

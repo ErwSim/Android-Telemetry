@@ -3,6 +3,8 @@ package io.github.erwsim.vigie.core.collector
 import android.content.Context
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
+import kotlinx.coroutines.CoroutineDispatcher
 import io.github.erwsim.vigie.core.R
 import io.github.erwsim.vigie.core.capability.Capabilities
 import io.github.erwsim.vigie.core.event.AgentClock
@@ -25,6 +27,20 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
+/**
+ * The collectors' thread. In production a `HandlerThread` (so Android callbacks can be bound to its
+ * Looper); JVM tests pass a plain single-thread dispatcher and no Looper.
+ */
+class CollectorThreading(val looper: Looper?, val handler: Handler?, val dispatcher: CoroutineDispatcher) {
+    companion object {
+        fun android(): CollectorThreading {
+            val thread = HandlerThread("vigie-collectors").apply { start() }
+            val handler = Handler(thread.looper)
+            return CollectorThreading(thread.looper, handler, handler.asCoroutineDispatcher("vigie-collectors"))
+        }
+    }
+}
+
 /** Schedules [Collector.periodic] work (WorkManager in production). */
 interface PeriodicScheduler {
     fun schedule(collectorId: String, spec: PeriodicSpec)
@@ -45,10 +61,11 @@ class CollectorHost(
     private val boot: BootInfo,
     private val statusSource: () -> AgentStatusSource,
     private val periodicScheduler: PeriodicScheduler,
+    private val threading: CollectorThreading = CollectorThreading.android(),
+    /** French texts of the availability reasons (resources in production). */
+    private val text: (Int, Array<out Any>) -> String = { id, args -> appContext.getString(id, *args) },
 ) {
-    private val thread = HandlerThread("vigie-collectors").apply { start() }
-    val handler = Handler(thread.looper)
-    private val dispatcher = handler.asCoroutineDispatcher("vigie-collectors")
+    private val dispatcher = threading.dispatcher
     private val hostJob = SupervisorJob()
     private val hostScope = CoroutineScope(hostJob + dispatcher + CoroutineExceptionHandler { _, e ->
         android.util.Log.e(TAG, "host error", e)
@@ -60,7 +77,8 @@ class CollectorHost(
     private val running = HashMap<String, Running>()
     private val errorLog = HashMap<String, ArrayDeque<Long>>()
     private val suppressed = HashMap<String, Int>()
-    private val stoppedForErrors = HashSet<String>()
+    /** Collectors stopped after a start failure or repeated errors, with the reason; cleared on restart/re-enable. */
+    private val failed = HashMap<String, String>()
     private var active = false
 
     private val _statuses = MutableStateFlow(collectors.associate { it.id to CollectorStatus(CollectorRunState.DISABLED) })
@@ -86,7 +104,7 @@ class CollectorHost(
     fun startAll() {
         hostScope.launch {
             active = true
-            stoppedForErrors.clear()
+            failed.clear()
             collectors.forEach { reconcileOne(it) }
         }
     }
@@ -135,23 +153,23 @@ class CollectorHost(
             .filter { !it.optional && !capabilities.hasPermission(it.name) }
         if (missing.isNotEmpty()) {
             return Availability.Unavailable(
-                appContext.getString(R.string.vigie_reason_missing_permission, missing.joinToString { shortName(it.name) }),
+                text(R.string.vigie_reason_missing_permission, arrayOf(missing.joinToString { shortName(it.name) })),
             )
         }
         if (c.requirements.any { it is Requirement.DeviceOwner } && !capabilities.isDeviceOwner()) {
-            return Availability.Unavailable(appContext.getString(R.string.vigie_reason_device_owner))
+            return Availability.Unavailable(text(R.string.vigie_reason_device_owner, emptyArray()))
         }
         c.requirements.filterIsInstance<Requirement.SystemFeature>().firstOrNull { !capabilities.hasSystemFeature(it.name) }
-            ?.let { return Availability.Unavailable(appContext.getString(R.string.vigie_reason_feature, it.name)) }
+            ?.let { return Availability.Unavailable(text(R.string.vigie_reason_feature, arrayOf(it.name))) }
         return try {
             c.checkAvailability(newContextForCheck(c))
         } catch (e: Exception) {
-            Availability.Unavailable(appContext.getString(R.string.vigie_reason_check_failed, e.toString()))
+            Availability.Unavailable(text(R.string.vigie_reason_check_failed, arrayOf(e.toString())))
         }
     }
 
     private suspend fun reconcileOne(c: Collector) {
-        val shouldRun = active && isEnabled(c) && c.id !in stoppedForErrors && availability(c) is Availability.Available
+        val shouldRun = active && isEnabled(c) && c.id !in failed && availability(c) is Availability.Available
         val isRunning = running.containsKey(c.id)
         when {
             shouldRun && !isRunning -> startOne(c)
@@ -176,7 +194,9 @@ class CollectorHost(
             }
         } catch (e: Exception) {
             onError(c.id, e, "start")
-            stopOne(c.id, CollectorRunState.UNAVAILABLE, appContext.getString(R.string.vigie_reason_start_failed, e.toString()))
+            val reason = text(R.string.vigie_reason_start_failed, arrayOf(e.toString()))
+            failed[c.id] = reason
+            stopOne(c.id, CollectorRunState.UNAVAILABLE, reason)
         }
     }
 
@@ -199,7 +219,7 @@ class CollectorHost(
         for (c in collectors) {
             val enabledKey = settings.collectorEnabledKey(c.id, c.defaultEnabled).name
             if (key == enabledKey) {
-                stoppedForErrors.remove(c.id)
+                failed.remove(c.id)
                 reconcileOne(c)
             } else if (c.settings.any { it.key.name == key } && running.containsKey(c.id)) {
                 stopOne(c.id, CollectorRunState.DISABLED, null)
@@ -215,12 +235,7 @@ class CollectorHost(
         val status = when {
             running.containsKey(c.id) -> CollectorStatus(CollectorRunState.RUNNING, null, previous?.lastError, missingOptional)
             !isEnabled(c) -> CollectorStatus(CollectorRunState.DISABLED, null, previous?.lastError, missingOptional)
-            c.id in stoppedForErrors -> CollectorStatus(
-                CollectorRunState.UNAVAILABLE,
-                appContext.getString(R.string.vigie_reason_too_many_errors),
-                previous?.lastError,
-                missingOptional,
-            )
+            c.id in failed -> CollectorStatus(CollectorRunState.UNAVAILABLE, failed[c.id], previous?.lastError, missingOptional)
             else -> when (val a = availability(c)) {
                 is Availability.Unavailable -> CollectorStatus(CollectorRunState.UNAVAILABLE, a.reason, previous?.lastError, missingOptional)
                 // Enabled and available but the agent is not running.
@@ -251,8 +266,9 @@ class CollectorHost(
                 suppressed[id] = (suppressed[id] ?: 0) + 1
             }
             if (log.size >= MAX_ERRORS_BEFORE_STOP && running.containsKey(id)) {
-                stoppedForErrors += id
-                stopOne(id, CollectorRunState.UNAVAILABLE, appContext.getString(R.string.vigie_reason_too_many_errors))
+                val reason = text(R.string.vigie_reason_too_many_errors, emptyArray())
+                failed[id] = reason
+                stopOne(id, CollectorRunState.UNAVAILABLE, reason)
             }
         }
     }
@@ -268,8 +284,7 @@ class CollectorHost(
             clock = clock,
             boot = boot,
             status = statusSource(),
-            looper = thread.looper,
-            handler = handler,
+            threading = threading,
             scope = scope,
             errorReporter = { e, where -> onError(c.id, e, where) },
         )

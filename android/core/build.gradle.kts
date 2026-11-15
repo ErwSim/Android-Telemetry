@@ -11,7 +11,6 @@ android {
     defaultConfig {
         minSdk = 36
         consumerProguardFiles("consumer-rules.pro")
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -20,8 +19,9 @@ android {
     }
 
     testOptions {
-        unitTests.isIncludeAndroidResources = true
-        unitTests.isReturnDefaultValues = false
+        // Plain JVM unit tests (no emulator, no Robolectric): Android stubs return defaults,
+        // Room runs on the bundled JVM SQLite driver.
+        unitTests.isReturnDefaultValues = true
     }
 }
 
@@ -37,15 +37,11 @@ dependencies {
     api(libs.work.runtime)
     implementation(libs.okhttp)
     implementation(libs.room.runtime)
-    implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
     testImplementation(libs.junit)
-    testImplementation(libs.robolectric)
-    testImplementation(libs.androidx.test.core)
-    testImplementation(libs.androidx.test.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.okhttp.tls)
-    testImplementation(libs.work.testing)
+    testImplementation(libs.sqlite.bundled.jvm)
 }

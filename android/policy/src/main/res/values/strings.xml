@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="fr">
     <string name="policy_admin_label">Vigie (administration de l\'appareil)</string>
     <string name="policy_admin_description">Permet à Vigie, en mode Device Owner, de journaliser la sécurité et le réseau et d\'appliquer la politique de confidentialité choisie dans l\'app. Tout est réversible depuis l\'app.</string>
     <string name="policy_disable_warning">Désactiver l\'administrateur Vigie arrête la protection de l\'appareil. Cette action est enregistrée et signalée au serveur.</string>

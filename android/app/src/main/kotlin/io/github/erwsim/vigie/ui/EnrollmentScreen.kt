@@ -1,6 +1,7 @@
 package io.github.erwsim.vigie.ui
 
 import android.content.Context
+import android.content.res.Resources
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -27,6 +28,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,6 +51,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun EnrollmentScreen(agent: Agent, modifier: Modifier) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     val enrollment by agent.enrollment.state.collectAsStateWithLifecycle()
     val totals by agent.outbox.totals.collectAsStateWithLifecycle()
@@ -60,7 +64,7 @@ fun EnrollmentScreen(agent: Agent, modifier: Modifier) {
     fun ping() {
         busy = true
         scope.launch {
-            message = pingMessage(context, agent.enrollment.ping())
+            message = pingMessage(resources, agent.enrollment.ping())
             busy = false
         }
     }
@@ -75,9 +79,9 @@ fun EnrollmentScreen(agent: Agent, modifier: Modifier) {
                 parsed = withContext(Dispatchers.Default) { agent.enrollment.parse(bytes) }
                 sourceUri = uri
             } catch (e: EnrollmentException) {
-                message = context.getString(R.string.enroll_error, errorText(context, e.error), e.detail.orEmpty())
+                message = resources.getString(R.string.enroll_error, errorText(resources, e.error), e.detail.orEmpty())
             } catch (e: Exception) {
-                message = context.getString(R.string.enroll_read_error, e.toString())
+                message = resources.getString(R.string.enroll_read_error, e.toString())
             } finally {
                 busy = false
             }
@@ -113,13 +117,13 @@ fun EnrollmentScreen(agent: Agent, modifier: Modifier) {
                                 parsed = null
                                 val deleted = sourceUri?.let { deleteSource(context, it) } == true
                                 sourceUri = null
-                                val ping = pingMessage(context, agent.enrollment.ping())
-                                message = context.getString(
+                                val ping = pingMessage(resources, agent.enrollment.ping())
+                                message = resources.getString(
                                     if (deleted) R.string.enroll_done_deleted else R.string.enroll_done_not_deleted,
                                 ) + "\n" + ping
                                 agent.requestUpload(force = true)
                             } catch (e: Exception) {
-                                message = context.getString(R.string.enroll_import_error, e.toString())
+                                message = resources.getString(R.string.enroll_import_error, e.toString())
                             } finally {
                                 busy = false
                             }
@@ -171,13 +175,13 @@ fun EnrollmentScreen(agent: Agent, modifier: Modifier) {
         AlertDialog(
             onDismissRequest = { confirmUnenroll = false },
             title = { Text(stringResource(R.string.action_unenroll)) },
-            text = { Text(stringResource(R.string.enroll_unenroll_confirm, totals.count)) },
+            text = { Text(pluralStringResource(R.plurals.enroll_unenroll_confirm, totals.count.toInt(), totals.count)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmUnenroll = false
                     scope.launch {
                         withContext(Dispatchers.IO) { agent.unenroll() }
-                        message = context.getString(R.string.enroll_unenrolled)
+                        message = resources.getString(R.string.enroll_unenrolled)
                     }
                 }) { Text(stringResource(R.string.action_unenroll)) }
             },
@@ -201,22 +205,22 @@ private fun deleteSource(context: Context, uri: Uri): Boolean = try {
     false
 }
 
-private fun pingMessage(context: Context, result: PingResult): String = when (result) {
+private fun pingMessage(resources: Resources, result: PingResult): String = when (result) {
     is PingResult.Ok -> if (result.deviceIdMatches) {
-        context.getString(R.string.ping_ok, result.serverTime ?: "?")
+        resources.getString(R.string.ping_ok, result.serverTime ?: "?")
     } else {
-        context.getString(R.string.ping_device_mismatch)
+        resources.getString(R.string.ping_device_mismatch)
     }
     is PingResult.HttpError -> if (result.code == 401 || result.code == 403) {
-        context.getString(R.string.ping_unauthorized, result.code)
+        resources.getString(R.string.ping_unauthorized, result.code)
     } else {
-        context.getString(R.string.ping_http_error, result.code)
+        resources.getString(R.string.ping_http_error, result.code)
     }
-    is PingResult.NetworkError -> context.getString(R.string.ping_network_error, result.message)
-    PingResult.NotEnrolled -> context.getString(R.string.ping_not_enrolled)
+    is PingResult.NetworkError -> resources.getString(R.string.ping_network_error, result.message)
+    PingResult.NotEnrolled -> resources.getString(R.string.ping_not_enrolled)
 }
 
-private fun errorText(context: Context, error: EnrollmentError): String = context.getString(
+private fun errorText(resources: Resources, error: EnrollmentError): String = resources.getString(
     when (error) {
         EnrollmentError.TOO_LARGE -> R.string.enroll_err_too_large
         EnrollmentError.NOT_JSON -> R.string.enroll_err_not_json

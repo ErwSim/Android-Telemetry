@@ -6,10 +6,10 @@ import androidx.room.Database
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
-import androidx.room.Upsert
 
 /**
  * One buffered event. `seq` is the contract sequence number and the primary key, so it is
@@ -62,7 +62,7 @@ interface OutboxDao {
     @Query("SELECT value FROM counters WHERE name = :name")
     suspend fun counter(name: String): Long?
 
-    @Upsert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun setCounter(counter: CounterEntity)
 
     @Query("SELECT * FROM outbox WHERE sev >= :minSev ORDER BY seq LIMIT :limit")

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="fr">
     <string name="app_name">Vigie</string>
 
     <!-- Navigation -->
@@ -135,7 +135,11 @@
     <string name="enroll_result_title">Résultat</string>
     <string name="enroll_security_title">Sécurité</string>
     <string name="enroll_security">Seule l\'adresse enrôlée reçoit des données, en HTTPS avec certificat client. Les redirections sont refusées, les autorités ajoutées par l\'utilisateur ne sont jamais acceptées et le trafic en clair est interdit.</string>
-    <string name="enroll_unenroll_confirm">La clé, le certificat et le jeton seront effacés, ainsi que les %1$d événements en attente d\'envoi. La collecte continue localement.</string>
+    <plurals name="enroll_unenroll_confirm">
+        <item quantity="one">La clé, le certificat et le jeton seront effacés, ainsi que %1$d événement en attente d\'envoi. La collecte continue localement.</item>
+        <item quantity="many">La clé, le certificat et le jeton seront effacés, ainsi que les %1$d événements en attente d\'envoi. La collecte continue localement.</item>
+        <item quantity="other">La clé, le certificat et le jeton seront effacés, ainsi que les %1$d événements en attente d\'envoi. La collecte continue localement.</item>
+    </plurals>
     <string name="enroll_unenrolled">Appareil désenrôlé.</string>
     <string name="enroll_err_too_large">fichier trop volumineux.</string>
     <string name="enroll_err_not_json">ce n\'est pas un fichier .vigie (JSON invalide).</string>

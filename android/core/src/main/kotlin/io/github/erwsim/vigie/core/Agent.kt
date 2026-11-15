@@ -1,5 +1,6 @@
 package io.github.erwsim.vigie.core
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
@@ -250,6 +251,8 @@ class Agent private constructor(
         private const val PREFS_INTEGRITY = "vigie_integrity"
         private const val BULK_REQUEST_INTERVAL_MS = 5 * 60_000L
 
+        // Holds only the application context (never an Activity): not a leak.
+        @SuppressLint("StaticFieldLeak")
         @Volatile
         private var instance: Agent? = null
 
