@@ -425,7 +425,7 @@ fi
 
 if [[ -f "$INFRA_DIR/wazuh/dashboards/vigie-saved-objects.ndjson" ]] && wait_healthy wazuh.dashboard 60; then
   if dc exec -T wazuh.dashboard curl -sk -u "admin:$WAZUH_ADMIN_PASSWORD" -H 'osd-xsrf: true' \
-    -F file=@/dev/stdin "https://localhost:5601/api/saved_objects/_import?overwrite=true" \
+    -F "file=@/dev/stdin;filename=vigie-saved-objects.ndjson" "https://localhost:5601/api/saved_objects/_import?overwrite=true" \
     <"$INFRA_DIR/wazuh/dashboards/vigie-saved-objects.ndjson" | grep -q '"success":true'; then
     info "Tableaux de bord Vigie importés dans le dashboard Wazuh."
   else
