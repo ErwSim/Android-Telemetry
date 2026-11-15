@@ -1,9 +1,24 @@
 package io.github.erwsim.vigie.collectors
 
 import android.content.Context
+import io.github.erwsim.vigie.collectors.apps.AppsCollector
+import io.github.erwsim.vigie.collectors.apps.ForegroundAppCollector
+import io.github.erwsim.vigie.collectors.apps.SpecialAccessCollector
+import io.github.erwsim.vigie.collectors.bluetooth.BleTrackerCollector
+import io.github.erwsim.vigie.collectors.bluetooth.BluetoothCollector
+import io.github.erwsim.vigie.collectors.cell.CellCollector
 import io.github.erwsim.vigie.collectors.device.DeviceCollector
+import io.github.erwsim.vigie.collectors.device.UsbCollector
 import io.github.erwsim.vigie.collectors.heartbeat.HeartbeatCollector
 import io.github.erwsim.vigie.collectors.location.LocationCollector
+import io.github.erwsim.vigie.collectors.network.ConnectivityCollector
+import io.github.erwsim.vigie.collectors.network.HotspotCollector
+import io.github.erwsim.vigie.collectors.network.NetworkUsageCollector
+import io.github.erwsim.vigie.collectors.network.NfcCollector
+import io.github.erwsim.vigie.collectors.network.WifiCollector
+import io.github.erwsim.vigie.collectors.network.WifiScanCollector
+import io.github.erwsim.vigie.collectors.sensors.CameraCollector
+import io.github.erwsim.vigie.collectors.sensors.MicrophoneCollector
 import io.github.erwsim.vigie.core.collector.Collector
 
 /**
@@ -16,6 +31,21 @@ object CollectorsModule {
     fun all(context: Context): List<Collector> = listOf(
         HeartbeatCollector(),
         DeviceCollector(),
+        UsbCollector(),
         LocationCollector(),
+        ConnectivityCollector(),
+        WifiCollector(),
+        WifiScanCollector(),
+        HotspotCollector(),
+        NfcCollector(),
+        CellCollector(),
+        BluetoothCollector(),
+        BleTrackerCollector(),
+        NetworkUsageCollector(),
+        AppsCollector(),
+        SpecialAccessCollector(),
+        ForegroundAppCollector(),
+        CameraCollector(),
+        MicrophoneCollector(),
     )
 }

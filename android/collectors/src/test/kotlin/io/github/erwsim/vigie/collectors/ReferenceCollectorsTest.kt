@@ -101,6 +101,13 @@ class HeartbeatHarnessTest {
         ).use { h ->
             h.startAll()
             assertTrue(h.scheduled.contains("+heartbeat"))
+            // collectOnce hops to Dispatchers.IO: on a cold JVM (first test class) it may finish after
+            // the harness's settle(); wait for the event instead of racing it.
+            val deadline = System.currentTimeMillis() + 5_000
+            while (h.eventsOf("agent.heartbeat").isEmpty() && System.currentTimeMillis() < deadline) {
+                Thread.sleep(10)
+                h.settle()
+            }
             val beat = h.eventsOf("agent.heartbeat").single().data
             listOf("uptime_ms", "queue_depth", "queue_bytes", "dropped_total", "device_owner", "collectors").forEach {
                 assertTrue("missing $it in $beat", beat.containsKey(it))
