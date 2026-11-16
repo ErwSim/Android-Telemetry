@@ -219,11 +219,11 @@ const LEVELS: Record<RiskLevel, LevelInfo> = {
   high: { key: 'high', label: 'Élevé', tone: 'bad' },
 };
 
-/** Niveau annoncé ; si la valeur est inconnue ou absente, repli sur le score (< 35 faible, < 65 moyen). */
+/** Niveau annoncé ; si la valeur est inconnue ou absente, repli sur le score (< 30 faible, < 70 moyen : contrat §11.2). */
 export function levelInfo(level: string | undefined, score?: number): LevelInfo {
   if (level === 'low' || level === 'medium' || level === 'high') return LEVELS[level];
   const s = score ?? 0;
-  return s >= 65 ? LEVELS.high : s >= 35 ? LEVELS.medium : LEVELS.low;
+  return s >= 70 ? LEVELS.high : s >= 30 ? LEVELS.medium : LEVELS.low;
 }
 
 export const LEVEL_RANK: Record<RiskLevel, number> = { low: 0, medium: 1, high: 2 };

@@ -735,4 +735,5 @@ Précisions du §11.4 (issues du développement) :
   les types sont tenues à jour dans `server/collector/README.md`.
 - Scénario de simulateur `sms-discret` (l'attaque subie par le propriétaire : application de boutique,
   `SEND_SMS` accordée 25 à 30 h après l'installation) ; avec `--app-ops=false` il produit
-  `detect.new_app_risky` et `detect.sms_permission`, sans `detect.sms_abuse`.
+  une seule détection, `detect.sms_permission` (une application de boutique avec ce profil n'est notée que
+  `medium`, donc rien à l'installation), sans `detect.sms_abuse`.

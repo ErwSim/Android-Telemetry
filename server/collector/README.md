@@ -151,8 +151,9 @@ n'empêchent rien.
 
 L'attaque vécue par le propriétaire (appli du Play Store sans icône, `SEND_SMS` obtenue 30 h après
 l'installation, ~2 000 SMS par jour, serveur absent des listes de menaces) donne **sans `app.ops`** :
-`detect.new_app_risky` à l'installation (profil `high` : capacités déclarées `sms_send` + démarrage au boot) et
-`detect.sms_permission` à l'octroi — mais jamais le volume envoyé ; **avec `app.ops`**, en plus
+**une seule détection**, `detect.sms_permission` à l'octroi — rien à l'installation (une application de
+boutique avec ce profil n'est notée que `medium` par l'agent, et `detect.new_app_risky` exige `high` ou une
+capacité acquise dans les 24 h), et jamais le volume envoyé ; **avec `app.ops`**, en plus
 `detect.sms_abuse` (scénario `sms-discret` du simulateur, essais plus bas). Un vrai téléphone a souvent, à la
 première observation, quelques applis non système qui détiennent `SEND_SMS` (messagerie vocale visuelle,
 appli d'opérateur, montre connectée…) : une détection chacune, une seule fois — c'est une revue initiale voulue ;
@@ -317,8 +318,8 @@ Clés d'`evidence` par type (toujours un objet ; listes de scalaires seulement, 
 Le simulateur émet désormais aussi le profil de risque et l'usage du parc sain (§11.2) : `app.risk` de chaque
 application au premier démarrage, à chaque mise à jour et installation (capacités **déclarées**, liste `granted`
 des capacités accordées ; une appli d'attaque est notée à l'installation puis de nouveau quand une capacité est
-accordée) (niveaux `low` 0-29, `medium` 30-59,
-`high` 60-100, système et Vigie plafonnés à `low`), `app.ops` horaire (SMS de l'appli SMS, appels, contacts,
+accordée) (niveaux `low` 0-29, `medium` 30-69,
+`high` 70-100, système et Vigie plafonnés à `low`), `app.ops` horaire (SMS de l'appli SMS, appels, contacts,
 position, assistant, Bixby…, avec `rejected_count`), pas d'`app.role` au premier relevé (les applications par
 défaut viennent de `app.special_access`). S'y ajoutent des comportements sains trompeurs : appel vidéo WhatsApp
 (250 à 450 Mio envoyés), sauvegarde nocturne Samsung Cloud (jusqu'à 850 Mio), une heure de navigation intense
@@ -341,7 +342,7 @@ bloqués par la liste de menaces du faux AdGuard Home (`--fake-adguard`, liste a
 | `exfiltration` | « Coffre Photos » du Play Store, quelques Mio par heure puis, 36 h après le début (au plus tard 2 h avant la fin de l'historique ; sans historique, 1 h après), 3,1 à 3,9 Gio en une heure | `upload_spike` |
 | `contournement-dns` | « Navigateur Rapide » (service VPN), 3 à 12 connexions par heure à 1.1.1.1:443, 1.0.0.1:443, 8.8.8.8:853, [2606:4700:4700::1111]:443 | `dns_bypass` (une par jour), `new_app_risky` (VPN, sév. 1) |
 | `espion` | « Battery Service » hors store (`combo_stalkerware`), micro, caméra et position en arrière-plan accordés, administrateur de l'appareil, ~4 enregistrements par heure, une photo toutes les 3 h | `new_app_risky` (une : risque élevé + administrateur), `sensor_background` (une par jour, micro et caméra) |
-| `sms-discret` | l'attaque vécue par le propriétaire : « Promo Coupons » du Play Store, sans icône (capacités déclarées `sms_send` + démarrage au boot : `high`), petit appel horaire à un serveur absent des listes, `SEND_SMS` accordée 25 à 30 h après l'installation, puis ~85 SMS par heure | `new_app_risky` (à l'installation), `sms_permission` (à l'octroi), `sms_abuse` (une par jour, avec `app.ops` seulement) |
+| `sms-discret` | l'attaque vécue par le propriétaire : « Promo Coupons » du Play Store, sans icône (capacités déclarées `sms_send` + démarrage au boot : `medium`, car venue d'une boutique), petit appel horaire à un serveur absent des listes, `SEND_SMS` accordée 25 à 30 h après l'installation, puis ~85 SMS par heure | `sms_permission` (à l'octroi), `sms_abuse` (une par jour, avec `app.ops` seulement) |
 | `tout` | tous les scénarios d'attaque | tout ce qui précède (`TestScenarioAttacks`) |
 
 Lancer en local un serveur avec un scénario d'attaque (faux AdGuard Home compris) :

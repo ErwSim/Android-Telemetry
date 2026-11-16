@@ -249,7 +249,7 @@ celles de `internal/detect` du collecteur (`domain`/`requests`, `tx_bytes`/`medi
 spécifiées ; (2) `GET /detections` n'a pas de filtre `package` : la fiche d'application le transmet (ignoré par le contrat) et filtre côté client,
 en enchaînant jusqu'à 6 pages ; un filtre serveur éviterait ce balayage ; (3) `window_from`/`window_to` sont décrits comme portés par chaque détection mais absents de la
 liste des champs de l'API (le collecteur les renvoie : lus s'ils sont là, sinon « détectée le … ») ; (4) l'échelle de `severity` (0 à 3 comme `sev`) n'est pas écrite ;
-(5) le niveau de `app.risk` n'a pas de seuils publiés (repli sur le score : < 35 faible, < 65 moyen, sinon élevé, si le niveau est absent ou inconnu) ;
+(5) le niveau de `app.risk` fait foi ; s'il est absent ou inconnu, repli sur le score avec les seuils du contrat §11.2 (< 30 faible, < 70 moyen, sinon élevé) ;
 (6) le nom du collecteur `app.ops` dans `agent.heartbeat.collectors` n'est pas fixé (la console cherche une clé contenant « ops ») ; (7) `tracking.level_changed.changes`
 n'a pas de type fixé (nombre ou liste : les deux sont lus) ; (8) `/detections` renvoie une détection par domaine de menace et par jour : la phrase « a tenté de joindre
 3 domaines » n'existe que pour une preuve groupée (`domains`).

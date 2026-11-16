@@ -150,7 +150,7 @@ go run . sim --enroll .dev/s25.vigie --backfill 72h --follow --scenario tout \
 - `--scenario sain|fraude-sms|cheval-de-troie|proxy|spam|exfiltration|contournement-dns|espion|sms-discret|tout` (plusieurs
   séparés par des virgules) ; `sms-discret` reproduit l'attaque subie par le propriétaire (application de boutique, `SEND_SMS`
   accordée 25 à 30 h après l'installation) ; `--app-ops=false` simule l'absence du comptage expérimental (le scénario donne alors
-  `detect.new_app_risky` et `detect.sms_permission`, jamais `detect.sms_abuse`).
+  une seule détection, `detect.sms_permission`, jamais `detect.sms_abuse`).
 - `--commands stream|poll|off`, `--poll-interval`, `--command-code`, `--allow-wipe`, `--clock-skew` : l'agent de commandes simulé
   (le code d'essai du contrat est `correct horse battery staple`, avec `device_id` `dev_0123456789abcdef` pour le vecteur de test).
 - Les détections apparaissent au passage qui suit l'arrivée des données (`VIGIE_DETECT_INTERVAL_S`), celles qui dépendent

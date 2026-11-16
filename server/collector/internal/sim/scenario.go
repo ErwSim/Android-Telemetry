@@ -141,7 +141,7 @@ func riskOf(a *app) map[string]any {
 	switch {
 	case a.system || a.pkg == "io.github.erwsim.vigie":
 		score = min(score, 29) // capped at low, reasons kept (contract §11.2)
-	case score >= 60:
+	case score >= 70:
 		level = "high"
 	case score >= 30:
 		level = "medium"
@@ -431,11 +431,12 @@ func attackRisk(a *attack) map[string]any {
 	case ScenarioDNSBypass:
 		reasons, score = []string{"vpn_service"}, 20
 	case ScenarioSMSQuiet:
-		reasons, score = []string{"no_launcher_icon", "sms_send", "boot_receiver", "combo_sms_fraud"}, 64
+		// A store application: the agent's scorer gives such a profile "medium" (30-69), not "high".
+		reasons, score = []string{"no_launcher_icon", "sms_send", "boot_receiver", "combo_sms_fraud"}, 57
 	}
 	level := "low"
 	switch {
-	case score >= 60:
+	case score >= 70:
 		level = "high"
 	case score >= 30:
 		level = "medium"

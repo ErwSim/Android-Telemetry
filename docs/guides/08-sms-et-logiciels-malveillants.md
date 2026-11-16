@@ -96,9 +96,14 @@ reçoit aussi. Sans le comptage expérimental :
   quelques applications non système qui détiennent `SEND_SMS` (messagerie vocale visuelle, application d'opérateur, montre
   connectée). Vous recevrez donc **une détection chacune, une seule fois** : c'est une revue initiale voulue ; examinez-les,
   puis rangez celles que vous connaissez par la mise en sourdine (guide 05).
-- Le **profil de risque** d'une application mesure des capacités *déclarées* : une application discrète du Play Store qui
-  déclare l'envoi de SMS et le démarrage au boot sort « élevé » dès l'installation ; une application qui ne déclare rien de
-  suspect peut sortir « faible ». C'est un indicateur d'attention, pas un verdict.
+- Le **profil de risque** d'une application mesure des capacités *déclarées* : une application sans icône installée **hors
+  boutique** qui déclare l'envoi de SMS et le démarrage au boot sort « élevé » dès l'installation ; la même application venue
+  du **Play Store** ne sort que « moyen », et une application qui ne déclare rien de suspect peut sortir « faible ». C'est un
+  indicateur d'attention, pas un verdict.
+- **Le cas réellement subi** (application du Play Store, permission d'envoi obtenue plus de 24 h après l'installation, serveur
+  absent des listes de menaces), rejoué sur le serveur sans le comptage : **une seule détection**, `detect.sms_permission`,
+  au moment où la permission est détenue. Rien à l'installation, et jamais le nombre de SMS envoyés. C'est cette alerte-là
+  (niveau 10, donc notifiée au seuil par défaut) qu'il ne faut pas laisser passer.
 - **Les notifications d'alerte** (guide 05, §3) sont à 10 par défaut : l'alerte « permission SMS accordée » (100161) et
   « nouvelle appli SMS par défaut » (100511) sont de niveau 8 et **ne sont pas notifiées** à ce seuil. Baissez
   `VIGIE_NOTIFY_LEVEL` à **8** pour les recevoir (guide 05, §3).

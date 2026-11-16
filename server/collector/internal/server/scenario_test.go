@@ -131,12 +131,13 @@ func TestScenarioAttacks(t *testing.T) {
 	want := map[string][]string{
 		"com.flashlight.pro.tools":         {"detect.new_app_risky", "detect.sms_abuse", "detect.threat_domain", "detect.sms_permission"},
 		"com.android.systemupdate.service": {"detect.new_app_risky", "detect.threat_domain", "detect.default_app_changed"},
-		"com.coupons.promo.deals":          {"detect.new_app_risky", "detect.sms_permission", "detect.sms_abuse"},
-		"com.puzzle.relax.free":            {"detect.fanout"},
-		"com.cleaner.boost.free":           {"detect.mail_ports"},
-		"com.gallery.vault.hide":           {"detect.upload_spike"},
-		"com.fastvpn.browser":              {"detect.dns_bypass"},
-		"com.android.battery.service":      {"detect.new_app_risky", "detect.sensor_background"},
+		// A store application: its risk profile is "medium", so its installation is not reported.
+		"com.coupons.promo.deals":     {"detect.sms_permission", "detect.sms_abuse"},
+		"com.puzzle.relax.free":       {"detect.fanout"},
+		"com.cleaner.boost.free":      {"detect.mail_ports"},
+		"com.gallery.vault.hide":      {"detect.upload_spike"},
+		"com.fastvpn.browser":         {"detect.dns_bypass"},
+		"com.android.battery.service": {"detect.new_app_risky", "detect.sensor_background"},
 	}
 	for pkg, types := range want {
 		for _, typ := range types {
@@ -180,8 +181,9 @@ func storeQuery() store.DetectionQuery {
 	return store.DetectionQuery{FromMS: 0, ToMS: time.Now().Add(time.Hour).UnixMilli(), Limit: 500}
 }
 
-// The owner's attack without app.ops (contract §11.4): the application is reported when it obtains SEND_SMS
-// (detect.sms_permission), after having been reported at its installation (declared capabilities: high).
+// The owner's attack without app.ops (contract §11.4): a store application whose risk profile is only
+// "medium" (so nothing at installation) is reported once, when it holds SEND_SMS (detect.sms_permission).
+// This single detection is all the server sees of that attack without app.ops.
 func TestScenarioOwnerAttackWithoutAppOps(t *testing.T) {
 	e := newEnv(t, nil)
 	now := time.Now().UTC()
@@ -194,7 +196,7 @@ func TestScenarioOwnerAttackWithoutAppOps(t *testing.T) {
 		}
 		got[d.Type]++
 	}
-	if len(got) != 2 || got["detect.new_app_risky"] != 1 || got["detect.sms_permission"] != 1 {
+	if len(got) != 1 || got["detect.sms_permission"] != 1 {
 		t.Fatalf("detections %v", got)
 	}
 }
