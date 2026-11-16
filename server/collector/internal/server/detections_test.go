@@ -127,7 +127,7 @@ func TestDetectionsEndToEnd(t *testing.T) {
 		}}))
 	e.ingestAll(evs)
 
-	if n := e.runDetections(); n != 8 {
+	if n := e.runDetections(); n != 7 {
 		items, _ := e.detections(c, nil)
 		t.Fatalf("findings: %d %+v", n, items)
 	}
@@ -142,12 +142,14 @@ func TestDetectionsEndToEnd(t *testing.T) {
 			t.Errorf("%s: %+v", typ, got[typ])
 		}
 	}
-	if len(items) != 8 || next != "" || len(got["detect.new_app_risky"]) != 2 {
+	if len(items) != 7 || next != "" || len(got["detect.new_app_risky"]) != 1 {
 		t.Fatalf("detections %d %+v", len(items), got["detect.new_app_risky"])
 	}
 	f := got["detect.fanout"][0]
-	if f.Evidence["addresses"] != float64(150) || f.Evidence["screen_on_minutes"] != float64(0) || f.WindowFrom != model.FormatTS(h) ||
-		f.WindowTo != model.FormatTS(h.Add(time.Hour)) || f.Severity != 2 || f.DeviceID != e.dev.DeviceID || f.ID == "" {
+	day := h.Truncate(24 * time.Hour)
+	if f.Evidence["addresses"] != float64(150) || f.Evidence["screen_on_minutes"] != float64(0) || f.WindowFrom != model.FormatTS(day) ||
+		f.WindowTo != model.FormatTS(day.Add(24*time.Hour)) || f.Evidence["peak_hour"] != model.FormatTS(h) || f.Evidence["hours"] != float64(1) ||
+		f.Severity != 2 || f.DeviceID != e.dev.DeviceID || f.ID == "" {
 		t.Fatalf("fanout %+v", f)
 	}
 	if s := got["detect.sms_abuse"][0]; s.Label != "Lampe Pro" || s.Evidence["reason"] != "not_default_sms_app" || s.Severity != 3 ||
@@ -160,7 +162,7 @@ func TestDetectionsEndToEnd(t *testing.T) {
 
 	// Stored as events of the collector (source "server"), streamed, with the fields of contract §11.3.
 	evts := e.serverEvents(c, "detect.")
-	if len(evts) != 8 || evts[0]["source"] != "server" {
+	if len(evts) != 7 || evts[0]["source"] != "server" {
 		t.Fatalf("server events %d", len(evts))
 	}
 	for _, ev := range evts {
@@ -175,11 +177,17 @@ func TestDetectionsEndToEnd(t *testing.T) {
 			streamed++
 		}
 	}
-	if streamed != 8 {
+	if streamed != 7 {
 		t.Fatalf("streamed detections: %d", streamed)
 	}
 
-	// Idempotence: running again, a restart (new engine), and new data in the same windows add nothing.
+	if nr := got["detect.new_app_risky"][0]; nr.Severity != 3 || nr.Evidence["high_risk"] != true ||
+		len(nr.Evidence["capabilities"].([]any)) != 1 || nr.WindowFrom != model.FormatTS(inst) {
+		t.Fatalf("new app %+v", nr)
+	}
+
+	// Idempotence: running again, a restart (new engine), and new data in the same windows add no detection;
+	// more data updates the detection in place, without a new event (no new element, same severity).
 	if n := e.runDetections(); n != 0 {
 		t.Fatalf("second run: %d", n)
 	}
@@ -187,6 +195,13 @@ func TestDetectionsEndToEnd(t *testing.T) {
 	e.ingestAll(e.connects(h.Add(30*time.Minute), "com.proxy.sdk", 200, 443, "100.64"))
 	if n := e.runDetections(); n != 0 {
 		t.Fatalf("after restart and more data: %d", n)
+	}
+	if list, _ := e.detections(c, url.Values{"type": {"detect.fanout"}}); len(list) != 1 || list[0].Evidence["addresses"] != float64(350) ||
+		list[0].ID != f.ID {
+		t.Fatalf("fanout not updated in place: %+v", list)
+	}
+	if n := len(e.serverEvents(c, "detect.")); n != 7 {
+		t.Fatalf("update exported: %d events", n)
 	}
 
 	// A late batch, three days old: evaluated when it arrives.
@@ -196,7 +211,7 @@ func TestDetectionsEndToEnd(t *testing.T) {
 		t.Fatalf("late batch: %d", n)
 	}
 	late, _ := e.detections(c, url.Values{"type": {"detect.fanout"}})
-	if len(late) != 2 || late[0].WindowFrom != model.FormatTS(old) || late[0].Evidence["addresses"] != float64(320) {
+	if len(late) != 2 || late[0].WindowFrom != model.FormatTS(old.Truncate(24*time.Hour)) || late[0].Evidence["addresses"] != float64(320) {
 		t.Fatalf("late %+v", late)
 	}
 
@@ -220,8 +235,14 @@ func TestDetectionsEndToEnd(t *testing.T) {
 		}
 		cursor = nc
 	}
-	if len(all) != 9 {
+	if len(all) != 8 {
 		t.Fatalf("paged %d", len(all))
+	}
+	if list, _ := e.detections(c, url.Values{"package": {"com.cleaner.boost"}}); len(list) != 1 || list[0].Type != "detect.mail_ports" {
+		t.Fatalf("package filter %+v", list)
+	}
+	if rec := e.get(c, "/api/console/detections", url.Values{"package": {"a b"}}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad package: %d", rec.Code)
 	}
 	if list, _ := e.detections(c, url.Values{"device_id": {"dev_autre"}}); len(list) != 0 {
 		t.Fatal("device filter")
@@ -329,8 +350,8 @@ func TestDetectionThreatDomain(t *testing.T) {
 	}
 	items, _ := e.detections(c, nil)
 	if len(items) != 1 || items[0].Type != "detect.threat_domain" || items[0].Package != "com.update.system" || items[0].Severity != 3 ||
-		items[0].Evidence["domain"] != c2 || items[0].Evidence["blocked"] != float64(6) ||
-		!strings.Contains(items[0].Evidence["reason"].(string), "Threat Intelligence") {
+		items[0].Evidence["domains"].([]any)[0] != c2 || items[0].Evidence["blocked"] != float64(6) ||
+		!strings.Contains(items[0].Evidence["lists"].([]any)[0].(string), "Threat Intelligence") {
 		t.Fatalf("%+v", items)
 	}
 	// AdGuard Home polled again with new blocks of the same domain: still one finding for the day.

@@ -492,6 +492,18 @@ SELECT device_id, h, pkg, op, min(SUM(c), 9007199254740991), min(SUM(b), 9007199
 		AND json_type(a.value, '$.op') = 'text' AND json_extract(a.value, '$.op') <> '')
 GROUP BY device_id, h, pkg, op;
 `,
+	// 8: one detection per application and window, updated in place when the window brings more (contract
+	// §11.3, grouping asked by the console): its elements (domains, capabilities…), the time of the last update,
+	// and what was last exported to Wazuh (an update is exported again only when it is more severe or brings a
+	// new element, at most once an hour).
+	`
+ALTER TABLE detections ADD COLUMN items TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE detections ADD COLUMN updated_ms INTEGER;
+ALTER TABLE detections ADD COLUMN exported_ms INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE detections ADD COLUMN exported_sev INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE detections ADD COLUMN exported_items TEXT NOT NULL DEFAULT '[]';
+UPDATE detections SET exported_ms = ts_ms, exported_sev = sev;
+`,
 }
 
 // SchemaVersion is the schema version this binary expects.

@@ -23,6 +23,9 @@ type Finding struct {
 	Sev      int
 	Summary  string
 	Evidence map[string]any
+	// Items are the elements of the finding (domains, capabilities, operations, ports, resolvers…): a new
+	// element in an existing finding is reported again to Wazuh (see store.UpsertDetections).
+	Items []string
 }
 
 // Labels gives the readable name of an application ("" when unknown).
@@ -286,7 +289,8 @@ func MailPortsRule(day int64, dests []Dest, labels Labels, t Thresholds) []Findi
 		out = append(out, Finding{Type: TypeMailPorts, Package: pkg, Subject: pkg, FromMS: day, ToMS: day + dayMS, Sev: sev,
 			Summary: fmt.Sprintf("%s, qui n'est pas un client de messagerie connu, s'est connectée %d fois au port d'envoi de courriel %s de %d serveur(s)",
 				labels.of(pkg), a.conns, joinInts(ports), len(a.addrs)),
-			Evidence: map[string]any{"connections": a.conns, "addresses": len(a.addrs), "ports": ports, "sample": a.sampleAddrs(3)}})
+			Evidence: map[string]any{"connections": a.conns, "addresses": len(a.addrs), "ports": ports, "sample": a.sampleAddrs(3)},
+			Items:    strings.Split(joinInts(ports), ", ")})
 	}
 	return out
 }
@@ -341,7 +345,7 @@ func DNSBypass(day int64, dests []Dest, res *Resolvers, labels Labels, t Thresho
 		out = append(out, Finding{Type: TypeDNSBypass, Package: pkg, Subject: pkg, FromMS: day, ToMS: day + dayMS, Sev: 2,
 			Summary: fmt.Sprintf("%s s'adresse directement à un résolveur DNS public (%s, %s) : ses requêtes DNS échappent au filtrage et au journal du téléphone",
 				labels.of(pkg), strings.Join(provs, ", "), eps[0]),
-			Evidence: map[string]any{"connections": h.conns, "resolvers": toAny(eps), "providers": toAny(provs)}})
+			Evidence: map[string]any{"connections": h.conns, "resolvers": toAny(eps), "providers": toAny(provs)}, Items: provs})
 	}
 	return out
 }
@@ -365,37 +369,68 @@ type ThreatInput struct {
 	Labels   Labels
 }
 
-// ThreatDomain: an application asked for a domain that AdGuard Home blocked due to a threat list.
+// ThreatDomain: an application asked for a domain that AdGuard Home blocked due to a threat list. One
+// finding per application and day, listing its domains (most requested first).
 func ThreatDomain(in ThreatInput) []Finding {
 	blocks := map[string]store.ThreatBlock{}
 	for _, b := range in.Blocks {
 		blocks[b.Domain] = b
 	}
-	lookups := append([]store.DNSLookup(nil), in.Lookups...)
-	sort.Slice(lookups, func(i, j int) bool {
-		if lookups[i].Package != lookups[j].Package {
-			return lookups[i].Package < lookups[j].Package
+	byPkg := map[string][]store.DNSLookup{}
+	for _, l := range in.Lookups {
+		if _, ok := blocks[l.Domain]; ok && l.Package != "" {
+			byPkg[l.Package] = append(byPkg[l.Package], l)
 		}
-		return lookups[i].Domain < lookups[j].Domain
-	})
+	}
 	var out []Finding
-	for _, l := range lookups {
-		b, ok := blocks[l.Domain]
-		if !ok || l.Package == "" {
-			continue
+	for _, pkg := range sortedKeys(byPkg) {
+		ls := byPkg[pkg]
+		sort.Slice(ls, func(i, j int) bool {
+			if ls[i].Count != ls[j].Count {
+				return ls[i].Count > ls[j].Count
+			}
+			return ls[i].Domain < ls[j].Domain
+		})
+		var requests, blocked int64
+		var domains, parts []string
+		reasons := map[string]bool{}
+		for _, l := range ls {
+			b := blocks[l.Domain]
+			requests += l.Count
+			blocked += b.Blocked
+			domains = append(domains, l.Domain)
+			if len(parts) < 3 {
+				parts = append(parts, fmt.Sprintf("%s ×%d", l.Domain, l.Count))
+			}
+			if b.Reason != "" {
+				reasons[strings.TrimPrefix(b.Reason, "Liste : ")] = true
+			}
 		}
 		sev := 3
-		if in.Browsers[l.Package] || l.Count < 3 {
+		if in.Browsers[pkg] || requests < 3 {
 			sev = 2 // a link followed once in a browser, rather than an application calling its server
 		}
-		out = append(out, Finding{Type: TypeThreatDomain, Package: l.Package, Subject: l.Package + "|" + l.Domain,
-			FromMS: in.DayMS, ToMS: in.DayMS + dayMS, Sev: sev,
-			Summary: fmt.Sprintf("%s a demandé %s (%d fois), bloqué par une liste de menaces (%s)", in.Labels.of(l.Package), l.Domain,
-				l.Count, strings.TrimPrefix(b.Reason, "Liste : ")),
-			Evidence: map[string]any{"domain": l.Domain, "requests": l.Count, "blocked": b.Blocked, "reason": b.Reason}})
+		more := ""
+		if len(domains) > len(parts) {
+			more = fmt.Sprintf(" et %d autre(s)", len(domains)-len(parts))
+		}
+		shown := domains
+		if len(shown) > maxListed {
+			shown = shown[:maxListed]
+		}
+		lists := sortedKeys(reasons)
+		out = append(out, Finding{Type: TypeThreatDomain, Package: pkg, Subject: pkg, FromMS: in.DayMS, ToMS: in.DayMS + dayMS, Sev: sev,
+			Summary: fmt.Sprintf("%s a demandé %d domaine(s) bloqué(s) par une liste de menaces : %s%s (%s)", in.Labels.of(pkg), len(domains),
+				strings.Join(parts, ", "), more, strings.Join(lists, ", ")),
+			Evidence: map[string]any{"domains": toAny(shown), "domain_count": len(domains), "requests": requests, "blocked": blocked,
+				"lists": toAny(lists)},
+			Items: domains})
 	}
 	return out
 }
+
+// maxListed bounds the lists of evidence (domains, capabilities…).
+const maxListed = 10
 
 // --- app.ops: detect.sms_abuse, detect.sensor_background -----------------------------------------
 
@@ -462,15 +497,19 @@ func SMSAbuse(in OpsInput, t Thresholds) []Finding {
 		if in.SMSApps != nil {
 			ev["default_sms_app"] = toAny(sortedKeys(in.SMSApps))
 		}
+		items := []string{reason}
+		if sent.Rejected > 0 {
+			items = append(items, "rejected")
+		}
 		out = append(out, Finding{Type: TypeSMSAbuse, Package: pkg, Subject: pkg, FromMS: in.DayMS, ToMS: in.DayMS + dayMS, Sev: 3,
-			Summary: summary, Evidence: ev})
+			Summary: summary, Evidence: ev, Items: items})
 	}
 	return out
 }
 
 // SensorBackground: according to app.ops, the microphone or the camera used in the background by an
 // application beyond a threshold per day (system applications and holders of the dialer, assistant and
-// call screening roles excepted). Silent without app.ops.
+// call screening roles excepted). One finding per application and day. Silent without app.ops.
 func SensorBackground(in OpsInput, t Thresholds) []Finding {
 	ops := opsOf(in.Uses)
 	var out []Finding
@@ -478,19 +517,27 @@ func SensorBackground(in OpsInput, t Thresholds) []Finding {
 		if in.System[pkg] || in.SensorExempt[pkg] {
 			continue
 		}
+		ev := map[string]any{}
+		var items, parts []string
 		for _, s := range []struct {
-			op, name string
-			min      int64
-		}{{"record_audio", "le micro", t.MicBackgroundMin}, {"camera", "la caméra", t.CameraBackgroundMin}} {
+			op, key, name string
+			min           int64
+		}{{"record_audio", "microphone", "le micro", t.MicBackgroundMin}, {"camera", "camera", "la caméra", t.CameraBackgroundMin}} {
 			u, ok := ops[pkg][s.op]
 			if !ok || u.Background < s.min {
 				continue
 			}
-			out = append(out, Finding{Type: TypeSensorBackground, Package: pkg, Subject: pkg + "|" + s.op, FromMS: in.DayMS, ToMS: in.DayMS + dayMS,
-				Sev:      2,
-				Summary:  fmt.Sprintf("%s a utilisé %s %d fois en arrière-plan dans la journée (seuil %d)", in.Labels.of(pkg), s.name, u.Background, s.min),
-				Evidence: map[string]any{"op": s.op, "background_count": u.Background, "count": u.Count}})
+			items = append(items, s.op)
+			ev[s.key+"_background"], ev[s.key+"_count"] = u.Background, u.Count
+			parts = append(parts, fmt.Sprintf("%s %d fois (seuil %d)", s.name, u.Background, s.min))
 		}
+		if len(items) == 0 {
+			continue
+		}
+		ev["ops"] = toAny(items)
+		out = append(out, Finding{Type: TypeSensorBackground, Package: pkg, Subject: pkg, FromMS: in.DayMS, ToMS: in.DayMS + dayMS, Sev: 2,
+			Summary:  fmt.Sprintf("%s a utilisé en arrière-plan dans la journée %s", in.Labels.of(pkg), strings.Join(parts, " et ")),
+			Evidence: ev, Items: items})
 	}
 	return out
 }
@@ -533,6 +580,8 @@ var CapabilityNames = map[string]struct {
 	"role:dialer":                       {"application Téléphone par défaut", 2},
 	"role:assistant":                    {"assistant par défaut", 2},
 	"role:call_screening":               {"filtrage des appels", 2},
+	"role:keyboard":                     {"clavier par défaut", 2},
+	"role:autofill":                     {"saisie automatique (mots de passe)", 2},
 	"permission:SEND_SMS":               {"envoi de SMS", 2},
 	"permission:READ_SMS":               {"lecture des SMS", 2},
 	"permission:RECEIVE_SMS":            {"réception des SMS", 2},
@@ -565,11 +614,13 @@ func hasCombo(reasons []string) bool {
 }
 
 // NewAppRisky: an application of level "high" has just been installed (app.risk within 24 h of its
-// app.installed), or an application installed less than 24 h ago obtains a sensitive capability. The
-// window of a finding is the 24 hours following the installation.
+// app.installed), or an application installed less than 24 h ago obtains a sensitive capability. One finding
+// per installation, whose window is the 24 hours following it, listing the capabilities obtained.
 func NewAppRisky(in NewAppInput) []Finding {
 	installs := append([]Install(nil), in.Installs...)
 	sort.Slice(installs, func(i, j int) bool { return installs[i].TS < installs[j].TS })
+	caps := append([]Capability(nil), in.Caps...)
+	sort.SliceStable(caps, func(i, j int) bool { return caps[i].TS < caps[j].TS })
 	var out []Finding
 	for _, ins := range installs {
 		if ins.Package == "" || OwnPackage(ins.Package) {
@@ -588,41 +639,113 @@ func NewAppRisky(in NewAppInput) []Finding {
 		if best != nil && best.Label != "" && in.Labels[ins.Package] == "" {
 			label = best.Label
 		}
-		if best != nil && best.Level == "high" {
-			sev := 2
+		high := best != nil && best.Level == "high"
+		sev := 0
+		var items, names []string
+		var first int64 = -1
+		if high {
+			items = append(items, "high_risk")
+			sev = 2
 			if hasCombo(best.Reasons) {
 				sev = 3
 			}
-			ev := map[string]any{"trigger": "high_risk", "score": best.Score, "level": best.Level, "reasons": toAny(best.Reasons),
-				"installer": ins.Installer, "installed_at": fmtMS(ins.TS)}
-			if best.FromStore != nil {
-				ev["from_store"] = *best.FromStore
-			}
-			out = append(out, Finding{Type: TypeNewAppRisky, Package: ins.Package, Label: label, Subject: ins.Package + "|high_risk",
-				FromMS: from, ToMS: to, Sev: sev,
-				Summary: fmt.Sprintf("Application à risque élevé installée : %s (score %d ; %s)", label, best.Score,
-					strings.Join(best.Reasons, ", ")),
-				Evidence: ev})
 		}
 		seen := map[string]bool{}
-		caps := append([]Capability(nil), in.Caps...)
-		sort.SliceStable(caps, func(i, j int) bool { return caps[i].TS < caps[j].TS })
 		for _, c := range caps {
 			info, known := CapabilityNames[c.Kind]
 			if c.Package != ins.Package || !known || seen[c.Kind] || c.TS < from || c.TS > to {
 				continue
 			}
 			seen[c.Kind] = true
-			ev := map[string]any{"trigger": "capability", "capability": c.Kind, "installed_at": fmtMS(ins.TS),
-				"minutes_after_install": (c.TS - ins.TS) / 60000, "installer": ins.Installer}
-			if best != nil {
-				ev["level"], ev["score"] = best.Level, best.Score
+			items = append(items, c.Kind)
+			names = append(names, info.Name)
+			sev = max(sev, info.Sev)
+			if first < 0 {
+				first = c.TS
 			}
-			out = append(out, Finding{Type: TypeNewAppRisky, Package: ins.Package, Label: label, Subject: ins.Package + "|" + c.Kind,
-				FromMS: from, ToMS: to, Sev: info.Sev,
-				Summary:  fmt.Sprintf("%s, installée il y a %s, a obtenu : %s", label, durationFR(c.TS-ins.TS), info.Name),
-				Evidence: ev})
 		}
+		if len(items) == 0 {
+			continue
+		}
+		capsList := items
+		if high {
+			capsList = items[1:]
+		}
+		ev := map[string]any{"high_risk": high, "capabilities": toAny(capsList), "installer": ins.Installer, "installed_at": fmtMS(ins.TS)}
+		if best != nil {
+			ev["score"], ev["level"], ev["reasons"] = best.Score, best.Level, toAny(best.Reasons)
+			if best.FromStore != nil {
+				ev["from_store"] = *best.FromStore
+			}
+		}
+		var parts []string
+		if high {
+			parts = append(parts, fmt.Sprintf("risque élevé (score %d : %s)", best.Score, strings.Join(best.Reasons, ", ")))
+		}
+		if len(names) > 0 {
+			ev["minutes_to_first_capability"] = (first - ins.TS) / 60000
+			parts = append(parts, fmt.Sprintf("a obtenu en %s : %s", durationFR(first-ins.TS), strings.Join(names, ", ")))
+		}
+		out = append(out, Finding{Type: TypeNewAppRisky, Package: ins.Package, Label: label, Subject: ins.Package,
+			FromMS: from, ToMS: to, Sev: sev,
+			Summary:  fmt.Sprintf("%s, installée le %s : %s", label, time.UnixMilli(ins.TS).UTC().Format("02/01 à 15:04 UTC"), strings.Join(parts, " ; ")),
+			Evidence: ev, Items: items})
+	}
+	return out
+}
+
+// GroupDay merges the hourly findings of the same type and application into one finding per UTC day: the
+// evidence of the peak hour (largest value of metric), with "hours" (hours above the threshold),
+// "first_hour" and "peak_hour".
+func GroupDay(fs []Finding, metric string) []Finding {
+	type group struct {
+		peak         Finding
+		peakV        int64
+		hours        int
+		first        int64
+		firstSummary string
+	}
+	groups := map[string]*group{}
+	var keys []string
+	for _, f := range fs {
+		day := f.FromMS - mod(f.FromMS, dayMS)
+		k := fmt.Sprintf("%s|%s|%d", f.Type, f.Package, day)
+		v, _ := f.Evidence[metric].(int64)
+		if iv, ok := f.Evidence[metric].(int); ok {
+			v = int64(iv)
+		}
+		g := groups[k]
+		if g == nil {
+			g = &group{peak: f, peakV: v, first: f.FromMS}
+			groups[k] = g
+			keys = append(keys, k)
+		} else {
+			if v > g.peakV {
+				g.peak, g.peakV = f, v
+			}
+			g.first = min(g.first, f.FromMS)
+		}
+		g.hours++
+	}
+	sort.Strings(keys)
+	out := make([]Finding, 0, len(keys))
+	for _, k := range keys {
+		g := groups[k]
+		f := g.peak
+		ev := make(map[string]any, len(f.Evidence)+3)
+		for kk, v := range f.Evidence {
+			ev[kk] = v
+		}
+		ev["hours"], ev["first_hour"], ev["peak_hour"] = g.hours, fmtMS(g.first), fmtMS(f.FromMS)
+		if g.hours > 1 {
+			f.Summary += fmt.Sprintf(" ; %d heures au-dessus du seuil dans la journée (pic à %s)", g.hours,
+				time.UnixMilli(f.FromMS).UTC().Format("15 h UTC"))
+		} else {
+			f.Summary += fmt.Sprintf(" (%s)", time.UnixMilli(f.FromMS).UTC().Format("15 h UTC"))
+		}
+		day := f.FromMS - mod(f.FromMS, dayMS)
+		f.Subject, f.FromMS, f.ToMS, f.Evidence = f.Package, day, day+dayMS, ev
+		out = append(out, f)
 	}
 	return out
 }

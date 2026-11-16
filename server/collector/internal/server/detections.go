@@ -66,6 +66,10 @@ func (s *Server) handleDetections(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	if q.Package = v.Get("package"); q.Package != "" && !packageRe.MatchString(q.Package) {
+		s.fail(w, paramErr("invalid_parameter", "paramètre package invalide"))
+		return
+	}
 	if q.Limit, err = intParam(v, "limit", 100, 1, 500); err != nil {
 		s.fail(w, err)
 		return

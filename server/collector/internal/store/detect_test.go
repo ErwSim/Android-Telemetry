@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"reflect"
@@ -135,30 +136,67 @@ func TestMigration6DetectionAggregates(t *testing.T) {
 	}
 }
 
-// A finding is stored once per device, type, subject and window, with its event of the collector.
-func TestAddDetectionsOnce(t *testing.T) {
+// A finding is stored once per device, type, subject and window, with its event of the collector; a later
+// evaluation updates it in place, and is exported again only when more severe or with a new element, at
+// most once an hour.
+func TestUpsertDetections(t *testing.T) {
 	ctx := context.Background()
 	st, err := Open(ctx, filepath.Join(t.TempDir(), "v.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	d := Detection{DeviceID: "d", Type: "detect.fanout", Subject: "p", WindowFromMS: 3600000, WindowToMS: 7200000, Package: "p", Sev: 2,
-		Summary: "s", Evidence: map[string]any{"addresses": 120}}
-	evs, err := st.AddDetections(ctx, []Detection{d, d}, time.Now())
-	if err != nil || len(evs) != 1 || evs[0].Source != "server" || evs[0].Type != "detect.fanout" {
-		t.Fatalf("%+v %v", evs, err)
+	now := time.Now()
+	d := Detection{DeviceID: "d", Type: "detect.threat_domain", Subject: "p", WindowFromMS: 3600000, WindowToMS: 7200000, Package: "p", Sev: 2,
+		Summary: "s", Evidence: map[string]any{"requests": 2}, Items: []string{"a.example"}}
+	res, err := st.UpsertDetections(ctx, []Detection{d, d}, now)
+	if err != nil || res.Added != 1 || len(res.Events) != 1 || res.Events[0].Source != "server" || res.Events[0].Type != "detect.threat_domain" {
+		t.Fatalf("%+v %v", res, err)
 	}
-	if evs, err := st.AddDetections(ctx, []Detection{d}, time.Now()); err != nil || len(evs) != 0 {
-		t.Fatalf("again: %+v %v", evs, err)
+	id := res.Events[0].ID
+	if res, _ := st.UpsertDetections(ctx, []Detection{d}, now); res.Added+res.Updated+len(res.Events) != 0 {
+		t.Fatalf("identical: %+v", res)
+	}
+	// More of the same: updated in place, not exported again.
+	d.Evidence = map[string]any{"requests": 40}
+	if res, _ := st.UpsertDetections(ctx, []Detection{d}, now.Add(2*time.Hour)); res.Updated != 1 || len(res.Events) != 0 {
+		t.Fatalf("counts only: %+v", res)
+	}
+	// A new domain within the hour after the last export: updated, export held back.
+	d.Items = []string{"b.example"}
+	if res, _ := st.UpsertDetections(ctx, []Detection{d}, now.Add(30*time.Minute)); res.Updated != 1 || len(res.Events) != 0 {
+		t.Fatalf("held back: %+v", res)
+	}
+	// Later, the window is evaluated again (nothing new since): the held-back element is exported then.
+	d.Evidence = map[string]any{"requests": 41}
+	res, _ = st.UpsertDetections(ctx, []Detection{d}, now.Add(2*time.Hour))
+	if res.Updated != 1 || len(res.Events) != 1 {
+		t.Fatalf("export of the new element: %+v", res)
+	}
+	var data map[string]any
+	_ = json.Unmarshal(res.Events[0].Data, &data)
+	if data["update"] != true || data["detection_id"] != id {
+		t.Fatalf("update event %v", data)
+	}
+	// A lower severity never lowers the stored one; a higher one is exported (after the hour).
+	d.Sev, d.Evidence = 1, map[string]any{"requests": 42}
+	if res, _ := st.UpsertDetections(ctx, []Detection{d}, now.Add(4*time.Hour)); len(res.Events) != 0 {
+		t.Fatalf("lower severity exported: %+v", res)
+	}
+	d.Sev, d.Evidence = 3, map[string]any{"requests": 43}
+	if res, _ := st.UpsertDetections(ctx, []Detection{d}, now.Add(4*time.Hour)); len(res.Events) != 1 || res.Events[0].Sev != 3 {
+		t.Fatalf("higher severity: %+v", res)
+	}
+	items, more, err := st.ListDetections(ctx, DetectionQuery{FromMS: 0, ToMS: now.UnixMilli() + 1, Limit: 10, Package: "p"})
+	if err != nil || more || len(items) != 1 || items[0].ID != id || items[0].Severity != 3 || string(items[0].Evidence) != `{"requests":43}` || items[0].UpdatedAt == "" {
+		t.Fatalf("%+v %v", items, err)
+	}
+	if items, _, _ := st.ListDetections(ctx, DetectionQuery{FromMS: 0, ToMS: now.UnixMilli() + 1, Limit: 10, Package: "q"}); len(items) != 0 {
+		t.Fatal("package filter")
 	}
 	d.WindowFromMS += 3600000
-	if evs, _ := st.AddDetections(ctx, []Detection{d}, time.Now()); len(evs) != 1 {
+	if res, _ := st.UpsertDetections(ctx, []Detection{d}, now); res.Added != 1 {
 		t.Fatal("next window")
-	}
-	items, more, err := st.ListDetections(ctx, DetectionQuery{FromMS: 0, ToMS: time.Now().UnixMilli() + 1, Limit: 10})
-	if err != nil || more || len(items) != 2 || string(items[0].Evidence) != `{"addresses":120}` {
-		t.Fatalf("%+v %v", items, err)
 	}
 	// Retention: a detection whose window and finding time are both past the cutoff is purged.
 	if _, err := st.Purge(ctx, time.Now().Add(time.Hour), time.Now(), time.Hour); err != nil {

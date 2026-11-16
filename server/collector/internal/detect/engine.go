@@ -162,21 +162,22 @@ func (e *Engine) round(ctx context.Context, hours []store.DirtyHour) (int, error
 		ds := make([]store.Detection, 0, len(findings))
 		for _, f := range findings {
 			ds = append(ds, store.Detection{DeviceID: dev, Type: f.Type, Subject: f.Subject, WindowFromMS: f.FromMS, WindowToMS: f.ToMS,
-				Package: f.Package, Label: f.Label, Sev: f.Sev, Summary: f.Summary, Evidence: f.Evidence})
+				Package: f.Package, Label: f.Label, Sev: f.Sev, Summary: f.Summary, Evidence: f.Evidence, Items: f.Items})
 		}
-		evs, err := e.st.AddDetections(ctx, ds, e.now())
+		res, err := e.st.UpsertDetections(ctx, ds, e.now())
 		if err != nil {
 			return total, err
 		}
-		total += len(evs)
-		for _, ev := range evs {
+		total += res.Added
+		for _, ev := range res.Events {
 			var d struct {
 				Package string `json:"package"`
+				Update  bool   `json:"update"`
 			}
 			_ = json.Unmarshal(ev.Data, &d)
-			e.log.Info("détection", "type", ev.Type, "device_id", dev, "package", d.Package, "sev", ev.Sev)
+			e.log.Info("détection", "type", ev.Type, "device_id", dev, "package", d.Package, "sev", ev.Sev, "update", d.Update)
 		}
-		e.publish(evs)
+		e.publish(res.Events)
 	}
 	return total, nil
 }
@@ -303,25 +304,9 @@ func (e *Engine) evaluate(ctx context.Context, dev string, hours []int64) ([]Fin
 	}
 	var out []Finding
 	days := map[int64]bool{}
-	sort.Slice(hours, func(i, j int) bool { return hours[i] < hours[j] })
 	for _, h := range hours {
-		if h+hourMS < cutoff {
-			continue
-		}
-		days[dayOf(h)] = true
-		if e.t.Enabled(TypeUploadSpike) {
-			f, err := e.uploadSpike(ctx, dev, dc, h)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, f...)
-		}
-		if e.t.Enabled(TypeFanout) {
-			f, err := e.fanout(ctx, dev, dc, h)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, f...)
+		if h+hourMS >= cutoff {
+			days[dayOf(h)] = true
 		}
 	}
 	dayList := make([]int64, 0, len(days))
@@ -330,8 +315,9 @@ func (e *Engine) evaluate(ctx context.Context, dev string, hours []int64) ([]Fin
 	}
 	sort.Slice(dayList, func(i, j int) bool { return dayList[i] < dayList[j] })
 	for _, d := range dayList {
+		// The hourly detections are grouped per day: the whole day is evaluated again.
 		for _, fn := range []func(context.Context, string, *deviceCtx, int64) ([]Finding, error){
-			e.threatDomain, e.connectionsOfDay, e.opsOfDay, e.newApps,
+			e.uploadSpikeDay, e.fanoutDay, e.threatDomain, e.connectionsOfDay, e.opsOfDay, e.newApps,
 		} {
 			f, err := fn(ctx, dev, dc, d)
 			if err != nil {
@@ -348,48 +334,72 @@ func (e *Engine) evaluate(ctx context.Context, dev string, hours []int64) ([]Fin
 	return out, nil
 }
 
-func (e *Engine) uploadSpike(ctx context.Context, dev string, dc *deviceCtx, h int64) ([]Finding, error) {
-	tx, err := e.st.HourlyTx(ctx, dev, h)
+func (e *Engine) uploadSpikeDay(ctx context.Context, dev string, dc *deviceCtx, d int64) ([]Finding, error) {
+	if !e.t.Enabled(TypeUploadSpike) {
+		return nil, nil
+	}
+	byHour, err := e.st.TxByHour(ctx, dev, d, d+dayMS)
 	if err != nil {
 		return nil, err
 	}
-	in := UploadInput{HourMS: h, Tx: tx, History: map[string][]int64{}, ScreenOnMinutes: -1, Labels: dc.labels,
-		Learning: dc.firstUse < 0 || h-dc.firstUse < int64(e.t.UploadLearnDays)*dayMS}
-	above := false
-	for pkg, b := range tx {
-		if b <= e.t.UploadFloorBytes {
+	var hourly []Finding
+	for _, h := range sortedHours(byHour) {
+		tx := byHour[h]
+		in := UploadInput{HourMS: h, Tx: tx, History: map[string][]int64{}, ScreenOnMinutes: -1, Labels: dc.labels,
+			Learning: dc.firstUse < 0 || h-dc.firstUse < int64(e.t.UploadLearnDays)*dayMS}
+		above := false
+		for pkg, b := range tx {
+			if b <= e.t.UploadFloorBytes {
+				continue
+			}
+			above = true
+			hist, err := e.st.TxHistory(ctx, dev, pkg, h-UploadHistory.Milliseconds(), h)
+			if err != nil {
+				return nil, err
+			}
+			in.History[pkg] = hist
+		}
+		if !above {
 			continue
 		}
-		above = true
-		hist, err := e.st.TxHistory(ctx, dev, pkg, h-UploadHistory.Milliseconds(), h)
+		if in.ScreenOnMinutes, err = e.screenOnMinutes(ctx, dev, h); err != nil {
+			return nil, err
+		}
+		hourly = append(hourly, UploadSpike(in, e.t)...)
+	}
+	return GroupDay(hourly, "tx_bytes"), nil
+}
+
+func sortedHours[V any](m map[int64]V) []int64 {
+	out := make([]int64, 0, len(m))
+	for h := range m {
+		out = append(out, h)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+func (e *Engine) fanoutDay(ctx context.Context, dev string, dc *deviceCtx, d int64) ([]Finding, error) {
+	if !e.t.Enabled(TypeFanout) {
+		return nil, nil
+	}
+	byHour, err := e.st.ConnectDestsByHour(ctx, dev, d, d+dayMS)
+	if err != nil {
+		return nil, err
+	}
+	var hourly []Finding
+	for _, h := range sortedHours(byHour) {
+		dests := Dests(byHour[h])
+		if MaxDistinct(dests) <= min(e.t.Fanout, e.t.FanoutScreenOff) {
+			continue
+		}
+		screen, err := e.screenOnMinutes(ctx, dev, h)
 		if err != nil {
 			return nil, err
 		}
-		in.History[pkg] = hist
+		hourly = append(hourly, Fanout(h, dests, screen, dc.labels, e.t)...)
 	}
-	if !above {
-		return nil, nil
-	}
-	if in.ScreenOnMinutes, err = e.screenOnMinutes(ctx, dev, h); err != nil {
-		return nil, err
-	}
-	return UploadSpike(in, e.t), nil
-}
-
-func (e *Engine) fanout(ctx context.Context, dev string, dc *deviceCtx, h int64) ([]Finding, error) {
-	rows, err := e.st.ConnectDests(ctx, dev, h, h+hourMS)
-	if err != nil {
-		return nil, err
-	}
-	dests := Dests(rows)
-	if MaxDistinct(dests) <= min(e.t.Fanout, e.t.FanoutScreenOff) {
-		return nil, nil
-	}
-	screen, err := e.screenOnMinutes(ctx, dev, h)
-	if err != nil {
-		return nil, err
-	}
-	return Fanout(h, dests, screen, dc.labels, e.t), nil
+	return GroupDay(hourly, "addresses"), nil
 }
 
 // screenOnMinutes returns the minutes of the hour [h, h+1h) spent screen on, from device.screen ("on" and

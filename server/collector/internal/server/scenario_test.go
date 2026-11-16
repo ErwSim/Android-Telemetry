@@ -144,6 +144,19 @@ func TestScenarioAttacks(t *testing.T) {
 			}
 		}
 	}
+	// Grouped: at most one detection per application, type and day (40 hours of attacks span 3 UTC days).
+	total := 0
+	for pkg, m := range got {
+		for typ, n := range m {
+			total += n
+			if n > 3 {
+				t.Errorf("%s %s: %d detections, one per day expected", pkg, typ, n)
+			}
+		}
+	}
+	if total > 25 {
+		t.Errorf("%d detections for 7 attacks over 40 hours", total)
+	}
 	var others []string
 	for pkg := range got {
 		if _, ok := want[pkg]; !ok {

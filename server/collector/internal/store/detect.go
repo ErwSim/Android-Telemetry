@@ -199,8 +199,8 @@ func (s *Store) DirtyCount(ctx context.Context) (int64, error) {
 type Detection struct {
 	DeviceID string
 	Type     string
-	// Subject identifies what the detection is about within its window (package, package and domain…):
-	// (device, type, subject, window start) is stored once.
+	// Subject identifies what the detection is about within its window (the application): (device, type,
+	// subject, window start) is stored once and updated in place.
 	Subject      string
 	WindowFromMS int64
 	WindowToMS   int64
@@ -209,58 +209,136 @@ type Detection struct {
 	Sev          int
 	Summary      string
 	Evidence     map[string]any
+	// Items are the elements of the detection (domains, capabilities…), kept as a growing set.
+	Items []string
 }
 
-// AddDetections stores new findings, each with its event produced by the collector (source "server",
-// type = the detection type), in one transaction. A finding already stored for the same device, type,
-// subject and window is skipped: evaluating a window again (late batch, restart) never duplicates it.
-// It returns the events of the findings actually added.
-func (s *Store) AddDetections(ctx context.Context, ds []Detection, now time.Time) ([]StoredEvent, error) {
+// DetectionReexport is the minimum delay between two exports of the same detection.
+const DetectionReexport = time.Hour
+
+// UpsertResult tells what UpsertDetections did.
+type UpsertResult struct {
+	Events  []StoredEvent // events to publish (new detections and exported updates)
+	Added   int
+	Updated int
+}
+
+// UpsertDetections stores findings, one per device, type, subject and window:
+//   - a new finding is stored with its event of the collector (source "server", type = the detection type);
+//   - a finding already stored is updated in place (evidence, summary, label, highest severity, union of
+//     its elements) when it differs; the update is exported again — a new event of the same type carrying
+//     "update": true and "detection_id" — only when it is more severe or brings an element not exported yet,
+//     and at most once per DetectionReexport (what is held back is exported by a later update of the window);
+//   - an identical finding changes nothing (a window evaluated again after a late batch or a restart).
+func (s *Store) UpsertDetections(ctx context.Context, ds []Detection, now time.Time) (UpsertResult, error) {
+	var res UpsertResult
 	if len(ds) == 0 {
-		return nil, nil
+		return res, nil
 	}
 	tx, err := s.w.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return res, err
 	}
 	defer tx.Rollback()
-	var out []StoredEvent
+	nowMS := now.UnixMilli()
 	for _, d := range ds {
-		var exists int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM detections WHERE device_id = ? AND type = ? AND subject = ? AND window_from_ms = ?`,
-			d.DeviceID, d.Type, d.Subject, d.WindowFromMS).Scan(&exists); err != nil {
-			return nil, err
-		}
-		if exists > 0 {
-			continue
-		}
-		ev := map[string]any{"window_from": model.FormatMS(d.WindowFromMS), "window_to": model.FormatMS(d.WindowToMS),
-			"summary": d.Summary, "evidence": d.Evidence}
-		if d.Package != "" {
-			ev["package"] = d.Package
-		}
-		if d.Label != "" {
-			ev["label"] = d.Label
-		}
-		se, err := insertServerEvent(ctx, tx, d.DeviceID, d.Type, d.Sev, ev, now)
-		if err != nil {
-			return nil, err
-		}
 		evidence, err := model.Marshal(d.Evidence)
 		if err != nil {
-			return nil, err
+			return res, err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO detections(id, device_id, type, subject, window_from_ms, window_to_ms, ts_ms, package,
-			label, sev, summary, evidence) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, se.ID, d.DeviceID, d.Type, d.Subject, d.WindowFromMS, d.WindowToMS,
-			se.TSms, d.Package, d.Label, d.Sev, d.Summary, string(evidence)); err != nil {
-			return nil, err
+		var id, label, summary, oldEvidence, itemsJSON, exportedJSON string
+		var sev, exportedSev int
+		var exportedMS int64
+		err = tx.QueryRowContext(ctx, `SELECT id, label, summary, sev, evidence, items, exported_ms, exported_sev, exported_items FROM detections
+			WHERE device_id = ? AND type = ? AND subject = ? AND window_from_ms = ?`, d.DeviceID, d.Type, d.Subject, d.WindowFromMS).
+			Scan(&id, &label, &summary, &sev, &oldEvidence, &itemsJSON, &exportedMS, &exportedSev, &exportedJSON)
+		if errors.Is(err, sql.ErrNoRows) {
+			items := unionItems(nil, d.Items)
+			se, err := insertServerEvent(ctx, tx, d.DeviceID, d.Type, d.Sev, detectionData(d, "", false), now)
+			if err != nil {
+				return res, err
+			}
+			itemsRaw, _ := json.Marshal(items)
+			if _, err := tx.ExecContext(ctx, `INSERT INTO detections(id, device_id, type, subject, window_from_ms, window_to_ms, ts_ms, package,
+				label, sev, summary, evidence, items, exported_ms, exported_sev, exported_items) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				se.ID, d.DeviceID, d.Type, d.Subject, d.WindowFromMS, d.WindowToMS, se.TSms, d.Package, d.Label, d.Sev, d.Summary,
+				string(evidence), string(itemsRaw), se.TSms, d.Sev, string(itemsRaw)); err != nil {
+				return res, err
+			}
+			res.Events = append(res.Events, se)
+			res.Added++
+			continue
 		}
-		out = append(out, se)
+		if err != nil {
+			return res, err
+		}
+		var stored, exported []string
+		_ = json.Unmarshal([]byte(itemsJSON), &stored)
+		_ = json.Unmarshal([]byte(exportedJSON), &exported)
+		items := unionItems(stored, d.Items)
+		newSev := max(sev, d.Sev)
+		if d.Label == "" {
+			d.Label = label
+		}
+		if string(evidence) == oldEvidence && d.Summary == summary && newSev == sev && len(items) == len(stored) && d.Label == label {
+			continue
+		}
+		itemsRaw, _ := json.Marshal(items)
+		if _, err := tx.ExecContext(ctx, `UPDATE detections SET label = ?, sev = ?, summary = ?, evidence = ?, items = ?, updated_ms = ?
+			WHERE id = ?`, d.Label, newSev, d.Summary, string(evidence), string(itemsRaw), nowMS, id); err != nil {
+			return res, err
+		}
+		res.Updated++
+		grew := newSev > exportedSev || len(unionItems(exported, items)) > len(exported)
+		if !grew || nowMS-exportedMS < DetectionReexport.Milliseconds() {
+			continue
+		}
+		d.Sev = newSev
+		se, err := insertServerEvent(ctx, tx, d.DeviceID, d.Type, newSev, detectionData(d, id, true), now)
+		if err != nil {
+			return res, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE detections SET exported_ms = ?, exported_sev = ?, exported_items = ? WHERE id = ?`,
+			nowMS, newSev, string(itemsRaw), id); err != nil {
+			return res, err
+		}
+		res.Events = append(res.Events, se)
 	}
-	if len(out) == 0 {
-		return nil, nil
+	if res.Added == 0 && res.Updated == 0 {
+		return res, nil
 	}
-	return out, tx.Commit()
+	return res, tx.Commit()
+}
+
+// detectionData is the data of the event of a detection.
+func detectionData(d Detection, id string, update bool) map[string]any {
+	ev := map[string]any{"window_from": model.FormatMS(d.WindowFromMS), "window_to": model.FormatMS(d.WindowToMS),
+		"summary": d.Summary, "evidence": d.Evidence}
+	if d.Package != "" {
+		ev["package"] = d.Package
+	}
+	if d.Label != "" {
+		ev["label"] = d.Label
+	}
+	if update {
+		ev["update"], ev["detection_id"] = true, id
+	}
+	return ev
+}
+
+// unionItems returns a ∪ b, in the order of a then b, without duplicates.
+func unionItems(a, b []string) []string {
+	out := make([]string, 0, len(a)+len(b))
+	seen := map[string]bool{}
+	for _, l := range [][]string{a, b} {
+		for _, x := range l {
+			if !seen[x] {
+				seen[x] = true
+				out = append(out, x)
+			}
+		}
+	}
+	return out
 }
 
 // --- reads of the detection engine ---------------------------------------------------------------
@@ -497,11 +575,13 @@ type DetectionItem struct {
 	Evidence   json.RawMessage `json:"evidence"`
 	WindowFrom string          `json:"window_from"`
 	WindowTo   string          `json:"window_to"`
+	UpdatedAt  string          `json:"updated_at,omitempty"`
 }
 
 // DetectionQuery selects detections for the console.
 type DetectionQuery struct {
 	DeviceID     string
+	Package      string
 	FromMS, ToMS int64
 	TypePrefixes []string
 	Limit        int
@@ -519,6 +599,10 @@ func (s *Store) ListDetections(ctx context.Context, q DetectionQuery) ([]Detecti
 		where = append(where, "device_id = ?")
 		args = append(args, q.DeviceID)
 	}
+	if q.Package != "" {
+		where = append(where, "package = ?")
+		args = append(args, q.Package)
+	}
 	if len(q.TypePrefixes) > 0 {
 		var ors []string
 		for _, p := range q.TypePrefixes {
@@ -532,7 +616,7 @@ func (s *Store) ListDetections(ctx context.Context, q DetectionQuery) ([]Detecti
 		args = append(args, q.CursorTS, q.CursorTS, q.CursorPK)
 	}
 	args = append(args, q.Limit+1)
-	rows, err := s.r.QueryContext(ctx, `SELECT pk, id, ts_ms, device_id, type, package, label, sev, summary, evidence, window_from_ms, window_to_ms
+	rows, err := s.r.QueryContext(ctx, `SELECT pk, id, ts_ms, device_id, type, package, label, sev, summary, evidence, window_from_ms, window_to_ms, updated_ms
 		FROM detections WHERE `+strings.Join(where, " AND ")+` ORDER BY ts_ms DESC, pk DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, false, err
@@ -543,8 +627,12 @@ func (s *Store) ListDetections(ctx context.Context, q DetectionQuery) ([]Detecti
 		var d DetectionItem
 		var evidence string
 		var wf, wt int64
-		if err := rows.Scan(&d.PK, &d.ID, &d.TSms, &d.DeviceID, &d.Type, &d.Package, &d.Label, &d.Severity, &d.Summary, &evidence, &wf, &wt); err != nil {
+		var upd sql.NullInt64
+		if err := rows.Scan(&d.PK, &d.ID, &d.TSms, &d.DeviceID, &d.Type, &d.Package, &d.Label, &d.Severity, &d.Summary, &evidence, &wf, &wt, &upd); err != nil {
 			return nil, false, err
+		}
+		if upd.Valid {
+			d.UpdatedAt = fmtMS(upd.Int64)
 		}
 		d.TS, d.WindowFrom, d.WindowTo = fmtMS(d.TSms), fmtMS(wf), fmtMS(wt)
 		d.Evidence = json.RawMessage(evidence)
@@ -558,4 +646,48 @@ func (s *Store) ListDetections(ctx context.Context, q DetectionQuery) ([]Detecti
 		out = out[:q.Limit]
 	}
 	return out, more, nil
+}
+
+// TxByHour returns the bytes sent per hour and application in [fromMS, toMS).
+func (s *Store) TxByHour(ctx context.Context, deviceID string, fromMS, toMS int64) (map[int64]map[string]int64, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT hour_ms, package, tx_bytes FROM usage_counts WHERE hour_ms >= ? AND hour_ms < ? AND device_id = ?`,
+		fromMS, toMS, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]map[string]int64{}
+	for rows.Next() {
+		var h, tx int64
+		var p string
+		if err := rows.Scan(&h, &p, &tx); err != nil {
+			return nil, err
+		}
+		if out[h] == nil {
+			out[h] = map[string]int64{}
+		}
+		out[h][p] = tx
+	}
+	return out, rows.Err()
+}
+
+// ConnectDestsByHour returns the net.connect destinations per hour and application in [fromMS, toMS).
+func (s *Store) ConnectDestsByHour(ctx context.Context, deviceID string, fromMS, toMS int64) (map[int64][]ConnectRow, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT hour_ms, package, key, count FROM top_counts
+		WHERE kind = 'connect_dest' AND hour_ms >= ? AND hour_ms < ? AND device_id = ? AND package <> '' LIMIT ?`,
+		fromMS, toMS, deviceID, maxDetectRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64][]ConnectRow{}
+	for rows.Next() {
+		var h int64
+		var r ConnectRow
+		if err := rows.Scan(&h, &r.Package, &r.Key, &r.Count); err != nil {
+			return nil, err
+		}
+		out[h] = append(out[h], r)
+	}
+	return out, rows.Err()
 }

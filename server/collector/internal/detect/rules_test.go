@@ -197,9 +197,12 @@ func TestThreatDomain(t *testing.T) {
 			{Package: "com.android.chrome", Domain: "login-banque.example", Count: 1},
 			{Package: "com.whatsapp", Domain: "g.whatsapp.net", Count: 500}},
 		Browsers: map[string]bool{"com.android.chrome": true}}
+	in.Lookups = append(in.Lookups, store.DNSLookup{Package: "com.update.system", Domain: "login-banque.example", Count: 2})
 	fs := ThreatDomain(in)
 	if len(fs) != 2 || fs[0].Package != "com.android.chrome" || fs[0].Sev != 2 || fs[1].Package != "com.update.system" || fs[1].Sev != 3 ||
-		fs[1].Subject != "com.update.system|gate.cdn-update-check.example" || fs[1].Evidence["blocked"] != int64(12) {
+		fs[1].Subject != "com.update.system" || fs[1].Evidence["blocked"] != int64(13) || fs[1].Evidence["requests"] != int64(14) ||
+		fs[1].Evidence["domain_count"] != 2 || len(fs[1].Items) != 2 || fs[1].Items[0] != "gate.cdn-update-check.example" ||
+		!strings.Contains(fs[1].Summary, "2 domaine(s)") {
 		t.Fatalf("%+v", fs)
 	}
 	none(t, ThreatDomain(ThreatInput{DayMS: day, Lookups: in.Lookups}), "no threat block")
@@ -252,7 +255,8 @@ func TestSensorBackground(t *testing.T) {
 	in := OpsInput{DayMS: day, Uses: uses, System: map[string]bool{"com.samsung.android.bixby.agent": true},
 		SensorExempt: map[string]bool{"com.google.android.googlequicksearchbox": true}}
 	fs := SensorBackground(in, th)
-	if len(fs) != 2 || fs[0].Subject != "com.qrscan|record_audio" || fs[1].Subject != "com.qrscan|camera" {
+	if len(fs) != 1 || fs[0].Subject != "com.qrscan" || fs[0].Evidence["microphone_background"] != int64(36) ||
+		fs[0].Evidence["camera_background"] != int64(3) || len(fs[0].Items) != 2 {
 		t.Fatalf("%+v", fs)
 	}
 	in.Uses = uses[2:3] // 9 background uses, threshold 10
@@ -278,11 +282,20 @@ func TestNewAppRisky(t *testing.T) {
 			{Package: "com.android.chrome", Kind: "permission:SEND_SMS", TS: inst + 60000}, // not a new app
 			{Package: "io.github.erwsim.vigie", Kind: "device_admin", TS: inst + 60000}},   // Vigie itself
 	}
+	in.Caps = append(in.Caps, Capability{Package: "com.update.system", Kind: "overlay", TS: inst + 7*60000})
 	out := NewAppRisky(in)
-	if len(out) != 2 || out[0].Subject != "com.update.system|high_risk" || out[0].Sev != 3 || out[0].Label != "Mise à jour système" ||
-		out[1].Subject != "com.update.system|accessibility" || out[1].Evidence["minutes_after_install"] != int64(5) || out[0].FromMS != inst {
+	if len(out) != 1 || out[0].Subject != "com.update.system" || out[0].Sev != 3 || out[0].Label != "Mise à jour système" ||
+		out[0].Evidence["minutes_to_first_capability"] != int64(5) || out[0].FromMS != inst || out[0].Evidence["high_risk"] != true ||
+		strings.Join(out[0].Items, ",") != "high_risk,accessibility,overlay" || len(out[0].Evidence["capabilities"].([]any)) != 2 {
 		t.Fatalf("%+v", out)
 	}
+	// Capabilities only (medium risk): one finding, the highest capability severity.
+	in.Risks[0].Level = "medium"
+	out = NewAppRisky(in)
+	if len(out) != 1 || out[0].Sev != 2 || out[0].Evidence["high_risk"] != false || out[0].Items[0] != "accessibility" {
+		t.Fatalf("medium %+v", out)
+	}
+	in.Risks[0].Level = "high"
 	// A high-risk app.risk more than 24 h after the installation is not "just installed".
 	in.Risks[0].TS = inst + 25*3600000
 	in.Caps = nil
@@ -290,6 +303,25 @@ func TestNewAppRisky(t *testing.T) {
 	in.Risks[0].TS, in.Risks[0].Level = inst, "medium"
 	none(t, NewAppRisky(in), "medium risk")
 	none(t, NewAppRisky(NewAppInput{Risks: in.Risks}), "no installation")
+}
+
+func TestGroupDay(t *testing.T) {
+	th := Defaults()
+	var hourly []Finding
+	for i, n := range []int{150, 420, 110} {
+		hourly = append(hourly, Fanout(hour0+int64(i)*hourMS, dests("com.proxy.sdk", n, 443, "198.51"), 0, nil, th)...)
+	}
+	hourly = append(hourly, Fanout(hour0+dayMS, dests("com.proxy.sdk", 200, 443, "198.51"), 0, nil, th)...) // next day
+	g := GroupDay(hourly, "addresses")
+	day := hour0 - hour0%dayMS
+	if len(g) != 2 || g[0].FromMS != day || g[0].ToMS != day+dayMS || g[0].Subject != "com.proxy.sdk" || g[0].Evidence["hours"] != 3 ||
+		g[0].Evidence["addresses"] != 420 || g[0].Evidence["peak_hour"] != fmtMS(hour0+hourMS) || g[0].Evidence["first_hour"] != fmtMS(hour0) ||
+		!strings.Contains(g[0].Summary, "3 heures") || g[1].Evidence["hours"] != 1 {
+		t.Fatalf("%+v", g)
+	}
+	if len(GroupDay(nil, "addresses")) != 0 {
+		t.Fatal("empty")
+	}
 }
 
 func TestBytesFR(t *testing.T) {
