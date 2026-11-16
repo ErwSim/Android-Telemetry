@@ -132,7 +132,31 @@ l'infrastructure doit vérifier celles qu'elle retient).
   listes du fichier sont exactement celles activées dans AdGuard ; absent si l'état ne correspond à aucun
   niveau (listes changées à la main) ou si AdGuard est injoignable.
 
-## Détections (contrat §11.3)
+## Détections (contrat §11.3 et §11.4)
+
+**À lire d'abord : ce qui protège de l'envoi massif de SMS.** Les SMS ne passent pas par le réseau IP : seul
+`app.ops` (collecteur expérimental de l'agent, qui exige `DUMP` accordé par ADB et peut ne jamais fonctionner sur
+Android 16) les compte. **La vraie protection est la garde SMS de l'application** (contrat §11.1) : elle empêche
+toute appli autre que l'appli SMS et le système d'obtenir `SEND_SMS`. Les détections préviennent, elles
+n'empêchent rien.
+
+| Ce qui est détecté | Sans `app.ops` | Avec `app.ops` |
+|---|---|---|
+| Une appli (ni appli SMS ni appli système) **détient** `SEND_SMS` | `detect.sms_permission` (sév. 2), à la première observation, inventaire initial compris, puis à chaque nouvel octroi après un retrait | idem |
+| Une appli devient l'appli SMS, Téléphone, clavier ou assistant par défaut | `detect.default_app_changed` (sév. 3 pour SMS) | idem |
+| Une appli installée depuis moins de 24 h est notée `high` ou obtient une capacité sensible | `detect.new_app_risky` | idem |
+| Une appli **envoie** des SMS (ou tente, refus de la garde compris), combien | **rien** : ni le nombre ni le moment des envois ne sont connus | `detect.sms_abuse` (sév. 3), dès la première heure |
+| Micro ou caméra en arrière-plan | **rien** (seuls les événements bruts `sensor.*`) | `detect.sensor_background` |
+| Réseau : serveurs de menaces, envoi massif de données, relais, spam, DoH | `threat_domain`, `upload_spike`, `fanout`, `mail_ports`, `dns_bypass` | idem |
+
+L'attaque vécue par le propriétaire (appli du Play Store sans icône, `SEND_SMS` obtenue 30 h après
+l'installation, ~2 000 SMS par jour, serveur absent des listes de menaces) donne **sans `app.ops`** :
+`detect.new_app_risky` à l'installation (profil `high` : capacités déclarées `sms_send` + démarrage au boot) et
+`detect.sms_permission` à l'octroi — mais jamais le volume envoyé ; **avec `app.ops`**, en plus
+`detect.sms_abuse` (scénario `sms-discret` du simulateur, essais plus bas). Un vrai téléphone a souvent, à la
+première observation, quelques applis non système qui détiennent `SEND_SMS` (messagerie vocale visuelle,
+appli d'opérateur, montre connectée…) : une détection chacune, une seule fois — c'est une revue initiale voulue ;
+`POST /detections/mute` les range une fois examinées.
 
 Détections comportementales calculées côté serveur sur les données déjà reçues, pour être alerté d'un abus
 **quel que soit le vecteur** (SMS, relais réseau, exfiltration, spam, contournement du filtrage). Chaque détection
@@ -218,10 +242,33 @@ même sur les 89 jours de la mesure du coût.
 
 **API console** (préfixe `/api/console`) :
 
-Ajouts au contrat §11.3 à reporter (décidés ici, la console les suit) :
+**Contrat §11.4 dans le collecteur** :
+
+- `detect.sms_permission` (sév. 2, une par « détention » de `SEND_SMS` : fenêtre = début de la détention, une
+  heure ; détention = premier octroi vu dans `app.permission_changed`, ou premier inventaire qui la montre, puis
+  chaque octroi qui suit un retrait ; une détention terminée depuis est signalée aussi). Exclues : l'appli SMS par
+  défaut (`app.role`, sinon `default_apps` d'`app.special_access`), les applis système (déclaration contredite
+  exclue), Vigie.
+- `detect.default_app_changed` (sév. 3 pour `sms`, 2 pour `dialer`, `keyboard`, `assistant` ; une par événement
+  `app.role` dont `new` est connu ; l'agent n'émet rien au premier relevé, tout `app.role` est donc un changement).
+- `detect.inventory_mismatch` (ajout du collecteur, à reporter au contrat : c'est le « signalé » du §11.4).
+- **Sourdine** : une détection couverte est calculée et stockée avec `muted: true`, **sans événement** (ni export
+  Wazuh, ni flux SSE) ; une mise à jour d'une détection en sourdine n'est pas réexportée. Lever la sourdine ne
+  réexporte pas le passé. Types non masquables : `detect.sms_abuse`, `detect.default_app_changed`,
+  `detect.inventory_mismatch`, `detect.flood`. Événements serveur `detect.muted` (sév. 1) et `detect.unmuted`
+  (sév. 0) : `type`, `package`, `reason`, `user`.
+- **Récurrence** : `dns_bypass`, `mail_ports`, `upload_spike` : une **nouvelle** détection dont (type, appli) a déjà
+  une détection dont la fenêtre commence dans les 30 jours avant la sienne porte `recurring: true` (dans l'API et
+  dans les données de l'événement) et sa sévérité est plafonnée à 1 (mises à jour comprises).
+- **Plafond** : 200 nouvelles détections par appareil et par jour UTC (de création) ; au-delà, rien n'est stocké
+  sauf une `detect.flood` (sév. 3, exportée une fois) par appareil et par jour, dont `evidence.suppressed` compte
+  les détections écartées (mise à jour sur place, sans réexport). Les détections en sourdine comptent.
+
+Ajouts au contrat §11.3 et §11.4 à reporter (décidés ici, la console les suit) :
 
 - `GET /detections?device_id&package&from&to&type&limit&cursor` → `{ "detections": [ { "id", "ts", "device_id",
-  "type", "package", "label", "severity", "summary", "evidence", "window_from", "window_to", "updated_at" } ],
+  "type", "package", "label", "severity", "summary", "evidence", "window_from", "window_to", "updated_at", "muted",
+  "recurring" } ],
   "next_cursor" }`, de la plus récente à la plus ancienne (par `ts`). `id` = identifiant de l'événement `detect.*`
   qui a créé la détection (`GET /events/{id}`) ; `ts` = moment de la création ; `updated_at` = dernière mise à jour
   (absent si jamais mise à jour) ; `severity` = entier **0 à 3, même échelle que `sev`** (en pratique 1 à 3 ;
@@ -237,6 +284,15 @@ Ajouts au contrat §11.3 à reporter (décidés ici, la console les suit) :
   "count", "background_count", "rejected_count", "last_ts" } ] } ] }`, applications par `count` décroissant,
   opérations aussi ; `label` et `last_ts` absents si inconnus ; `{ "apps": [] }` sans `app.ops`.
 
+- `POST /detections/mute` corps `{ "device_id", "type", "package", "reason" }` (seules clés admises ; `package`
+  requis, `[A-Za-z0-9_.:-]`, 255 au plus ; `type` = un type `detect.*` connu ; `reason` facultative, 200 caractères
+  au plus, sans caractère de contrôle ; en-tête `X-Requested-With: vigie`) → `204` (idempotent : un second appel
+  remplace la raison, sans nouvel événement) ; `400 not_mutable` pour un type non masquable, `400
+  invalid_parameter` / `invalid_json`, `404 not_found` pour un appareil inconnu.
+- `DELETE /detections/mute`, même corps → `204`, `404 not_found` s'il n'y a pas cette sourdine.
+- `GET /detections/mutes?device_id` (facultatif) → `{ "mutes": [ { "device_id", "type", "package", "reason",
+  "created_at", "created_by" } ] }`.
+
 Clés d'`evidence` par type (toujours un objet ; listes de scalaires seulement, pour le décodeur de Wazuh) :
 
 | Type | `evidence` |
@@ -248,14 +304,20 @@ Clés d'`evidence` par type (toujours un objet ; listes de scalaires seulement, 
 | `detect.dns_bypass` | `connections`, `resolvers` (`adresse:port`, 5 au plus), `providers` |
 | `detect.sms_abuse` | `reason` (`not_default_sms_app` ou `volume`), `sent`, `background`, `rejected`, `read_contacts` (si utilisé), `default_sms_app` (si connue) |
 | `detect.sensor_background` | `ops` (`record_audio`, `camera`), `microphone_background`, `microphone_count`, `camera_background`, `camera_count` (selon l'opération) |
-| `detect.new_app_risky` | `high_risk` (bool), `capabilities` (codes : `accessibility`, `notification_listener`, `device_admin`, `unknown_sources`, `overlay`, `vpn`, `role:<rôle>`, `permission:<NOM>`), `installer`, `installed_at`, `score`, `level`, `reasons`, `from_store` (si un `app.risk` est connu), `minutes_to_first_capability` |
+| `detect.new_app_risky` | `high_risk` (bool), `capabilities` (codes : `accessibility`, `notification_listener`, `device_admin`, `unknown_sources`, `overlay`, `vpn`, `role:<rôle>`, `permission:<NOM>`), `installer`, `installed_at`, `score`, `level`, `reasons`, `granted`, `from_store` (si un `app.risk` est connu), `minutes_to_first_capability` |
+| `detect.sms_permission` | `permission` (`SEND_SMS`), `source` (`permission_changed` ou `inventory`), `since`, `until` (détention terminée), `installer`, `default_sms_app` (si connue), `score`, `level`, `reasons` (si un `app.risk` est connu) |
+| `detect.default_app_changed` | `role`, `old` (absent si inconnu), `new`, `score`, `level`, `reasons`, `granted` (profil de la nouvelle appli, si connu) |
+| `detect.inventory_mismatch` | `installer`, `contradictions` (`installer:<paquet>`, `app.installed`) |
+| `detect.flood` | `suppressed`, `limit` |
 
 `app.ops` est exporté vers Wazuh éclaté en `app.ops.app` (une ligne par élément, avec `from` et `to`), comme `net.usage`.
 
 ### Simulateur : parc sain et scénarios d'attaque
 
 Le simulateur émet désormais aussi le profil de risque et l'usage du parc sain (§11.2) : `app.risk` de chaque
-application au premier démarrage, à chaque mise à jour et installation (niveaux `low` 0-29, `medium` 30-59,
+application au premier démarrage, à chaque mise à jour et installation (capacités **déclarées**, liste `granted`
+des capacités accordées ; une appli d'attaque est notée à l'installation puis de nouveau quand une capacité est
+accordée) (niveaux `low` 0-29, `medium` 30-59,
 `high` 60-100, système et Vigie plafonnés à `low`), `app.ops` horaire (SMS de l'appli SMS, appels, contacts,
 position, assistant, Bixby…, avec `rejected_count`), pas d'`app.role` au premier relevé (les applications par
 défaut viennent de `app.special_access`). S'y ajoutent des comportements sains trompeurs : appel vidéo WhatsApp
@@ -272,13 +334,14 @@ bloqués par la liste de menaces du faux AdGuard Home (`--fake-adguard`, liste a
 | Scénario | Séquence | Détections obtenues |
 |---|---|---|
 | `sain` (défaut) | rien de plus que le parc sain | aucune |
-| `fraude-sms` | « Lampe Torche Pro » installée hors store (`app.risk` high, `combo_sms_fraud`, sans icône), `SEND_SMS` et `READ_CONTACTS` accordées 3 min après, ~85 SMS par heure en arrière-plan (≈ 2 000 par jour), contacts lus, appels au panneau `panel.sms-gateway-pay.example` ; au bout de 24 h, la garde SMS est activée (`security.policy`) et les envois continuent, refusés (`rejected_count`) | `new_app_risky` (une : risque élevé + envoi de SMS), `sms_abuse` et `threat_domain` (une par jour, refus compris) |
-| `cheval-de-troie` | « Mise à jour du système » hors store (`combo_banking_trojan`), réception de SMS, accessibilité + lecture des notifications + superposition (`app.special_access`) 6 min après, balises vers deux serveurs de commande | `new_app_risky` (une : risque élevé + 4 capacités), `threat_domain` (une par jour, 2 domaines) |
+| `fraude-sms` | (donne aussi `sms_permission`) « Lampe Torche Pro » installée hors store (`app.risk` high, `combo_sms_fraud`, sans icône), `SEND_SMS` et `READ_CONTACTS` accordées 3 min après, ~85 SMS par heure en arrière-plan (≈ 2 000 par jour), contacts lus, appels au panneau `panel.sms-gateway-pay.example` ; au bout de 24 h, la garde SMS est activée (`security.policy`) et les envois continuent, refusés (`rejected_count`) | `new_app_risky` (une : risque élevé + envoi de SMS), `sms_abuse` et `threat_domain` (une par jour, refus compris) |
+| `cheval-de-troie` | « Mise à jour du système » hors store (`combo_banking_trojan`), réception de SMS, accessibilité + lecture des notifications + superposition (`app.special_access`) 6 min après, désignée appli SMS par défaut 8 min après (`app.role`), balises vers deux serveurs de commande | `new_app_risky` (une : risque élevé + capacités), `default_app_changed` (sév. 3), `threat_domain` (une par jour, 2 domaines) |
 | `proxy` | « Puzzle Relax » du Play Store (risque faible), de 1 h à 6 h (heure de Paris) 320 à 480 adresses par heure, 250 à 550 Mio envoyés par heure, domaine `relay.proxy-earn.example` | `fanout` et `threat_domain` (une par jour) |
 | `spam` | « Nettoyeur Boost » du Play Store, 20 à 40 serveurs SMTP par heure (ports 587 et 25) | `mail_ports` (sév. 3, une par jour) |
 | `exfiltration` | « Coffre Photos » du Play Store, quelques Mio par heure puis, 36 h après le début (au plus tard 2 h avant la fin de l'historique ; sans historique, 1 h après), 3,1 à 3,9 Gio en une heure | `upload_spike` |
 | `contournement-dns` | « Navigateur Rapide » (service VPN), 3 à 12 connexions par heure à 1.1.1.1:443, 1.0.0.1:443, 8.8.8.8:853, [2606:4700:4700::1111]:443 | `dns_bypass` (une par jour), `new_app_risky` (VPN, sév. 1) |
 | `espion` | « Battery Service » hors store (`combo_stalkerware`), micro, caméra et position en arrière-plan accordés, administrateur de l'appareil, ~4 enregistrements par heure, une photo toutes les 3 h | `new_app_risky` (une : risque élevé + administrateur), `sensor_background` (une par jour, micro et caméra) |
+| `sms-discret` | l'attaque vécue par le propriétaire : « Promo Coupons » du Play Store, sans icône (capacités déclarées `sms_send` + démarrage au boot : `high`), petit appel horaire à un serveur absent des listes, `SEND_SMS` accordée 25 à 30 h après l'installation, puis ~85 SMS par heure | `new_app_risky` (à l'installation), `sms_permission` (à l'octroi), `sms_abuse` (une par jour, avec `app.ops` seulement) |
 | `tout` | tous les scénarios d'attaque | tout ce qui précède (`TestScenarioAttacks`) |
 
 Lancer en local un serveur avec un scénario d'attaque (faux AdGuard Home compris) :
@@ -306,35 +369,31 @@ dépendent du journal d'AdGuard Home après son relevé (`VIGIE_ADGUARD_POLL_S` 
 Essais du 16/11/2026 sur le vrai collecteur, par l'API d'ingestion avec un appareil enrôlé (séquences écrites
 pour la revue, hors simulateur), et fixés par `internal/detect/review_test.go`.
 
-**L'attaque vécue par le propriétaire — une appli discrète qui envoie ~2 000 SMS par jour — ne déclenche aucune
-détection sans `app.ops`.** Les SMS ne passent pas par le réseau IP : ni `net.usage`, ni `net.connect`, ni
-`net.dns` ne les voient, et `detect.sms_abuse` ne lit que `app.ops`, collecteur expérimental qui peut ne jamais
-fonctionner sur le téléphone. Essai : appli du Play Store notée `medium`, `SEND_SMS` accordée 30 h après
-l'installation, 48 h d'envois, un petit appel horaire à un serveur absent des listes de menaces → **0 détection**.
-Ce qui peut sonner quand même :
-
-| Signal | Condition | Délai |
-|---|---|---|
-| `detect.new_app_risky` | la permission SMS est accordée **dans les 24 h** qui suivent l'installation (relevé horaire des permissions par l'agent), ou l'appli est notée `high` dans ces 24 h | ≈ 1 h + envoi + un passage (5 min) |
-| `detect.threat_domain` | son serveur de commande figure dans une liste `threat` d'AdGuard Home (c'est le cas dans le simulateur, rarement garanti en vrai) | relevé AdGuard + un passage |
-| `detect.sms_abuse` | **`app.ops` fonctionne** : dès la première heure d'envoi (1 SMS suffit pour une appli qui n'est ni l'appli SMS ni une appli système ; 200 par jour UTC pour toute appli) | ≈ 1 h + envoi + un passage |
-| événements bruts | `app.permission_changed` (`SEND_SMS` accordée, sév. 1), `app.role` (nouvelle appli SMS par défaut, sév. 2) : visibles dans la console et dans Wazuh, sans détection dédiée | relevé horaire |
-
-Sans `app.ops`, la protection contre ce scénario est donc la **garde SMS** du téléphone (elle empêche l'appli
-d'obtenir la permission), pas la détection. Une détection sans `app.ops` serait possible — « une appli qui n'est
-ni l'appli SMS ni une appli système détient `SEND_SMS` », d'après `app.inventory.granted_dangerous` et
-`app.permission_changed` — mais elle n'est pas au contrat §11.3 : à y ajouter.
+**L'attaque vécue par le propriétaire — une appli discrète qui envoie ~2 000 SMS par jour — ne déclenchait aucune
+détection sans `app.ops`** lors de la revue (essai : appli du Play Store notée `medium`, `SEND_SMS` accordée 30 h
+après l'installation, 48 h d'envois). Corrigé par le contrat §11.4 : elle déclenche désormais
+`detect.sms_permission` à l'octroi (et `detect.default_app_changed` si elle se fait appli SMS par défaut) ;
+`internal/detect/review_test.go` l'exige. Le nombre de SMS envoyés reste invisible sans `app.ops` : voir le
+tableau en tête de « Détections ».
 
 Autres limites constatées :
 
-- La note `app.risk` de l'agent ne compte `sms_send`, `calls`, la position et le micro que **accordés**
+- (Corrigé par le §11.4 : `app.risk` note désormais les capacités **déclarées**, avec une liste `granted` des
+  capacités accordées, lue par `detect.new_app_risky` comme une capacité acquise.) Lors de la revue, la note
+  `app.risk` de l'agent ne comptait `sms_send`, `calls`, la position et le micro que **accordés**
   (`android/README.md`) : à l'installation, une appli de fraude au SMS installée hors boutique sort `medium`
   (32), et `high` (77) seulement au passage quotidien qui suit l'octroi. Le scénario `fraude-sms` du simulateur
   émet, lui, `high` avec `sms_send` dès l'installation : la détection finale est la même, pas son délai. Avec la
   garde SMS active, la permission n'est jamais accordée et la note reste basse.
-- Un appareil dont l'agent est compromis (identifiants volés) peut mentir : un inventaire qui déclare une appli
-  « système » la soustrait à `sms_abuse` (motif `not_default_sms_app`) et à `sensor_background` ; il peut aussi
-  noyer la console (3 000 paquets fictifs → 3 000 détections, aucun plafond). Une appli malveillante **sans**
+- Un appareil dont l'agent est compromis (identifiants volés) peut mentir. Depuis le §11.4 : un inventaire qui
+  déclare « système » une appli dont l'installateur est un installateur de fichiers APK
+  (`com.google.android.packageinstaller`, `com.android.packageinstaller`, `com.android.shell`) ou qui a un
+  `app.installed` (une appli système est préinstallée) n'est pas cru — l'appli reste soumise à `sms_abuse`,
+  `sms_permission` et `sensor_background` — et c'est signalé par `detect.inventory_mismatch` (sév. 3, non
+  masquable) ; le profil de risque n'est pas utilisé pour ce contrôle (l'agent garde les raisons des applis
+  système, qui le contrediraient toutes). Un mensonge cohérent (appli système déclarée, installateur vide, aucun
+  `app.installed`) reste indécelable. Noyer la console est borné : 200 détections par appareil et par jour, puis
+  une seule `detect.flood` (sév. 3). Une appli malveillante **sans**
   les identifiants de l'agent ne peut rien de tout cela ; elle peut rester sous les seuils (299 adresses par
   heure, 199 SMS par jour si elle est l'appli SMS par défaut).
 - Lots en retard : un lot vieux de 6 jours crée la détection avec sa fenêtre d'origine et `ts` = l'heure du
