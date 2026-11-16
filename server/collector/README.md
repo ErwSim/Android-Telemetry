@@ -173,12 +173,13 @@ appareil et par tour de 256 heures ; un passage s'arrête après 20 s et reprend
 migration 6 marque les deux derniers jours déjà stockés : les détections portent sur les données reçues ensuite.
 
 **Mesure du coût** (`TestDetectionCost`, lancé par `VIGIE_DETECT_COST=89 go test ./internal/detect -run Cost -v` ;
-16/11/2026, conteneur de développement, sans `-race`) : base de **3 052 379 événements** (89 jours simulés à
-`--rate 2`, tous les scénarios d'attaque sur les 40 dernières heures, 520 Mo), soit 2 137 heures à évaluer.
-Évaluation de tout l'arriéré : **1,9 s** (11 tours de 256 heures), **8 Mio de tas** au plus ; pendant ce temps,
-l'ingestion de lots de 500 événements continue (latence médiane 13 ms, p99 36 ms, contre 5 et 21 ms sans le
-travail). Passage courant après un lot tardif de deux heures : **23 ms**. Sur ces 89 jours, les seules détections
-(31) concernent les applications des scénarios : aucune sur le parc sain.
+16/11/2026, conteneur de développement, sans `-race`, détections regroupées) : base de **3 061 912 événements**
+(89 jours simulés à `--rate 2`, tous les scénarios d'attaque sur les 40 dernières heures, ~520 Mo), soit 2 137
+heures à évaluer. Évaluation de tout l'arriéré (89 journées réévaluées en entier) : **1,0 s** (11 tours de 256
+heures), **5 Mio de tas** au plus ; l'ingestion simultanée de lots de 500 événements n'en est pas ralentie (médiane
+5 ms, p99 11 ms, avec ou sans le travail). Passage courant après un lot tardif : **28 ms**. Sur ces 89 jours, les
+15 détections concernent les 7 applications des scénarios (`threat_domain` hors mesure : pas d'AdGuard) : aucune
+sur le parc sain.
 
 | Détection | Ce qu'elle voit (fenêtre, sujet) | Seuil par défaut et justification | Limites et faux positifs prévisibles |
 |---|---|---|---|
