@@ -1144,8 +1144,10 @@ Vérifié dans l'environnement de développement (Linux, sans émulateur ni appa
 
 - `./gradlew lint test assembleDebug assembleRelease` réussit (lint : 0 erreur, avertissements de style
   `UseKtx`/versions seulement).
-- Décompte du 16/11/2026 après la **revue indépendante de la v1.2** : 389 tests JVM, 0 échec, 5 ignorés (essais
-  croisés) — `:core` 142, `:collectors` 144 (dont la robustesse de l'analyseur d'`appops` : 3 000 entrées
+- Décompte du 16/11/2026 après la règle des rôles du contrat §11.4 : 392 tests JVM, 0 échec, 5 ignorés ;
+  `:collectors` 146, `:policy` 93 (clavier et accueil non épargnés, quarantaine qui ne rend que les permissions
+  du rôle SMS ou composeur). Décompte précédent, après la **revue indépendante de la v1.2** : 389 tests JVM, 0
+  échec, 5 ignorés (essais croisés) — `:core` 142, `:collectors` 144 (dont la robustesse de l'analyseur d'`appops` : 3 000 entrées
   mutilées ou aléatoires, nombres hors limites, 100 000 entrées), `:policy` 92 (dont 25 pour les gardes : s'y
   ajoutent plantage puis réapplication puis désactivation, garde et quarantaine interrompues terminées au
   passage suivant, refus effectif mais rapporté en échec, désinstallation puis réinstallation entre deux
