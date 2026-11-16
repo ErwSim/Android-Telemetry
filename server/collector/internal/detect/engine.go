@@ -185,16 +185,30 @@ func (e *Engine) round(ctx context.Context, hours []store.DirtyHour) (int, error
 // deviceCtx is what the detections of one device need besides the aggregates.
 type deviceCtx struct {
 	labels   Labels
-	system   map[string]bool
+	system   map[string]bool   // system applications, claims contradicted by the history excluded
 	roles    map[string]string // role -> latest holder
 	firstUse int64             // first hour of net.usage (-1: none)
+
+	invTS     int64             // time of the latest inventory (-1: none)
+	installer map[string]string // latest inventory
+	sendSMS   map[string]bool   // SEND_SMS in granted_dangerous of the latest inventory
+	claims    []SystemClaim     // contradicted "system" claims of the latest inventory
+	risks     map[string]Risk   // latest app.risk of each application
+	installed map[string]bool   // applications with an app.installed event
+	rawSystem map[string]bool   // "system" as declared by the inventory
 }
 
 func (e *Engine) deviceContext(ctx context.Context, dev string) (*deviceCtx, error) {
-	dc := &deviceCtx{labels: Labels{}, system: map[string]bool{}, roles: map[string]string{}, firstUse: -1}
+	dc := &deviceCtx{labels: Labels{}, system: map[string]bool{}, roles: map[string]string{}, firstUse: -1, invTS: -1,
+		installer: map[string]string{}, sendSMS: map[string]bool{}, risks: map[string]Risk{}, installed: map[string]bool{}, rawSystem: map[string]bool{}}
 	snap, err := e.st.LatestApps(ctx, dev)
 	if err != nil {
 		return nil, err
+	}
+	if snap.TS != nil {
+		if t, err := time.Parse(time.RFC3339Nano, *snap.TS); err == nil {
+			dc.invTS = t.UnixMilli()
+		}
 	}
 	for _, a := range snap.Apps {
 		m, ok := a.(map[string]any)
@@ -208,8 +222,17 @@ func (e *Engine) deviceContext(ctx context.Context, dev string) (*deviceCtx, err
 		if l, _ := m["label"].(string); l != "" {
 			dc.labels[p] = l
 		}
+		inst, _ := m["installer"].(string)
+		dc.installer[p] = inst
 		if s, _ := m["system"].(bool); s {
-			dc.system[p] = true
+			dc.rawSystem[p] = true
+		}
+		if list, ok := m["granted_dangerous"].([]any); ok {
+			for _, x := range list {
+				if g, _ := x.(string); g == "android.permission.SEND_SMS" || g == "SEND_SMS" {
+					dc.sendSMS[p] = true
+				}
+			}
 		}
 	}
 	risks, err := e.st.AppLatest(ctx, dev, store.AppLatestRisk)
@@ -217,10 +240,35 @@ func (e *Engine) deviceContext(ctx context.Context, dev string) (*deviceCtx, err
 		return nil, err
 	}
 	for p, ev := range risks {
-		if l, _ := model.Str(decodeData(ev.Data), "label"); l != "" && dc.labels[p] == "" {
-			dc.labels[p] = l
+		r := riskOf(decodeData(ev.Data), ev.TSms)
+		r.Package = p
+		dc.risks[p] = r
+		if r.Label != "" && dc.labels[p] == "" {
+			dc.labels[p] = r.Label
 		}
 	}
+	installs, err := e.st.EventsOfType(ctx, dev, "app.installed", 0, 1<<62, maxAppEvents)
+	if err != nil {
+		return nil, err
+	}
+	for _, ev := range installs {
+		if p, _ := model.Str(decodeData(ev.Data), "package"); p != "" {
+			dc.installed[p] = true
+		}
+	}
+	// "system" claims (contract §11.4): an inventory cannot make an application system when its installer
+	// or its history say otherwise; such an application is treated as an ordinary one.
+	for p := range dc.rawSystem {
+		// Not the risk profile: the agent keeps the reasons of system applications (no installer…), which
+		// would contradict every one of them.
+		c := SystemClaim{Package: p, Installer: dc.installer[p], Installed: dc.installed[p]}
+		if len(c.Contradicted()) > 0 {
+			dc.claims = append(dc.claims, c)
+			continue
+		}
+		dc.system[p] = true
+	}
+	sort.Slice(dc.claims, func(i, j int) bool { return dc.claims[i].Package < dc.claims[j].Package })
 	// Default applications: the latest app.special_access (default_apps), then the latest app.role of each
 	// role, which is more recent or more precise.
 	if sa, err := e.st.EventsOfType(ctx, dev, "app.special_access", 0, 1<<62, 1); err != nil {
@@ -314,10 +362,18 @@ func (e *Engine) evaluate(ctx context.Context, dev string, hours []int64) ([]Fin
 		dayList = append(dayList, d)
 	}
 	sort.Slice(dayList, func(i, j int) bool { return dayList[i] < dayList[j] })
+	// Detections of the state of the device (contract §11.4), whatever the dirty day.
+	for _, fn := range []func(context.Context, string, *deviceCtx) ([]Finding, error){e.smsPermission, e.inventoryMismatch} {
+		f, err := fn(ctx, dev, dc)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, f...)
+	}
 	for _, d := range dayList {
 		// The hourly detections are grouped per day: the whole day is evaluated again.
 		for _, fn := range []func(context.Context, string, *deviceCtx, int64) ([]Finding, error){
-			e.uploadSpikeDay, e.fanoutDay, e.threatDomain, e.connectionsOfDay, e.opsOfDay, e.newApps,
+			e.uploadSpikeDay, e.fanoutDay, e.threatDomain, e.connectionsOfDay, e.opsOfDay, e.newApps, e.defaultAppChanged,
 		} {
 			f, err := fn(ctx, dev, dc, d)
 			if err != nil {
@@ -544,22 +600,7 @@ func (e *Engine) newApps(ctx context.Context, dev string, dc *deviceCtx, d int64
 		return nil, err
 	}
 	for _, ev := range risks {
-		m := decodeData(ev.Data)
-		r := Risk{TS: ev.TSms}
-		r.Package, _ = model.Str(m, "package")
-		r.Label, _ = model.Str(m, "label")
-		r.Level, _ = model.Str(m, "level")
-		r.Score, _ = model.Int(m, "score")
-		if b, ok := model.Bool(m, "from_store"); ok {
-			r.FromStore = &b
-		}
-		if list, ok := m["reasons"].([]any); ok {
-			for _, x := range list {
-				if s, ok := x.(string); ok && len(r.Reasons) < 32 {
-					r.Reasons = append(r.Reasons, s)
-				}
-			}
-		}
+		r := riskOf(decodeData(ev.Data), ev.TSms)
 		in.Risks = append(in.Risks, r)
 	}
 	perms, err := e.st.EventsOfType(ctx, dev, "app.permission_changed", from, to+dayMS, maxAppEvents)
@@ -614,4 +655,169 @@ func decodeData(raw json.RawMessage) map[string]any {
 		return map[string]any{}
 	}
 	return m
+}
+
+// riskOf reads an app.risk.
+func riskOf(m map[string]any, ts int64) Risk {
+	r := Risk{TS: ts}
+	r.Package, _ = model.Str(m, "package")
+	r.Label, _ = model.Str(m, "label")
+	r.Level, _ = model.Str(m, "level")
+	r.Score, _ = model.Int(m, "score")
+	if b, ok := model.Bool(m, "from_store"); ok {
+		r.FromStore = &b
+	}
+	for _, k := range []string{"reasons", "granted"} {
+		list, _ := m[k].([]any)
+		for _, x := range list {
+			if s, ok := x.(string); ok && len(s) <= 64 {
+				if k == "reasons" && len(r.Reasons) < 32 {
+					r.Reasons = append(r.Reasons, s)
+				} else if k == "granted" && len(r.Granted) < 32 {
+					r.Granted = append(r.Granted, s)
+				}
+			}
+		}
+	}
+	return r
+}
+
+func contains(list []string, x string) bool {
+	for _, v := range list {
+		if v == x {
+			return true
+		}
+	}
+	return false
+}
+
+// smsPermission: applications holding SEND_SMS (latest inventory, then app.permission_changed, which is more
+// recent), one detection per holding (contract §11.4).
+func (e *Engine) smsPermission(ctx context.Context, dev string, dc *deviceCtx) ([]Finding, error) {
+	if !e.t.Enabled(TypeSMSPermission) {
+		return nil, nil
+	}
+	evs, err := e.st.EventsOfType(ctx, dev, "app.permission_changed", 0, 1<<62, maxAppEvents)
+	if err != nil {
+		return nil, err
+	}
+	type state struct {
+		holds              bool
+		lastTS, revokedTS  int64
+		grantAfterRevoke   int64
+		firstGrant, events int64
+	}
+	st := map[string]*state{}
+	for i := len(evs) - 1; i >= 0; i-- { // oldest first
+		m := decodeData(evs[i].Data)
+		perm, _ := model.Str(m, "permission")
+		if perm != "android.permission.SEND_SMS" && perm != "SEND_SMS" {
+			continue
+		}
+		p, _ := model.Str(m, "package")
+		g, _ := model.Bool(m, "granted")
+		if p == "" {
+			continue
+		}
+		s := st[p]
+		if s == nil {
+			s = &state{}
+			st[p] = s
+		}
+		ts := evs[i].TSms
+		s.lastTS, s.holds = ts, g
+		if g {
+			if s.firstGrant == 0 {
+				s.firstGrant = ts
+			}
+			if s.revokedTS > 0 && s.grantAfterRevoke == 0 {
+				s.grantAfterRevoke = ts
+			}
+		} else {
+			s.revokedTS, s.grantAfterRevoke = ts, 0
+		}
+	}
+	var holders []SMSHolder
+	seen := map[string]bool{}
+	for p, s := range st {
+		holds := s.holds
+		if dc.invTS > s.lastTS { // a newer inventory is the reference
+			holds = dc.sendSMS[p]
+		}
+		if !holds {
+			continue
+		}
+		seen[p] = true
+		h := SMSHolder{Package: p, Source: "permission_changed", Installer: dc.installer[p], SinceMS: s.firstGrant}
+		switch {
+		case s.revokedTS > 0 && s.grantAfterRevoke > 0:
+			h.SinceMS = s.grantAfterRevoke
+		case s.revokedTS > 0: // revoked, then seen holding by an inventory
+			h.SinceMS, h.Source = max(dc.invTS, s.revokedTS), "inventory"
+		case s.firstGrant == 0:
+			h.SinceMS, h.Source = dc.invTS, "inventory"
+		}
+		holders = append(holders, h)
+	}
+	for p := range dc.sendSMS {
+		if !seen[p] && st[p] == nil {
+			holders = append(holders, SMSHolder{Package: p, Source: "inventory", Installer: dc.installer[p], SinceMS: dc.invTS})
+		}
+	}
+	if len(holders) == 0 {
+		return nil, nil
+	}
+	sms := map[string]bool{}
+	var smsApps map[string]bool
+	if p := dc.roles["sms"]; p != "" {
+		sms[p] = true
+		smsApps = sms
+	}
+	found := SMSPermission(SMSPermissionInput{Holders: holders, SMSApps: smsApps, System: dc.system, Risks: dc.risks, Labels: dc.labels})
+	var out []Finding
+	for _, f := range found {
+		// One per holding: a holding already reported (window at or after its last revocation) is not again.
+		since := int64(0)
+		if s := st[f.Package]; s != nil {
+			since = s.revokedTS
+		}
+		done, err := e.st.DetectionSince(ctx, dev, TypeSMSPermission, f.Subject, since)
+		if err != nil {
+			return nil, err
+		}
+		if !done {
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
+
+// inventoryMismatch reports the "system" claims of the latest inventory contradicted by the history.
+func (e *Engine) inventoryMismatch(ctx context.Context, dev string, dc *deviceCtx) ([]Finding, error) {
+	if !e.t.Enabled(TypeInventoryMismatch) || len(dc.claims) == 0 || dc.invTS < 0 {
+		return nil, nil
+	}
+	return InventoryMismatch(dayOf(dc.invTS), dc.claims, dc.labels), nil
+}
+
+// defaultAppChanged reads the app.role events of the day (an app.role is a change: the first reading of the
+// agent is not reported).
+func (e *Engine) defaultAppChanged(ctx context.Context, dev string, dc *deviceCtx, d int64) ([]Finding, error) {
+	if !e.t.Enabled(TypeDefaultAppChanged) {
+		return nil, nil
+	}
+	evs, err := e.st.EventsOfType(ctx, dev, "app.role", d, d+dayMS-1, 1000)
+	if err != nil || len(evs) == 0 {
+		return nil, err
+	}
+	var changes []RoleChange
+	for _, ev := range evs {
+		m := decodeData(ev.Data)
+		c := RoleChange{TS: ev.TSms}
+		c.Role, _ = model.Str(m, "role")
+		c.Old, _ = model.Str(m, "old")
+		c.New, _ = model.Str(m, "new")
+		changes = append(changes, c)
+	}
+	return DefaultAppChanged(changes, dc.risks, dc.labels), nil
 }

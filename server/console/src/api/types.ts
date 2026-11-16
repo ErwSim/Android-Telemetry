@@ -291,8 +291,10 @@ export interface AppRisk {
   score: number;
   /** `low`, `medium`, `high`, ou une valeur inconnue (repli : déduit du score) */
   level: string;
-  /** codes de la liste fermée du §11.2 ; un code inconnu est affiché tel quel */
+  /** capacités DÉCLARÉES (codes de la liste fermée du §11.2 ; un code inconnu est affiché tel quel) */
   reasons: string[];
+  /** parmi `reasons`, celles effectivement ACCORDÉES (§11.4) ; absent si l'agent ne le dit pas */
+  granted?: string[];
   ts?: string;
 }
 
@@ -333,6 +335,22 @@ export interface Detection {
   window_from?: string;
   window_to?: string;
   device_id?: string;
+  updated_at?: string;
+  /** §11.4 : déjà signalé dans les 30 jours (sévérité plafonnée à 1) */
+  recurring?: boolean;
+  /** §11.4 : couverte par une sourdine : calculée et stockée, mais ni exportée ni notifiée */
+  muted?: boolean;
+}
+
+/** Sourdine en cours (§11.4) : un couple (type, application) pour un appareil. */
+export interface DetectionMute {
+  type: string;
+  package: string;
+  label?: string;
+  reason?: string;
+  device_id?: string;
+  created_at?: string;
+  created_by?: string;
 }
 
 export interface DetectionsResponse {

@@ -504,6 +504,21 @@ ALTER TABLE detections ADD COLUMN exported_sev INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE detections ADD COLUMN exported_items TEXT NOT NULL DEFAULT '[]';
 UPDATE detections SET exported_ms = ts_ms, exported_sev = sev;
 `,
+	// 9: review of v1.2 (contract §11.4): muted detections (computed and stored, neither exported nor streamed),
+	// recurring ones (severity capped at 1), and the mutes set from the console.
+	`
+ALTER TABLE detections ADD COLUMN muted INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE detections ADD COLUMN recurring INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE detect_mutes (
+	device_id  TEXT NOT NULL,
+	type       TEXT NOT NULL,
+	package    TEXT NOT NULL,
+	reason     TEXT NOT NULL,
+	created_ms INTEGER NOT NULL,
+	created_by TEXT NOT NULL,
+	PRIMARY KEY (device_id, type, package)
+) WITHOUT ROWID;
+`,
 }
 
 // SchemaVersion is the schema version this binary expects.

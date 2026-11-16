@@ -1,3 +1,0 @@
-# Nouvelle appli de téléphone par défaut
-# attendu: 100512
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001196","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1196,"type":"app.role","domain":"app","sev":2,"data":{"role":"dialer","old":"com.samsung.android.dialer","new":"com.truecaller"}}}

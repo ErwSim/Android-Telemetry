@@ -1,5 +1,5 @@
 import { request, type Query } from './client.ts';
-import { parseDetectionsResponse } from '../lib/detections.ts';
+import { parseDetectionsResponse, parseMutes } from '../lib/detections.ts';
 import { parseOpsResponse } from '../lib/ops.ts';
 import { parseRiskResponse } from '../lib/risk.ts';
 import type {
@@ -10,6 +10,7 @@ import type {
   Bucket,
   CommandsResponse,
   DetectionsResponse,
+  DetectionMute,
   DevicesResponse,
   EventsResponse,
   LevelResponse,
@@ -75,6 +76,13 @@ export const api = {
     q: Range & { device_id?: string; type?: string; package?: string; limit?: number; cursor?: string },
     signal?: AbortSignal,
   ): Promise<DetectionsResponse> => parseDetectionsResponse(await request<unknown>('/detections', q as unknown as Query, signal ? { signal } : {})),
+  // Mise en sourdine des détections (§11.4)
+  detectionMutes: async (device_id?: string, signal?: AbortSignal): Promise<DetectionMute[]> =>
+    parseMutes(await request<unknown>('/detections/mutes', { device_id }, signal ? { signal } : {})),
+  muteDetection: (body: { device_id: string; type: string; package: string; reason?: string }) =>
+    request<void>('/detections/mute', undefined, { method: 'POST', body }),
+  unmuteDetection: (body: { device_id: string; type: string; package: string }) =>
+    request<void>('/detections/mute', undefined, { method: 'DELETE', body }),
   // Commandes à distance (§8)
   commands: (q: { device_id?: string; limit?: number }, signal?: AbortSignal) =>
     request<CommandsResponse>('/commands', q as Query, signal ? { signal } : {}),

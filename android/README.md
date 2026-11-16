@@ -1018,21 +1018,28 @@ ou clé de la garde ; `permission` pour une permission).
 ### Garde-fous (codés en dur)
 
 - Jamais touchés, quelle que soit la liste : Vigie et son compagnon, **toute appli système** (`FLAG_SYSTEM` :
-  SOS d'urgence, opérateur, Samsung), la liste de refus de la politique, et les **détenteurs actuels des rôles**
-  appli SMS, composeur (par défaut et système), clavier en service, écran d'accueil par défaut. Seulement les
-  détenteurs : ni toute appli capable d'être un lanceur (n'importe quelle appli peut déclarer une activité
-  HOME), ni les administrateurs actifs (un logiciel malveillant peut le devenir).
+  SOS d'urgence, opérateur, Samsung) et la liste de refus de la politique. En plus, **seulement le détenteur du
+  rôle correspondant** (contrat §11.4) : l'appli SMS par défaut pour la garde `sms`, le composeur (par défaut et
+  système) pour `calls`. Un **clavier ou un écran d'accueil** choisi par l'utilisateur n'est épargné par
+  **aucune** garde (`sms`, `calls`, `quarantine`) : « choisir une appli d'accueil » est un appui qu'un logiciel
+  malveillant peut demander, et aucun de ces rôles n'a besoin des SMS ni des appels. Ni les administrateurs
+  actifs, ni toute appli capable d'être un lanceur.
 - **Rôle qui change** (contrôlé à chaque diffusion de paquet, au changement de composeur, à l'ouverture de
   l'écran, toutes les 15 min, et — depuis la revue v1.2 — par une relecture des détenteurs **toutes les 10 s**
   tant qu'une garde par paquet est active et que le téléphone est éveillé : aucune diffusion n'annonce à une
   appli tierce le changement d'appli SMS, de clavier ou d'accueil). Le nouveau détenteur voit ses refus levés.
   S'il est l'appli SMS (garde SMS) ou le composeur (garde Appels), il **entre dans la liste** (« la liste suit »,
   `agent.config_changed`) et les permissions SMS et d'appel que son rôle lui aurait données lui sont
-  **accordées** (`permission_granted`) ; micro, caméra et contacts restent à la demande habituelle. Un clavier
-  ou un écran d'accueil est seulement **épargné tant qu'il le reste** : il n'entre dans aucune liste, et la garde
-  le refuse de nouveau dès qu'il perd le rôle (« choisir une appli d'accueil » est un appui qu'un logiciel
-  malveillant peut demander). Dans tous les cas une notification le dit, avec le nom du paquet. Une appli en
-  quarantaine choisie comme appli par défaut est libérée automatiquement (notifié).
+  **accordées** (`permission_granted`) ; micro, caméra et contacts restent à la demande habituelle. La liste
+  d'une garde ne suit que son propre rôle. Une **notification prioritaire** (canal « Gardes : appli SMS ou
+  composeur changé », affichée en haut de l'écran et sur l'écran verrouillé) le dit, avec le nom du paquet.
+- **Quarantaine et rôle** (choix tranché) : une appli en quarantaine désignée appli SMS par défaut ou composeur
+  **reste en quarantaine** ; seules les permissions de ce rôle lui sont rendues et accordées (sans elles, les SMS
+  ou appels entrants seraient perdus sans bruit), contacts, micro, caméra, position et appareils à proximité
+  restent refusés, et la notification prioritaire le dit. Raison : se faire désigner appli SMS par défaut est
+  précisément la voie des chevaux de Troie SMS ; une libération automatique leur ouvrirait aussi le carnet
+  d'adresses (propagation). Si elle perd le rôle, les permissions du rôle sont refusées de nouveau. Le
+  propriétaire la libère quand il lui fait confiance. Un clavier ou un écran d'accueil reste en quarantaine.
 - Un échec sur un paquet donne `permission_denied` `ok=false` et n'arrête pas les autres ; il n'est pas retenté à
   chaque passage (pas de rafale d'événements), mais à la prochaine « Aperçu et réapplication ».
 - Deux éléments qui refusent la même permission (garde SMS et quarantaine, ou une permission du catalogue) la
@@ -1079,9 +1086,9 @@ qu'elle n'est pas désinstallée.
 - **Applis système** et **appli SMS / composeur par défaut** : jamais touchées. Un logiciel malveillant qui se
   fait choisir comme appli SMS par défaut (boîte de dialogue système, **un seul appui**) envoie des SMS : Vigie le
   **signale** (notification, `app.role` côté collecteurs) mais ne le bloque pas, et l'ajoute à la liste. C'est la
-  voie classique des chevaux de Troie SMS : **la garde SMS ne ferme que la voie « demande de permission »**. Un
-  clavier ou un écran d'accueil choisi par l'utilisateur est épargné lui aussi tant qu'il le reste (contrat) ; il
-  doit encore obtenir la permission par la boîte de dialogue habituelle.
+  voie classique des chevaux de Troie SMS : **la garde SMS ne ferme que la voie « demande de permission »** ; pour
+  la voie « appli par défaut », Vigie **signale** (notification prioritaire), ne bloque pas. Un clavier ou un écran
+  d'accueil n'est plus épargné (contrat §11.4).
 - **Service d'accessibilité déjà activé** : il appuie à la place de l'utilisateur, y compris dans Vigie (éteindre
   une garde, libérer une quarantaine, « Tout rétablir ») et dans l'appli SMS. L'écran de Vigie ne demande pas le
   code de déverrouillage avant ces actions (piste v1.3).

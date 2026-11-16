@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -21,7 +22,7 @@ import (
 func DetectionInput(t string) bool {
 	switch t {
 	case "net.dns", "net.connect", "net.usage", "app.ops", "app.risk", "app.installed", "app.permission_changed",
-		"app.special_access", "app.role":
+		"app.special_access", "app.role", "app.inventory":
 		return true
 	}
 	return false
@@ -216,19 +217,40 @@ type Detection struct {
 // DetectionReexport is the minimum delay between two exports of the same detection.
 const DetectionReexport = time.Hour
 
+// MaxDetectionsPerDay bounds the detections created per device and UTC day (contract §11.4); beyond, a single
+// detect.flood per device and day counts what was suppressed.
+const MaxDetectionsPerDay = 200
+
+// TypeFlood is the detection that replaces the detections beyond MaxDetectionsPerDay.
+const TypeFlood = "detect.flood"
+
+// RecurringWindow: a detection of a recurring type whose (type, application) was already reported within this
+// window is marked recurring, its severity capped at 1 (contract §11.4).
+const RecurringWindow = 30 * 24 * time.Hour
+
+// recurringTypes are the types subject to the recurrence rule.
+var recurringTypes = map[string]bool{"detect.dns_bypass": true, "detect.mail_ports": true, "detect.upload_spike": true}
+
 // UpsertResult tells what UpsertDetections did.
 type UpsertResult struct {
-	Events  []StoredEvent // events to publish (new detections and exported updates)
-	Added   int
-	Updated int
+	Events     []StoredEvent // events to publish (new detections and exported updates)
+	Added      int
+	Updated    int
+	Muted      int // new detections stored muted (not exported)
+	Suppressed int // new detections beyond the daily cap
 }
 
 // UpsertDetections stores findings, one per device, type, subject and window:
-//   - a new finding is stored with its event of the collector (source "server", type = the detection type);
+//   - a new finding is stored with its event of the collector (source "server", type = the detection type),
+//     unless it is covered by a mute (stored with muted = 1, no event: neither exported nor streamed);
+//   - of the recurring types, a new finding whose (type, subject) was already stored within RecurringWindow
+//     before its window is marked recurring and its severity capped at 1;
+//   - beyond MaxDetectionsPerDay new findings of a device during the UTC day of now, nothing more is stored but
+//     one detect.flood (severity 3) per device and day, updated in place with the number suppressed;
 //   - a finding already stored is updated in place (evidence, summary, label, highest severity, union of
 //     its elements) when it differs; the update is exported again — a new event of the same type carrying
 //     "update": true and "detection_id" — only when it is more severe or brings an element not exported yet,
-//     and at most once per DetectionReexport (what is held back is exported by a later update of the window);
+//     at most once per DetectionReexport, and never while muted;
 //   - an identical finding changes nothing (a window evaluated again after a late batch or a restart).
 func (s *Store) UpsertDetections(ctx context.Context, ds []Detection, now time.Time) (UpsertResult, error) {
 	var res UpsertResult
@@ -241,32 +263,77 @@ func (s *Store) UpsertDetections(ctx context.Context, ds []Detection, now time.T
 	}
 	defer tx.Rollback()
 	nowMS := now.UnixMilli()
+	day := nowMS - mod(nowMS, 24*hourMS)
+	changed := false
 	for _, d := range ds {
 		evidence, err := model.Marshal(d.Evidence)
 		if err != nil {
 			return res, err
 		}
+		var muteN int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM detect_mutes WHERE device_id = ? AND type = ? AND package = ?`,
+			d.DeviceID, d.Type, d.Package).Scan(&muteN); err != nil {
+			return res, err
+		}
+		muted := muteN > 0 && d.Package != "" && Mutable(d.Type)
 		var id, label, summary, oldEvidence, itemsJSON, exportedJSON string
-		var sev, exportedSev int
+		var sev, exportedSev, wasMuted, recurring int
 		var exportedMS int64
-		err = tx.QueryRowContext(ctx, `SELECT id, label, summary, sev, evidence, items, exported_ms, exported_sev, exported_items FROM detections
-			WHERE device_id = ? AND type = ? AND subject = ? AND window_from_ms = ?`, d.DeviceID, d.Type, d.Subject, d.WindowFromMS).
-			Scan(&id, &label, &summary, &sev, &oldEvidence, &itemsJSON, &exportedMS, &exportedSev, &exportedJSON)
+		err = tx.QueryRowContext(ctx, `SELECT id, label, summary, sev, evidence, items, exported_ms, exported_sev, exported_items, muted, recurring
+			FROM detections WHERE device_id = ? AND type = ? AND subject = ? AND window_from_ms = ?`, d.DeviceID, d.Type, d.Subject, d.WindowFromMS).
+			Scan(&id, &label, &summary, &sev, &oldEvidence, &itemsJSON, &exportedMS, &exportedSev, &exportedJSON, &wasMuted, &recurring)
 		if errors.Is(err, sql.ErrNoRows) {
+			var today int
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM detections WHERE device_id = ? AND ts_ms >= ? AND ts_ms < ? AND type <> ?`,
+				d.DeviceID, day, day+24*hourMS, TypeFlood).Scan(&today); err != nil {
+				return res, err
+			}
+			if today >= MaxDetectionsPerDay {
+				ev, err := flood(ctx, tx, d.DeviceID, day, now)
+				if err != nil {
+					return res, err
+				}
+				if ev != nil {
+					res.Events = append(res.Events, *ev)
+				}
+				res.Suppressed++
+				changed = true
+				continue
+			}
+			if recurringTypes[d.Type] {
+				var n int
+				if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM detections WHERE device_id = ? AND type = ? AND subject = ?
+					AND window_from_ms < ? AND window_from_ms >= ?`, d.DeviceID, d.Type, d.Subject, d.WindowFromMS,
+					d.WindowFromMS-RecurringWindow.Milliseconds()).Scan(&n); err != nil {
+					return res, err
+				}
+				if n > 0 {
+					recurring = 1
+					d.Sev = min(d.Sev, 1)
+				}
+			}
 			items := unionItems(nil, d.Items)
-			se, err := insertServerEvent(ctx, tx, d.DeviceID, d.Type, d.Sev, detectionData(d, "", false), now)
-			if err != nil {
-				return res, err
-			}
 			itemsRaw, _ := json.Marshal(items)
+			var exported int64
+			if muted {
+				id = model.NewULID(now)
+				res.Muted++
+			} else {
+				se, err := insertServerEvent(ctx, tx, d.DeviceID, d.Type, d.Sev, detectionData(d, "", false, recurring == 1), now)
+				if err != nil {
+					return res, err
+				}
+				id, exported = se.ID, se.TSms
+				res.Events = append(res.Events, se)
+				res.Added++
+			}
 			if _, err := tx.ExecContext(ctx, `INSERT INTO detections(id, device_id, type, subject, window_from_ms, window_to_ms, ts_ms, package,
-				label, sev, summary, evidence, items, exported_ms, exported_sev, exported_items) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-				se.ID, d.DeviceID, d.Type, d.Subject, d.WindowFromMS, d.WindowToMS, se.TSms, d.Package, d.Label, d.Sev, d.Summary,
-				string(evidence), string(itemsRaw), se.TSms, d.Sev, string(itemsRaw)); err != nil {
+				label, sev, summary, evidence, items, exported_ms, exported_sev, exported_items, muted, recurring) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				id, d.DeviceID, d.Type, d.Subject, d.WindowFromMS, d.WindowToMS, nowMS, d.Package, d.Label, d.Sev, d.Summary,
+				string(evidence), string(itemsRaw), exported, d.Sev, string(itemsRaw), boolInt(muted), recurring); err != nil {
 				return res, err
 			}
-			res.Events = append(res.Events, se)
-			res.Added++
+			changed = true
 			continue
 		}
 		if err != nil {
@@ -277,24 +344,29 @@ func (s *Store) UpsertDetections(ctx context.Context, ds []Detection, now time.T
 		_ = json.Unmarshal([]byte(exportedJSON), &exported)
 		items := unionItems(stored, d.Items)
 		newSev := max(sev, d.Sev)
+		if recurring == 1 {
+			newSev = min(newSev, 1)
+		}
 		if d.Label == "" {
 			d.Label = label
 		}
-		if string(evidence) == oldEvidence && d.Summary == summary && newSev == sev && len(items) == len(stored) && d.Label == label {
+		if string(evidence) == oldEvidence && d.Summary == summary && newSev == sev && len(items) == len(stored) && d.Label == label &&
+			wasMuted == boolInt(muted) {
 			continue
 		}
 		itemsRaw, _ := json.Marshal(items)
-		if _, err := tx.ExecContext(ctx, `UPDATE detections SET label = ?, sev = ?, summary = ?, evidence = ?, items = ?, updated_ms = ?
-			WHERE id = ?`, d.Label, newSev, d.Summary, string(evidence), string(itemsRaw), nowMS, id); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE detections SET label = ?, sev = ?, summary = ?, evidence = ?, items = ?, updated_ms = ?, muted = ?
+			WHERE id = ?`, d.Label, newSev, d.Summary, string(evidence), string(itemsRaw), nowMS, boolInt(muted), id); err != nil {
 			return res, err
 		}
 		res.Updated++
+		changed = true
 		grew := newSev > exportedSev || len(unionItems(exported, items)) > len(exported)
-		if !grew || nowMS-exportedMS < DetectionReexport.Milliseconds() {
+		if muted || !grew || nowMS-exportedMS < DetectionReexport.Milliseconds() {
 			continue
 		}
 		d.Sev = newSev
-		se, err := insertServerEvent(ctx, tx, d.DeviceID, d.Type, newSev, detectionData(d, id, true), now)
+		se, err := insertServerEvent(ctx, tx, d.DeviceID, d.Type, newSev, detectionData(d, id, true, recurring == 1), now)
 		if err != nil {
 			return res, err
 		}
@@ -304,14 +376,177 @@ func (s *Store) UpsertDetections(ctx context.Context, ds []Detection, now time.T
 		}
 		res.Events = append(res.Events, se)
 	}
-	if res.Added == 0 && res.Updated == 0 {
+	if !changed {
 		return res, nil
 	}
 	return res, tx.Commit()
 }
 
+// flood records one suppressed detection in the detect.flood of the device and day (created, with its event,
+// the first time; afterwards updated in place, never exported again).
+func flood(ctx context.Context, tx *sql.Tx, deviceID string, day int64, now time.Time) (*StoredEvent, error) {
+	var id, evidence string
+	err := tx.QueryRowContext(ctx, `SELECT id, evidence FROM detections WHERE device_id = ? AND type = ? AND subject = '' AND window_from_ms = ?`,
+		deviceID, TypeFlood, day).Scan(&id, &evidence)
+	if err == nil {
+		var ev struct {
+			Suppressed int64 `json:"suppressed"`
+		}
+		_ = json.Unmarshal([]byte(evidence), &ev)
+		ev.Suppressed++
+		raw, _ := json.Marshal(map[string]any{"suppressed": ev.Suppressed, "limit": MaxDetectionsPerDay})
+		_, err := tx.ExecContext(ctx, `UPDATE detections SET evidence = ?, summary = ?, updated_ms = ? WHERE id = ?`, string(raw),
+			floodSummary(ev.Suppressed), now.UnixMilli(), id)
+		return nil, err
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	d := Detection{DeviceID: deviceID, Type: TypeFlood, WindowFromMS: day, WindowToMS: day + 24*hourMS, Sev: 3, Summary: floodSummary(1),
+		Evidence: map[string]any{"suppressed": 1, "limit": MaxDetectionsPerDay}}
+	se, err := insertServerEvent(ctx, tx, deviceID, TypeFlood, 3, detectionData(d, "", false, false), now)
+	if err != nil {
+		return nil, err
+	}
+	raw, _ := json.Marshal(d.Evidence)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO detections(id, device_id, type, subject, window_from_ms, window_to_ms, ts_ms, package,
+		label, sev, summary, evidence, items, exported_ms, exported_sev, exported_items) VALUES(?,?,?,'',?,?,?,'','',3,?,?,'[]',?,3,'[]')`,
+		se.ID, deviceID, TypeFlood, d.WindowFromMS, d.WindowToMS, se.TSms, d.Summary, string(raw), se.TSms); err != nil {
+		return nil, err
+	}
+	return &se, nil
+}
+
+func floodSummary(n int64) string {
+	return fmt.Sprintf("Plus de %d détections dans la journée pour cet appareil : %d de plus non enregistrées. L'appareil envoie des données incohérentes ou est compromis.",
+		MaxDetectionsPerDay, n)
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// Unmutable types (contract §11.4): they cannot be muted from the console.
+var unmutable = map[string]bool{"detect.sms_abuse": true, "detect.default_app_changed": true, "detect.inventory_mismatch": true, TypeFlood: true}
+
+// Mutable reports whether detections of type t may be muted.
+func Mutable(t string) bool { return !unmutable[t] }
+
+// Mute is a mute set from the console.
+type Mute struct {
+	DeviceID  string `json:"device_id"`
+	Type      string `json:"type"`
+	Package   string `json:"package"`
+	Reason    string `json:"reason"`
+	CreatedAt string `json:"created_at"`
+	CreatedBy string `json:"created_by"`
+}
+
+// SetMute adds (or replaces the reason of) a mute and marks the detections it covers; with the event
+// detect.muted when the mute is new. It returns ErrNotFound for an unknown device.
+func (s *Store) SetMute(ctx context.Context, m Mute, now time.Time) (*StoredEvent, error) {
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var n int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM devices WHERE device_id = ?`, m.DeviceID).Scan(&n); err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, ErrNotFound
+	}
+	r, err := tx.ExecContext(ctx, `INSERT INTO detect_mutes(device_id, type, package, reason, created_ms, created_by) VALUES(?,?,?,?,?,?)
+		ON CONFLICT(device_id, type, package) DO NOTHING`, m.DeviceID, m.Type, m.Package, m.Reason, now.UnixMilli(), m.CreatedBy)
+	if err != nil {
+		return nil, err
+	}
+	created, _ := r.RowsAffected()
+	if created == 0 {
+		if _, err := tx.ExecContext(ctx, `UPDATE detect_mutes SET reason = ? WHERE device_id = ? AND type = ? AND package = ?`,
+			m.Reason, m.DeviceID, m.Type, m.Package); err != nil {
+			return nil, err
+		}
+		return nil, tx.Commit()
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE detections SET muted = 1 WHERE device_id = ? AND type = ? AND package = ?`, m.DeviceID, m.Type, m.Package); err != nil {
+		return nil, err
+	}
+	ev, err := insertServerEvent(ctx, tx, m.DeviceID, "detect.muted", 1,
+		map[string]any{"type": m.Type, "package": m.Package, "reason": m.Reason, "user": m.CreatedBy}, now)
+	if err != nil {
+		return nil, err
+	}
+	return &ev, tx.Commit()
+}
+
+// DeleteMute lifts a mute (ErrNotFound when there is none), with the event detect.unmuted. The detections
+// stored while muted stay unexported; the next ones are exported again.
+func (s *Store) DeleteMute(ctx context.Context, deviceID, typ, pkg, user, reason string, now time.Time) (*StoredEvent, error) {
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	r, err := tx.ExecContext(ctx, `DELETE FROM detect_mutes WHERE device_id = ? AND type = ? AND package = ?`, deviceID, typ, pkg)
+	if err != nil {
+		return nil, err
+	}
+	if n, _ := r.RowsAffected(); n == 0 {
+		return nil, ErrNotFound
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE detections SET muted = 0 WHERE device_id = ? AND type = ? AND package = ?`, deviceID, typ, pkg); err != nil {
+		return nil, err
+	}
+	ev, err := insertServerEvent(ctx, tx, deviceID, "detect.unmuted", 0,
+		map[string]any{"type": typ, "package": pkg, "reason": reason, "user": user}, now)
+	if err != nil {
+		return nil, err
+	}
+	return &ev, tx.Commit()
+}
+
+// ListMutes returns the mutes (of one device when deviceID is set).
+func (s *Store) ListMutes(ctx context.Context, deviceID string) ([]Mute, error) {
+	q := `SELECT device_id, type, package, reason, created_ms, created_by FROM detect_mutes`
+	var args []any
+	if deviceID != "" {
+		q += ` WHERE device_id = ?`
+		args = append(args, deviceID)
+	}
+	rows, err := s.r.QueryContext(ctx, q+` ORDER BY device_id, type, package`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Mute{}
+	for rows.Next() {
+		var m Mute
+		var ms int64
+		if err := rows.Scan(&m.DeviceID, &m.Type, &m.Package, &m.Reason, &ms, &m.CreatedBy); err != nil {
+			return nil, err
+		}
+		m.CreatedAt = fmtMS(ms)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// DetectionSince reports whether a detection (device, type, subject) exists whose window starts at or after
+// sinceMS (detect.sms_permission: one per holding of the permission).
+func (s *Store) DetectionSince(ctx context.Context, deviceID, typ, subject string, sinceMS int64) (bool, error) {
+	var n int
+	err := s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM detections WHERE device_id = ? AND type = ? AND subject = ? AND window_from_ms >= ?`,
+		deviceID, typ, subject, sinceMS).Scan(&n)
+	return n > 0, err
+}
+
 // detectionData is the data of the event of a detection.
-func detectionData(d Detection, id string, update bool) map[string]any {
+func detectionData(d Detection, id string, update, recurring bool) map[string]any {
 	ev := map[string]any{"window_from": model.FormatMS(d.WindowFromMS), "window_to": model.FormatMS(d.WindowToMS),
 		"summary": d.Summary, "evidence": d.Evidence}
 	if d.Package != "" {
@@ -322,6 +557,9 @@ func detectionData(d Detection, id string, update bool) map[string]any {
 	}
 	if update {
 		ev["update"], ev["detection_id"] = true, id
+	}
+	if recurring {
+		ev["recurring"] = true
 	}
 	return ev
 }
@@ -576,6 +814,8 @@ type DetectionItem struct {
 	WindowFrom string          `json:"window_from"`
 	WindowTo   string          `json:"window_to"`
 	UpdatedAt  string          `json:"updated_at,omitempty"`
+	Muted      bool            `json:"muted"`
+	Recurring  bool            `json:"recurring"`
 }
 
 // DetectionQuery selects detections for the console.
@@ -616,7 +856,7 @@ func (s *Store) ListDetections(ctx context.Context, q DetectionQuery) ([]Detecti
 		args = append(args, q.CursorTS, q.CursorTS, q.CursorPK)
 	}
 	args = append(args, q.Limit+1)
-	rows, err := s.r.QueryContext(ctx, `SELECT pk, id, ts_ms, device_id, type, package, label, sev, summary, evidence, window_from_ms, window_to_ms, updated_ms
+	rows, err := s.r.QueryContext(ctx, `SELECT pk, id, ts_ms, device_id, type, package, label, sev, summary, evidence, window_from_ms, window_to_ms, updated_ms, muted, recurring
 		FROM detections WHERE `+strings.Join(where, " AND ")+` ORDER BY ts_ms DESC, pk DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, false, err
@@ -628,7 +868,7 @@ func (s *Store) ListDetections(ctx context.Context, q DetectionQuery) ([]Detecti
 		var evidence string
 		var wf, wt int64
 		var upd sql.NullInt64
-		if err := rows.Scan(&d.PK, &d.ID, &d.TSms, &d.DeviceID, &d.Type, &d.Package, &d.Label, &d.Severity, &d.Summary, &evidence, &wf, &wt, &upd); err != nil {
+		if err := rows.Scan(&d.PK, &d.ID, &d.TSms, &d.DeviceID, &d.Type, &d.Package, &d.Label, &d.Severity, &d.Summary, &evidence, &wf, &wt, &upd, &d.Muted, &d.Recurring); err != nil {
 			return nil, false, err
 		}
 		if upd.Valid {

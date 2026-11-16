@@ -555,8 +555,11 @@ type Risk struct {
 	Package, Label, Level string
 	Score                 int64
 	Reasons               []string
-	FromStore             *bool
-	TS                    int64
+	// Granted are the codes of the capabilities actually granted (contract §11.4: app.risk rates the declared
+	// capabilities, "granted" tells which ones are granted).
+	Granted   []string
+	FromStore *bool
+	TS        int64
 }
 
 // Capability is a sensitive capability obtained by an application (Kind: see CapabilityNames).
@@ -620,6 +623,9 @@ func NewAppRisky(in NewAppInput) []Finding {
 	installs := append([]Install(nil), in.Installs...)
 	sort.Slice(installs, func(i, j int) bool { return installs[i].TS < installs[j].TS })
 	caps := append([]Capability(nil), in.Caps...)
+	for _, r := range in.Risks {
+		caps = append(caps, GrantedCapabilities(r)...)
+	}
 	sort.SliceStable(caps, func(i, j int) bool { return caps[i].TS < caps[j].TS })
 	var out []Finding
 	for _, ins := range installs {
@@ -674,6 +680,9 @@ func NewAppRisky(in NewAppInput) []Finding {
 		ev := map[string]any{"high_risk": high, "capabilities": toAny(capsList), "installer": ins.Installer, "installed_at": fmtMS(ins.TS)}
 		if best != nil {
 			ev["score"], ev["level"], ev["reasons"] = best.Score, best.Level, toAny(best.Reasons)
+			if len(best.Granted) > 0 {
+				ev["granted"] = toAny(best.Granted)
+			}
 			if best.FromStore != nil {
 				ev["from_store"] = *best.FromStore
 			}

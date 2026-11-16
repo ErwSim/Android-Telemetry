@@ -110,6 +110,6 @@ export function usePagedDetections(params: DetectionParams | null, pageSize = 50
   }, [cursor, loadingMore, pageSize]);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
-  const addLive = useCallback((d: Detection) => setDetections((prev) => mergeDetections(prev, [d])), []);
+  const addLive = useCallback((d: Detection) => setDetections((prev) => mergeDetections(prev, [d], { replace: true })), []);
   return { detections, loading, loadingMore, error, hasMore: !!cursor, loadMore, reload, addLive };
 }

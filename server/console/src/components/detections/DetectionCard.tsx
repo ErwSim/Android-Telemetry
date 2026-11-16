@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { Detection } from '../../api/types.ts';
-import { detectionDomains, detectionLabel, evidenceItems, fmtWindow, observation, typeInfo } from '../../lib/detections.ts';
+import { detectionDomains, detectionLabel, evidenceItems, fmtWindow, isMutable, observation, typeInfo } from '../../lib/detections.ts';
 import { fmtDateTime, fmtRelative } from '../../lib/format.ts';
 import { guardInfo } from '../../lib/guards.ts';
 import { appSheetPath, cleanText } from '../../lib/text.ts';
@@ -18,6 +18,8 @@ export function DetectionCard({
   isNew = false,
   now,
   showAppLink = true,
+  onMute,
+  onUnmute,
 }: {
   d: Detection;
   open?: boolean;
@@ -25,6 +27,9 @@ export function DetectionCard({
   now?: Date;
   /** faux sur la fiche de l'application elle-même */
   showAppLink?: boolean;
+  /** mise en sourdine (§11.4) : proposée seulement pour un type masquable */
+  onMute?: ((d: Detection) => void) | undefined;
+  onUnmute?: ((d: Detection) => void) | undefined;
 }) {
   const info = typeInfo(d.type);
   const sev = Math.max(0, Math.min(3, Math.trunc(d.severity)));
@@ -36,15 +41,23 @@ export function DetectionCard({
   const guard = info.guard ? guardInfo(info.guard) : undefined;
   const enc = pkg ? encodeURIComponent(pkg) : '';
   return (
-    <li className={`det det-sev-${sev}${isNew ? ' is-new' : ''}`} data-testid="detection" data-type={d.type}>
+    <li className={`det det-sev-${sev}${isNew ? ' is-new' : ''}${d.muted ? ' is-muted' : ''}`} data-testid="detection" data-type={d.type} data-muted={d.muted ? 'true' : undefined}>
       <div className="det-head">
         <SevBadge sev={sev} />
         <Badge tone="info">{detectionLabel(d.type)}</Badge>
+        {info.review && <Badge tone="warn" title="Une revue : cette application détient un droit sensible, a-t-elle une raison de l'avoir ?">À vérifier</Badge>}
+        {d.recurring && <Badge title="Déjà signalé dans les 30 jours : la gravité est plafonnée à 1 (Notable)">Déjà signalé, récurrent</Badge>}
+        {d.muted && <Badge tone="neutral" title="Calculée et enregistrée, mais ni alertée ni notifiée">En sourdine</Badge>}
         <time className="det-time" dateTime={d.ts} title={fmtDateTime(d.ts)}>
           {fmtRelative(d.ts, now)}
         </time>
       </div>
       <h3 className="det-what">{observation(d)}</h3>
+      {info.review && (
+        <p className="hint det-review" data-testid="det-review">
+          Ceci est une <strong>revue</strong>, pas la preuve d'un abus : cette application peut envoyer des SMS sans passer par votre messagerie. Est-ce voulu ?
+        </p>
+      )}
       <div className="det-meta">
         {pkg ? (
           <span>
@@ -56,6 +69,7 @@ export function DetectionCard({
         <span>
           Période : <strong>{window ?? `détectée le ${fmtDateTime(d.ts)}`}</strong>
         </span>
+        {d.updated_at && d.updated_at !== d.ts && <span>Mise à jour : {fmtRelative(d.updated_at, now)}</span>}
       </div>
       {evidence.length > 0 && (
         <ul className="chip-list det-chips" aria-label="Éléments de preuve (aperçu)">
@@ -103,6 +117,12 @@ export function DetectionCard({
           <section>
             <h4>Pourquoi c'est suspect</h4>
             <p>{info.why}</p>
+            {d.type === 'detect.default_app_changed' && d.evidence['role'] === 'sms' && (
+              <p className="callout callout-bad" data-testid="det-sms-role">
+                <strong>Rôle SMS : la voie classique des chevaux de Troie SMS.</strong> Une application qui se fait désigner application SMS par défaut obtient l'envoi, la lecture et l'interception des SMS
+                (codes de votre banque compris) et échappe aux refus de permission. À moins que vous ne l'ayez choisie vous-même, remettez l'ancienne application et désinstallez la nouvelle.
+              </p>
+            )}
           </section>
           {info.innocent.length > 0 && (
             <section>
@@ -136,6 +156,16 @@ export function DetectionCard({
                 <Link className="btn btn-sm" to={`/reseau?app=${enc}`}>
                   Son trafic dans Réseau
                 </Link>
+              )}
+              {d.muted && onUnmute && (
+                <button type="button" className="btn btn-sm" onClick={() => onUnmute(d)}>
+                  Réactiver le signalement
+                </button>
+              )}
+              {!d.muted && onMute && isMutable(d) && (
+                <button type="button" className="btn btn-sm" onClick={() => onMute(d)} data-testid="mute-btn">
+                  Ne plus signaler pour cette application
+                </button>
               )}
               {(d.type === 'detect.sensor_background' || d.type === 'detect.sms_abuse') && (
                 <Link className="btn btn-sm" to="/securite?tab=sensors">

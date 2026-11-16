@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/erwsim/android-telemetry/server/collector/internal/detect"
 	"github.com/erwsim/android-telemetry/server/collector/internal/model"
@@ -228,4 +230,105 @@ func mod(a, b int64) int64 {
 		m += b
 	}
 	return m
+}
+
+// muteRequest reads the body of POST and DELETE /detections/mute: device_id, type, package, reason.
+func (s *Server) muteRequest(w http.ResponseWriter, r *http.Request) (store.Mute, bool) {
+	var m store.Mute
+	fields, ok := readStrictBody(w, r, "device_id", "type", "package", "reason")
+	if !ok {
+		return m, false
+	}
+	var ok1, ok2, ok3 bool
+	m.DeviceID, ok1 = jsonString(fields["device_id"])
+	m.Type, ok2 = jsonString(fields["type"])
+	m.Package, ok3 = jsonString(fields["package"])
+	if raw, present := fields["reason"]; present {
+		var okR bool
+		if m.Reason, okR = jsonString(raw); !okR {
+			writeError(w, http.StatusBadRequest, "invalid_json", "reason : chaîne attendue")
+			return m, false
+		}
+	}
+	switch {
+	case !ok1 || !validDeviceID(m.DeviceID):
+		writeError(w, http.StatusBadRequest, "invalid_parameter", "device_id invalide")
+	case !ok3 || !packageRe.MatchString(m.Package):
+		writeError(w, http.StatusBadRequest, "invalid_parameter", "package : nom de paquet requis")
+	case !ok2 || !knownDetection(m.Type):
+		writeError(w, http.StatusBadRequest, "invalid_parameter", "type : type de détection inconnu")
+	case !store.Mutable(m.Type):
+		writeError(w, http.StatusBadRequest, "not_mutable", m.Type+" ne peut pas être mise en sourdine")
+	case len([]rune(m.Reason)) > 200 || strings.IndexFunc(m.Reason, unicode.IsControl) >= 0:
+		writeError(w, http.StatusBadRequest, "invalid_parameter", "reason : 200 caractères au plus, sans caractère de contrôle")
+	default:
+		m.CreatedBy, _ = r.Context().Value(userKey).(string)
+		return m, true
+	}
+	return m, false
+}
+
+func knownDetection(t string) bool {
+	for _, x := range detect.Types {
+		if x == t {
+			return true
+		}
+	}
+	return false
+}
+
+// handleMute: POST /detections/mute (contract §11.4). The detections of (device, type, package) are still
+// computed and stored, with muted: true, but neither exported nor streamed. Idempotent (a second call only
+// replaces the reason); detect.muted is recorded when the mute is new.
+func (s *Server) handleMute(w http.ResponseWriter, r *http.Request) {
+	m, ok := s.muteRequest(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 10*time.Second)
+	defer cancel()
+	ev, err := s.st.SetMute(ctx, m, s.now())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if ev != nil {
+		s.published([]store.StoredEvent{*ev})
+		s.log.Info("détections mises en sourdine", "device_id", m.DeviceID, "type", m.Type, "package", m.Package, "user", m.CreatedBy)
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleUnmute: DELETE /detections/mute, same body; 404 when there is no such mute.
+func (s *Server) handleUnmute(w http.ResponseWriter, r *http.Request) {
+	m, ok := s.muteRequest(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 10*time.Second)
+	defer cancel()
+	ev, err := s.st.DeleteMute(ctx, m.DeviceID, m.Type, m.Package, m.CreatedBy, m.Reason, s.now())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.published([]store.StoredEvent{*ev})
+	s.log.Info("sourdine levée", "device_id", m.DeviceID, "type", m.Type, "package", m.Package, "user", m.CreatedBy)
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleMutes(w http.ResponseWriter, r *http.Request) {
+	dev, err := deviceParam(r.URL.Query(), false)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	mutes, err := s.st.ListMutes(r.Context(), dev)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"mutes": mutes})
 }

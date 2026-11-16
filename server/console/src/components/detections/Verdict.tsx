@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { Detection } from '../../api/types.ts';
-import { countBySeverity, groupByPackage, headline } from '../../lib/detections.ts';
+import { countBySeverity, groupByPackage, headline, type MonitoringScope } from '../../lib/detections.ts';
 import { fmtNumber } from '../../lib/format.ts';
 import { cleanText } from '../../lib/text.ts';
 
@@ -16,15 +16,18 @@ export function Verdict({
   truncated = false,
   periodLabel,
   linkToDetections = false,
-  blindSpot = null,
+  scope,
+  mutedCount = 0,
 }: {
   detections: readonly Detection[];
   truncated?: boolean;
   /** « les 7 derniers jours » */
   periodLabel: string;
   linkToDetections?: boolean;
-  /** Ce qui n'est pas surveillé sur ce téléphone (voir `opsBlindSpot`) : toujours affiché, verdict vert compris. */
-  blindSpot?: string | null;
+  /** Ce qui est et n'est pas surveillé sur ce téléphone (voir `monitoringScope`) : toujours affiché, verdict vert compris. */
+  scope?: MonitoringScope;
+  /** détections en sourdine, non comptées */
+  mutedCount?: number;
 }) {
   const c = countBySeverity(detections);
   const h = headline(c, truncated);
@@ -53,9 +56,19 @@ export function Verdict({
             </>
           )}
         </p>
-        {blindSpot && (
+        {mutedCount > 0 && (
+          <p className="hint" data-testid="verdict-muted">
+            {mutedCount} détection{mutedCount > 1 ? 's' : ''} en sourdine non comptée{mutedCount > 1 ? 's' : ''} (toujours calculée{mutedCount > 1 ? 's' : ''}, ni alertée{mutedCount > 1 ? 's' : ''} ni notifiée{mutedCount > 1 ? 's' : ''}).
+          </p>
+        )}
+        {scope?.blind && (
           <p className="verdict-blind" data-testid="verdict-blind">
-            {blindSpot}
+            {scope.blind}
+          </p>
+        )}
+        {scope && (
+          <p className="verdict-scope hint" data-testid="verdict-scope">
+            {scope.watched} {scope.ops} <strong>{scope.guard}</strong>
           </p>
         )}
       </div>

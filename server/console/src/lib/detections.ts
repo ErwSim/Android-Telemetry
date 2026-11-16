@@ -4,12 +4,13 @@
 // Le contrat ne fixe pas les clés de `evidence` : chaque lecture essaie quelques noms plausibles et la phrase
 // retombe sur le `summary` du collecteur quand la preuve ne suffit pas. Tout ce qui vient du téléphone ou du
 // réseau (noms d'applications, de paquets, de domaines) est du texte : jamais interprété.
-import type { DataObject, Detection, VigieEvent } from '../api/types.ts';
+import type { DataObject, Detection, DetectionMute, VigieEvent } from '../api/types.ts';
 import { isRecord } from './data.ts';
 import { fmtBytes, fmtDate, fmtNumber, fmtTime, parseTs } from './format.ts';
 import { cleanText } from './text.ts';
 import { opInfo } from './ops.ts';
 import { reasonInfo } from './risk.ts';
+import { roleLabel } from './roles.ts';
 
 export const DETECTION_TYPES = [
   'detect.threat_domain',
@@ -20,6 +21,10 @@ export const DETECTION_TYPES = [
   'detect.sms_abuse',
   'detect.sensor_background',
   'detect.new_app_risky',
+  // §11.4 : détections qui ne dépendent pas de `app.ops`
+  'detect.sms_permission',
+  'detect.default_app_changed',
+  'detect.flood',
 ] as const;
 
 export type DetectionType = (typeof DETECTION_TYPES)[number];
@@ -40,6 +45,10 @@ export interface TypeInfo {
   guard?: string;
   /** la détection porte des domaines : proposer le blocage dans Pistage */
   domains?: boolean;
+  /** c'est une revue (« est-ce voulu ? ») et non l'observation d'un comportement */
+  review?: boolean;
+  /** peut être mise en sourdine (§11.4) ; faux pour `sms_abuse`, `default_app_changed` et `flood` (sans application) */
+  mutable?: boolean;
 }
 
 const TYPES: Record<DetectionType, TypeInfo> = {
@@ -120,6 +129,7 @@ const TYPES: Record<DetectionType, TypeInfo> = {
       "Vérifier votre facture et vos SMS envoyés auprès de votre opérateur.",
     ],
     guard: 'sms',
+    mutable: false,
   },
   'detect.sensor_background': {
     label: "Micro ou caméra en arrière-plan",
@@ -147,6 +157,51 @@ const TYPES: Record<DetectionType, TypeInfo> = {
     ],
     guard: 'quarantine',
   },
+  'detect.sms_permission': {
+    label: "Permission d'envoi de SMS à vérifier",
+    why: "Cette application détient le droit d'envoyer des SMS sans passer par votre application de messagerie, alors qu'elle n'est ni l'application SMS par défaut ni une application du système. C'est une revue, pas la preuve d'un abus : un logiciel de fraude au SMS a besoin de ce droit, et Vigie ne voit pas les envois eux-mêmes sans le collecteur expérimental « Usage des opérations sensibles ». Une seule revue par application, à la première observation.",
+    innocent: [
+      "Une application que vous avez choisie pour cela : code de vérification, alarme, covoiturage, livraison, banque.",
+      "Une messagerie alternative installée à côté de l'application par défaut.",
+      "Un droit déjà présent quand Vigie a été installé (inventaire initial), sans que l'application ait fait quoi que ce soit.",
+    ],
+    actions: [
+      "Vous demander si c'est voulu : cette application a-t-elle une raison d'envoyer des SMS ?",
+      "Si non : retirer sa permission SMS (Paramètres, Applications) ou la désinstaller.",
+      "Si oui : rien à faire, ou mettre cette revue en sourdine pour cette application.",
+      "Dans tous les cas, la vraie protection est la garde SMS de l'application Vigie : elle refuse l'envoi de SMS à toutes les applications sauf votre liste.",
+    ],
+    guard: 'sms',
+    review: true,
+  },
+  'detect.default_app_changed': {
+    label: "Application par défaut changée",
+    why: "L'application par défaut d'un rôle sensible (SMS, téléphone, clavier, assistant) a changé. Pour le rôle SMS, c'est la voie classique des chevaux de Troie SMS : se faire désigner application SMS par défaut leur donne l'envoi, la lecture et l'interception des SMS, et contourne les refus de permission. Pour le composeur, le clavier ou l'assistant, la nouvelle application voit les appels, la saisie ou l'écran.",
+    innocent: [
+      "Vous venez d'installer une autre messagerie, un autre composeur ou un autre clavier et vous l'avez choisi vous-même.",
+      "Une mise à jour ou une réinitialisation d'Android qui a rétabli le choix par défaut.",
+    ],
+    actions: [
+      "Vous souvenir si vous avez fait ce choix. Sinon : Paramètres, Applications, Applications par défaut : remettre l'ancienne application.",
+      "Ouvrir la fiche de la nouvelle application : profil de risque et raisons.",
+      "La désinstaller si vous ne la reconnaissez pas.",
+    ],
+    guard: 'sms',
+    mutable: false,
+  },
+  'detect.flood': {
+    label: "Trop de détections en une journée",
+    why: "Au-delà de 200 détections par appareil et par jour, le collecteur n'en garde plus qu'une seule, celle-ci. Un volume pareil n'est pas normal : l'appareil envoie des données incohérentes (agent défectueux, horloge fausse) ou il est compromis et quelqu'un fabrique des événements pour noyer les vraies alertes.",
+    innocent: [
+      "Un défaut de l'agent ou une horloge du téléphone très décalée.",
+      "Le rattrapage d'un très long historique envoyé d'un coup après une coupure.",
+    ],
+    actions: [
+      "Regarder l'état de l'appareil sur la vue d'ensemble (événements perdus, collecteurs en erreur) et le journal des événements du jour.",
+      "Si rien ne l'explique, considérer le téléphone comme compromis : changer le code de commande dans l'application, et au besoin révoquer l'appareil puis le ré-enrôler (ligne de commande du collecteur).",
+    ],
+    mutable: false,
+  },
 };
 
 /** Informations de repli pour un type inconnu de cette version de la console. */
@@ -160,6 +215,16 @@ const UNKNOWN: TypeInfo = {
 export function typeInfo(type: string): TypeInfo {
   const e = Object.prototype.hasOwnProperty.call(TYPES, type) ? TYPES[type as DetectionType] : undefined;
   return e ?? { ...UNKNOWN, label: type };
+}
+
+/** Types qui ne se mettent jamais en sourdine (§11.4) : `sms_abuse`, `default_app_changed` ; `flood` n'a pas d'application. */
+export function isMutable(d: Pick<Detection, 'type' | 'package'>): boolean {
+  return !!d.package && typeInfo(d.type).mutable !== false && d.type !== 'detect.muted' && d.type !== 'detect.unmuted';
+}
+
+/** Événements serveur de la sourdine : ce ne sont pas des détections (§11.4). */
+export function isMuteEvent(type: string): boolean {
+  return type === 'detect.muted' || type === 'detect.unmuted';
 }
 
 export function detectionLabel(type: string): string {
@@ -200,7 +265,8 @@ export interface SeverityCounts {
 }
 
 /** Nombre de détections par gravité : 3 critique, 2 avertissement, 1 notable, 0 info. */
-export function countBySeverity(list: readonly { severity: number }[]): SeverityCounts {
+export function countBySeverity(all: readonly { severity: number; muted?: boolean | undefined }[]): SeverityCounts {
+  const list = all.filter((d) => !d.muted);
   const c: SeverityCounts = { critical: 0, warning: 0, notable: 0, info: 0, total: list.length };
   for (const d of list) {
     const s = normSeverity(d.severity);
@@ -235,6 +301,9 @@ export function normalizeDetection(raw: unknown): Detection | undefined {
   if (wf) d.window_from = wf;
   if (wt) d.window_to = wt;
   if (typeof raw['device_id'] === 'string') d.device_id = raw['device_id'];
+  if (typeof raw['updated_at'] === 'string' && parseTs(raw['updated_at'])) d.updated_at = raw['updated_at'];
+  if (raw['recurring'] === true || ev['recurring'] === true) d.recurring = true;
+  if (raw['muted'] === true) d.muted = true;
   return d;
 }
 
@@ -247,10 +316,15 @@ export function parseDetectionsResponse(raw: unknown): { detections: Detection[]
 
 /** Détection reçue en direct : événement serveur `detect.*` du flux SSE (la détection y est dans `data`). */
 export function detectionFromEvent(ev: VigieEvent): Detection | undefined {
-  if (!isDetectionType(ev.type)) return undefined;
+  if (!isDetectionType(ev.type) || isMuteEvent(ev.type)) return undefined;
   const d = ev.data;
+  // Une mise à jour (`update: true`, `detection_id`) est une nouvelle version d'une détection existante : même identifiant.
+  const updated = d['update'] === true && typeof d['detection_id'] === 'string' && d['detection_id'] !== '';
   return normalizeDetection({
-    id: ev.id,
+    id: updated ? d['detection_id'] : ev.id,
+    ...(updated ? { updated_at: ev.ts } : {}),
+    ...(d['recurring'] === true ? { recurring: true } : {}),
+    ...(d['muted'] === true ? { muted: true } : {}),
     ts: ev.ts,
     type: ev.type,
     package: d['package'],
@@ -270,16 +344,27 @@ export function detectionFromEvent(ev: VigieEvent): Detection | undefined {
  * (Une même fenêtre peut porter plusieurs détections d'une même application, par exemple un domaine de menace
  * par détection : on ne déduplique donc pas sur la fenêtre.)
  */
-export function mergeDetections(existing: readonly Detection[], incoming: readonly Detection[]): Detection[] {
+export function mergeDetections(existing: readonly Detection[], incoming: readonly Detection[], opts: { replace?: boolean } = {}): Detection[] {
   const seen = new Set(existing.map((d) => d.id));
   const fresh: Detection[] = [];
+  const replaced = new Map<string, Detection>();
   for (const d of incoming) {
-    if (seen.has(d.id)) continue;
+    if (seen.has(d.id)) {
+      // Mise à jour reçue en direct : la version du flux est plus récente que celle de la liste.
+      if (opts.replace) replaced.set(d.id, d);
+      continue;
+    }
     seen.add(d.id);
     fresh.push(d);
   }
-  if (fresh.length === 0) return existing as Detection[];
-  return [...fresh, ...existing].sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
+  if (fresh.length === 0 && replaced.size === 0) return existing as Detection[];
+  const base = replaced.size ? existing.map((e) => (replaced.has(e.id) ? { ...e, ...(replaced.get(e.id) as Detection), ts: e.ts } : e)) : existing;
+  return [...fresh, ...base].sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
+}
+
+/** Détections qui comptent pour le verdict : celles en sourdine sont calculées mais ne sont ni alertées ni comptées. */
+export function active<T extends { muted?: boolean | undefined }>(list: readonly T[]): T[] {
+  return list.filter((d) => !d.muted);
 }
 
 export interface DetectionFilter {
@@ -353,7 +438,7 @@ export function observation(d: Detection): string {
       if (n === 1 && list.length === 1) {
         return `${who} a tenté de joindre le domaine ${list[0]} de la liste de menaces${req !== undefined ? ` (${fmtNumber(req)} ${plural(req, 'requête', 'requêtes')})` : ''}`;
       }
-      return `${who} a tenté de joindre ${fmtNumber(n)} ${plural(n, 'domaine', 'domaines')} de la liste de menaces`;
+      return `${who} a tenté de joindre ${fmtNumber(n)} ${plural(n, 'domaine', 'domaines')} de la liste de menaces${req !== undefined ? ` (${fmtNumber(req)} ${plural(req, 'requête', 'requêtes')})` : ''}`;
     }
     case 'detect.upload_spike': {
       const sent = pickNum(ev, ['tx_bytes', 'bytes', 'sent_bytes', 'upload_bytes']);
@@ -394,6 +479,16 @@ export function observation(d: Detection): string {
       return `${who} a envoyé ${fmtNumber(n)} ${plural(n, 'SMS', 'SMS')}${bg !== undefined && bg > 0 ? `, dont ${fmtNumber(bg)} en arrière-plan` : ''}${rej ? `, et a tenté d'en envoyer ${fmtNumber(rej)} de plus, refusés par le système` : ''}${notDefault ? " alors que ce n'est pas l'application SMS par défaut" : volume ? ' : un volume anormal' : ''}`;
     }
     case 'detect.sensor_background': {
+      // Format du collecteur : une détection par application et par jour, avec `microphone_background` et `camera_background` ;
+      // ancien format : `op` et `background_count`.
+      const mic = pickNum(ev, ['microphone_background']);
+      const cam = pickNum(ev, ['camera_background']);
+      if (mic !== undefined || cam !== undefined) {
+        const parts: string[] = [];
+        if (mic) parts.push(`le micro ${fmtNumber(mic)} ${plural(mic, 'fois', 'fois')}`);
+        if (cam) parts.push(`la caméra ${fmtNumber(cam)} ${plural(cam, 'fois', 'fois')}`);
+        if (parts.length > 0) return `${who} a utilisé ${parts.join(' et ')} en arrière-plan`;
+      }
       const op = typeof ev['op'] === 'string' ? ev['op'] : undefined;
       const n = pickNum(ev, ['background_count', 'count']);
       if (n === undefined) return fallback();
@@ -401,11 +496,29 @@ export function observation(d: Detection): string {
       return `${who} a utilisé ${what} ${fmtNumber(n)} ${plural(n, 'fois', 'fois')} en arrière-plan`;
     }
     case 'detect.new_app_risky': {
-      const cap = typeof ev['capability'] === 'string' ? capabilityLabel(ev['capability']) : undefined;
-      if (cap) return `${who}, installée depuis moins de 24 h, a obtenu une capacité sensible : ${cap}`;
+      // Format du collecteur : `high_risk` (bool) et `capabilities` (codes) ; ancien format : `trigger` et `capability`.
+      const caps = pickStrList(ev, ['capabilities']).map(capabilityLabel);
+      const one = typeof ev['capability'] === 'string' ? capabilityLabel(ev['capability']) : undefined;
+      if (one) caps.push(one);
       const level = typeof ev['level'] === 'string' ? ev['level'] : undefined;
-      if (level === 'high' || level === undefined) return `${who} vient d'être installée avec un profil de risque élevé`;
+      const high = ev['high_risk'] === true || ev['trigger'] === 'high_risk' || (ev['high_risk'] === undefined && ev['trigger'] === undefined && level === 'high');
+      if (high && caps.length > 0) return `${who} vient d'être installée avec un profil de risque élevé et a déjà obtenu : ${caps.join(', ')}`;
+      if (high) return `${who} vient d'être installée avec un profil de risque élevé`;
+      if (caps.length > 0) return `${who}, installée depuis moins de 24 h, a obtenu une capacité sensible : ${caps.join(', ')}`;
       return fallback();
+    }
+    case 'detect.sms_permission':
+      return `${who} peut envoyer des SMS sans passer par votre messagerie ; est-ce voulu ?`;
+    case 'detect.default_app_changed': {
+      const role = typeof ev['role'] === 'string' ? ev['role'] : undefined;
+      const old = typeof ev['old'] === 'string' && ev['old'] !== '' ? cleanText(ev['old'], 120) : undefined;
+      if (!role) return fallback();
+      return `${who} est devenue ${role === 'sms' ? "l'application SMS par défaut" : `le rôle « ${roleLabel(role)} » par défaut`}${old ? ` (à la place de ${old})` : ''}`;
+    }
+    case 'detect.flood': {
+      const n = pickNum(ev, ['count', 'total', 'suppressed', 'dropped']);
+      const cap = pickNum(ev, ['limit', 'cap', 'max']) ?? 200;
+      return `Plus de ${fmtNumber(cap)} détections en une journée sur cet appareil${n !== undefined ? ` (${fmtNumber(n)} produites)` : ''} : seule celle-ci est gardée`;
     }
     default:
       return fallback();
@@ -452,6 +565,21 @@ export interface EvidenceItem {
 }
 
 const EVIDENCE_LABELS: Record<string, string> = {
+  microphone_background: 'Micro en arrière-plan',
+  microphone_count: 'Micro (total)',
+  camera_background: 'Caméra en arrière-plan',
+  camera_count: 'Caméra (total)',
+  ops: 'Opérations',
+  high_risk: 'Profil à risque élevé',
+  capabilities: 'Capacités obtenues',
+  minutes_to_first_capability: "Minutes avant la première capacité",
+  hours: 'Heures concernées',
+  first_hour: 'Première heure',
+  peak_hour: 'Heure de pointe',
+  role: 'Rôle',
+  old: 'Ancienne application',
+  new: 'Nouvelle application',
+  limit: 'Plafond',
   domain: 'Domaine',
   requests: 'Requêtes',
   blocked: 'Bloqué par AdGuard',
@@ -496,6 +624,7 @@ const EVIDENCE_LABELS: Record<string, string> = {
   trigger: 'Déclencheur',
 };
 
+const DATE_KEYS = new Set(['installed_at', 'first_hour', 'peak_hour']);
 const BYTES_KEYS = new Set(['tx_bytes', 'median_bytes', 'threshold_bytes', 'rx_bytes', 'bytes']);
 
 function scalar(v: unknown): string | undefined {
@@ -517,7 +646,20 @@ export function evidenceItems(d: Detection): EvidenceItem[] {
     else if ((k === 'reason' || k === 'trigger') && typeof v === 'string') value = REASON_VALUES[v] ?? scalar(v);
     else if (k === 'capability' && typeof v === 'string') value = capabilityLabel(v);
     else if (k === 'reasons' && Array.isArray(v)) value = v.filter((x): x is string => typeof x === 'string').map((x) => reasonInfo(x).label).join(', ') || undefined;
-    else if (k === 'installed_at' && typeof v === 'string') value = `${fmtDate(v)} ${fmtTime(v)}`;
+    else if (DATE_KEYS.has(k) && typeof v === 'string') value = parseTs(v) ? `${fmtDate(v)} ${fmtTime(v)}` : scalar(v);
+    else if (k === 'role' && typeof v === 'string') value = roleLabel(v);
+    else if (k === 'blocked' && typeof v === 'number') {
+      out.push({ label: 'Blocages comptés par AdGuard', value: fmtNumber(v) });
+      continue;
+    } else if (k === 'capabilities' && Array.isArray(v)) value = v.filter((x): x is string => typeof x === 'string').map(capabilityLabel).join(', ') || undefined;
+    else if (k === 'risk' && isRecord(v)) {
+      // profil de risque de la nouvelle application (default_app_changed) : aplati
+      for (const [rk, rv] of Object.entries(v)) {
+        if (rk === 'reasons' && Array.isArray(rv)) out.push({ label: 'Risque : raisons', value: rv.filter((x): x is string => typeof x === 'string').map((x) => reasonInfo(x).label).join(', ') });
+        else if (scalar(rv) !== undefined) out.push({ label: `Risque : ${rk === 'score' ? 'score' : rk === 'level' ? 'niveau' : rk}`, value: scalar(rv) as string });
+      }
+      continue;
+    }
     else if (Array.isArray(v)) {
       const items = v.map((x) => scalar(x) ?? (isRecord(x) ? safeJson(x) : '')).filter(Boolean);
       value = items.length ? items.join(', ') : undefined;
@@ -583,7 +725,7 @@ export interface AppDetections {
 export function groupByPackage(list: readonly Detection[]): AppDetections[] {
   const m = new Map<string, AppDetections>();
   for (const d of list) {
-    if (!d.package) continue;
+    if (!d.package || d.muted) continue;
     let g = m.get(d.package);
     if (!g) {
       g = { package: d.package, count: 0, maxSeverity: 0, types: [] };
@@ -605,12 +747,84 @@ export function groupByPackage(list: readonly Detection[]): AppDetections[] {
  * dans le dernier battement de cœur (`running`, `disabled`, `unavailable`, absent si inconnu).
  */
 export function opsBlindSpot(state: string | undefined): string | null {
-  if (state === 'running') return null;
+  return monitoringScope(state).blind;
+}
+
+export interface MonitoringScope {
+  /** ce qui est surveillé dans tous les cas */
+  watched: string;
+  /** ce qui ne l'est pas ; null quand le collecteur `app_ops` tourne */
+  blind: string | null;
+  /** précision sur `app_ops` quand il tourne : en marche ne prouve pas que des données arrivent */
+  ops: string | null;
+  /** la vraie protection */
+  guard: string;
+}
+
+/**
+ * Ce que les détections surveillent et ne surveillent pas sur ce téléphone (contrat §11.4), à dire sous le verdict, vert compris.
+ * Sans le collecteur expérimental `app_ops`, les envois de SMS eux-mêmes ne sont pas vus (ils ne passent pas par le réseau IP) ;
+ * restent surveillés la détention de la permission d'envoi et le changement d'application SMS par défaut. La garde SMS de
+ * l'application Vigie est la vraie protection : une détection signale, la garde empêche.
+ */
+export function monitoringScope(state: string | undefined): MonitoringScope {
   const why =
     state === 'disabled'
       ? 'est désactivé dans l’application Vigie'
       : state === 'unavailable'
         ? 'est indisponible sur ce téléphone (permission DUMP non accordée, ou lecture impossible)'
         : 'n’est pas signalé par ce téléphone';
-  return `Non surveillé ici : l’envoi de SMS et l’usage du micro ou de la caméra en arrière-plan. Le collecteur expérimental « Usage des opérations sensibles » ${why} ; sans lui, une application qui enverrait des milliers de SMS ne produirait aucune détection. La protection repose alors sur la garde SMS de l’application Vigie.`;
+  const watched =
+    "Surveillé dans tous les cas : les applications qui détiennent la permission d'envoyer des SMS sans être votre messagerie, le changement d'application SMS (ou téléphone, clavier, assistant) par défaut, les domaines de menaces, les gros envois de données, les connexions inhabituelles et les nouvelles applications à risque.";
+  const guard =
+    "La vraie protection est la garde SMS de l'application Vigie, à régler sur le téléphone : une détection signale, la garde empêche.";
+  if (state === 'running') {
+    return {
+      watched,
+      blind: null,
+      ops: "Les envois de SMS et l'usage du micro ou de la caméra en arrière-plan sont surveillés par le collecteur expérimental « Usage des opérations sensibles » (« en marche » ne prouve pas que des données arrivent : voir Applications, Opérations sensibles).",
+      guard,
+    };
+  }
+  return {
+    watched,
+    blind: `Non surveillé ici : les envois de SMS eux-mêmes et l’usage du micro ou de la caméra en arrière-plan. Le collecteur expérimental « Usage des opérations sensibles » ${why} ; sans lui, une application qui enverrait des milliers de SMS ne produirait aucune détection d’envoi.`,
+    ops: null,
+    guard,
+  };
+}
+
+// ------------------------------------------------------------------------------------------- sourdines (§11.4)
+
+/** Lit `GET /detections/mutes` : `{ mutes: [...] }`, ou tableau nu ; les éléments sans type ni paquet sont ignorés. */
+export function parseMutes(raw: unknown): DetectionMute[] {
+  const arr = Array.isArray(raw) ? raw : isRecord(raw) ? (raw['mutes'] ?? raw['items'] ?? []) : [];
+  const out: DetectionMute[] = [];
+  for (const it of Array.isArray(arr) ? arr : []) {
+    if (!isRecord(it) || typeof it['type'] !== 'string' || typeof it['package'] !== 'string' || it['type'] === '' || it['package'] === '') continue;
+    const m: DetectionMute = { type: it['type'], package: it['package'] };
+    for (const k of ['label', 'reason', 'device_id', 'created_by'] as const) if (typeof it[k] === 'string' && it[k] !== '') m[k] = it[k] as string;
+    const when = it['created_at'] ?? it['since'] ?? it['ts'];
+    if (typeof when === 'string' && parseTs(when)) m.created_at = when;
+    out.push(m);
+  }
+  return out;
+}
+
+export function isCovered(d: Pick<Detection, 'type' | 'package'>, mutes: readonly DetectionMute[]): boolean {
+  return !!d.package && mutes.some((m) => m.type === d.type && m.package === d.package);
+}
+
+/** Marque en sourdine les détections couvertes par une sourdine en cours (même celles créées avant elle). */
+export function applyMutes(list: readonly Detection[], mutes: readonly DetectionMute[]): Detection[] {
+  if (mutes.length === 0) return list as Detection[];
+  return list.map((d) => (d.muted || !isCovered(d, mutes) ? d : { ...d, muted: true }));
+}
+
+/** Message utile pour l'échec d'une mise en sourdine ou de sa levée. */
+export function muteErrorMessage(e: { status: number; code: string; message: string }): string {
+  if (e.status === 0) return e.message;
+  if (e.code === 'not_mutable' || e.status === 400 || e.status === 422) return `Cette détection ne peut pas être mise en sourdine : ${e.message}`;
+  if (e.status === 404) return "Ce collecteur ne gère pas encore la mise en sourdine des détections (contrat §11.4).";
+  return e.message;
 }

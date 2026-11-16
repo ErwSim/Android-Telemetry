@@ -5,12 +5,12 @@ import { useEventStream } from '../../api/useEventStream.ts';
 import type { Detection } from '../../api/types.ts';
 import { Verdict } from './Verdict.tsx';
 import { Badge, Card, ErrorBox, Loading, SevBadge } from '../ui.tsx';
-import { detectionLabel, isDetectionType, observation, opsBlindSpot } from '../../lib/detections.ts';
+import { active, applyMutes, detectionLabel, isDetectionType, observation, monitoringScope } from '../../lib/detections.ts';
 import { opsCollectorState } from '../apps/OpsView.tsx';
 import { useDevice } from '../../state/device.tsx';
 import { fmtRelative } from '../../lib/format.ts';
 import { cleanText } from '../../lib/text.ts';
-import { isUnsupported } from '../../state/appData.ts';
+import { isUnsupported, useMutes } from '../../state/appData.ts';
 
 const MAX = 200;
 
@@ -26,6 +26,7 @@ export function DetectionsOverview({ deviceId, now }: { deviceId: string; now: D
   const to = new Date(slot + 300_000).toISOString();
   const state = useApi(`ov-det:${deviceId}:${slot}`, (s) => api.detections({ device_id: deviceId, from, to, limit: MAX }, s));
   const reload = state.reload;
+  const mutes = useMutes();
   useEventStream(true, deviceId, (ev) => {
     if (isDetectionType(ev.type)) reload();
   });
@@ -51,11 +52,11 @@ export function DetectionsOverview({ deviceId, now }: { deviceId: string; now: D
       </Card>
     );
   }
-  const list: Detection[] = state.data.detections;
-  const recent = [...list].sort((a, b) => b.severity - a.severity || (a.ts < b.ts ? 1 : -1)).slice(0, 3);
+  const list: Detection[] = applyMutes(state.data.detections, mutes.data ?? []);
+  const recent = [...active(list)].sort((a, b) => b.severity - a.severity || (a.ts < b.ts ? 1 : -1)).slice(0, 3);
   return (
     <div className="ov-det" data-testid="overview-detections">
-      <Verdict detections={list} truncated={!!state.data.next_cursor} periodLabel="les 7 derniers jours" linkToDetections blindSpot={opsBlindSpot(opsCollectorState(device))} />
+      <Verdict detections={list} truncated={!!state.data.next_cursor} periodLabel="les 7 derniers jours" linkToDetections scope={monitoringScope(opsCollectorState(device))} mutedCount={list.filter((d) => d.muted).length} />
       {recent.length > 0 && (
         <ul className="findings ov-det-list" aria-label="Détections les plus graves">
           {recent.map((d) => (

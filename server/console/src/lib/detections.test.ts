@@ -33,8 +33,8 @@ const det = (type: string, evidence: Record<string, unknown>, extra: Partial<Det
 });
 
 describe('types de détection', () => {
-  it('les huit types du contrat §11.3 ont libellé, raison, explications innocentes et conduite à tenir', () => {
-    expect(DETECTION_TYPES).toHaveLength(8);
+  it('les onze types des contrats §11.3 et §11.4 ont libellé, raison, explications innocentes et conduite à tenir', () => {
+    expect(DETECTION_TYPES).toHaveLength(11);
     for (const t of DETECTION_TYPES) {
       const i = typeInfo(t);
       expect(i.label).not.toBe(t);

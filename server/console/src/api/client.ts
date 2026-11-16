@@ -69,7 +69,7 @@ async function parseError(res: Response): Promise<ApiError> {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT';
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal;
   /** Ne pas déclencher le retour à la connexion sur 401 (utilisé par /login et /me). */

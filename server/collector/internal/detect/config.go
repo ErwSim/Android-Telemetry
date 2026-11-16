@@ -24,11 +24,17 @@ const (
 	TypeSMSAbuse         = "detect.sms_abuse"
 	TypeSensorBackground = "detect.sensor_background"
 	TypeNewAppRisky      = "detect.new_app_risky"
+	// Contract §11.4 (review of v1.2): without app.ops.
+	TypeSMSPermission     = "detect.sms_permission"
+	TypeDefaultAppChanged = "detect.default_app_changed"
+	// An inventory that declares "system" an application its installer or its history show was installed
+	// (contract §11.4: "sans que cela soit signalé").
+	TypeInventoryMismatch = "detect.inventory_mismatch"
 )
 
 // Types lists the detection types.
 var Types = []string{TypeThreatDomain, TypeUploadSpike, TypeFanout, TypeMailPorts, TypeDNSBypass, TypeSMSAbuse,
-	TypeSensorBackground, TypeNewAppRisky}
+	TypeSensorBackground, TypeNewAppRisky, TypeSMSPermission, TypeDefaultAppChanged, TypeInventoryMismatch}
 
 // Fixed parameters (contract or definition of the detections, not thresholds).
 const (

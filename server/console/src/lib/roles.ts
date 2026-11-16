@@ -12,6 +12,7 @@ const ROLE_LABELS: Record<string, string> = {
   home: "Écran d'accueil",
   call_screening: "Filtrage d'appels",
   launcher: "Écran d'accueil",
+  keyboard: 'Clavier',
 };
 
 const ROLE_WHY: Record<string, string> = {
@@ -21,6 +22,7 @@ const ROLE_WHY: Record<string, string> = {
   assistant: "L'assistant par défaut peut lire l'écran et écouter le micro sur commande.",
   home: "L'écran d'accueil voit toutes les applications que vous lancez.",
   call_screening: "L'application de filtrage d'appels voit tous les numéros qui vous appellent.",
+  keyboard: 'Le clavier voit tout ce que vous saisissez, mots de passe compris.',
 };
 
 export function roleLabel(role: string): string {

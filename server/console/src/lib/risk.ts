@@ -146,6 +146,32 @@ const REASONS: Record<string, Entry> = {
 };
 
 export const REASON_CODES: readonly string[] = Object.keys(REASONS);
+const GRANTED_SUFFIX = ':granted';
+
+/** Raisons qui sont des capacités pouvant être demandées sans être accordées ; les autres décrivent un état (installateur, icône…). */
+export const CAPABILITY_CODES: ReadonlySet<string> = new Set([
+  'sms_send',
+  'sms_read',
+  'calls',
+  'accessibility_service',
+  'notification_listener',
+  'device_admin',
+  'overlay',
+  'install_packages',
+  'vpn_service',
+  'background_location',
+  'mic_camera_background',
+]);
+
+/**
+ * État d'une raison d'après `granted` : `granted` (accordée), `declared` (demandée, pas accordée : refusée par une garde, ou
+ * pas encore accordée), ou `unknown` (l'agent ne distingue pas : profil sans liste `granted`).
+ */
+export function grantState(r: Pick<AppRisk, 'granted'>, code: string): 'granted' | 'declared' | 'unknown' {
+  if (!r.granted || !CAPABILITY_CODES.has(code)) return 'unknown';
+  return r.granted.includes(code) ? 'granted' : 'declared';
+}
+
 export const COMBO_CODES: readonly string[] = REASON_CODES.filter((c) => REASONS[c]?.combo);
 
 /** Traduit un code de raison. Un code inconnu est affiché tel quel, sans explication inventée. */
@@ -214,13 +240,21 @@ export function normalizeRisk(raw: unknown): AppRisk | undefined {
   const d = isRecord(raw['data']) ? { ...raw['data'], ...(typeof raw['ts'] === 'string' ? { ts: raw['ts'] } : {}) } : raw;
   const pkg = d['package'];
   if (typeof pkg !== 'string' || pkg === '') return undefined;
-  const reasons = Array.isArray(d['reasons']) ? d['reasons'].filter((x): x is string => typeof x === 'string' && x !== '') : [];
+  const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x !== '') : []);
+  // §11.4 : `reasons` = capacités déclarées ; `granted` = celles effectivement accordées. Un suffixe « :granted » (sur une
+  // raison ou dans la liste parallèle) est retiré : il ne sert qu'à distinguer l'intention de l'état.
+  const base = (c: string): string => (c.endsWith(GRANTED_SUFFIX) ? c.slice(0, -GRANTED_SUFFIX.length) : c);
+  const rawReasons = strs(d['reasons']);
+  const reasons = [...new Set(rawReasons.map(base))];
+  const hasGranted = Array.isArray(d['granted']) || rawReasons.some((c) => c.endsWith(GRANTED_SUFFIX));
+  const granted = [...new Set([...strs(d['granted']).map(base), ...rawReasons.filter((c) => c.endsWith(GRANTED_SUFFIX)).map(base)])];
   const out: AppRisk = {
     package: pkg,
     score: clampScore(d['score']),
     level: typeof d['level'] === 'string' ? d['level'] : '',
     reasons,
   };
+  if (hasGranted) out.granted = granted;
   if (typeof d['label'] === 'string' && d['label'] !== '') out.label = d['label'];
   if (typeof d['version_code'] === 'number') out.version_code = d['version_code'];
   if (typeof d['installer'] === 'string') out.installer = d['installer'];

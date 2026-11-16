@@ -36,6 +36,12 @@ object AgentNotifications {
     /** What a capability guard did on its own (quarantine, role change): never silent (contract §11.1). */
     const val CHANNEL_GUARDS = "vigie_guards"
 
+    /**
+     * A new default SMS app or dialer: exactly the path of SMS trojans (one system dialog). High importance
+     * (heads-up, lock screen) so that the owner sees it at once (contract §11.4).
+     */
+    const val CHANNEL_GUARDS_ALERT = "vigie_guards_alert"
+
     /** One notification per package (ids from this base, by package hash), so that several stay visible. */
     private const val GUARD_NOTIFICATION_BASE = 1000
 
@@ -68,7 +74,15 @@ object AgentNotifications {
             context.getString(R.string.guard_channel_name),
             NotificationManager.IMPORTANCE_DEFAULT,
         ).apply { description = context.getString(R.string.guard_channel_description) }
-        context.getSystemService(NotificationManager::class.java)?.createNotificationChannels(listOf(channel, alert, commands, guards))
+        val guardsAlert = NotificationChannel(
+            CHANNEL_GUARDS_ALERT,
+            context.getString(R.string.guard_channel_alert_name),
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = context.getString(R.string.guard_channel_alert_description)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        }
+        context.getSystemService(NotificationManager::class.java)?.createNotificationChannels(listOf(channel, alert, commands, guards, guardsAlert))
     }
 
     /** Notification for a [GuardNotice]: tapping it opens the quarantine screen (or the policy screen). */
@@ -99,13 +113,13 @@ object AgentNotifications {
             is GuardNotice.RoleHolder -> listOf(
                 notice.pkg,
                 context.getString(R.string.guard_notif_role_title),
-                if (notice.joined) {
+                if (notice.key != GuardKey.QUARANTINE) {
                     context.getString(
                         R.string.guard_notif_role_text, label(notice.pkg), notice.role, guardTitle(notice.key),
                         if (notice.lifted.isEmpty()) "" else context.getString(R.string.guard_notif_role_lifted, perms(notice.lifted)),
                     )
                 } else {
-                    context.getString(R.string.guard_notif_role_spared, label(notice.pkg), notice.role, guardTitle(notice.key), perms(notice.lifted))
+                    context.getString(R.string.guard_notif_role_spared, label(notice.pkg), notice.role, guardTitle(notice.key), perms(notice.lifted).ifEmpty { "SMS et appels du rôle" })
                 },
                 Screen.Policy.name,
             )
@@ -123,7 +137,8 @@ object AgentNotifications {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val notification = Notification.Builder(context, CHANNEL_GUARDS)
+        val channel = if (notice is GuardNotice.RoleHolder) CHANNEL_GUARDS_ALERT else CHANNEL_GUARDS
+        val notification = Notification.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_stat_vigie)
             .setContentTitle(title)
             .setContentText(text)

@@ -82,12 +82,14 @@ object GuardPermissions {
 }
 
 /**
- * Packages a guard never touches, whatever its list says (contract §11.1 "Garde-fous"): Vigie and
+ * Packages a guard never touches, whatever its list says (contract §11.1 "Garde-fous", §11.4): Vigie and
  * its companion, every system app (`FLAG_SYSTEM`: SOS, carrier and Samsung services that send SMS or
- * call), the hard-coded [PackageDenyList], and the **current** holders of the SMS, dialer, keyboard
- * and home roles. Roles only: not every app able to be a launcher or a keyboard, nor the active
- * device admins — a malicious app can declare a HOME activity or become a device admin by itself;
- * it cannot become a role holder without the owner choosing it in a system dialog.
+ * call), the hard-coded [PackageDenyList], and the **current** holder of the role that matches the guard:
+ * the default SMS app for `sms`, the default dialer for `calls`. A keyboard or a home screen chosen by the
+ * user is **not** spared (§11.4): "choose a home app" is one tap a malicious app can ask for, and neither
+ * role needs SMS or calls. Neither are the active device admins nor every app able to be a launcher.
+ * Quarantine spares no role holder: a quarantined app that becomes the default SMS app or dialer only gets
+ * the permissions of that role back ([CapabilityGuards] `applyQuarantine`).
  */
 object GuardSafety {
     const val SELF = "io.github.erwsim.vigie"
@@ -98,39 +100,35 @@ object GuardSafety {
     const val REASON_DENY_LIST = "liste de refus (composant vital)"
     const val REASON_SMS = "appli SMS par défaut"
     const val REASON_DIALER = "composeur par défaut"
-    const val REASON_IME = "clavier en service"
-    const val REASON_HOME = "écran d'accueil par défaut"
     const val REASON_LIST = "liste choisie"
 
-    /** Why [app] is out of reach of the guards (null: it is not). [allowed] is the guard's exception list. */
-    fun exemption(app: AppInfo, roles: DeviceRoles, allowed: Collection<String> = emptySet()): String? = when {
+    /**
+     * Why [app] is out of reach of guard [key] (null: it is not). [allowed] is the guard's exception list.
+     * Role holders are spared only by the guard of their own role; quarantine spares none.
+     */
+    fun exemption(key: GuardKey, app: AppInfo, roles: DeviceRoles, allowed: Collection<String> = emptySet()): String? = when {
         app.pkg == SELF || app.pkg == COMPANION -> REASON_SELF
         app.system -> REASON_SYSTEM
         PackageDenyList.isDenied(app.pkg) -> REASON_DENY_LIST
-        else -> roleOf(app.pkg, roles) ?: REASON_LIST.takeIf { app.pkg in allowed }
+        else -> ownRoleOf(key, app.pkg, roles) ?: REASON_LIST.takeIf { app.pkg in allowed }
     }
 
-    fun roleOf(pkg: String, roles: DeviceRoles): String? = when (pkg) {
-        roles.sms -> REASON_SMS
-        roles.dialer, roles.systemDialer -> REASON_DIALER
-        roles.ime -> REASON_IME
-        roles.home -> REASON_HOME
+    /** The role of [pkg] that guard [key] spares: SMS app for `sms`, dialer for `calls`, nothing otherwise. */
+    fun ownRoleOf(key: GuardKey, pkg: String, roles: DeviceRoles): String? = when (key) {
+        GuardKey.SMS -> REASON_SMS.takeIf { pkg == roles.sms }
+        GuardKey.CALLS -> REASON_DIALER.takeIf { pkg == roles.dialer || pkg == roles.systemDialer }
         else -> null
     }
 
-    fun isRoleReason(reason: String?): Boolean = reason == REASON_SMS || reason == REASON_DIALER || reason == REASON_IME || reason == REASON_HOME
-
-    /**
-     * The role a guard's exception list follows: the SMS list follows the default SMS app, the calls list
-     * the default dialer. A keyboard or a home screen is spared while it holds its role (contract §11.1)
-     * but never joins the SMS or calls list: Android gives those roles no SMS or call permission, and
-     * "choose a home app" is one tap a malicious app can ask for.
-     */
-    fun isOwnRole(key: GuardKey, reason: String?): Boolean = when (key) {
-        GuardKey.SMS -> reason == REASON_SMS
-        GuardKey.CALLS -> reason == REASON_DIALER
-        else -> false
+    /** SMS app or dialer role of [pkg] (the two roles whose permissions a quarantine gives back). */
+    fun smsOrDialerRole(pkg: String, roles: DeviceRoles): String? = when (pkg) {
+        roles.sms -> REASON_SMS
+        roles.dialer, roles.systemDialer -> REASON_DIALER
+        else -> null
     }
+
+    fun isRoleReason(reason: String?): Boolean = reason == REASON_SMS || reason == REASON_DIALER
+
 
     /**
      * Permissions Android grants to the holder of a role (`roles.xml` of the Permission module: the SMS and
@@ -296,7 +294,7 @@ class CapabilityGuards internal constructor(
             val record = e.record(key.packageRecordId(app.pkg))
             val held = record?.permissions?.filter { it.applied }?.map { it.permission }.orEmpty()
             if (requested.isEmpty() && held.isEmpty()) continue
-            val reason = GuardSafety.exemption(app, roles, allowed)
+            val reason = GuardSafety.exemption(key, app, roles, allowed)
             if (reason != null) {
                 if (requested.isNotEmpty()) exempt += app.pkg to reason
                 if (held.isNotEmpty()) lines += GuardLine(app.pkg, restore = held, note = reason)
@@ -452,17 +450,17 @@ class CapabilityGuards internal constructor(
             val record = e.record(id)
             val requested = wanted.filter { it in app.requested }
             if (requested.isEmpty() && record == null) continue
-            val reason = GuardSafety.exemption(app, roles, g.guardAllowed.orEmpty())
+            val reason = GuardSafety.exemption(key, app, roles, g.guardAllowed.orEmpty())
             // (The role comes before the list in [GuardSafety.exemption]: a listed app that becomes the default SMS app is a role holder.)
             val role = reason.takeIf(GuardSafety::isRoleReason)
             val lifted = record?.permissions?.filter { it.applied }?.map { it.permission }.orEmpty()
             // "La liste suit": a new default SMS app (SMS guard) / dialer (calls guard) requesting the guarded
-            // permissions joins the list. Another role holder (keyboard, home…) is only spared while it holds it.
-            if (GuardSafety.isOwnRole(key, role) && requested.isNotEmpty() && app.pkg !in g.guardAllowed.orEmpty()) {
+            // permissions joins the list (only the guard's own role is ever a reason here, §11.4).
+            if (role != null && requested.isNotEmpty() && app.pkg !in g.guardAllowed.orEmpty()) {
                 g = g.copy(guardAllowed = (g.guardAllowed.orEmpty() + app.pkg).sorted())
                 report += e.bookkeeping(g.id) { e.putRecord(g) }
                 e.safe { follow(key, app.pkg) }
-                e.safe { notify(GuardNotice.RoleHolder(key, app.pkg, role!!, lifted, joined = true)) }
+                e.safe { notify(GuardNotice.RoleHolder(key, app.pkg, role, lifted, joined = true)) }
             } else if (role != null && lifted.isNotEmpty()) {
                 e.safe { notify(GuardNotice.RoleHolder(key, app.pkg, role, lifted, joined = false)) }
             }
@@ -560,24 +558,30 @@ class CapabilityGuards internal constructor(
         for (app in apps) {
             val id = key.packageRecordId(app.pkg)
             val record = e.record(id)
-            val reason = GuardSafety.exemption(app, roles)
+            val reason = GuardSafety.exemption(key, app, roles)
             val requested = GuardPermissions.QUARANTINE.filter { it in app.requested }
+            // Becoming the default SMS app or dialer is exactly the path of SMS trojans (one system dialog): the
+            // app stays in quarantine. Only the permissions of its role are given back (granted, as Android
+            // would have done: otherwise incoming SMS or calls would be lost silently), contacts, microphone,
+            // camera, location and nearby devices stay denied, and the owner is told loudly. He releases it,
+            // or changes the default app back (the role permissions are then denied again).
+            val role = GuardSafety.smsOrDialerRole(app.pkg, roles)
+            val roleGrants = if (role != null) GuardSafety.roleGrants(role) else emptySet()
             if (record != null) {
-                if (reason != null) {
-                    // Became the default SMS app, dialer, keyboard or launcher: the owner chose it.
-                    report += e.isolated(id) { releaseLocked(record, auto = reason, grant = GuardSafety.roleGrants(reason)) }
-                    g = e.record(key.recordId) ?: g
-                } else {
-                    // Update of a quarantined app: newly requested risky permissions are denied too.
-                    report += e.isolated(id) { sync(key, app.pkg, record, (record.permissions.map { it.permission } + requested).distinct(), keepEmpty = true) }
-                }
+                if (reason != null) continue // system app or Vigie: never quarantined (cannot happen in practice)
+                val wanted = (record.permissions.map { it.permission } + requested).distinct().filter { it !in roleGrants }
+                val lifted = record.permissions.filter { it.applied && it.permission in roleGrants }.map { it.permission }
+                // Update of a quarantined app: newly requested risky permissions are denied too.
+                report += e.isolated(id) { sync(key, app.pkg, record, wanted, keepEmpty = true, grant = roleGrants) }
+                if (role != null && lifted.isNotEmpty()) e.safe { notify(GuardNotice.RoleHolder(key, app.pkg, role, lifted, joined = false)) }
                 continue
             }
             if (reason != null) continue
             // Present at activation, or released (and not reinstalled since): never quarantined.
             if (app.firstInstallMs < g.appliedAtMs) continue
             if (g.released[app.pkg] == app.firstInstallMs) continue
-            report += e.isolated(id) { quarantine(app, requested) }
+            report += e.isolated(id) { quarantine(app, requested.filter { it !in roleGrants }) }
+            if (role != null) e.safe { notify(GuardNotice.RoleHolder(key, app.pkg, role, emptyList(), joined = false)) }
         }
         report += cleanupUninstalled(key, apps)
         // Released packages that are gone: a later install is a new one (quarantined again).

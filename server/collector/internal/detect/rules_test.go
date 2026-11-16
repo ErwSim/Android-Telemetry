@@ -331,3 +331,37 @@ func TestBytesFR(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultAppChangedAndInventoryMismatch(t *testing.T) {
+	fs := DefaultAppChanged([]RoleChange{
+		{Role: "dialer", Old: "com.samsung.android.dialer", New: "com.truecaller", TS: hour0},
+		{Role: "browser", Old: "com.android.chrome", New: "org.mozilla.firefox", TS: hour0}, // not followed
+		{Role: "keyboard", Old: "a", New: "", TS: hour0},                                    // unknown new holder
+		{Role: "sms", New: "com.x", TS: hour0 + 1},                                          // old unknown
+	}, nil, Labels{})
+	if len(fs) != 2 || fs[0].Sev != 2 || fs[0].Subject != "dialer" || fs[1].Sev != 3 || fs[1].Evidence["old"] != nil {
+		t.Fatalf("%+v", fs)
+	}
+	claims := []SystemClaim{{Package: "com.fake.system", Installer: "com.google.android.packageinstaller"},
+		{Package: "com.injected", Installer: "com.android.vending", Installed: true},
+		{Package: "com.google.android.gms", Installer: "com.android.vending"}} // an updated system app: fine
+	out := InventoryMismatch(dayOf(hour0), claims, Labels{})
+	if len(out) != 2 || out[0].Sev != 3 || out[1].Evidence["contradictions"].([]any)[0] != "app.installed" {
+		t.Fatalf("%+v", out)
+	}
+}
+
+// app.risk rates the declared capabilities; its "granted" list (contract §11.4) tells which ones are granted:
+// a capability granted within 24 h of the installation is one obtained by a new application.
+func TestNewAppRiskyGrantedList(t *testing.T) {
+	inst := hour0
+	in := NewAppInput{Installs: []Install{{Package: "com.coupons", Installer: "com.android.vending", TS: inst}},
+		Risks: []Risk{{Package: "com.coupons", Level: "medium", Score: 45, Reasons: []string{"sms_send", "boot_receiver"}, TS: inst + 1000},
+			{Package: "com.coupons", Level: "medium", Score: 45, Reasons: []string{"sms_send", "boot_receiver"}, Granted: []string{"sms_send"}, TS: inst + 3*hourMS}}}
+	f := one(t, NewAppRisky(in), TypeNewAppRisky, "com.coupons")
+	if f.Items[0] != "permission:SEND_SMS" || f.Evidence["high_risk"] != false {
+		t.Fatalf("%+v", f)
+	}
+	in.Risks[1].TS = inst + 25*hourMS // granted after the window
+	none(t, NewAppRisky(in), "granted after 24 h")
+}

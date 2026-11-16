@@ -247,7 +247,7 @@ class CapabilityGuardsTest {
     // ---------------------------------------------------------------- hard limits
 
     @Test
-    fun `no list can make a guard touch the SMS app, the dialer, the keyboard, the system, Vigie or its companion`() {
+    fun `no list can make a guard touch the SMS app, the dialer, the system, Vigie or its companion, but keyboard and home are not spared`() {
         val e = engine()
         // A hostile or careless list: empty, so nothing is exempt by choice.
         e.guards.set(GuardKey.SMS, true, extended = true, allowed = emptySet())
@@ -255,14 +255,21 @@ class CapabilityGuardsTest {
         gw.clockMs = 30_000
         e.guards.set(GuardKey.QUARANTINE, true)
         // The keyboard in use and the default launcher are third-party, installed after the quarantine.
-        gw.install("com.third.keyboard", mic)
-        gw.install("com.third.launcher", contacts)
+        gw.install("com.third.keyboard", mic, sendSms)
+        gw.install("com.third.launcher", contacts, callPhone)
         gw.roles = gw.roles.copy(ime = "com.third.keyboard", home = "com.third.launcher")
         e.guards.reconcile()
-        for (pkg in listOf(samsungMessages, samsungDialer, sos, honeyboard, vigie, companion, "com.third.keyboard", "com.third.launcher")) {
+        for (pkg in listOf(samsungMessages, samsungDialer, sos, honeyboard, vigie, companion)) {
             assertFalse(pkg, gw.calls.any { it.startsWith("perm $pkg ") })
             assertNull(pkg, e.record(GuardKey.QUARANTINE.packageRecordId(pkg)))
         }
+        // Contract §11.4: a keyboard or a home screen is not spared by sms, calls or quarantine.
+        assertEquals(Dpm.GRANT_DENIED, state("com.third.keyboard", sendSms))
+        assertEquals(Dpm.GRANT_DENIED, state("com.third.keyboard", mic))
+        assertEquals(Dpm.GRANT_DENIED, state("com.third.launcher", callPhone))
+        assertEquals(Dpm.GRANT_DENIED, state("com.third.launcher", contacts))
+        assertNotNull(e.record(GuardKey.QUARANTINE.packageRecordId("com.third.keyboard")))
+        assertNotNull(e.record(GuardKey.QUARANTINE.packageRecordId("com.third.launcher")))
         // An app that merely declares a HOME activity, or becomes a device admin, is not protected for that.
         gw.dynamicProtected += malware
         e.guards.reconcile()
@@ -339,16 +346,38 @@ class CapabilityGuardsTest {
     }
 
     @Test
-    fun `a quarantined app chosen as default SMS app is released automatically and the owner is told`() {
+    fun `a quarantined app chosen as default SMS app gets only the SMS role back, stays in quarantine, and the owner is told`() {
         val e = engine()
         e.guards.set(GuardKey.QUARANTINE, true)
-        gw.install("com.sms.client", sendSms, readSms)
+        gw.install("com.sms.client", sendSms, readSms, receiveSms, contacts, mic)
         e.guards.reconcile()
+        notices.clear()
+        // One system dialog: exactly the path of SMS trojans.
         gw.roles = gw.roles.copy(sms = "com.sms.client")
         e.guards.reconcile()
-        assertNull(e.record(GuardKey.QUARANTINE.packageRecordId("com.sms.client")))
-        assertEquals(Dpm.GRANT_DEFAULT, state("com.sms.client", sendSms))
-        assertTrue(notices.any { it is GuardNotice.Released && it.pkg == "com.sms.client" })
+        val record = e.record(GuardKey.QUARANTINE.packageRecordId("com.sms.client"))
+        assertNotNull("still in quarantine", record)
+        for (p in listOf(sendSms, readSms, receiveSms)) {
+            assertEquals(p, Dpm.GRANT_DEFAULT, state("com.sms.client", p))
+            assertTrue("granted as the role would have done: $p", gw.isPermissionGranted("com.sms.client", p))
+        }
+        assertEquals(Dpm.GRANT_DENIED, state("com.sms.client", contacts))
+        assertEquals(Dpm.GRANT_DENIED, state("com.sms.client", mic))
+        val notice = notices.single() as GuardNotice.RoleHolder
+        assertEquals(GuardKey.QUARANTINE, notice.key)
+        assertEquals("appli SMS par défaut", notice.role)
+        assertEquals(setOf(sendSms, readSms, receiveSms), notice.lifted.toSet())
+        // Steady state: no new notice.
+        e.guards.reconcile()
+        assertEquals(1, notices.size)
+        // The owner puts Samsung Messages back: the SMS permissions are denied again (still quarantined).
+        gw.roles = gw.roles.copy(sms = samsungMessages)
+        e.guards.reconcile()
+        assertEquals(Dpm.GRANT_DENIED, state("com.sms.client", sendSms))
+        // "Libérer", then "Tout rétablir": nothing left.
+        assertTrue(e.guards.release("com.sms.client").allOk)
+        assertEquals(Dpm.GRANT_DEFAULT, state("com.sms.client", contacts))
+        assertTrue(engine().revertAll().allOk)
     }
 
     @Test
@@ -573,26 +602,21 @@ class CapabilityGuardsTest {
     }
 
     @Test
-    fun `a home screen or a keyboard is spared while it holds its role but never joins the SMS list`() {
+    fun `a home screen or a keyboard is not spared by the SMS guard and never joins its list`() {
         val launcher = "com.evil.launcher"
         gw.install(launcher, sendSms)
         val e = engine()
         e.guards.set(GuardKey.SMS, true, allowed = setOf(samsungMessages))
         assertEquals(Dpm.GRANT_DENIED, state(launcher, sendSms))
-        // One tap on "always" in the home chooser.
-        gw.roles = gw.roles.copy(home = launcher)
-        e.guards.reconcile()
-        assertEquals("spared while it is the home screen (contract)", Dpm.GRANT_DEFAULT, state(launcher, sendSms))
-        assertFalse("the home role gives no SMS permission", gw.isPermissionGranted(launcher, sendSms))
-        assertFalse(launcher in e.guards.status().getValue(GuardKey.SMS).allowed)
-        assertTrue(followed.isEmpty())
-        val notice = notices.single() as GuardNotice.RoleHolder
-        assertFalse(notice.joined)
-        assertEquals(listOf(sendSms), notice.lifted)
-        // The owner puts his launcher back: the guard applies again.
-        gw.roles = gw.roles.copy(home = "com.sec.android.app.launcher")
+        // One tap on "always" in the home chooser, and the same app as keyboard: contract §11.4, not spared.
+        gw.roles = gw.roles.copy(home = launcher, ime = launcher)
         e.guards.reconcile()
         assertEquals(Dpm.GRANT_DENIED, state(launcher, sendSms))
+        assertFalse(launcher in e.guards.status().getValue(GuardKey.SMS).allowed)
+        assertTrue(followed.isEmpty())
+        assertTrue(notices.isEmpty())
+        assertEquals(launcher to "liste choisie", e.guards.preview(GuardKey.SMS, true, allowed = setOf(launcher)).exempt.first { it.first == launcher })
+        assertTrue(e.guards.preview(GuardKey.SMS, true, allowed = setOf(samsungMessages)).exempt.none { it.first == launcher })
         assertTrue(e.guards.set(GuardKey.SMS, false).allOk)
         assertEquals(Dpm.GRANT_DEFAULT, state(launcher, sendSms))
     }
@@ -626,7 +650,7 @@ class CapabilityGuardsTest {
     }
 
     @Test
-    fun `a quarantined app chosen as default dialer is released with the permissions of the role`() {
+    fun `a quarantined app chosen as default dialer gets the permissions of the role, the rest stays in quarantine`() {
         val e = engine()
         e.guards.set(GuardKey.QUARANTINE, true)
         gw.install("com.new.dialer", callPhone, readCallLog, camera)
@@ -634,11 +658,25 @@ class CapabilityGuardsTest {
         assertEquals(Dpm.GRANT_DENIED, state("com.new.dialer", callPhone))
         gw.roles = gw.roles.copy(dialer = "com.new.dialer")
         e.guards.reconcile()
-        assertTrue(e.guards.quarantined().isEmpty())
+        assertEquals(listOf("com.new.dialer"), e.guards.quarantined().map { it.target })
         assertTrue(gw.isPermissionGranted("com.new.dialer", callPhone))
         assertTrue(gw.isPermissionGranted("com.new.dialer", readCallLog))
-        assertFalse("sensors are left to the usual prompt", gw.isPermissionGranted("com.new.dialer", camera))
-        assertEquals(Dpm.GRANT_DEFAULT, state("com.new.dialer", camera))
+        assertEquals("the camera stays in quarantine", Dpm.GRANT_DENIED, state("com.new.dialer", camera))
+        assertTrue(notices.any { it is GuardNotice.RoleHolder && it.key == GuardKey.QUARANTINE && it.pkg == "com.new.dialer" })
+    }
+
+    @Test
+    fun `an app installed while already the default SMS app is quarantined except for its role, with a notice`() {
+        val e = engine()
+        e.guards.set(GuardKey.QUARANTINE, true)
+        gw.install("com.fast.sms", sendSms, receiveSms, contacts)
+        gw.roles = gw.roles.copy(sms = "com.fast.sms")
+        e.guards.reconcile()
+        assertNotNull(e.record(GuardKey.QUARANTINE.packageRecordId("com.fast.sms")))
+        assertEquals(Dpm.GRANT_DEFAULT, state("com.fast.sms", sendSms))
+        assertEquals(Dpm.GRANT_DENIED, state("com.fast.sms", contacts))
+        assertTrue(notices.any { it is GuardNotice.Quarantined })
+        assertTrue(notices.any { it is GuardNotice.RoleHolder && it.pkg == "com.fast.sms" })
     }
 
     @Test

@@ -49,9 +49,11 @@ FASTVPN = ("com.fastvpn.browser", "Navigateur Rapide")
 BROWSER = ("com.sec.android.app.sbrowser", "Samsung Internet")
 DAY = ("2026-11-15T00:00:00.000Z", "2026-11-16T00:00:00.000Z")
 INSTALL_WINDOW = ("2026-11-15T12:42:07.204Z", "2026-11-16T12:42:07.204Z")
-def det(kind, app, evidence, sev=3, update=False, window=DAY):
+def det(kind, app, evidence, sev=3, update=False, window=DAY, recurring=False):
     d = {"evidence": evidence, "label": app[1], "package": app[0], "summary": "%s : constat de test (%s)" % (app[1], kind),
          "window_from": window[0], "window_to": window[1]}
+    if recurring:
+        d["recurring"] = True
     if update:
         d["update"] = True; d["detection_id"] = "01M7JPAP1R31CWDX8J7CFDY1M7"
     return ev("detect." + kind, d, sev, source="server")
@@ -250,7 +252,9 @@ cases = [
  ("100472", "detection-nouvelle-app-vpn", "Appli récente qui devient VPN (sév. 1)", [det("new_app_risky", FASTVPN, newapp(["vpn"], False, ["vpn_service"], 20, level="low"), 1, window=INSTALL_WINDOW)]),
  ("100473", "detection-nouvelle-app-risque-seul", "Risque élevé sans capacité : déjà alerté par app.risk (marqué)", [det("new_app_risky", TROJAN, newapp([], True, ["sideloaded", "accessibility_service", "overlay", "combo_banking_trojan"], 95), 3, window=INSTALL_WINDOW)]),
  ("100474", "detection-nouvelle-app-risque-seul-sev2", "Risque élevé (sans combo) sans capacité (marqué)", [det("new_app_risky", ("com.parental.ctrl", "Contrôle parental"), newapp([], True, ["no_launcher_icon", "background_location", "boot_receiver"], 65), 2, window=INSTALL_WINDOW)]),
- ("100450", "detection-type-inconnu", "Type de détection sans règle dédiée", [det("future_kind", PUZZLE, {"x": 1}, 2)]),
+ ("100455", "detection-type-inconnu", "Type de détection sans règle dédiée, sév. 2", [det("future_kind", PUZZLE, {"x": 1}, 2)]),
+ ("100454", "detection-type-inconnu-sev3", "Type de détection sans règle dédiée, sév. 3", [det("future_kind", PUZZLE, {"x": 1}, 3)]),
+ ("100450", "detection-type-inconnu-sev1", "Type de détection sans règle dédiée, sév. 1 (trace)", [det("future_kind", PUZZLE, {"x": 1}, 1)]),
  ("100100", "detection-imitee", "detect.* envoyé par un appareil (sans source serveur) : aucune alerte", [ev("detect.sms_abuse", {"package": "com.flashlight.pro.tools", "label": "Lampe Torche Pro", "evidence": {"sent": 1}}, 3)]),
  ("100451", "detection-mise-a-jour", "Mise à jour d'une détection déjà grave (nouveau domaine) : pas de seconde alerte grave", [det("threat_domain", TROJAN, {"domains": ["a.example"], "domain_count": 1, "requests": 5, "blocked": 5, "lists": ["TIF"]}), det("threat_domain", TROJAN, {"domains": ["a.example", "b.example"], "domain_count": 2, "requests": 9, "blocked": 9, "lists": ["TIF"]}, update=True)]),
  ("100453", "detection-mise-a-jour-sev2", "Mise à jour d'une détection de sévérité 2", [det("fanout", PUZZLE, {"addresses": 320, "ports": [443]}, 2), det("fanout", PUZZLE, {"addresses": 480, "ports": [443, 8080]}, 2, update=True)]),
@@ -258,6 +262,16 @@ cases = [
  ("100489", "detection-correlation", "Deux types de détection pour la même application en 24 h", [det("sms_abuse", TORCH, {"reason": "not_default_sms_app", "sent": 860, "rejected": 0, "background": 860}), det("threat_domain", TORCH, {"domains": ["panel.sms-gateway-pay.example"], "domain_count": 1, "requests": 40, "blocked": 40, "lists": ["TIF"]})]),
  ("100460", "detection-correlation-autre-app", "Deux détections pour deux applications différentes : pas de corrélation", [det("sms_abuse", TORCH, {"reason": "volume", "sent": 300}), det("threat_domain", TROJAN, {"domains": ["c2.example"], "domain_count": 1, "requests": 4, "blocked": 4, "lists": ["TIF"]})]),
  ("100460", "detection-correlation-meme-type", "Même type deux jours de suite : pas de corrélation", [det("threat_domain", TROJAN, {"domains": ["c2.example"], "domain_count": 1}), det("threat_domain", TROJAN, {"domains": ["c2.example"], "domain_count": 1}, window=("2026-11-16T00:00:00.000Z", "2026-11-17T00:00:00.000Z"))]),
+ # --- contrat §11.4 (lignes construites d'après le contrat : le collecteur ne les produisait pas encore)
+ ("100475", "detection-permission-sms", "Appli non SMS qui détient SEND_SMS (sans app.ops)", [det("sms_permission", TORCH, {"permission": "android.permission.SEND_SMS", "default_sms_app": "com.samsung.android.messaging", "installer": "com.google.android.packageinstaller"}, 2)]),
+ ("100476", "detection-appli-sms-par-defaut", "Appli devenue appli SMS par défaut (sév. 3)", [det("default_app_changed", TORCH, {"role": "sms", "old": "com.samsung.android.messaging", "new": TORCH[0], "level": "high", "score": 91}, 3)]),
+ ("100477", "detection-clavier-par-defaut", "Clavier par défaut changé (déjà alerté par app.role : marqué)", [det("default_app_changed", ("com.keyboard.themes.free", "Clavier Thèmes"), {"role": "keyboard", "old": "com.samsung.android.honeyboard", "new": "com.keyboard.themes.free"}, 2)]),
+ ("100478", "detection-plafond", "Plus de 200 détections dans la journée", [ev("detect.flood", {"summary": "plafond atteint", "window_from": DAY[0], "window_to": DAY[1], "evidence": {"count": 200}}, 3, source="server")]),
+ ("100479", "detection-sourdine", "Mise en sourdine d'une détection (affaiblissement tracé)", [ev("detect.muted", {"type": "detect.dns_bypass", "package": FASTVPN[0], "reason": "DoH voulu", "user": "admin"}, 1, source="server")]),
+ ("100480", "detection-sourdine-levee", "Sourdine levée", [ev("detect.unmuted", {"type": "detect.dns_bypass", "package": FASTVPN[0], "user": "admin"}, 0, source="server")]),
+ ("100479", "detection-sourdine-pas-de-correlation", "Sourdine après une détection de la même appli : pas de corrélation", [det("dns_bypass", FASTVPN, {"connections": 3, "providers": ["Cloudflare DNS"]}, 2), ev("detect.muted", {"type": "detect.dns_bypass", "package": FASTVPN[0], "reason": "DoH voulu", "user": "admin"}, 1, source="server")]),
+ ("100456", "detection-recurrente", "Détection récurrente (sév. plafonnée à 1) : trace", [det("mail_ports", ("com.example.reporter", "Rapporteur"), {"connections": 2, "ports": [587]}, 1, recurring=True)]),
+ ("100456", "detection-recurrente-sans-correlation", "Récurrente après une autre détection de la même appli : pas de corrélation", [det("dns_bypass", FASTVPN, {"connections": 3}, 2), det("upload_spike", FASTVPN, {"tx_bytes": 2000000000}, 1, recurring=True)]),
  # --- v1.2 : profil de risque, rôles, opérations (§11.2)
  ("100500", "risque-faible", "Profil de risque faible : marqué, pas d'alerte", [risk(("com.google.android.gms", "Services Google Play"), "low", 0, [], "com.android.vending", 254432035)]),
  ("100500", "risque-moyen", "Profil de risque moyen : marqué", [risk(("com.qrscan.free.reader", "QR Scanner"), "medium", 35, ["sideloaded", "unknown_installer"], "com.google.android.packageinstaller")]),
@@ -274,7 +288,7 @@ cases = [
  ("100520", "operations-app", "app.ops.app ordinaire : marqué", [ev("app.ops.app", {"background_count": 3, "count": 8, "from": "2026-11-13T17:00:00Z", "last_ts": "2026-11-13T17:33:32.227Z", "op": "fine_location", "package": "com.google.android.gms", "rejected_count": 0, "to": "2026-11-13T18:00:00Z"})]),
  ("100522", "operations-sms-refuses", "Envois de SMS refusés (garde SMS)", [ev("app.ops.app", {"background_count": 0, "count": 0, "from": "2026-11-16T13:00:00Z", "last_ts": "2026-11-16T13:16:20.276Z", "op": "send_sms", "package": TORCH[0], "rejected_count": 76, "to": "2026-11-16T14:00:00Z"})]),
  ("100521", "operations-appel-refuse", "Appel refusé (garde appels)", [ev("app.ops.app", {"background_count": 2, "count": 0, "from": "2026-11-16T13:00:00Z", "op": "call_phone", "package": "com.example.dialer.fraud", "rejected_count": 2, "to": "2026-11-16T14:00:00Z"})]),
- ("100160", "permission-envoi-sms", "Permission d'envoi de SMS accordée", [ev("app.permission_changed", {"package": TORCH[0], "permission": "android.permission.SEND_SMS", "granted": True}, 1)]),
+ ("100161", "permission-envoi-sms", "Permission d'envoi de SMS accordée (défense en profondeur, sans app.ops)", [ev("app.permission_changed", {"package": TORCH[0], "permission": "android.permission.SEND_SMS", "granted": True}, 1)]),
  # --- v1.2 : gardes (security.policy, profile guard:<clé>, §11.1)
  ("100531", "garde-activee", "Garde SMS activée", [guard("guard_enabled", "sms", "sms")]),
  ("100532", "garde-desactivee", "Garde SMS désactivée (affaiblissement)", [guard("guard_disabled", "sms", "sms")]),

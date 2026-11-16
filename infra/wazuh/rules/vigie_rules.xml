@@ -273,9 +273,19 @@
     <if_sid>100100</if_sid>
     <field name="vigie.type">^app.permission_changed$</field>
     <field name="vigie.data.granted">^true$</field>
-    <field name="vigie.data.permission" type="pcre2">(ACCESS_BACKGROUND_LOCATION|RECORD_AUDIO|CAMERA|SEND_SMS|READ_SMS|RECEIVE_SMS|CALL_PHONE|READ_CALL_LOG|READ_CONTACTS|BODY_SENSORS|MANAGE_EXTERNAL_STORAGE|SYSTEM_ALERT_WINDOW|REQUEST_INSTALL_PACKAGES)$</field>
+    <field name="vigie.data.permission" type="pcre2">(ACCESS_BACKGROUND_LOCATION|RECORD_AUDIO|CAMERA|SEND_SMS|READ_SMS|RECEIVE_SMS|RECEIVE_MMS|CALL_PHONE|READ_CALL_LOG|READ_CONTACTS|BODY_SENSORS|MANAGE_EXTERNAL_STORAGE|SYSTEM_ALERT_WINDOW|REQUEST_INSTALL_PACKAGES)$</field>
     <description>Vigie : permission sensible accordée à $(vigie.data.package) ($(vigie.data.permission))</description>
     <group>vigie_app,vigie_permission,</group>
+  </rule>
+
+  <!-- Permissions SMS : défense en profondeur, indépendante des détections du collecteur (sans le
+       collecteur expérimental app_ops, l'envoi de SMS lui-même n'est jamais compté). L'appli SMS
+       par défaut les reçoit aussi (changement d'appli SMS) : vérifier le paquet. -->
+  <rule id="100161" level="8">
+    <if_sid>100160</if_sid>
+    <field name="vigie.data.permission" type="pcre2">\.(SEND_SMS|READ_SMS|RECEIVE_SMS|RECEIVE_MMS)$</field>
+    <description>Vigie : permission SMS accordée à $(vigie.data.package) ($(vigie.data.permission)) : vérifier que c'est l'appli SMS</description>
+    <group>vigie_app,vigie_permission,vigie_sms,attack_mobile_T1582,</group>
   </rule>
 
   <!-- ========================= sensor.* ========================= -->
@@ -949,12 +959,32 @@
        jamais de contenu de notification ni de message. « update » est testé sur la ligne brute
        (une condition field en negate ne joue pas sur un champ absent). -->
 
-  <rule id="100450" level="6">
+  <!-- Parent, et repli d'un type detect.* sans règle dédiée (type ajouté au collecteur après ces
+       règles) de sévérité 0 ou 1 ; 100454/100455 pour les sévérités 3 et 2. -->
+  <rule id="100450" level="3">
     <if_sid>100100</if_sid>
     <field name="vigie.type" type="pcre2">^detect\.[a-z_]+$</field>
     <field name="vigie.source">^server$</field>
     <description>Vigie : détection $(vigie.type) pour $(vigie.data.label) ($(vigie.data.package)) sur $(vigie.device_name)</description>
     <group>vigie_detect,</group>
+  </rule>
+
+  <rule id="100454" level="10">
+    <if_sid>100450</if_sid>
+    <field name="vigie.type" type="pcre2" negate="yes">^detect\.(threat_domain|upload_spike|fanout|mail_ports|dns_bypass|sms_abuse|sensor_background|new_app_risky|sms_permission|default_app_changed|flood|muted|unmuted)$</field>
+    <field name="vigie.sev">^3$</field>
+    <match type="pcre2" negate="yes">"update":true</match>
+    <description>Vigie : détection $(vigie.type) (sans règle dédiée, sévérité 3) : $(vigie.data.summary)</description>
+    <group>vigie_detect,vigie_detect_new,vigie_detect_unknown,</group>
+  </rule>
+
+  <rule id="100455" level="6">
+    <if_sid>100450</if_sid>
+    <field name="vigie.type" type="pcre2" negate="yes">^detect\.(threat_domain|upload_spike|fanout|mail_ports|dns_bypass|sms_abuse|sensor_background|new_app_risky|sms_permission|default_app_changed|flood|muted|unmuted)$</field>
+    <field name="vigie.sev">^2$</field>
+    <match type="pcre2" negate="yes">"update":true</match>
+    <description>Vigie : détection $(vigie.type) (sans règle dédiée, sévérité 2) : $(vigie.data.summary)</description>
+    <group>vigie_detect,vigie_detect_new,vigie_detect_below3,vigie_detect_unknown,</group>
   </rule>
 
   <!-- Mises à jour d'une détection déjà émise -->
@@ -1025,7 +1055,7 @@
   <rule id="100465" level="7">
     <if_sid>100450</if_sid>
     <field name="vigie.type">^detect.upload_spike$</field>
-    <match type="pcre2" negate="yes">"update":true</match>
+    <match type="pcre2" negate="yes">"update":true|"recurring":true</match>
     <!-- Résumé du collecteur (octets en Gio) : Wazuh affiche les grands nombres en flottant. -->
     <description>Vigie : pic d'envoi : $(vigie.data.summary)</description>
     <group>vigie_detect,vigie_detect_new,vigie_detect_below3,vigie_detect_network,</group>
@@ -1045,7 +1075,7 @@
     <if_sid>100450</if_sid>
     <field name="vigie.type">^detect.mail_ports$</field>
     <field name="vigie.sev" type="pcre2">^[0-2]$</field>
-    <match type="pcre2" negate="yes">"update":true</match>
+    <match type="pcre2" negate="yes">"update":true|"recurring":true</match>
     <description>Vigie : $(vigie.data.label) ($(vigie.data.package)) envoie du courriel (ports $(vigie.data.evidence.ports), $(vigie.data.evidence.connections) connexions) sans être un client de messagerie connu</description>
     <group>vigie_detect,vigie_detect_new,vigie_detect_below3,vigie_detect_network,</group>
   </rule>
@@ -1063,7 +1093,7 @@
   <rule id="100469" level="7">
     <if_sid>100450</if_sid>
     <field name="vigie.type">^detect.dns_bypass$</field>
-    <match type="pcre2" negate="yes">"update":true</match>
+    <match type="pcre2" negate="yes">"update":true|"recurring":true</match>
     <description>Vigie : $(vigie.data.label) ($(vigie.data.package)) contourne le DNS filtrant par un résolveur public ($(vigie.data.evidence.providers))</description>
     <group>vigie_detect,vigie_detect_new,vigie_detect_below3,vigie_detect_network,vigie_dns,</group>
   </rule>
@@ -1116,6 +1146,69 @@
     <group>vigie_detect,vigie_detect_new,vigie_detect_below3,vigie_detect_app,</group>
   </rule>
 
+  <!-- Récurrence (contrat §11.4) : dns_bypass, mail_ports, upload_spike déjà signalés pour la même
+       application dans les 30 jours (sévérité plafonnée à 1 par le collecteur) : trace seulement. -->
+  <rule id="100456" level="3">
+    <if_sid>100450</if_sid>
+    <match type="pcre2">^(?!.*"update":true).*"recurring":true</match>
+    <description>Vigie : $(vigie.type) de nouveau pour $(vigie.data.label) ($(vigie.data.package)), déjà signalé dans les 30 jours</description>
+    <group>vigie_detect,vigie_detect_recurring,</group>
+  </rule>
+
+  <!-- ===== Contrat §11.4 : détections qui ne dépendent pas d'app.ops ===== -->
+  <!-- detect.sms_permission : une appli qui n'est ni l'appli SMS ni du système DÉTIENT SEND_SMS.
+       (La règle 100161 sur app.permission_changed reste la défense en profondeur côté Wazuh.) -->
+  <rule id="100475" level="10">
+    <if_sid>100450</if_sid>
+    <field name="vigie.type">^detect.sms_permission$</field>
+    <match type="pcre2" negate="yes">"update":true</match>
+    <description>Vigie : $(vigie.data.label) ($(vigie.data.package)) peut envoyer des SMS sans être l'appli SMS par défaut (permission SEND_SMS détenue)</description>
+    <group>vigie_detect,vigie_detect_new,vigie_detect_sms,attack_mobile_T1582,</group>
+  </rule>
+
+  <!-- detect.default_app_changed : rôle sms (sév. 3) grave ; dialer, keyboard, assistant (sév. 2)
+       déjà alertés par app.role (100512-100514) : marqués seulement. -->
+  <rule id="100476" level="12">
+    <if_sid>100450</if_sid>
+    <field name="vigie.type">^detect.default_app_changed$</field>
+    <field name="vigie.data.evidence.role">^sms$</field>
+    <match type="pcre2" negate="yes">"update":true</match>
+    <description>Vigie : $(vigie.data.label) ($(vigie.data.package)) est devenue l'appli SMS par défaut (avant : $(vigie.data.evidence.old)) : voie classique des chevaux de Troie SMS</description>
+    <group>vigie_detect,vigie_detect_new,vigie_detect_sms,attack_mobile_T1582,</group>
+  </rule>
+
+  <rule id="100477" level="3">
+    <if_sid>100450</if_sid>
+    <field name="vigie.type">^detect.default_app_changed$</field>
+    <match type="pcre2" negate="yes">"update":true</match>
+    <description>Vigie : appli par défaut « $(vigie.data.evidence.role) » changée pour $(vigie.data.label) ($(vigie.data.package)) (déjà alerté par app.role)</description>
+    <group>vigie_detect,vigie_detect_new,vigie_detect_below3,vigie_detect_app,</group>
+  </rule>
+
+  <!-- detect.flood : plus de 200 détections dans la journée pour un appareil -->
+  <rule id="100478" level="12">
+    <if_sid>100450</if_sid>
+    <field name="vigie.type">^detect.flood$</field>
+    <description>Vigie : plafond de détections atteint pour $(vigie.device_name) (plus de 200 dans la journée : données incohérentes ou appareil compromis)</description>
+    <group>vigie_detect,vigie_detect_flood,</group>
+  </rule>
+
+  <!-- Mise en sourdine depuis la console : les détections couvertes ne sont plus exportées ni
+       notifiées. Affaiblissement : tracé (niveau 6) ; la levée est anodine. -->
+  <rule id="100479" level="6">
+    <if_sid>100450</if_sid>
+    <field name="vigie.type">^detect.muted$</field>
+    <description>Vigie : détections $(vigie.data.type) mises en sourdine pour $(vigie.data.package) sur $(vigie.device_name) (plus exportées ni notifiées ; motif : $(vigie.data.reason))</description>
+    <group>vigie_detect,vigie_detect_mute,attack_mobile_T1629,</group>
+  </rule>
+
+  <rule id="100480" level="3">
+    <if_sid>100450</if_sid>
+    <field name="vigie.type">^detect.unmuted$</field>
+    <description>Vigie : sourdine levée pour les détections $(vigie.data.type) de $(vigie.data.package) sur $(vigie.device_name)</description>
+    <group>vigie_detect,vigie_detect_mute,</group>
+  </rule>
+
   <!-- Aggravation : la même détection (appareil, type, application) avait été émise sous la
        sévérité 3 dans les 24 h et sa mise à jour passe à 3. Les règles en if_matched_group doivent
        suivre, dans le fichier, les règles du groupe (sinon elles ne voient aucun événement passé). -->
@@ -1140,7 +1233,8 @@
     <same_field>vigie.device_id</same_field>
     <same_field>vigie.data.package</same_field>
     <different_field>vigie.type</different_field>
-    <match type="pcre2" negate="yes">"update":true</match>
+    <field name="vigie.type" type="pcre2" negate="yes">^detect\.(flood|muted|unmuted)$</field>
+    <match type="pcre2" negate="yes">"update":true|"recurring":true</match>
     <description>Vigie : comportements suspects multiples de $(vigie.data.label) ($(vigie.data.package)) en 24 h, dont $(vigie.type) : $(vigie.data.summary)</description>
     <group>vigie_detect,vigie_detect_correlated,</group>
   </rule>

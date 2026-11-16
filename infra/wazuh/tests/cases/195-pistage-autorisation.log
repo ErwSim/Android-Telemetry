@@ -1,3 +1,0 @@
-# Domaine autorisé de force depuis la console
-# attendu: 100543
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001217","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":0,"type":"tracking.override","domain":"tracking","sev":2,"source":"server","data":{"domain":"gate.cdn-update-check.example","action":"allow","forced":false,"user":"admin"}}}

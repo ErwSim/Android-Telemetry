@@ -1,3 +1,0 @@
-# Envois de SMS refusés (garde SMS)
-# attendu: 100522
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001202","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1202,"type":"app.ops.app","domain":"app","sev":0,"data":{"background_count":0,"count":0,"from":"2026-11-16T13:00:00Z","last_ts":"2026-11-16T13:16:20.276Z","op":"send_sms","package":"com.flashlight.pro.tools","rejected_count":76,"to":"2026-11-16T14:00:00Z"}}}

@@ -12,8 +12,9 @@ import (
 
 // The attack the owner lived through: a discreet application sends about 2 000 SMS a day. SMS do not use
 // the IP network, so without app.ops (experimental on the phone, possibly never available) nothing counts
-// them. What remains is the day of the installation: detect.new_app_risky, and only if the permission is
-// granted within 24 hours of it.
+// them. Since contract §11.4, holding SEND_SMS without being the SMS app or a system application is reported
+// (detect.sms_permission), whenever the permission was granted; detect.new_app_risky remains for a grant
+// within 24 hours of the installation.
 func TestOwnerScenarioWithoutAppOps(t *testing.T) {
 	const app = "com.coupons.promo.deals"
 	install := Install{Package: app, Installer: "com.android.vending", TS: hour0}
@@ -31,6 +32,22 @@ func TestOwnerScenarioWithoutAppOps(t *testing.T) {
 	none(t, MailPortsRule(day, dests, Labels{}, th), "no mail port")
 	none(t, DNSBypass(day, dests, DefaultResolvers(), Labels{}, th), "not a resolver")
 	none(t, UploadSpike(UploadInput{HourMS: late.TS, Tx: map[string]int64{app: 25_000}}, th), "25 kB an hour")
+	// Contract §11.4: without app.ops, the permission itself is reported (the review pinned 0 detection here).
+	sms := map[string]bool{"com.google.android.apps.messaging": true}
+	p := one(t, SMSPermission(SMSPermissionInput{Holders: []SMSHolder{{Package: app, SinceMS: late.TS, Source: "permission_changed"}},
+		SMSApps: sms, Risks: map[string]Risk{app: risk}}), TypeSMSPermission, app)
+	if p.Sev != 2 || p.FromMS != late.TS || p.Evidence["level"] != "medium" {
+		t.Fatalf("sms_permission %+v", p)
+	}
+	// Not for the SMS app nor a system application.
+	none(t, SMSPermission(SMSPermissionInput{Holders: []SMSHolder{{Package: "com.google.android.apps.messaging"}, {Package: "com.android.phone"}},
+		SMSApps: sms, System: map[string]bool{"com.android.phone": true}}), "SMS app and system application")
+	// Being made the default SMS app is the other usual way: reported at severity 3.
+	d := one(t, DefaultAppChanged([]RoleChange{{Role: "sms", Old: "com.google.android.apps.messaging", New: app, TS: late.TS}}, map[string]Risk{app: risk}, Labels{}),
+		TypeDefaultAppChanged, app)
+	if d.Sev != 3 || d.Evidence["old"] != "com.google.android.apps.messaging" || d.Evidence["level"] != "medium" {
+		t.Fatalf("default_app_changed %+v", d)
+	}
 
 	// Granted within the day: reported once, as a capability obtained by a new application.
 	early := Capability{Package: app, Kind: "permission:SEND_SMS", TS: hour0 + 3*60_000}
