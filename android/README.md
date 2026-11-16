@@ -160,7 +160,7 @@ Same signing key is mandatory, `versionCode` strictly increasing. The agent rest
 
 ## Removing the Device Owner and uninstalling
 
-**Recommended path**: in the app, **Policy › Remove Device Owner** screen (confirmation). Watchpost undoes its
+**Recommended path**: in the app, **Policy › Remove Device Owner** (confirmation). Watchpost undoes its
 whole policy, turns off the network and security logs, removes force-stop protection, emits
 `security.policy` `device_owner_cleared`, then gives up the role (`clearDeviceOwnerApp`). As the removal is
 announced, it is **not** reported as `agent.tamper`. Works with any APK, testOnly or not. You can then
@@ -265,7 +265,7 @@ Details and limits:
   `none` when out of service. **`net.cell_security`**: only the downgrade to 2G (data or voice) is
   detectable without privilege; null ciphering and identifier requests are system APIs. Effective measure:
   `DISALLOW_CELLULAR_2G` (`:policy` module).
-- **`net.ble_tracker`**: AirTag/Find My "separated from owner", SmartTag (0xFD5A), Tile (0xFEED/0xFEEC),
+- **`net.ble_tracker`**: AirTag/Find My accessory away from its paired phone, SmartTag (0xFD5A), Tile (0xFEED/0xFEEC),
   Google Find Hub in unknown-tracker-alert mode (0xFEAA, frame 0x41). Alert if seen ≥ 4 times (once a minute
   at most), over ≥ 30 min, during a movement ≥ 500 m (adjustable), positions taken from the passive cache; nothing
   without a known position. A change of the tracker's address (rotation) resets the count.
@@ -288,7 +288,7 @@ Details and limits:
 - **`app.special_access`**: accessibility services and administrators (public APIs); notification
   listeners (secure setting `enabled_notification_listeners`, omitted if unreadable); overlay,
   installation of unknown apps, usage access (app-op of each app that requests the permission);
-  `vpn_apps` = apps that **declare** a VpnService (the owner of the active VPN is not visible);
+  `vpn_apps` = apps that **declare** a VpnService (which app owns the active VPN is not visible);
   `default_apps`: browser, home, phone, SMS, keyboard, assistant and autofill if readable.
 - **`app.foreground`**: `ts` is the time of the usage event given by the system, not that of the reading
   (which can be up to 60 s late).
@@ -532,8 +532,8 @@ its state and how to remove it. It keeps nothing: no history, no content, no fil
    of the agent and the companion). The installation order of agent/companion does not matter.
 3. Notification access: `./scripts/notifier-access.sh` (`adb shell cmd notification allow_listener
    io.github.erwsim.watchpost.notifier/io.github.erwsim.watchpost.notifier.NotifierListenerService`, then a check
-   in `settings get secure enabled_notification_listeners`). Without ADB: the companion's "Notification access
-   settings" button, or Settings › Notifications › … › Notification access (the path varies
+   in `settings get secure enabled_notification_listeners`). Without ADB: the companion's "Notification access setting"
+   button, or Settings › Notifications › … › Notification access (the path varies
    with the One UI version). An app installed outside an app store may appear greyed out there
    (**"Restricted setting"**): Settings › Apps › Watchpost Notifications › ⋮ › "Allow restricted
    settings", then grant the access; the ADB command is not affected by this block.
@@ -1127,7 +1127,7 @@ None of this has been run on a device. First of all: `rescue-revert` on an empty
    emergency call (do not actually dial: only check that the dialer opens).
 5. **SMS** without the option: preview (third-party apps that request `SEND_SMS`); send an SMS from Samsung
    Messages; emergency SOS intact (system app); change the default SMS app and check the notification
-   "Default app changed" and the list.
+   "Warning: default app changed" and the list.
 6. Only then the **options** (SMS reading: autofill of codes received by SMS in third-party
    apps stops; call log).
    With an SMS or Calls guard active: **change the default SMS app** to an app the guard was

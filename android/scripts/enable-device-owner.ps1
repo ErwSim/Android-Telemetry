@@ -1,5 +1,5 @@
 ﻿# Makes Watchpost the Device Owner of the phone (ADB provisioning, no factory reset).
-# Preconditions checked here: no other user/profile, no account, no existing owner.
+# Preconditions checked here: no other user/profile, no account, no existing Device Owner or Profile Owner.
 # Usage: .\enable-device-owner.ps1
 #
 # Launching (the scripts are not signed; this leaves the Windows execution policy unchanged):
@@ -9,7 +9,7 @@
 Assert-Adb
 Assert-Installed
 
-Info 'Checking existing owners...'
+Info 'Checking existing Device Owner and Profile Owner...'
 if (Test-IsOwner) {
     Ok 'Watchpost is already Device Owner.'
     exit 0

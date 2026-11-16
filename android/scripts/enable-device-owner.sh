@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Makes Watchpost the Device Owner of the phone (ADB provisioning, no factory reset).
-# Preconditions checked here: no other user/profile, no account, no existing owner.
+# Preconditions checked here: no other user/profile, no account, no existing Device Owner or Profile Owner.
 # Usage: ./enable-device-owner.sh
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 require_adb
 require_installed
 
-info "Checking existing owners…"
+info "Checking existing Device Owner and Profile Owner…"
 owners="$(ashell dpm list-owners 2>/dev/null || true)"
 if echo "$owners" | grep -q "$PKG"; then
     ok "Watchpost is already Device Owner."
