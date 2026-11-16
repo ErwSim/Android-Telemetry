@@ -1,8 +1,8 @@
-# Vigie Agent — architecture du code et convention des collecteurs
+# Watchpost Agent — code architecture and collector conventions
 
-Ce document suffit pour ajouter un collecteur ou une fonction Device Owner sans lire tout le code.
-Références : `docs/contrat/contrat.md` (format des événements, **spécification**), `docs/ARCHITECTURE.md`
-(principes non négociables), `docs/research/android-plateforme.md` (faits de plateforme).
+This document is enough to add a collector or a Device Owner feature without reading all the code.
+References: `../docs/contract/contract.md` (event format, **specification**), `../docs/ARCHITECTURE.md`
+(non-negotiable principles), `../docs/research/android-platform.md` (platform facts).
 
 ## 1. Modules
 
@@ -12,37 +12,37 @@ Références : `docs/contrat/contrat.md` (format des événements, **spécificat
   └────► :policy ──────────┘
 ```
 
-| Module | Package | Contenu |
+| Module | Package | Contents |
 |---|---|---|
-| `:core` | `io.github.erwsim.vigie.core` | `Agent` (câblage), commandes à distance (`command/` : vérification, canal, état), modèle d'événement, `EventSink`, tampon `outbox` (Room), envoi (`Uploader`, WorkManager), enrôlement, réglages, interface `Collector` + `CollectorHost`, `Capabilities`, `IntegrityMonitor` (`agent.tamper`). Banc de test partagé (testFixtures) : `CollectorHarness`, référence du contrat `Contract`. |
-| `:collectors` | `…vigie.collectors` | 22 collecteurs **sans** privilège Device Owner (dont `notifications`, alimenté par l'APK compagnon `:notifier`). Point d'entrée : `CollectorsModule.all(context)`. |
-| `:policy` | `…vigie.policy` | Tout ce qui exige le Device Owner : `VigieAdminReceiver`, `DeviceOwnerManager` (auto-attribution des permissions, protection contre l'arrêt forcé), moteur de politique réversible (`engine/`), gardes de capacités du contrat §11.1 (`engine/CapabilityGuards`), DNS privé et son repli (`dns/`), 3 collecteurs (journaux de sécurité et réseau, posture), issue de secours ADB (`rescue/RescueReceiver`), état de l'écran Politique (`ui/PolicyController`), exécuteurs `lock`/`clear_lock_message`/`wipe` (`remote/`). Point d'entrée : `PolicyModule`. |
-| `:app` | `…vigie` | `VigieApplication`, service de premier plan `AgentService`, `BootReceiver`, interface Compose (dont l'écran Politique), test de conformité au contrat de bout en bout. |
+| `:core` | `io.github.erwsim.watchpost.core` | `Agent` (wiring), remote commands (`command/`: verification, channel, state), event model, `EventSink`, `outbox` buffer (Room), upload (`Uploader`, WorkManager), enrollment, settings, `Collector` interface + `CollectorHost`, `Capabilities`, `IntegrityMonitor` (`agent.tamper`). Shared test bench (testFixtures): `CollectorHarness`, contract reference `Contract`. |
+| `:collectors` | `…watchpost.collectors` | 22 collectors **without** Device Owner privilege (including `notifications`, fed by the `:notifier` companion APK). Entry point: `CollectorsModule.all(context)`. |
+| `:policy` | `…watchpost.policy` | Everything that requires the Device Owner: `WatchpostAdminReceiver`, `DeviceOwnerManager` (permission self-grant, force-stop protection), the reversible policy engine (`engine/`), the capability guards of contract §11.1 (`engine/CapabilityGuards`), Private DNS and its fallback (`dns/`), 3 collectors (security and network logs, posture), ADB rescue (`rescue/RescueReceiver`), Policy screen state (`ui/PolicyController`), `lock`/`clear_lock_message`/`wipe` executors (`remote/`). Entry point: `PolicyModule`. |
+| `:app` | `…watchpost` | `WatchpostApplication`, foreground service `AgentService`, `BootReceiver`, Compose UI (including the Policy screen), end-to-end contract conformance test. |
 
-`VigieApplication` fait `Agent.init(this) { CollectorsModule.all(it) + PolicyModule.collectors(it) }`.
-**Ajouter un collecteur ne touche que son module** : sa classe, une ligne dans le point d'entrée, ses
-chaînes et ses permissions (fusion de manifestes).
+`WatchpostApplication` does `Agent.init(this) { CollectorsModule.all(it) + PolicyModule.collectors(it) }`.
+**Adding a collector only touches its own module**: its class, one line in the entry point, its strings and its
+permissions (manifest merging).
 
-## 2. Ajouter un collecteur (recette)
+## 2. Adding a collector (recipe)
 
-1. Créer `collectors/src/main/kotlin/io/github/erwsim/vigie/collectors/<domaine>/<Nom>Collector.kt`
-   (ou dans `:policy` s'il exige le Device Owner).
-2. L'ajouter à la liste de `CollectorsModule.all()` (ou `PolicyModule.collectors()`). L'ordre de la liste est
-   l'ordre d'affichage.
-3. Chaînes françaises dans `<module>/src/main/res/values/strings.xml`, préfixées par l'id :
-   `collector_<id>_title`, `collector_<id>_desc`, `setting_<id>_…` (les ressources de tous les modules sont
-   fusionnées : un préfixe évite les collisions).
-4. Permissions dans `<module>/src/main/AndroidManifest.xml`. Interdits dans l'APK : écoute des notifications,
-   accessibilité, SMS, journal d'appels, superposition (déclencheurs Play Protect, principe 4).
-5. Si le collecteur émet un **type** ou des **champs** absents du catalogue (§2 du contrat) : ne pas inventer,
-   le signaler pour que le contrat soit complété d'abord.
-6. Tests JVM (§9).
+1. Create `collectors/src/main/kotlin/io/github/erwsim/watchpost/collectors/<domain>/<Name>Collector.kt`
+   (or in `:policy` if it requires the Device Owner).
+2. Add it to the list in `CollectorsModule.all()` (or `PolicyModule.collectors()`). The order of the list is
+   the display order.
+3. English strings in `<module>/src/main/res/values/strings.xml`, prefixed by the id:
+   `collector_<id>_title`, `collector_<id>_desc`, `setting_<id>_…` (the resources of all modules are
+   merged: a prefix avoids collisions).
+4. Permissions in `<module>/src/main/AndroidManifest.xml`. Forbidden in the APK: notification listening,
+   accessibility, SMS, call log, overlay (Play Protect triggers, principle 4).
+5. If the collector emits a **type** or **fields** absent from the catalogue (contract §2): do not invent them,
+   report it so that the contract is completed first.
+6. JVM tests (§9).
 
 ```kotlin
 class WifiCollector : Collector {
-    override val id = "wifi"                                   // [a-z0-9_]+, stable (réglages, heartbeat)
+    override val id = "wifi"                                   // [a-z0-9_]+, stable (settings, heartbeat)
     override val titleRes = R.string.collector_wifi_title
-    override val descriptionRes = R.string.collector_wifi_desc // ce qui est collecté, en clair
+    override val descriptionRes = R.string.collector_wifi_desc // what is collected, in plain words
     override val eventTypes = listOf("net.wifi")
     override val requirements = listOf(Requirement.Permission(Manifest.permission.ACCESS_FINE_LOCATION))
     override val settings = listOf(SettingSpec.BoolSpec(SCAN, R.string.setting_wifi_scan))
@@ -57,368 +57,368 @@ class WifiCollector : Collector {
 }
 ```
 
-## 3. Interface `Collector` et cycle de vie
+## 3. The `Collector` interface and its lifecycle
 
-| Membre | Rôle |
+| Member | Role |
 |---|---|
-| `id`, `titleRes`, `descriptionRes`, `eventTypes` | Identité et transparence (affichés dans l'onglet Collecteurs). |
-| `defaultEnabled` | `true` par défaut ; `false` pour un collecteur coûteux ou intrusif (opt-in). |
-| `requirements` | `Requirement.Permission(nom, optional)`, `Requirement.DeviceOwner`, `Requirement.SystemFeature(nom)`. Vérifiés par l'hôte **avant** `start`. |
-| `checkAvailability(ctx)` | Vérification supplémentaire (matériel, app-op « accès à l'utilisation »…) → `Availability.Unavailable("raison en français")`. |
-| `settings` | Réglages propres, rendus automatiquement dans l'écran Réglages. |
-| `periodic` | `PeriodicSpec(intervalMinutes ≥ 15, runAtStart)` : `collectOnce` via WorkManager, même service arrêté. |
-| `start(ctx)` / `stop(ctx)` | Abonnements temps réel. **Jamais** appelés par le collecteur lui-même. |
-| `collectOnce(ctx, reason)` | Relevé ponctuel (`START`, `PERIODIC`, `MANUAL`). |
+| `id`, `titleRes`, `descriptionRes`, `eventTypes` | Identity and transparency (shown in the Collectors tab). |
+| `defaultEnabled` | `true` by default; `false` for an expensive or intrusive collector (opt-in). |
+| `requirements` | `Requirement.Permission(name, optional)`, `Requirement.DeviceOwner`, `Requirement.SystemFeature(name)`. Checked by the host **before** `start`. |
+| `checkAvailability(ctx)` | Additional check (hardware, the "usage access" app-op…) → `Availability.Unavailable("reason in English")`. |
+| `settings` | Own settings, rendered automatically in the Settings screen. |
+| `periodic` | `PeriodicSpec(intervalMinutes ≥ 15, runAtStart)`: `collectOnce` through WorkManager, even with the service stopped. |
+| `start(ctx)` / `stop(ctx)` | Real-time subscriptions. **Never** called by the collector itself. |
+| `collectOnce(ctx, reason)` | One-off reading (`START`, `PERIODIC`, `MANUAL`). |
 
-Le `CollectorHost` (un par processus) décide :
-- `start` quand l'agent tourne, que le collecteur est activé (`collector.<id>.enabled`) et que ses exigences
-  sont satisfaites ; il est ré-évalué au démarrage du service, à chaque retour dans l'app, toutes les 15 min
-  (maintenance) et quand le Device Owner change ;
-- `stop` + `start` quand **un de ses réglages** change (les nouvelles cadences s'appliquent ainsi) ;
-- `stop` quand il est désactivé, perd une exigence ou que l'agent s'arrête.
+The `CollectorHost` (one per process) decides:
+- `start` when the agent is running, the collector is enabled (`collector.<id>.enabled`) and its requirements
+  are met; it is re-evaluated when the service starts, every time the app comes back to the foreground, every
+  15 min (maintenance) and when the Device Owner changes;
+- `stop` + `start` when **one of its settings** changes (so new rates apply);
+- `stop` when it is disabled, loses a requirement or the agent stops.
 
-États publiés (`host.statuses`, repris tels quels dans `agent.heartbeat.collectors`) : `running`, `disabled`,
-`unavailable` (+ raison en français). L'instance du collecteur est réutilisée d'un démarrage à l'autre :
-remettez ses champs à zéro au début de `start`.
+Published states (`host.statuses`, copied as is into `agent.heartbeat.collectors`): `running`, `disabled`,
+`unavailable` (+ reason in English). The collector instance is reused from one start to the next: reset its
+fields at the beginning of `start`.
 
-## 4. Fil d'exécution
+## 4. Threading
 
-- `start`, `stop`, `collectOnce` et tous les rappels enregistrés via `ctx` s'exécutent sur **le fil des
-  collecteurs** (un `HandlerThread` partagé « vigie-collectors »). Ils peuvent suspendre, **jamais bloquer**.
-- Rappels Android : `ctx.registerReceiver(filter) { intent -> }` (désinscrit automatiquement à l'arrêt ;
-  **`exported = true` obligatoire pour les diffusions émises par une app système qui ne tourne pas sous
-  l'uid du système** : Bluetooth, NFC, KeyChain, téléphonie. Un récepteur non exporté ne les reçoit jamais.
-  À n'utiliser que pour une action déclarée `<protected-broadcast>` par la plateforme),
-  `ctx.executor` (pour `LocationManager`, `PowerManager`, `TelephonyManager.registerTelephonyCallback`…),
-  `ctx.handler` / `ctx.looper` sinon. Un rappel livré sur le fil principal (ex. `TriggerEventListener`) doit
-  repasser par `ctx.handler.post { ctx.guard("…") { … } }`.
-- Travail bloquant (I/O, `PackageManager` massif, `getprop`, récupération des journaux) :
-  `withContext(ctx.io) { … }` ou `ctx.scope.launch(ctx.io) { … }`. `ctx.io` vaut `Dispatchers.IO` en
-  production ; le banc de test le remplace par un exécuteur suivi : **ne jamais écrire `Dispatchers.IO`**
-  dans un collecteur (le banc ne verrait pas ce travail). `ctx.scope` est annulé à l'arrêt.
-- Nettoyage : `ctx.onStop { … }` (exécuté à l'arrêt, en ordre inverse, erreurs isolées).
-- État privé persistant (dernier inventaire, dernière valeur émise) : `ctx.prefs` (SharedPreferences
-  `collector_<id>`), jamais les réglages utilisateur.
+- `start`, `stop`, `collectOnce` and all the callbacks registered through `ctx` run on **the collectors
+  thread** (a shared `HandlerThread` named "watchpost-collectors"). They may suspend, **never block**.
+- Android callbacks: `ctx.registerReceiver(filter) { intent -> }` (unregistered automatically on stop;
+  **`exported = true` is mandatory for broadcasts sent by a system app that does not run under the system
+  uid**: Bluetooth, NFC, KeyChain, telephony. A non-exported receiver never receives them.
+  Only use it for an action declared `<protected-broadcast>` by the platform),
+  `ctx.executor` (for `LocationManager`, `PowerManager`, `TelephonyManager.registerTelephonyCallback`…),
+  `ctx.handler` / `ctx.looper` otherwise. A callback delivered on the main thread (e.g. `TriggerEventListener`)
+  must go back through `ctx.handler.post { ctx.guard("…") { … } }`.
+- Blocking work (I/O, large `PackageManager` queries, `getprop`, log retrieval):
+  `withContext(ctx.io) { … }` or `ctx.scope.launch(ctx.io) { … }`. `ctx.io` is `Dispatchers.IO` in
+  production; the test bench replaces it with a tracked executor: **never write `Dispatchers.IO`** in a
+  collector (the bench would not see that work). `ctx.scope` is cancelled on stop.
+- Cleanup: `ctx.onStop { … }` (run on stop, in reverse order, errors isolated).
+- Persistent private state (last inventory, last emitted value): `ctx.prefs` (SharedPreferences
+  `collector_<id>`), never the user settings.
 
-## 5. Émettre un événement
+## 5. Emitting an event
 
 ```kotlin
 ctx.emit("device.battery", Severity.INFO) {
-    put("pct", pct)                 // Int/Long/Double/Float/String/Boolean ; null → champ absent
-    putStrings("functions", list)   // tableau de chaînes
+    put("pct", pct)                 // Int/Long/Double/Float/String/Boolean; null → field absent
+    putStrings("functions", list)   // array of strings
     putObject("device") { put("vendor_id", v) }
     putObjects("apps", apps) { app -> put("package", app.pkg) }
-    putMap("collectors", mapOf("location" to "running"))  // clés libres (ids, paquets)
+    putMap("collectors", mapOf("location" to "running"))  // free keys (ids, packages)
 }
 ```
 
-- L'`EventSink` attribue `id` (ULID), `ts` (RFC 3339 UTC ms), `boot_id`, `elapsed_ms` à l'appel, puis `seq`
-  à l'écriture, dans la **même transaction SQLite** que l'insertion et la mise à jour du compteur : ni trou ni
-  doublon après un arrêt brutal. `emit` ne bloque pas et est utilisable depuis n'importe quel fil.
-- **Horodatage d'origine** (événements relevés après coup : `app.foreground`, `net.dns`, `net.connect`,
-  `security.log`, contrat §2 « Précisions ») : passer l'heure fournie par le système,
-  `ctx.emit(type, sev, originTsMs = t) { … }` ou `ctx.sink.emit(type, sev, data, originTsMs = t)`. Alors :
-  - `ts` = cette heure d'origine (pour un regroupement : la **première** occurrence ; `count` et
-    `last_event_ts` dans `data`) ; il n'y a pas de champ `event_ts` ;
-  - `elapsed_ms` = `elapsedRealtime` estimé à l'origine (`elapsed_maintenant − (maintenant − origine)`),
-    donc `ts − elapsed_ms` reste l'heure de démarrage comme pour les autres événements du même `boot_id` ;
-    borné à `[0, elapsed_maintenant]` : **0** pour une origine antérieure au démarrage courant (journaux
-    `pre_reboot`, usage d'avant le redémarrage : aucun `elapsedRealtime` n'existe pour eux sur ce `boot_id`),
-    `elapsed_maintenant` si l'origine est « dans le futur » (horloge reculée entre-temps) ;
-  - `id` (ULID) et `seq` restent l'ordre d'**émission** : `ts` n'est donc pas croissant avec `seq`. Le
-    tampon n'en dépend pas : envoi et purge par taille suivent `seq`, la purge par âge et
-    `agent.buffer_overflow.oldest_ts/newest_ts` comparent `ts` (testé dans `OriginTimeTest`).
-- Écritures groupées : les événements attendent en mémoire au plus 3 s (ou 200 événements) puis sont écrits
-  en une transaction ; `sev >= 2` force l'écriture **et** un envoi rapide. Conséquence assumée : un arrêt
-  brutal peut perdre les ≤ 3 dernières secondes d'événements non encore écrits (ils n'ont pas encore de `seq`,
-  donc pas de trou côté serveur). Avant un arrêt prévisible : `ctx.flushBlocking()` (ex. `ACTION_SHUTDOWN`).
-- Règles du contrat, vérifiées à l'exécution : type `^[a-z0-9_]+(\.[a-z0-9_]+)+$`, clés `snake_case`,
-  champs **absents plutôt que `null`** (le builder ignore `null`, NaN et ∞), durées `*_ms`, tailles
-  `*_bytes`, MAC en minuscules avec `:`, empreintes SHA-256 hex minuscules, horodatages en `Rfc3339.format(ms)`.
-  Un type ou une clé invalide n'arrête rien : il devient un `agent.collector_error`.
-- Sévérité : 0 info, 1 notable, 2 avertissement, 3 critique. Réserver 2/3 à ce qui mérite un envoi
-  immédiat (ils déclenchent un envoi, coûteux en batterie s'ils sont fréquents).
-- Sobriété : n'émettre que les **changements** (garder la dernière valeur dans un champ ou `ctx.prefs`),
-  plafonner les cadences, préférer les diffusions système au sondage. Un collecteur à fort volume doit
-  pouvoir être désactivé et documenter son volume horaire attendu dans sa description.
-- Jamais de contenu privé de tiers (SMS, appels, notifications, frappe, écran).
+- The `EventSink` assigns `id` (ULID), `ts` (RFC 3339 UTC ms), `boot_id`, `elapsed_ms` at the call, then `seq`
+  at write time, in the **same SQLite transaction** as the insertion and the counter update: no gap and no
+  duplicate after a sudden stop. `emit` does not block and can be used from any thread.
+- **Origin timestamp** (events read after the fact: `app.foreground`, `net.dns`, `net.connect`,
+  `security.log`, contract §2 "Precisions"): pass the time supplied by the system,
+  `ctx.emit(type, sev, originTsMs = t) { … }` or `ctx.sink.emit(type, sev, data, originTsMs = t)`. Then:
+  - `ts` = that origin time (for a grouping: the **first** occurrence; `count` and
+    `last_event_ts` in `data`); there is no `event_ts` field;
+  - `elapsed_ms` = `elapsedRealtime` estimated at the origin (`elapsed_now − (now − origin)`),
+    so `ts − elapsed_ms` remains the start time as for the other events of the same `boot_id`;
+    bounded to `[0, elapsed_now]`: **0** for an origin before the current boot (`pre_reboot` logs,
+    usage from before the reboot: no `elapsedRealtime` exists for them on this `boot_id`),
+    `elapsed_now` if the origin is "in the future" (clock set back in the meantime);
+  - `id` (ULID) and `seq` stay the **emission** order: `ts` is therefore not increasing with `seq`. The
+    buffer does not depend on it: upload and size-based purging follow `seq`, age-based purging and
+    `agent.buffer_overflow.oldest_ts/newest_ts` compare `ts` (tested in `OriginTimeTest`).
+- Grouped writes: events wait in memory for at most 3 s (or 200 events) and are then written
+  in one transaction; `sev >= 2` forces the write **and** a quick upload. Accepted consequence: a sudden
+  stop can lose the last ≤ 3 seconds of events not yet written (they do not have a `seq` yet, so there is
+  no gap on the server side). Before a foreseeable stop: `ctx.flushBlocking()` (e.g. `ACTION_SHUTDOWN`).
+- Contract rules, checked at runtime: type `^[a-z0-9_]+(\.[a-z0-9_]+)+$`, `snake_case` keys, fields
+  **absent rather than `null`** (the builder ignores `null`, NaN and ∞), durations `*_ms`, sizes
+  `*_bytes`, MAC addresses in lowercase with `:`, SHA-256 fingerprints in lowercase hex, timestamps through
+  `Rfc3339.format(ms)`. An invalid type or key stops nothing: it becomes an `agent.collector_error`.
+- Severity: 0 info, 1 notable, 2 warning, 3 critical. Reserve 2/3 for what deserves an immediate upload
+  (they trigger an upload, which is costly in battery if frequent).
+- Frugality: only emit **changes** (keep the last value in a field or `ctx.prefs`), cap the rates, prefer
+  system broadcasts to polling. A high-volume collector must be disableable and document its expected hourly
+  volume in its description.
+- Never any private third-party content (SMS, calls, notifications, keystrokes, screen).
 
-## 6. Capacités et permissions
+## 6. Capabilities and permissions
 
-- `ctx.capabilities` : `isDeviceOwner()`, `hasPermission(p)`, `adminComponent()`, `hasSystemFeature(f)` (faux
-  si le `PackageManager` ne répond pas), `isIgnoringBatteryOptimizations()`, `declaredRuntimePermissions()`.
-- Permission d'exécution : la déclarer dans le manifeste du module **et** dans `requirements`. Une permission
-  `optional = true` n'empêche pas le démarrage (mode dégradé ; la liste `missingPermissions` est affichée).
-- En **Device Owner**, `PolicyModule.onAgentStarted` s'accorde **toutes** les permissions d'exécution
-  déclarées par le manifeste fusionné (localisation d'avant-plan avant arrière-plan), puis remet l'état à
-  `DEFAULT` : la permission reste accordée mais l'utilisateur garde la main. Chaque permission n'est
-  auto-accordée qu'une fois par activation du Device Owner (`onOwnerEnabled` remet le compteur à zéro) :
-  une permission retirée ensuite par le propriétaire n'est pas reprise par le passage de maintenance. Chaque attribution émet
-  `security.policy` (`permission_granted`, `target` = permission, `ok`), et la protection contre l'arrêt
-  forcé (`setUserControlDisabledPackages`) `security.policy` (`force_stop_protection`, `enabled`/`disabled`)
-  à chaque changement. Rien à coder pour un nouveau collecteur. Sans Device Owner, l'onglet Collecteurs
-  propose « Accorder les permissions », et `scripts/grant-adb-permissions.{sh,ps1}` les accorde par ADB.
-- Permissions accordables seulement par ADB (aujourd'hui `PACKAGE_USAGE_STATS`, `WRITE_SECURE_SETTINGS`,
-  `DUMP`) : les déclarer dans le manifeste du module (avec `tools:ignore="ProtectedPermissions"`), les tester
-  dans `checkAvailability` (ou dégrader), et les ajouter à `scripts/grant-adb-permissions.{sh,ps1}`.
-- App-op « accès à l'utilisation » (`hasUsageAccess()` de `:collectors`) :
-  `AppOpsManager.unsafeCheckOpNoThrow(OPSTR_GET_USAGE_STATS, uid, paquet)` (`checkOpNoThrow`, déprécié, a le
-  même effet) ; `MODE_ALLOWED` = accordé dans les Paramètres, `MODE_DEFAULT` = se rabattre sur la permission
-  `PACKAGE_USAGE_STATS` (cas de `pm grant`).
-- `Requirement.DeviceOwner` : le collecteur passe « indisponible » sans Device Owner et démarre seul quand le
-  rôle est accordé (`VigieAdminReceiver.onEnabled` → `host.reconcile()`).
-- Une permission retirée par l'utilisateur est signalée par `agent.tamper` (`permission_revoked`) par
-  `IntegrityMonitor` ; le collecteur passe « indisponible » au prochain `reconcile`.
-- Perte du Device Owner : `agent.tamper` (`device_owner_lost`, et `admin_disabled` depuis le récepteur
-  d'administration), **sauf** retrait volontaire annoncé par `IntegrityMonitor.expectOwnershipLoss()` juste
-  avant `clearDeviceOwnerApp` (fenêtre de 5 min, persistée ; `cancelOwnershipLossExpectation()` si le retrait
-  échoue). `PolicyEngine.removeDeviceOwner` le fait pour l'écran Politique et l'issue de secours ADB, qui
-  émettent à la place `security.policy` `device_owner_cleared`. Le repli `dpm remove-active-admin` n'est
-  pas annoncé : il reste signalé comme altération.
+- `ctx.capabilities`: `isDeviceOwner()`, `hasPermission(p)`, `adminComponent()`, `hasSystemFeature(f)` (false
+  if the `PackageManager` does not answer), `isIgnoringBatteryOptimizations()`, `declaredRuntimePermissions()`.
+- Runtime permission: declare it in the module's manifest **and** in `requirements`. A permission with
+  `optional = true` does not prevent the start (degraded mode; the `missingPermissions` list is displayed).
+- As **Device Owner**, `PolicyModule.onAgentStarted` grants itself **all** the runtime permissions
+  declared by the merged manifest (foreground location before background), then puts the state back to
+  `DEFAULT`: the permission stays granted but the user keeps control. Each permission is
+  auto-granted only once per Device Owner activation (`onOwnerEnabled` resets the counter):
+  a permission the user removes afterwards is not taken back by the maintenance pass. Each grant emits
+  `security.policy` (`permission_granted`, `target` = permission, `ok`), and force-stop protection
+  (`setUserControlDisabledPackages`) emits `security.policy` (`force_stop_protection`, `enabled`/`disabled`)
+  at each change. Nothing to code for a new collector. Without Device Owner, the Collectors tab
+  offers "Grant permissions", and `scripts/grant-adb-permissions.{sh,ps1}` grants them over ADB.
+- Permissions that can only be granted over ADB (today `PACKAGE_USAGE_STATS`, `WRITE_SECURE_SETTINGS`,
+  `DUMP`): declare them in the module's manifest (with `tools:ignore="ProtectedPermissions"`), test them
+  in `checkAvailability` (or degrade), and add them to `scripts/grant-adb-permissions.{sh,ps1}`.
+- "Usage access" app-op (`hasUsageAccess()` of `:collectors`):
+  `AppOpsManager.unsafeCheckOpNoThrow(OPSTR_GET_USAGE_STATS, uid, package)` (`checkOpNoThrow`, deprecated, has
+  the same effect); `MODE_ALLOWED` = granted in Settings, `MODE_DEFAULT` = fall back on the
+  `PACKAGE_USAGE_STATS` permission (the `pm grant` case).
+- `Requirement.DeviceOwner`: the collector becomes "unavailable" without Device Owner and starts by itself when
+  the role is granted (`WatchpostAdminReceiver.onEnabled` → `host.reconcile()`).
+- A permission removed by the user is reported by `IntegrityMonitor` as `agent.tamper` (`permission_revoked`);
+  the collector becomes "unavailable" at the next `reconcile`.
+- Loss of the Device Owner: `agent.tamper` (`device_owner_lost`, and `admin_disabled` from the admin
+  receiver), **except** for a voluntary removal announced by `IntegrityMonitor.expectOwnershipLoss()` just
+  before `clearDeviceOwnerApp` (5 min window, persisted; `cancelOwnershipLossExpectation()` if the removal
+  fails). `PolicyEngine.removeDeviceOwner` does this for the Policy screen and the ADB rescue, which
+  emit `security.policy` `device_owner_cleared` instead. The `dpm remove-active-admin` fallback is not
+  announced: it is still reported as tampering.
 
-## 7. Réglages
+## 7. Settings
 
-- `SettingKey.IntKey("<id>.<nom>", défaut, min, max)`, `SettingKey.BoolKey(...)` ou
-  `SettingKey.ChoiceKey(nom, défaut, valeurs)` (liste fermée de chaînes : une valeur hors liste n'est jamais
-  écrite et se lit comme le défaut), exposés via `settings = listOf(SettingSpec.IntSpec(key, titreRes,
-  résuméRes, "s"))` ou `SettingSpec.ChoiceSpec(key, titreRes, résuméRes, options)` (chaque option a son libellé
-  et une explication affichée sous elle, ex. le mode de localisation). Lecture : `ctx.settings[KEY]`.
-  Ils sont affichés dans la carte du collecteur (onglet Collecteurs). `experimental = true` ajoute la
-  mention « Expérimental » (comportement non garanti par Android, ex. attribution par `DUMP`) ;
-  `defaultEnabled = false` fait afficher « Désactivé par défaut », `Requirement.DeviceOwner` « Device Owner
-  requis ».
-- Toute modification passe par `AgentSettings.set` : `agent.config_changed` (`key`, `old`, `new`) est émis
-  automatiquement et le collecteur est redémarré. Aucun réglage ne vient du serveur (flux à sens unique).
-- `SettingKey.PackageListKey(nom, défaut)` : ensemble de noms de paquets (validés, 500 au plus, stockés triés une
-  ligne par paquet ; `set` renvoie `false` et n'écrit rien pour une entrée invalide). Exposé par
-  `SettingSpec.PackageListSpec(key, titreRes, résuméRes, candidates, locked)` : `SettingRow` l'affiche (nom et
-  icône) avec un sélecteur parmi les applis installées (`ui/PackagePicker.kt` : recherche, `candidates` pour
-  restreindre, « Montrer toutes les applications », `locked` pour les paquets toujours épargnés).
-  `agent.config_changed` porte les listes triées jointes par des virgules. `AgentSettings.isSet(key)` dit si
-  le propriétaire a déjà enregistré la valeur (pré-remplissage).
-- Réglages de politique : `PolicyModule.settings` (rendu dans la section « Device Owner » des Réglages).
-- Réglages du socle (tampon, envoi) : écran Réglages.
+- `SettingKey.IntKey("<id>.<name>", default, min, max)`, `SettingKey.BoolKey(...)` or
+  `SettingKey.ChoiceKey(name, default, values)` (closed list of strings: a value outside the list is never
+  written and reads as the default), exposed through `settings = listOf(SettingSpec.IntSpec(key, titleRes,
+  summaryRes, "s"))` or `SettingSpec.ChoiceSpec(key, titleRes, summaryRes, options)` (each option has its label
+  and an explanation shown under it, e.g. the location mode). Reading: `ctx.settings[KEY]`.
+  They are displayed in the collector's card (Collectors tab). `experimental = true` adds the
+  "Experimental" mention (behavior not guaranteed by Android, e.g. attribution through `DUMP`);
+  `defaultEnabled = false` makes "Disabled by default" appear, `Requirement.DeviceOwner` "Device Owner
+  required".
+- Every change goes through `AgentSettings.set`: `agent.config_changed` (`key`, `old`, `new`) is emitted
+  automatically and the collector is restarted. No setting comes from the server (one-way flow).
+- `SettingKey.PackageListKey(name, default)`: a set of package names (validated, 500 at most, stored sorted one
+  line per package; `set` returns `false` and writes nothing for an invalid entry). Exposed through
+  `SettingSpec.PackageListSpec(key, titleRes, summaryRes, candidates, locked)`: `SettingRow` shows it (name and
+  icon) with a picker among the installed apps (`ui/PackagePicker.kt`: search, `candidates` to
+  restrict, "Show all apps", `locked` for the packages that are always spared).
+  `agent.config_changed` carries the sorted lists joined by commas. `AgentSettings.isSet(key)` says whether
+  the user has already saved the value (pre-filling).
+- Policy settings: `PolicyModule.settings` (rendered in the "Device Owner" section of Settings).
+- Core settings (buffer, upload): Settings screen.
 
-## 8. Erreurs et isolation
+## 8. Errors and isolation
 
-- Toute exception dans `start`/`stop`/`collectOnce`, dans un rappel `ctx.registerReceiver`/`ctx.executor`,
-  dans `ctx.scope` ou dans `ctx.guard("où") { … }` est attrapée et émise en `agent.collector_error`
-  (`collector`, `error`), au plus 5 par heure et par collecteur (les suivantes sont comptées).
-- La vérification des exigences (`availability`) ne lève jamais : une exception devient « indisponible »
-  (« vérification impossible »). Le rapprochement (`startAll`, `reconcile`, changement de réglage) traite
-  chaque collecteur isolément : une erreur sur l'un n'interrompt jamais les suivants.
-- Échec de `start` ou 20 erreurs en une heure → le collecteur seul passe « indisponible » jusqu'à sa
-  réactivation ou au prochain démarrage de l'agent. Les autres continuent.
-- `ctx.reportError(e, "où")` pour signaler une erreur attrapée soi-même.
-- Un rappel enregistré **sans** passer par `ctx` (ex. `TriggerEventListener`) doit être protégé par
-  `ctx.guard` : une exception non attrapée sur un fil Android tue le processus.
+- Any exception in `start`/`stop`/`collectOnce`, in a `ctx.registerReceiver`/`ctx.executor` callback,
+  in `ctx.scope` or in `ctx.guard("where") { … }` is caught and emitted as `agent.collector_error`
+  (`collector`, `error`), at most 5 per hour and per collector (the following ones are counted).
+- The requirements check (`availability`) never throws: an exception becomes "unavailable"
+  ("check failed"). Reconciliation (`startAll`, `reconcile`, settings change) handles
+  each collector in isolation: an error on one never interrupts the following ones.
+- A failed `start` or 20 errors in one hour → only that collector becomes "unavailable" until it is
+  re-enabled or the agent restarts. The others keep running.
+- `ctx.reportError(e, "where")` to report an error you caught yourself.
+- A callback registered **without** going through `ctx` (e.g. `TriggerEventListener`) must be protected by
+  `ctx.guard`: an uncaught exception on an Android thread kills the process.
 
 ## 9. Tests
 
-- Tests **JVM purs** (`./gradlew test`), sans émulateur ni Robolectric (indisponible dans l'environnement
-  de développement : ses jars sont servis par un miroir bloqué). Les stubs Android renvoient des valeurs par
-  défaut (`unitTests.isReturnDefaultValues = true`) : services système `null`, aucune diffusion livrée.
-- Extraire la logique dans des fonctions/classes pures et les tester directement (`MotionTracker`,
+- **Pure JVM** tests (`./gradlew test`), without an emulator or Robolectric (its Android jars could not be
+  fetched by the build used for development). The Android stubs return default values
+  (`unitTests.isReturnDefaultValues = true`): system services `null`, no broadcast delivered.
+- Extract the logic into pure functions/classes and test them directly (`MotionTracker`,
   `DeviceCollector.pluggedName`…).
-- Câblage : `CollectorHarness` (testFixtures de `:core`, `testImplementation(testFixtures(project(":core")))`)
-  fait tourner de vrais collecteurs dans le vrai `CollectorHost` et enregistre les événements (avec leur
-  `ts`, d'origine s'il y en a une). Le fil des collecteurs et `ctx.io` y sont des exécuteurs suivis :
-  `settle()` attend qu'aucun des deux n'ait de travail en file ou en cours (pas de course avec `ctx.io`) ;
-  une coroutine suspendue dans `delay` est considérée au repos : `awaitEvents(type, n)`. Les fonctions
-  système déclarées par `Requirement.SystemFeature` sont celles de `h.features` :
+- Wiring: `CollectorHarness` (testFixtures of `:core`, `testImplementation(testFixtures(project(":core")))`)
+  runs real collectors in the real `CollectorHost` and records the events (with their
+  `ts`, the origin one if any). The collectors thread and `ctx.io` are tracked executors there:
+  `settle()` waits until neither has queued or running work (no race with `ctx.io`);
+  a coroutine suspended in `delay` is considered idle: `awaitEvents(type, n)`. The system
+  features declared by `Requirement.SystemFeature` are those of `h.features`:
 
 ```kotlin
 CollectorHarness(MyCollector()).use { h ->
     h.granted += Manifest.permission.ACCESS_FINE_LOCATION
     h.features += PackageManager.FEATURE_WIFI    // Requirement.SystemFeature
     h.deviceOwner = true
-    h.startAll()                       // ou h.collectOnce("my_id") ; settle() inclus
+    h.startAll()                       // or h.collectOnce("my_id"); settle() included
     assertEquals(CollectorRunState.RUNNING, h.status("my_id").state)
     val e = h.eventsOf("net.wifi").single()
-    Contract.check(e.type, e.data)     // référence unique du contrat
+    Contract.check(e.type, e.data)     // single reference of the contract
 }
 ```
 
-- **Contrat** : `Contract` (testFixtures de `:core`) est l'unique copie de test du §2 du contrat et de ses
-  précisions : types, noms de champs, type JSON de chaque valeur, listes fermées (`sev`, `plugged`,
-  `security.policy.action`…), table des `fields` de `security.log`. `Contract.check(type, data)` échoue sur
-  un type ou une clé inconnus, un `null`, un mauvais type de valeur. Tout nouveau champ s'y ajoute (après
-  le contrat). `app/src/test/…/ContractConformanceTest` fait produire à chaque collecteur de l'APK ses
-  événements types (constructeurs de données publics, processeurs de journaux, banc) et vérifie aussi
-  `agent.heartbeat.collectors` (les 25 collecteurs, état `running`/`disabled`/`unavailable`) ; un type
-  déclaré qui ne peut pas être produit sur la JVM doit y être listé avec sa raison. Les échantillons sont
-  dans `ApkSamples`, repris par `CrossServerTest` : envoi au **vrai collecteur** (`server/collector`) par le
-  vrai `Uploader`, avec un `.vigie` du vrai `enroll` (ignoré sans `VIGIE_CROSS_ENROLL` ; mode d'emploi en
-  tête du fichier).
-- Autres aides : `FakeClock`, `MemoryPrefs`, `TestContext`, `openTestDatabase(dir)` (Room sur SQLite JVM
-  embarqué, schéma réel).
-- Avant de committer : `./gradlew lint test assembleDebug assembleRelease` doit être vert (la release a
-  besoin du keystore local, voir le README).
+- **Contract**: `Contract` (testFixtures of `:core`) is the only test copy of contract §2 and its
+  precisions: types, field names, JSON type of each value, closed lists (`sev`, `plugged`,
+  `security.policy.action`…), the `fields` table of `security.log`. `Contract.check(type, data)` fails on
+  an unknown type or key, a `null`, a wrong value type. Every new field is added there (after the contract).
+  `app/src/test/…/ContractConformanceTest` has each collector of the APK produce its
+  typical events (public data constructors, log processors, bench) and also checks
+  `agent.heartbeat.collectors` (the 25 collectors, state `running`/`disabled`/`unavailable`); a declared type
+  that cannot be produced on the JVM must be listed there with its reason. The samples are
+  in `ApkSamples`, reused by `CrossServerTest`: upload to the **real collector** (`server/collector`) through
+  the real `Uploader`, with a `.watchpost` file from the real `enroll` (skipped without `WATCHPOST_CROSS_ENROLL`; instructions at the
+  top of the file).
+- Other helpers: `FakeClock`, `MemoryPrefs`, `TestContext`, `openTestDatabase(dir)` (Room on embedded JVM
+  SQLite, real schema).
+- Before committing: `./gradlew lint test assembleDebug assembleRelease` must be green (the release needs
+  the local keystore, see the README).
 
-## 10. Repères dans `:core`
+## 10. Landmarks in `:core`
 
-| Besoin | Où |
+| Need | Where |
 |---|---|
-| Événement, JSON, ULID, RFC 3339, `boot_id` | `core/event/` |
-| Tampon (Room, `seq`, purge sévérité/âge, `dropped_total`) | `core/outbox/Outbox.kt` |
-| Horizon de la purge par âge (saut d'horloge murale) | `core/outbox/AgeHorizon.kt` |
-| Écritures groupées, journal local en mémoire | `core/sink/OutboxEventSink.kt` |
-| Envoi (lots, gzip, codes HTTP dont la bissection du `400`, backoff, Wi-Fi) | `core/upload/Uploader.kt`, `core/work/Workers.kt` |
-| Client mTLS, épinglage de l'AC, ping | `core/upload/IngestApi.kt` |
-| Fichier `.vigie`, Keystore, jeton chiffré | `core/enroll/` |
-| `agent.tamper` (permission retirée, arrêt forcé, perte du Device Owner), retrait volontaire annoncé | `core/integrity/IntegrityMonitor.kt` |
-| Horodatage d'origine (`OriginTime`) | `core/sink/EventSink.kt` |
-| Câblage global, maintenance (15 min), file réseau | `core/Agent.kt` |
+| Event, JSON, ULID, RFC 3339, `boot_id` | `core/event/` |
+| Buffer (Room, `seq`, severity/age purge, `dropped_total`) | `core/outbox/Outbox.kt` |
+| Age purge horizon (wall-clock jump) | `core/outbox/AgeHorizon.kt` |
+| Grouped writes, in-memory local event log | `core/sink/OutboxEventSink.kt` |
+| Upload (batches, gzip, HTTP codes including `400` bisection, backoff, Wi-Fi) | `core/upload/Uploader.kt`, `core/work/Workers.kt` |
+| mTLS client, CA pinning, ping | `core/upload/IngestApi.kt` |
+| `.watchpost` file, Keystore, encrypted token | `core/enroll/` |
+| `agent.tamper` (permission removed, force stop, loss of Device Owner), announced voluntary removal | `core/integrity/IntegrityMonitor.kt` |
+| Origin timestamp (`OriginTime`) | `core/sink/EventSink.kt` |
+| Global wiring, maintenance (15 min), network queue | `core/Agent.kt` |
 
-### Envoi : `400` (lot empoisonné), `413`, erreurs transitoires
+### Upload: `400` (poisoned batch), `413`, transient errors
 
-`Uploader.runLocked` (contrat §3). Seul le tampon est durable ; rien d'autre n'a besoin de survivre à un arrêt.
+`Uploader.runLocked` (contract §3). Only the buffer is durable; nothing else needs to survive a stop.
 
-- `200` cohérent : lignes supprimées. `200` incohérent, `401`/`403`, `429`, `5xx`, réseau : tout est gardé,
-  backoff, **jamais** de coupe du lot.
-- `413` : le lot est coupé en deux (taille mémorisée dans `UploadStatus.batchSize`) ; un événement seul est
-  supprimé.
-- `400` : bissection **en mémoire, dans le passage** : `suspects` (pile des fins de plages refusées, bornent
-  `Outbox.batch(..., maxSeq)`) et `bisectLimit` (moitié du lot refusé). Coût ≈ 2·log2(lot) requêtes par
-  événement fautif ; au plus `MAX_REFUSALS_PER_RUN` (60) refus `400`/`413` par passage, sinon `PROTOCOL`
-  avec backoff. Un événement seul en `400` est supprimé par `Outbox.drop` (suppression **et** `dropped_total`
-  dans une seule transaction) et signalé par `onDropped` (`Agent` → `agent.collector_error`).
-- **Garde-fou** : sur le premier `400` d'un passage, un lot sans événement est envoyé (`probeEnvelope`). Refusé
-  aussi (`http_400_envelope`) : aucun événement n'est supprimé. Un `200` quelconque du passage vaut preuve.
-- Arrêt brutal : une ligne n'est supprimée qu'après `200` ou en `400` seule ; la reprise recommence la
-  bissection de ce qui reste (≤ 2·log2(500) requêtes de plus), sans perte.
+- Consistent `200`: rows deleted. Inconsistent `200`, `401`/`403`, `429`, `5xx`, network: everything is kept,
+  backoff, **never** a split of the batch.
+- `413`: the batch is split in two (size remembered in `UploadStatus.batchSize`); a single event is
+  deleted.
+- `400`: bisection **in memory, within the pass**: `suspects` (stack of the ends of refused ranges, they bound
+  `Outbox.batch(..., maxSeq)`) and `bisectLimit` (half of the refused batch). Cost ≈ 2·log2(batch) requests per
+  faulty event; at most `MAX_REFUSALS_PER_RUN` (60) `400`/`413` refusals per pass, otherwise `PROTOCOL`
+  with backoff. A single event that gets `400` is deleted by `Outbox.drop` (deletion **and** `dropped_total`
+  in one transaction) and reported by `onDropped` (`Agent` → `agent.collector_error`).
+- **Safeguard**: on the first `400` of a pass, a batch with no event is sent (`probeEnvelope`). Also refused
+  (`http_400_envelope`): no event is deleted. Any `200` in the pass counts as proof.
+- Sudden stop: a row is only deleted after `200` or on a lone `400`; the next run restarts the
+  bisection of what remains (≤ 2·log2(500) more requests), without loss.
 
-### Purge par âge et horloge murale (`AgeHorizon`)
+### Age purge and wall clock (`AgeHorizon`)
 
-`Outbox.enforceLimits` ne compare plus `ts` à `horloge_murale − durée` mais à `horizon − durée`, avec
-`horizon = min(murale, horizon_précédent + 2 × Δelapsed + 1 min)` (jamais au-delà de la murale ; après un
-redémarrage, `+ 2 jours` au plus). État : SharedPreferences `vigie_age_horizon`. Un saut en avant ne vide plus
-le tampon ; un saut en arrière rabat l'horizon aussitôt (les événements écrits ensuite ne sont pas purgés).
+`Outbox.enforceLimits` no longer compares `ts` to `wall_clock − duration` but to `horizon − duration`, with
+`horizon = min(wall, previous_horizon + 2 × Δelapsed + 1 min)` (never beyond the wall clock; after a
+reboot, `+ 2 days` at most). State: SharedPreferences `watchpost_age_horizon`. A forward jump no longer empties
+the buffer; a backward jump brings the horizon back at once (events written afterwards are not purged).
 
-**Limites connues** (non couvertes) :
-- Saut en avant **suivi d'un redémarrage** : l'horizon avance d'au plus 2 jours par redémarrage, pas zéro (on ne
-  connaît pas la durée d'arrêt) ; un téléphone vraiment éteint longtemps garde ses vieux événements un peu
-  plus longtemps que la durée réglée (rattrapage à vitesse double).
-- Une horloge qui reste fausse en avant vieillit quand même les événements deux fois plus vite (≈ 15 jours
-  réels pour 30 jours de rétention) ; un attaquant patient peut donc accélérer la purge, pas la déclencher d'un coup.
-- Saut en arrière : les événements antérieurs au saut sont conservés plus longtemps que la durée réglée
-  (le plafond de taille s'applique toujours) ; leurs `ts` ne sont jamais corrigés.
-- La purge **par taille** et `agent.buffer_overflow` ne dépendent pas de l'horloge ; les `ts` des événements
-  émis pendant l'erreur d'horloge restent faux (le serveur les compare à son heure à la réception).
-- Le `400` : si le serveur refuse l'enveloppe vide ET accepte les lots (comportement non prévu par le
-  contrat), aucun événement n'est supprimé et la file reste bloquée (backoff). L'agent n'a jamais été testé
-  contre un serveur réel renvoyant `400`, ni sur appareil.
+**Known limits** (not covered):
+- Forward jump **followed by a reboot**: the horizon advances by at most 2 days per reboot, not zero (the
+  downtime is unknown); a phone really switched off for a long time keeps its old events a little
+  longer than the configured duration (catch-up at double speed).
+- A clock that stays wrong in the forward direction still ages events twice as fast (≈ 15 real days
+  for 30 days of retention); a patient attacker can therefore speed up the purge, not trigger it all at once.
+- Backward jump: events from before the jump are kept longer than the configured duration
+  (the size cap still applies); their `ts` are never corrected.
+- **Size-based** purging and `agent.buffer_overflow` do not depend on the clock; the `ts` of events
+  emitted during the clock error stay wrong (the server compares them with its own time at reception).
+- `400`: if the server refuses the empty envelope AND accepts batches (behavior not foreseen by the
+  contract), no event is deleted and the queue stays blocked (backoff). The agent has never been tested
+  against a real server returning `400`, nor on a device.
 
-## 11. Module `:policy` (repères)
+## 11. `:policy` module (landmarks)
 
-- `VigieAdminReceiver` (fil principal, rappels courts) : `onEnabled` → intégrité, `PolicyModule.onAgentStarted`
-  (auto-attribution, protection contre l'arrêt forcé) et `host.reconcile()` ; `onDisableRequested` →
-  `agent.tamper` ; `onDisabled` → `IntegrityMonitor.onAdminDisabled` (pas d'altération si le retrait était
-  annoncé) ; journaux réseau et sécurité → `PolicyModule.onNetworkLogsAvailable` / `onSecurityLogsAvailable`,
-  qui délèguent aux collecteurs `network_log` / `security_log` (récupération sur `ctx.io`) ; mots de passe →
+- `WatchpostAdminReceiver` (main thread, short callbacks): `onEnabled` → integrity, `PolicyModule.onAgentStarted`
+  (self-grant, force-stop protection) and `host.reconcile()`; `onDisableRequested` →
+  `agent.tamper`; `onDisabled` → `IntegrityMonitor.onAdminDisabled` (no tampering if the removal was
+  announced); network and security logs → `PolicyModule.onNetworkLogsAvailable` / `onSecurityLogsAvailable`,
+  which delegate to the `network_log` / `security_log` collectors (retrieval on `ctx.io`); passwords →
   `posture` (`security.keyguard`).
-- Journaux : traduction pure et testée (`logs/SecurityLogTranslator`, `SecurityLogProcessor`,
-  `NetworkLogProcessor`, `Aggregation`) ; chaque sortie porte `tsMs` (heure d'origine de la première
-  occurrence), passé en `originTsMs`.
-- Politique : `engine/PolicyEngine` (aperçu, application, retour arrière, retrait du Device Owner), sur une
-  interface `DevicePolicyGateway` (implémentation Android `AndroidDevicePolicyGateway`, factice dans les
-  tests). Chaque action émet `security.policy` et une ligne du journal local ; l'état est écrit avant chaque
-  changement. Catalogue : `res/raw/policy_catalog.json` ; garde-fous codés en dur (`engine/Guards.kt`).
-- Écran Politique : `app/…/ui/PolicyScreen.kt` (Compose, dans `:app`) sur `policy/…/ui/PolicyController`.
-- Issue de secours ADB : `rescue/RescueReceiver` (permission `FORCE_STOP_PACKAGES` exigée de l'expéditeur ;
-  extras `sweep`, `remove_owner`, `force`) ; scripts `rescue-revert.*` et `remove-device-owner.*`. Elle tourne
-  dans le processus de l'app : rien de ce qui est lancé au démarrage (`VigieApplication`, portées de
-  coroutines d'`Agent` et de `PolicyModule`) ne doit pouvoir le faire planter.
-- Garde-fous : `PackageDenyList` (liste de refus), `RestrictionGuard` et `SettingGuard` (listes
-  **d'autorisation** : toute clé absente est refusée). Ajouter une restriction ou un réglage au catalogue
-  exige de l'ajouter d'abord à la liste vérifiée, documentation `UserManager`/`Settings` à l'appui.
-- État appliqué : écrit avant chaque changement (`PENDING`), relu enregistrement par enregistrement ;
-  illisible → `stateWasUnreadable()` et balayage du catalogue (`sweepCatalog`) à « Tout rétablir ». Défaire
-  ne s'arrête jamais sur un élément (`isolated`, `bookkeeping`).
-- Les appels bloquants (`setGlobalPrivateDnsModeSpecifiedHost`, sonde DoT) se font hors fil principal.
-- Ne jamais poser `DISALLOW_DEBUGGING_FEATURES` ni couper la signalisation USB (porte de secours ADB).
+- Logs: pure, tested translation (`logs/SecurityLogTranslator`, `SecurityLogProcessor`,
+  `NetworkLogProcessor`, `Aggregation`); each output carries `tsMs` (origin time of the first
+  occurrence), passed as `originTsMs`.
+- Policy: `engine/PolicyEngine` (preview, apply, rollback, Device Owner removal), on a
+  `DevicePolicyGateway` interface (Android implementation `AndroidDevicePolicyGateway`, fake in the
+  tests). Each action emits `security.policy` and a line in the local log; the state is written before each
+  change. Catalogue: `res/raw/policy_catalog.json`; hard-coded safeguards (`engine/Guards.kt`).
+- Policy screen: `app/…/ui/PolicyScreen.kt` (Compose, in `:app`) on `policy/…/ui/PolicyController`.
+- ADB rescue: `rescue/RescueReceiver` (`FORCE_STOP_PACKAGES` permission required from the sender;
+  extras `sweep`, `remove_owner`, `force`); scripts `rescue-revert.*` and `remove-device-owner.*`. It runs
+  in the app's process: nothing launched at startup (`WatchpostApplication`, coroutine scopes of `Agent`
+  and `PolicyModule`) may be able to make it crash.
+- Safeguards: `PackageDenyList` (deny list), `RestrictionGuard` and `SettingGuard` (**allow** lists:
+  any absent key is refused). Adding a restriction or a setting to the catalogue
+  requires adding it first to the verified list, backed by the `UserManager`/`Settings` documentation.
+- Applied state: written before each change (`PENDING`), read back record by record;
+  unreadable → `stateWasUnreadable()` and a catalogue sweep (`sweepCatalog`) at "Restore everything". Undoing
+  never stops on one item (`isolated`, `bookkeeping`).
+- Blocking calls (`setGlobalPrivateDnsModeSpecifiedHost`, DoT probe) are made off the main thread.
+- Never set `DISALLOW_DEBUGGING_FEATURES` nor turn off USB signaling (ADB escape hatch).
 
-### Gardes de capacités (contrat §11.1)
+### Capability guards (contract §11.1)
 
-| Élément | Où |
+| Element | Where |
 |---|---|
-| Clés, permissions, garde-fous, avis, aperçu, état | `engine/CapabilityGuards.kt` : `GuardKey`, `GuardPermissions`, `GuardSafety`, `GuardNotice`, `GuardPreview`, `GuardStatus` |
-| Moteur des gardes | `CapabilityGuards` (instance `PolicyEngine.guards`) : `preview`, `set`, `reconcile`, `release`, `quarantined`, `status` |
-| Refus et rétablissement des permissions (partagés avec le catalogue) | `PolicyEngine.denyPermissions` / `revertPermissions(only, keepRecord)` / `claimOf` |
-| Passerelle | `DevicePolicyGateway.installedApps/appInfo/roles/accessibilityServices/inputMethods/permitted*` (`AndroidDevicePolicyGateway`, `FakeGateway`) |
-| Câblage | `PolicyModule` : listes `GUARD_LISTS` (`policy.guard.<clé>.allowed`), options `GUARD_EXTENDED`, récepteur `PACKAGE_ADDED/REPLACED/REMOVED` + `ACTION_DEFAULT_DIALER_CHANGED`, `requestGuardReconcile()` (canal fusionné : une rafale = un passage), `guardNoticeListener` (posé par `VigieApplication` → `AgentNotifications.guardNotice`, canal `vigie_guards`) |
-| Interface | `ui/PolicyController` (`previewGuard`, `applyGuard`, `release`) ; `app/…/ui/GuardsUi.kt` (cartes, aperçu, écran `Screen.Quarantine`), `PackagePicker.kt` |
+| Keys, permissions, safeguards, notices, preview, state | `engine/CapabilityGuards.kt`: `GuardKey`, `GuardPermissions`, `GuardSafety`, `GuardNotice`, `GuardPreview`, `GuardStatus` |
+| Guard engine | `CapabilityGuards` (instance `PolicyEngine.guards`): `preview`, `set`, `reconcile`, `release`, `quarantined`, `status` |
+| Denying and restoring permissions (shared with the catalogue) | `PolicyEngine.denyPermissions` / `revertPermissions(only, keepRecord)` / `claimOf` |
+| Gateway | `DevicePolicyGateway.installedApps/appInfo/roles/accessibilityServices/inputMethods/permitted*` (`AndroidDevicePolicyGateway`, `FakeGateway`) |
+| Wiring | `PolicyModule`: lists `GUARD_LISTS` (`policy.guard.<key>.allowed`), options `GUARD_EXTENDED`, receiver `PACKAGE_ADDED/REPLACED/REMOVED` + `ACTION_DEFAULT_DIALER_CHANGED`, `requestGuardReconcile()` (merged channel: a burst = one pass), `guardNoticeListener` (set by `WatchpostApplication` → `AgentNotifications.guardNotice`, channel `watchpost_guards`) |
+| UI | `ui/PolicyController` (`previewGuard`, `applyGuard`, `release`); `app/…/ui/GuardsUi.kt` (cards, preview, `Screen.Quarantine` screen), `PackagePicker.kt` |
 | Tests | `policy/src/test/…/CapabilityGuardsTest` |
 
-Invariants (ne pas les casser) :
+Invariants (do not break them):
 
-- Enregistrements : `guard:<clé>` (`ItemKind.GUARD` : la garde est active ; option `guard_extended`, liste en
-  vigueur `guard_allowed`, `released` pour la quarantaine, `prev_list`/`prev_list_set`/`applied_list` pour
-  accessibilité/claviers) et `guard:<clé>:<paquet>` (`ItemKind.PERMISSION`, défait comme une permission du
-  catalogue, y compris l'enregistrement `PENDING` d'un plantage). `PolicyEngine.preview/apply` ignorent tout
-  identifiant `guard:` (jamais traité comme orphelin du catalogue).
-- Écrit avant de changer (`PENDING`), confirmé après relecture ; un échec reste dans l'enregistrement, non
-  appliqué, et n'est retenté qu'à `set` (`retryFailed`) : pas de rafale d'événements au rapprochement.
-- `revertAll`/retrait du Device Owner : `switchOff` de **toutes** les gardes par paquet d'abord (aucune
-  modification de l'appareil), puis le reste du plus récent au plus ancien. Désactiver une garde seule : son
-  enregistrement d'abord, puis ses paquets.
-- Une permission refusée par deux enregistrements est « partagée » (`claimOf`) : chacun garde l'état d'origine,
-  `revertPermissions` ne touche pas une permission qu'un autre tient encore.
-- `GuardSafety.exemption` : Vigie, compagnon, `FLAG_SYSTEM`, `PackageDenyList` statique, détenteurs **actuels**
-  des rôles (SMS, composeur, clavier en service, accueil) — jamais `protectedPackages()` (trop large : candidats
-  HOME, administrateurs actifs).
-- Balayage (état illisible) : `CapabilityGuards.sweepLocked` (permissions de `GuardPermissions.ALL` refusées
-  sans enregistrement sur une appli non système → `DEFAULT` ; listes d'accessibilité et de claviers → `null`).
-- Accessibilité/claviers : la liste posée = liste choisie ∪ services non système déjà activés (sinon la
-  plateforme refuse). Retour : liste d'avant (`null` en pratique), relue.
+- Records: `guard:<key>` (`ItemKind.GUARD`: the guard is active; option `guard_extended`, list in
+  force `guard_allowed`, `released` for quarantine, `prev_list`/`prev_list_set`/`applied_list` for
+  accessibility/keyboards) and `guard:<key>:<package>` (`ItemKind.PERMISSION`, undone like a catalogue
+  permission, including the `PENDING` record of a crash). `PolicyEngine.preview/apply` ignore any
+  `guard:` identifier (never treated as a catalogue orphan).
+- Written before changing (`PENDING`), confirmed after reading back; a failure stays in the record, not
+  applied, and is only retried at `set` (`retryFailed`): no burst of events at reconciliation.
+- `revertAll`/Device Owner removal: `switchOff` of **all** the per-package guards first (no
+  change to the device), then the rest from the most recent to the oldest. Disabling a single guard: its
+  record first, then its packages.
+- A permission denied by two records is "shared" (`claimOf`): each keeps the original state,
+  `revertPermissions` does not touch a permission another one still holds.
+- `GuardSafety.exemption`: Watchpost, the companion, `FLAG_SYSTEM`, the static `PackageDenyList`, **current**
+  holders of the roles (SMS, dialer, active keyboard, home) — never `protectedPackages()` (too wide: HOME
+  candidates, active administrators).
+- Sweep (unreadable state): `CapabilityGuards.sweepLocked` (permissions of `GuardPermissions.ALL` denied
+  without a record on a non-system app → `DEFAULT`; accessibility and keyboard lists → `null`).
+- Accessibility/keyboards: the list set = the chosen list ∪ non-system services already enabled (otherwise the
+  platform refuses). Rollback: the list from before (`null` in practice), read back.
 
-Ajouts de la revue v1.2 : `CapabilityGuards.settle` (appelé par `sync` et `retryFailed`) remet un enregistrement
-de paquet d'aplomb avec l'appareil avant de s'en servir — entrées non confirmées d'un enregistrement `PENDING`
-(plantage), refus qui ne sont plus en place (réinstallation, rôle de Device Owner perdu puis rendu) ;
-`GuardSafety.isOwnRole` (la liste d'une garde ne suit que **son** rôle) et `GuardSafety.roleGrants` (permissions
-accordées au nouveau détenteur du rôle SMS ou composeur, paramètre `grant` de `PolicyEngine.revertPermissions`) ;
-relecture des rôles toutes les 10 s dans `PolicyModule.startGuardWatch` ; `PolicyStore.state()` garde le dernier
-état décodé (clé : le texte lui-même), car les gardes cherchent un enregistrement par paquet à chaque passage.
+Reconciliation additions: `CapabilityGuards.settle` (called by `sync` and `retryFailed`) brings a package
+record back in line with the device before using it — unconfirmed entries of a `PENDING` record
+(crash), denials that are no longer in place (reinstallation, Device Owner role lost then given back);
+`GuardSafety.isOwnRole` (a guard's list only follows **its own** role) and `GuardSafety.roleGrants` (permissions
+granted to the new holder of the SMS or dialer role, `grant` parameter of `PolicyEngine.revertPermissions`);
+re-reading the roles every 10 s in `PolicyModule.startGuardWatch`; `PolicyStore.state()` keeps the last
+decoded state (key: the text itself), because the guards look up a record by package on every pass.
 
 
-## 12. Commandes à distance (contrat §8)
+## 12. Remote commands (contract §8)
 
-Le seul flux serveur → téléphone. Liste fermée, rien d'autre : aucun code de ce chemin n'a accès en écriture
-aux réglages, à la politique ou à l'enrôlement.
+The only server → phone flow. Closed list, nothing else: no code on this path has write access
+to the settings, the policy or the enrollment.
 
-| Élément | Où | Rôle |
+| Element | Where | Role |
 |---|---|---|
-| Modèle | `core/command/CommandModel.kt` | `CommandTypes` (liste fermée, sensibles, Device Owner), `Refusal` (motifs du contrat), `CommandParams` (seuls champs qui atteignent un exécuteur), `AcceptedCommand` (constructeur `internal` : seul le vérificateur en crée), `CommandExecutor`. |
-| Cryptographie | `CommandCrypto.kt` | PBKDF2-HMAC-SHA256 écrit sur `Mac("HmacSHA256")` (l'encodage du mot de passe de `SecretKeyFactory` varie selon le fournisseur : ici toujours UTF-8, sans normalisation, comme `TextEncoder`), HMAC, comparaison `MessageDigest.isEqual`. `isTooWeak` : plancher du code (6 caractères différents ; sans lettre, 20 chiffres), car le serveur peut chercher le code hors ligne à partir d'une commande signée. |
-| État | `CommandStore.kt` | `CommandKeyStore` : `K` scellé par `SecretBox` (clé AES-GCM du Keystore, alias `vigie_command_key`), lié au `device_id`. `CommandStateStore` : deux fenêtres anti-rejeu de 500 (signées / simples), signatures invalides et verrouillage, historique (50), résultats en attente. Tout en `commit()` : ce qui garde une exécution est sur disque avant elle. |
-| Vérification | `CommandVerifier.kt` | Ordre exact du contrat ; avant la signature, seuls `v`, `id`, `device_id`, `type` sont lus. Un `wipe` signé et valide refusé parce que l'effacement n'est pas autorisé consomme son `id` (il ne s'exécutera pas si le serveur le livre de nouveau après l'activation de l'interrupteur). Revue v1.1 : `withinValidity` (24 h au plus pour `wipe`, 30 jours sinon) ; une commande sensible refusée `disabled` (canal) ou `no_code_configured` est consommée dans une **troisième fenêtre** (`CommandStateStore.consumeUnverified` : sa signature n'est pas vérifiable, elle ne doit pas pouvoir évincer un `id` signé vérifié) ; U+2028/2029 refusés dans `message`. `JsonNesting` : profondeur du JSON bornée avant toute analyse (payload ici, événements et réponses dans `CommandChannel`). `WipeGate` : les six conditions de l'effacement et leur revérification sur l'état courant. |
-| Traitement | `CommandProcessor.kt` | Un à la fois : vérification → exécuteur → `command.result` (sévérités du contrat) → historique → résultat à poster. Commande déjà traitée livrée de nouveau (renvoi du serveur, flux + interrogation) : jamais réexécutée, son résultat d'origine (mémoire de 1000 résultats, `CommandStateStore.rememberResult`) est renvoyé. `wipe` : événement et envoi borné à 10 s **avant** l'exécuteur. |
-| Canal | `CommandChannel.kt`, `AndroidChannelPlatform.kt` | Boucle (une coroutine, `Dispatchers.IO`) : désactivé / non enrôlé / refusé (401-403) / sans réseau → attente d'un signal ; sinon flux SSE (`SseParser`) ou interrogation ; backoff à gigue en `elapsedRealtime` ; signaux : réglages, réseau (`Agent.startNetworkWatch`), envoi de lot (`Agent.handleUploadOutcome`), alarme (`CommandAlarmReceiver`), maintenance. Une file + un ouvrier traitent les commandes pendant que la lecture continue. |
-| Câblage | `RemoteCommands.kt`, `Agent.commands` | Réglages `commands.*`, code (`setCode` lent : hors fil principal), enregistrement des exécuteurs par module (`register`). |
-| Exécuteurs | `LocateExecutor` (`:core`, via `OnDemandLocator` implémenté par `LocationCollector`) ; `RemoteAlerts`/`RingController` (`:app`) ; `remote/RemoteExecutors.kt` (`:policy`) | `lock`/`clear_lock_message` derrière `LockScreenGateway` ; `wipe` derrière `FactoryReset`, dont la seule implémentation réelle (`AndroidFactoryReset`, `wipeDevice(0)`) est construite dans `PolicyModule.registerCommandExecutors`. |
-| Interface | `app/…/ui/CommandsScreen.kt`, `CommandLabels.kt`, `service/AgentNotifications.kt` | Écran, accueil, notification permanente (« commandes à distance : à l'écoute »), une notification par commande, sonnerie avec « Arrêter ». |
+| Model | `core/command/CommandModel.kt` | `CommandTypes` (closed list, sensitive ones, Device Owner), `Refusal` (reasons of the contract), `CommandParams` (the only fields that reach an executor), `AcceptedCommand` (`internal` constructor: only the verifier creates them), `CommandExecutor`. |
+| Cryptography | `CommandCrypto.kt` | PBKDF2-HMAC-SHA256 written on top of `Mac("HmacSHA256")` (the password encoding of `SecretKeyFactory` varies by provider: here always UTF-8, no normalization, like `TextEncoder`), HMAC, comparison with `MessageDigest.isEqual`. `isTooWeak`: floor on the passphrase (6 distinct characters; without letters, 20 digits), because the server can search for the passphrase offline from a signed command. |
+| State | `CommandStore.kt` | `CommandKeyStore`: `K` sealed by `SecretBox` (Keystore AES-GCM key, alias `watchpost_command_key`), bound to the `device_id`. `CommandStateStore`: two anti-replay windows of 500 (signed / plain), invalid signatures and lockout, history (50), pending results. All in `commit()`: what guards an execution is on disk before it. |
+| Verification | `CommandVerifier.kt` | Exact order of the contract; before the signature, only `v`, `id`, `device_id`, `type` are read. A valid signed `wipe` refused because wiping is not allowed consumes its `id` (it will not run if the server delivers it again after the switch is turned on). `withinValidity` (24 h at most for `wipe`, 30 days otherwise); a sensitive command refused `disabled` (channel) or `no_code_configured` is consumed in a **third window** (`CommandStateStore.consumeUnverified`: its signature cannot be verified, it must not be able to evict a verified signed `id`); U+2028/2029 refused in `message`. `JsonNesting`: JSON depth bounded before any parsing (payload here, events and responses in `CommandChannel`). `WipeGate`: the six conditions of the wipe and their re-check on the current state. |
+| Processing | `CommandProcessor.kt` | One at a time: verification → executor → `command.result` (severities of the contract) → history → result to post. A command already processed and delivered again (server resend, stream + polling): never re-executed, its original result (memory of 1000 results, `CommandStateStore.rememberResult`) is sent back. `wipe`: event and upload bounded to 10 s **before** the executor. |
+| Channel | `CommandChannel.kt`, `AndroidChannelPlatform.kt` | Loop (one coroutine, `Dispatchers.IO`): disabled / not enrolled / refused (401-403) / no network → wait for a signal; otherwise SSE stream (`SseParser`) or polling; jittered backoff on `elapsedRealtime`; signals: settings, network (`Agent.startNetworkWatch`), batch upload (`Agent.handleUploadOutcome`), alarm (`CommandAlarmReceiver`), maintenance. A queue + a worker process the commands while reading continues. |
+| Wiring | `RemoteCommands.kt`, `Agent.commands` | `commands.*` settings, passphrase (`setCode` is slow: off the main thread), registration of the executors by module (`register`). |
+| Executors | `LocateExecutor` (`:core`, through `OnDemandLocator` implemented by `LocationCollector`); `RemoteAlerts`/`RingController` (`:app`); `remote/RemoteExecutors.kt` (`:policy`) | `lock`/`clear_lock_message` behind `LockScreenGateway`; `wipe` behind `FactoryReset`, whose only real implementation (`AndroidFactoryReset`, `wipeDevice(0)`) is built in `PolicyModule.registerCommandExecutors`. |
+| UI | `app/…/ui/CommandsScreen.kt`, `CommandLabels.kt`, `service/AgentNotifications.kt` | Screen, home, permanent notification ("remote commands: listening"), one notification per command, ringtone with "Stop". |
 
-**Choix de sobriété** (le point non mesurable ici, voir le README pour les mesures à faire) :
+**Frugality choices** (the point that cannot be measured yet, see the README for the measurements to take):
 
-- pas de verrou de veille permanent : la lecture du flux est une lecture bloquante d'une connexion au repos ;
-  verrous bornés pendant une commande (2 min), une interrogation (60 s), après une alarme (30 s), une sonnerie
-  (durée + 10 s) ;
-- délai de lecture 300 s = 2,5 × le maintien de 120 s du serveur (`CommandChannel.STREAM_READ_TIMEOUT_MS`) ; le
-  serveur ne doit donc pas dépasser environ 240 s de maintien. Les minuteries ne comptent pas le sommeil du
-  processeur : la détection d'un flux mort repose aussi sur une alarme `setAndAllowWhileIdle` (15 min) et la
-  maintenance, qui comparent la dernière réception à `elapsedRealtime` (sommeil compris) ;
-- aucune tentative sans réseau (on attend `onAvailable`), backoff exponentiel à gigue, flux « mort-né » compté
-  comme un échec, `401`/`403` = arrêt affiché, `404` = 6 h ; une seule alarme en attente à la fois ;
-- l'interrogation à chaque envoi de lot n'a lieu que si le flux n'est pas ouvert, au plus une fois par minute.
+- no permanent wake lock: reading the stream is a blocking read on an idle connection;
+  bounded wake locks during a command (2 min), a poll (60 s), after an alarm (30 s), a ring
+  (duration + 10 s);
+- read timeout 300 s = 2.5 × the server's 120 s keep-alive (`CommandChannel.STREAM_READ_TIMEOUT_MS`); the
+  server must therefore not exceed about 240 s of keep-alive. Timers do not count CPU sleep:
+  dead-stream detection also relies on a `setAndAllowWhileIdle` alarm (15 min) and on
+  maintenance, which compare the last reception to `elapsedRealtime` (sleep included);
+- no attempt without network (wait for `onAvailable`), jittered exponential backoff, a "stillborn" stream counted
+  as a failure, `401`/`403` = displayed stop, `404` = 6 h; only one pending alarm at a time;
+- polling on each batch upload only happens if the stream is not open, at most once a minute.
 
-**Tests** : `core/src/test/…/command/` (vérification, ordre, vecteur, précisions de la revue v1.1 —
-`CommandReviewPrecisionsTest` —, cas difficiles signés par la console
-— `ConsoleVectorsTest` —, rejeu, `wipe` refusé puis rejoué, verrouillage, plancher du code, canal contre
-MockWebServer), `policy/src/test/…/RemoteCommandsPolicyTest` (matrice des 64 combinaisons de `wipe`,
-isolement de l'appel réel vérifié dans les sources), `app/src/test/…/CommandResultContractTest` (conformité de
-`command.result`). Banc partagé : `CommandKit`, `CommandVector`, `RecordingSink`, `PlainSecretBox`
+**Tests**: `core/src/test/…/command/` (verification, order, vector, precisions of the contract §8
+— `CommandReviewPrecisionsTest` —, hard cases signed by the console
+— `ConsoleVectorsTest` —, replay, `wipe` refused then replayed, lockout, passphrase floor, channel against
+MockWebServer), `policy/src/test/…/RemoteCommandsPolicyTest` (matrix of the 64 `wipe` combinations,
+isolation of the real call checked in the sources), `app/src/test/…/CommandResultContractTest` (conformance of
+`command.result`). Shared bench: `CommandKit`, `CommandVector`, `RecordingSink`, `PlainSecretBox`
 (`core/src/testFixtures/…/CommandFixtures.kt`).
 
-**Ajouter une commande** : d'abord le contrat (§8) et la console/le collecteur ; puis `CommandTypes`,
-`CommandVerifier.parseParams` (bornes fermées), un exécuteur enregistré par le module qui possède l'appel
-plateforme, les libellés (`CommandLabels`, `strings_commands.xml`) et `Contract.COMMAND_TYPES`.
+**Adding a command**: first the contract (§8) and the console/the collector; then `CommandTypes`,
+`CommandVerifier.parseParams` (closed bounds), an executor registered by the module that owns the platform
+call, the labels (`CommandLabels`, `strings_commands.xml`) and `Contract.COMMAND_TYPES`.
