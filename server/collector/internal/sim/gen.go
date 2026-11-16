@@ -11,6 +11,8 @@ import (
 	"math/rand"
 	"sort"
 	"time"
+
+	"github.com/erwsim/android-telemetry/server/collector/internal/model"
 	_ "time/tzdata" // Europe/Paris in minimal images
 )
 
@@ -35,6 +37,8 @@ type pending struct {
 	// extra marks events added after the original catalog (their ULID uses xrng, so the main random
 	// stream of a seeded simulation stays what it was).
 	extra bool
+	// injected marks events added from outside the simulation (command results): random ULID.
+	injected bool
 }
 
 type boot struct {
@@ -59,6 +63,12 @@ type Options struct {
 	// other types are delivered as they occur. Without it every event is returned by the Advance
 	// that covers its ts.
 	LateBatches bool
+	// NotificationContent mimics the "notification content" option of the companion APK (contract §10):
+	// title and text (codes of 4 to 8 digits masked, "redacted"), except for the excluded apps.
+	NotificationContent bool
+	// OnDNS, when set, is called for every DNS lookup as it is generated (ts of each occurrence): it feeds
+	// a fake AdGuard Home query log coherent with net.dns (sim --fake-adguard).
+	OnDNS func(ts time.Time, host string)
 }
 
 // Generator produces events chronologically.
@@ -108,6 +118,9 @@ type Generator struct {
 	xrng        *rand.Rand
 	lrng        *rand.Rand
 	lateBatches bool
+	nrng        *rand.Rand // notification content (separate stream)
+	content     bool
+	onDNS       func(ts time.Time, host string)
 	held        []Event   // late-type events waiting for the next batch delivery
 	nextRelease time.Time // simulated time of the next late batch
 }
@@ -140,6 +153,7 @@ func New(opts Options) *Generator {
 		dnsHost: opts.PrivateDNSHost,
 		xrng:    rand.New(rand.NewSource(opts.Seed ^ 0x5eed0a66)), lrng: rand.New(rand.NewSource(opts.Seed ^ 0x1a7e0b47)),
 		lateBatches: opts.LateBatches,
+		nrng:        rand.New(rand.NewSource(opts.Seed ^ 0x0071f1ca)), content: opts.NotificationContent, onDNS: opts.OnDNS,
 	}
 	g.nextRelease = start.Add(g.lateInterval())
 	g.lastBatt = int(g.battery)
@@ -179,6 +193,23 @@ func (g *Generator) emitExtra(ts time.Time, typ string, sev int, data map[string
 	g.pend[len(g.pend)-1].extra = true
 }
 
+// Inject adds an event produced outside the simulation (e.g. command.result of the simulated agent),
+// returned by the next Advance past ts.
+func (g *Generator) Inject(ts time.Time, typ string, sev int, data map[string]any) {
+	g.emit(ts, typ, sev, data)
+	g.pend[len(g.pend)-1].injected = true
+}
+
+// Locate emits an immediate precise position (command "locate").
+func (g *Generator) Locate(ts time.Time) {
+	p, speed, brg, _, _ := g.position(ts)
+	g.emit(ts, "location.fix", 0, map[string]any{
+		"lat": round(p.lat, 6), "lon": round(p.lon, 6), "acc_m": 4.5, "alt_m": 41.0, "speed_mps": round(speed, 2),
+		"bearing_deg": round(brg, 1), "provider": "gps", "mock": false, "fix_ts": ts.UTC().Format("2006-01-02T15:04:05.000Z07:00"),
+	})
+	g.pend[len(g.pend)-1].injected = true
+}
+
 // Advance generates events up to `to` and returns those with ts < to, in order.
 func (g *Generator) Advance(to time.Time) []Event {
 	for g.cur.Before(to) {
@@ -211,8 +242,14 @@ func (g *Generator) flush(to time.Time) []Event {
 		if p.extra {
 			idRng = g.xrng
 		}
+		id := ""
+		if p.injected {
+			id = model.NewULID(p.ts)
+		} else {
+			id = NewULID(p.ts, idRng)
+		}
 		out = append(out, Event{
-			ID: NewULID(p.ts, idRng), TS: p.ts.Format("2006-01-02T15:04:05.000Z07:00"), Seq: g.seq, BootID: b.id,
+			ID: id, TS: p.ts.Format("2006-01-02T15:04:05.000Z07:00"), Seq: g.seq, BootID: b.id,
 			ElapsedMS: p.ts.Sub(b.at).Milliseconds(), Type: p.typ, Sev: p.sev, Data: p.data,
 		})
 	}
@@ -589,10 +626,14 @@ func (g *Generator) notifications(t0, t1 time.Time) {
 		case "com.instagram.android":
 			cat, ch = "social", "ig_direct"
 		}
-		d := map[string]any{"package": a.pkg, "event": "posted", "category": cat, "channel": ch, "ongoing": false}
+		imp := importance(cat)
+		d := map[string]any{"package": a.pkg, "event": "posted", "category": cat, "channel": ch, "ongoing": false, "importance": imp}
+		if g.content {
+			g.notificationContent(a.pkg, d)
+		}
 		g.emit(at, "app.notification", 0, d)
 		g.emit(at.Add(time.Duration(20+g.rng.Intn(3600))*time.Second), "app.notification", 0,
-			map[string]any{"package": a.pkg, "event": "removed", "category": cat, "channel": ch, "ongoing": false})
+			map[string]any{"package": a.pkg, "event": "removed", "category": cat, "channel": ch, "ongoing": false, "importance": imp})
 		if a.pkg == "com.whatsapp" || a.pkg == "org.thoughtcrime.securesms" {
 			g.dns(a, at.Add(300*time.Millisecond))
 		}
@@ -640,6 +681,9 @@ func (g *Generator) dns(a *app, t time.Time) {
 	dnsData := map[string]any{"package": a.pkg, "uid": a.uid, "hostname": host, "addresses": list, "address_count": len(addrs)}
 	g.aggregate(dnsData, t)
 	g.emit(t, "net.dns", 0, dnsData)
+	if g.onDNS != nil {
+		g.feedDNS(t, host, dnsData)
+	}
 	if g.rng.Float64() < 0.8 {
 		port := 443
 		switch {
@@ -800,7 +844,7 @@ func (g *Generator) heartbeat(t time.Time) {
 	g.emit(t, "agent.heartbeat", 0, map[string]any{
 		"battery_pct": int(g.battery), "charging": g.plugged != "none", "uptime_ms": t.Sub(b.at).Milliseconds(),
 		"queue_depth": depth, "queue_bytes": depth * (300 + g.rng.Intn(500)), "dropped_total": g.dropped,
-		"device_owner": true, "collectors": collectors, "last_upload_ts": g.uploadedAt.Format("2006-01-02T15:04:05.000Z07:00"),
+		"device_owner": true, "collectors": g.collectorStates(), "last_upload_ts": g.uploadedAt.Format("2006-01-02T15:04:05.000Z07:00"),
 	})
 }
 

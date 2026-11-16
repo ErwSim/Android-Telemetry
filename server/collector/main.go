@@ -25,6 +25,7 @@ Utilisation :
   vigie-collector user set-password <nom>                 crée ou modifie un compte console
                                                           (mot de passe lu sur l'entrée standard)
   vigie-collector sim --enroll <fichier.vigie> [--url URL] [--backfill 24h] [--follow] [--rate 1]
+                      [--commands stream|poll|off] [--command-code CODE] [--fake-adguard 127.0.0.1:3001]
   vigie-collector healthcheck [--url URL]                 vérifie /healthz (HEALTHCHECK Docker)
   vigie-collector version
 

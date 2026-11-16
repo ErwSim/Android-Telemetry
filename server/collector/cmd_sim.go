@@ -5,12 +5,16 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/erwsim/android-telemetry/server/collector/internal/adguard"
 	"github.com/erwsim/android-telemetry/server/collector/internal/enroll"
 	"github.com/erwsim/android-telemetry/server/collector/internal/sim"
 )
@@ -26,8 +30,26 @@ func cmdSim(args []string) error {
 	seed := fl.Int64("seed", 0, "graine aléatoire (0 = dérivée de l'heure)")
 	batch := fl.Int("batch", 500, "taille maximale des lots (1 à 500)")
 	version := fl.String("agent-version", "1.0.0-sim", "agent_version annoncée")
+	cmdMode := fl.String("commands", "stream", "canal de commandes en mode continu : stream (flux permanent), poll (interrogation) ou off")
+	pollEvery := fl.Duration("poll-interval", time.Minute, "avec --commands poll : intervalle d'interrogation (1 à 15 min)")
+	cmdCode := fl.String("command-code", "", "code de commande de l'appareil simulé (12 caractères au moins) ; vide : commandes sensibles refusées (no_code_configured)")
+	allowWipe := fl.Bool("allow-wipe", false, "réglage « Autoriser l'effacement à distance » (éteint par défaut : wipe refusé avec disabled)")
+	clockSkew := fl.Duration("clock-skew", 0, "décalage de l'horloge du téléphone simulé (ex. 2h : commandes refusées avec expired)")
+	notifContent := fl.Bool("notification-content", true, "option « Contenu des notifications » de l'APK compagnon (titre et texte, codes masqués)")
+	fakeAG := fl.String("fake-adguard", "", "adresse d'écoute d'un faux AdGuard Home alimenté par les net.dns simulés (ex. 127.0.0.1:3001)")
+	fakeAGUser := fl.String("fake-adguard-user", "", "faux AdGuard Home : utilisateur (authentification de base ; vide : aucune)")
+	fakeAGPass := fl.String("fake-adguard-password", "", "faux AdGuard Home : mot de passe")
+	fakeAGClient := fl.String("fake-adguard-client", "", "faux AdGuard Home : ClientID des requêtes (défaut : nom de l'appareil)")
 	if err := fl.Parse(args); err != nil {
 		return err
+	}
+	switch *cmdMode {
+	case "stream", "poll", "off":
+	default:
+		return errors.New("--commands : stream, poll ou off")
+	}
+	if *pollEvery < time.Minute || *pollEvery > 15*time.Minute {
+		return errors.New("--poll-interval doit être entre 1m et 15m")
 	}
 	if *enrollPath == "" {
 		return errors.New("--enroll <fichier.vigie> est requis")
@@ -63,8 +85,35 @@ func cmdSim(args []string) error {
 	}
 	stats := &simStats{types: map[string]int{}}
 	start := now.Add(-*backfill)
-	g := sim.New(sim.Options{Start: start, Seed: s, Rate: *rate, AgentVersion: *version, SeqBase: now.UnixMilli(),
-		PrivateDNSHost: f.PrivateDNSHost, LateBatches: true})
+	opts := sim.Options{Start: start, Seed: s, Rate: *rate, AgentVersion: *version, SeqBase: now.UnixMilli(),
+		PrivateDNSHost: f.PrivateDNSHost, LateBatches: true, NotificationContent: *notifContent}
+	var fake *adguard.Fake
+	if *fakeAG != "" {
+		fake = adguard.NewFake(*fakeAGUser, *fakeAGPass)
+		client := *fakeAGClient
+		if client == "" {
+			client = clientIDFrom(f.DeviceName)
+		}
+		opts.OnDNS = func(ts time.Time, host string) { fake.AddQuery(ts, "203.0.113.25", client, host) }
+	}
+	g := sim.New(opts)
+	// The fake AdGuard Home starts listening once the history is in its query log: AdGuard Home never
+	// inserts old entries, and the collector does not read again what is older than its position.
+	startFake := func() error {
+		if fake == nil {
+			return nil
+		}
+		ln, err := net.Listen("tcp", *fakeAG)
+		if err != nil {
+			return fmt.Errorf("--fake-adguard : %w", err)
+		}
+		srv := &http.Server{Handler: fake, ReadHeaderTimeout: 10 * time.Second}
+		go func() { _ = srv.Serve(ln) }()
+		go func() { <-ctx.Done(); _ = srv.Close() }()
+		fmt.Fprintf(os.Stderr, "Faux AdGuard Home : http://%s (%d requêtes dans le journal) — VIGIE_ADGUARD_URL=http://%s\n",
+			ln.Addr(), fake.Len(), ln.Addr())
+		return nil
+	}
 
 	if *backfill > 0 {
 		g.PlanScenario(start, now)
@@ -96,18 +145,59 @@ func cmdSim(args []string) error {
 		g.PlanScenario(now, now.Add(time.Hour))
 	}
 
+	if err := startFake(); err != nil {
+		return err
+	}
+	inj := make(chan sim.Injection, 64)
+	if *cmdMode != "off" {
+		agent, err := sim.NewCommandAgent(client, sim.AgentOptions{DeviceID: f.DeviceID, Code: *cmdCode, AllowWipe: *allowWipe,
+			ClockSkew: *clockSkew, Log: os.Stderr}, inj)
+		if err != nil {
+			return err
+		}
+		if *cmdMode == "stream" {
+			go agent.RunStream(ctx)
+		} else {
+			go agent.RunPoll(ctx, *pollEvery)
+		}
+		fmt.Fprintf(os.Stderr, "Canal de commandes : %s (code de commande %s, effacement à distance %s)\n", *cmdMode,
+			map[bool]string{true: "défini", false: "non défini"}[*cmdCode != ""], map[bool]string{true: "autorisé", false: "refusé"}[*allowWipe])
+	}
 	fmt.Fprintf(os.Stderr, "Mode continu (envoi toutes les %s, Ctrl-C pour arrêter)…\n", *interval)
 	t := time.NewTicker(*interval)
 	defer t.Stop()
 	for {
+		to := time.Now().UTC()
 		select {
 		case <-ctx.Done():
 			fmt.Fprintln(os.Stderr)
 			stats.print()
 			return nil
 		case <-t.C:
+			to = time.Now().UTC()
+		case in := <-inj:
+			// Results and positions of commands are sent at once, like the agent does.
+			for {
+				if in.Locate {
+					g.Locate(in.At)
+				} else {
+					g.Inject(in.At, in.Type, in.Sev, in.Data)
+				}
+				if a := in.At.UTC().Add(time.Millisecond); a.After(to) {
+					to = a
+				}
+				select {
+				case in = <-inj:
+					continue
+				default:
+				}
+				break
+			}
+			if n := time.Now().UTC(); n.After(to) {
+				to = n
+			}
 		}
-		if err := sendAll(ctx, client, g.Advance(time.Now().UTC()), *batch, stats); err != nil {
+		if err := sendAll(ctx, client, g.Advance(to), *batch, stats); err != nil {
 			if errors.Is(err, context.Canceled) {
 				continue
 			}
@@ -155,4 +245,22 @@ func sendAll(ctx context.Context, c *sim.Client, evs []sim.Event, batch int, st 
 		evs = evs[n:]
 	}
 	return nil
+}
+
+// clientIDFrom derives an AdGuard ClientID ([a-z0-9-], 64 at most) from the device name.
+func clientIDFrom(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' {
+			b.WriteRune(r)
+		}
+	}
+	s := b.String()
+	if s == "" {
+		s = "telephone"
+	}
+	if len(s) > 64 {
+		s = s[:64]
+	}
+	return s
 }
