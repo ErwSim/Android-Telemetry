@@ -1,11 +1,12 @@
 # Console web Vigie
 
 Tableau de bord du propriétaire : position, réseau par application, pistage (ce qui est bloqué ou autorisé),
-commandes à distance, inventaire, posture de sécurité, événements et alertes Wazuh. React 19, TypeScript strict, Vite, MapLibre GL JS, uPlot, React Router.
+commandes à distance, inventaire et profil de risque des applications, détections de comportements anormaux,
+posture de sécurité, événements et alertes Wazuh. React 19, TypeScript strict, Vite, MapLibre GL JS, uPlot, React Router.
 Interface en français, thèmes clair et sombre. Aucune ressource externe au chargement, hors tuiles de carte.
 
 La console ne parle qu'à l'API `/api/console/*` du collecteur (contrat §6, §8 commandes, §9 pistage, §10
-notifications de `docs/contrat/contrat.md`).
+notifications, §11 risque, opérations et détections de `docs/contrat/contrat.md`).
 
 ## Développement
 
@@ -36,19 +37,33 @@ Le mock simule aussi (contrat §8-§10) :
 - **pistage** : décomptes dérivés des `net.dns`/`net.usage` générés, politique (niveau + règles manuelles) évaluée à l'heure de
   chaque requête (changer le niveau produit des domaines « mixtes »), motifs au format AdGuard, `PUT /tracking/override` avec
   `409` pour les domaines indispensables (`force`), `PUT /tracking/level`, et `{"adguard": false}` (vue DNS seule, `503` sur les `PUT`) ;
-- **notifications** : `app.notification` avec titre/texte (depuis J-3), contenu masqué (`redacted`), texte hostile et texte très long.
+- **notifications** : `app.notification` avec titre/texte (depuis J-3), contenu masqué (`redacted`), texte hostile et texte très long ;
+- **version 1.2** (`mock/scenario.ts`, `mock/detect.ts`, `mock/risk.ts`) : `GET /detections` (curseur, filtres `from`/`to`/`type`),
+  `GET /apps/risk`, `GET /apps/ops`, calculés à partir d'événements `detect.*`, `app.risk`, `app.ops`, `app.role` ajoutés aux données
+  générées (donc aussi visibles dans `/events` et sur `/stream`). Trois scénarios, choisis au démarrage par `--scenario` (ou
+  `MOCK_SCENARIO`) : **`mixed`** (défaut) : parc de 70 applications aux profils variés, les trois combinaisons `combo_*`, les huit types de
+  détection, un type inconnu, un texte hostile, `app.ops` présent, des changements de rôle dont un inquiétant ; **`healthy`** :
+  « téléphone sain », aucune détection, aucune application à risque élevé, `app.ops` absent ; **`fraud`** : « fraude au SMS », une
+  application hors boutique installée 40 h plus tôt envoie 1 984 SMS en deux jours civils (dont 1 790 en arrière-plan), contacte
+  trois domaines de menaces, se connecte à 214 adresses ; `app.ops` présent. Les formes des preuves et des réponses suivent le
+  collecteur (`server/collector/internal/detect`, `internal/server/detections.go`). Contrôles en plus :
+  `{"ops_mode": "normal"|"empty"|"404"}` (`app.ops` absent ou route inconnue), `{"more_detections": 70}` (pagination),
+  `{"emit_detection": {type, package, label, severity, evidence}}` (arrivée en direct) ; les changements de niveau ou de règle de
+  pistage produisent `tracking.level_changed` / `tracking.override` comme le collecteur.
 
 ## Build, tests, vérification
 
 ```sh
 npm run typecheck   # tsc strict (src + mock)
 npm run lint
-npm test            # vitest : formatage, agrégations, trous de trajet, posture, filtres, signature des commandes (vecteur §8), pistage…
+npm test            # vitest : formatage, agrégations, trous de trajet, posture, filtres, signature des commandes (vecteur §8), pistage,
+                    # codes de raison et types de détection (traductions, phrases, preuves, états vides), opérations, rôles…
 npm run build       # sortie statique dans dist/
 npm run verify      # parcours Chromium (Playwright global) contre le serveur factice servant dist/
 ```
 
-`npm run verify` démarre le serveur factice avec `--static dist` (qui applique la CSP ci-dessous et le repli SPA),
+`npm run verify` démarre le serveur factice avec `--static dist` (qui applique la CSP ci-dessous et le repli SPA ; une instance par
+scénario : `mixed` sur `PORT`, `healthy` sur `PORT+1`, `fraud` sur `PORT+2`, arrêtées par leur PID),
 parcourt chaque page en clair/sombre et en bureau/téléphone, et échoue sur toute erreur console, exception,
 violation CSP, statut HTTP inattendu ou requête hors hôte local et hors tuiles. Il rejoue aussi, contre le mock, les
 parcours de bout en bout : commandes simples et suivi en direct, annulation, verrouillage avec un mauvais code
@@ -56,13 +71,19 @@ parcours de bout en bout : commandes simples et suivi en direct, annulation, ver
 maintenant » (carte et trace en direct), pistage (filtres, Bloquer/Autoriser/Remettre par défaut, `409` puis `force`, niveau,
 `adguard: false`), notifications hostiles affichées comme texte, fournisseurs de position ; et **prouve que le code de
 commande ne quitte pas la page** (aucune requête, aucun journal console, aucun corps reçu par le serveur factice, aucun
-stockage, cookie ou champ ne le contient, ni en clair ni encodé). Captures dans `OUT` (défaut `verify-out/`). `TILES=real` laisse passer les vrais appels aux tuiles OSM (sinon une tuile synthétique est servie).
+stockage, cookie ou champ ne le contient, ni en clair ni encodé). Pour la version 1.2 il parcourt aussi (`ONLY=v12` pour ne rejouer que cela) : les huit types de détection et un type inconnu, filtres de
+type, de gravité et de période, pagination par curseur (70 détections de plus), arrivée en direct par le flux SSE (page Détections et
+résumé de la vue d'ensemble), texte hostile (nom d'application, domaine, motif) affiché comme du texte, profil de risque (tri par score,
+trois combinaisons, code inconnu), fiche d'application (ouverture directe et rechargement d'une URL dont le paquet contient des points),
+opérations sensibles présentes / vides / route absente, rôles, événements de pistage et détections dans le journal, validité de l'effacement
+(15 min, 24 h au plus), textes sur les limites de la signature, annulation d'une commande signée ; puis les scénarios « sain » et « fraude
+au SMS » dans les quatre configurations (clair/sombre, bureau/téléphone). Captures dans `OUT` (défaut `verify-out/`). `TILES=real` laisse passer les vrais appels aux tuiles OSM (sinon une tuile synthétique est servie).
 
 ### Contre le vrai collecteur
 
 `scripts/verify-real.cjs` rejoue dans Chromium les parcours commandes (simple, mauvais code puis bon code, annulation, position
 reçue), pistage, notifications et carte contre un collecteur réel (`REAL_URL`, `REAL_PASSWORD`, `REAL_CODE`), avec les mêmes
-contrôles (console, CSP, tiers, fuite du code). Prérequis : collecteur lancé avec `VIGIE_CONSOLE_DIR=$PWD/dist`, un appareil
+contrôles (console, CSP, tiers, fuite du code). Les parcours de la version 1.2 contre le vrai collecteur sont décrits plus bas. Prérequis : collecteur lancé avec `VIGIE_CONSOLE_DIR=$PWD/dist`, un appareil
 enrôlé et alimenté par `sim --command-code 'correct horse battery staple' --fake-adguard 127.0.0.1:3001 …` (agent de commandes et faux
 AdGuard Home du simulateur : voir `server/collector/README.md`). Avec AdGuard joignable, le script rejoue aussi le blocage
 d'un domaine, le `409` d'un domaine indispensable et un changement de niveau ; sans AdGuard, il contrôle le mode dégradé.
@@ -71,7 +92,8 @@ d'un domaine, le `409` d'un domaine indispensable et un changement de niveau ; s
 
 `dist/` est servi à la racine du même hôte que l'API (chemins absolus `/assets/…`, API en `/api/console/…`).
 Le serveur doit renvoyer `index.html` pour toute URL de page inconnue (routage côté client : `/carte`,
-`/evenements`, `/evenements/:id`, `/reseau`, `/pistage`, `/applications`, `/securite`, `/alertes`, `/commandes`, `/connexion`) mais un 404
+`/evenements`, `/evenements/:id`, `/reseau`, `/pistage`, `/detections`, `/applications`, `/applications/fiche`, `/securite`, `/alertes`,
+`/commandes`, `/connexion`) mais un 404
 pour un fichier absent (`/assets/…`). Les fichiers `.js` doivent être servis en `text/javascript` (le worker
 MapLibre est publié en `.js` pour cela).
 
@@ -114,11 +136,12 @@ base-uri 'none'; form-action 'self'; frame-ancestors 'none'
 ```
 index.html, public/            point d'entrée, config.json (tuiles), theme-init.js, favicon
 src/api/                       client HTTP, types du contrat, useApi, pagination par curseur, flux SSE
-src/lib/                       formatage fr, périodes, trous de trajet, géo, agrégations, posture, Google/Samsung,
+src/lib/                       formatage fr, périodes, trous de trajet, géo, agrégations, posture, Google/Samsung, détections, risque,
+                               opérations, rôles, gardes,
                                commandes (ULID, payload, signature WebCrypto), pistage, notifications, fournisseurs
 src/state/                     session, appareil sélectionné, thème, libellés d'applications
 src/components/                mise en page, carte (MapLibre), graphique (uPlot), tableaux, JSON, sélecteur de période
-src/pages/                     Login, Overview, MapPage, Events, Network, Tracking, Apps, Security, Alerts, Commands
+src/pages/                     Login, Overview, MapPage, Events, Network, Tracking, Detections, Apps, AppSheet, Security, Alerts, Commands
 mock/                          serveur factice (Node 22, TypeScript sans compilation) et générateur de données
 scripts/verify-browser.cjs     vérification navigateur
 ```
@@ -129,7 +152,7 @@ Choix : une **page dédiée** (et non la vue d'ensemble) car elle porte des gest
 qui se met à jour en direct) ; la vue d'ensemble n'affiche que l'état du canal et renvoie vers elle.
 
 - Le **navigateur** génère l'ULID, construit `payload` (JSON sérialisé **une seule fois** ; c'est cette chaîne exacte qui est
-  signée et envoyée), fixe la validité (1 h simple, 7 jours sensible par défaut, 30 jours au plus) et signe les commandes
+  signée et envoyée), fixe la validité (1 h simple ; verrouillage 7 jours par défaut et 30 au plus ; **effacement 15 min par défaut et 24 h au plus**, contrat §8) et signe les commandes
   sensibles : `K = PBKDF2-HMAC-SHA256(code, "vigie-cmd-v1:" + device_id, 600 000, 32 octets)` puis
   `sig = base64(HMAC-SHA256(K, UTF-8(payload)))`, par WebCrypto (`src/lib/commands.ts`). Le test `commands.test.ts` reproduit
   le vecteur du contrat §8 (K, payload reconstruit à l'identique, signature, accents en UTF-8).
@@ -171,6 +194,59 @@ qui se met à jour en direct) ; la vue d'ensemble n'affiche que l'état du canal
   `node scripts/command-vectors.ts <device_id>` les produit pour un appareil réel (essai croisé `CrossCommandsTest`).
 - « Localiser maintenant » : le flux SSE apporte le `location.fix` ; la carte de la page Commandes et la trace de la page Carte
   (« Suivi en direct ») se mettent à jour.
+
+## Détections, risque, opérations, rôles (version 1.2)
+
+Objectif : voir venir un logiciel malveillant (par exemple celui qui envoyait 2 000 SMS de hameçonnage par jour sans que rien ne se voie)
+**quel que soit son vecteur**. Contrat §11.
+
+**Où est quoi, et pourquoi.**
+
+- **Détections : page dédiée `/detections`** (deuxième entrée du menu), pas une refonte de la page Sécurité. *Sécurité* décrit l'état du
+  téléphone (posture, journal système, certificats) : des relevés, sans verdict. Une détection est un **verdict expliqué** (« l'application X a
+  fait Y, voici pourquoi c'est suspect, ce que ça peut être d'innocent, que faire ») : il lui faut de la place et une lecture en dix secondes,
+  que la table de la page Sécurité ne donne pas. *Alertes* reste la vue de **Wazuh** (règles et niveaux de Wazuh, tous sujets, absente si Wazuh
+  n'est pas configuré) : le collecteur exporte aussi les détections vers Wazuh, qui les y retrouve ; pour ne pas faire doublon, la page
+  Alertes le dit et renvoie vers Détections (lien « Voir la détection » sur les alertes de type `detect.*`), et Détections fonctionne sans Wazuh.
+- **Vue d'ensemble** : en tête, bandeau « Rien à signaler » (vert) ou nombre de détections des 7 derniers jours par gravité avec
+  l'application la plus préoccupante et les trois plus graves ; il se met à jour à l'arrivée d'une détection sur le flux SSE.
+- **Applications** : onglet **Risque** (premier onglet) = profil `app.risk` (tri par score, niveau, raisons traduites avec explication et
+  « souvent légitime parce que… », combinaisons `combo_*` en rouge et en tête, installateur et « hors boutique » ; un code inconnu est affiché
+  tel quel, marqué « code inconnu ») ; onglet **Opérations sensibles** = `app.ops`.
+- **Fiche d'application** `/applications/fiche?pkg=<paquet>` (depuis le risque, l'inventaire, les détections, les rôles) : profil et raisons, rôles
+  (`app.special_access.default_apps` et historique `app.role`), informations, détections de l'application (avec arrivée en direct),
+  permissions, opérations, domaines contactés, historique d'installation. **Le paquet est un paramètre de requête et non un segment de chemin** :
+  il contient des points, et le serveur répond 404 à un chemin dont la fin ressemble à une extension de fichier (contrat §6).
+- **Sécurité > Rôles par défaut** : rôles actuels et historique des changements (`app.role`).
+- **Journal** : `detect.*`, `app.risk`, `app.role`, `app.ops`, `tracking.level_changed` et `tracking.override` sont décrits en clair.
+
+**Chaque détection** montre : gravité (mots et couleur), type, application (nom et paquet), heure, **une phrase de ce qui a été observé** (construite
+à partir de la preuve, sinon le `summary` du collecteur), période, aperçu des preuves, puis (dépliable ; la première est ouverte) preuves complètes,
+pourquoi c'est suspect, explications innocentes, que faire, liens (fiche, domaines dans Pistage pré-filtrés, trafic dans Réseau, Caméra et micro) et rappel de la
+garde de l'application qui répond au risque. **Les gardes ne se règlent que sur le téléphone** : le texte le dit (le serveur ne commande jamais le
+téléphone). Filtres : type, gravité, période ; pagination par curseur (« Charger plus ») ; les nouvelles détections du flux SSE s'ajoutent en tête
+sans doublon (identifiant de l'événement serveur).
+
+**Honnêteté.** « Rien à signaler » n'est pas une garantie et le dit ; les détections sont des indices, pas des preuves. **`app.ops` est expérimental
+et peut être absent** : l'onglet affiche alors un état vide qui explique l'activation (permission `DUMP` accordée par ADB avec
+`grant-adb-permissions`, collecteur expérimental dans l'onglet Collecteurs de l'application) et rappelle que l'absence de données n'est pas une absence
+d'usage ; jamais un écran cassé (réponse vide, route 404 et erreur de réseau sont distinguées). Tout texte venu du téléphone ou du réseau est
+affiché comme du texte (`cleanText` : contrôles et marques bidirectionnelles retirés).
+
+**Lecture tolérante de l'API** (`src/lib/risk.ts`, `ops.ts`, `detections.ts`) : le contrat fixe les champs mais pas toute l'enveloppe ni les clés de
+`evidence`. `GET /apps/risk` : `{apps:[…]}` (ou tableau nu) ; `GET /apps/ops` : `{apps:[{package, ops:[{op,count,background_count,last_ts}]}]}` (format du
+collecteur) ou lignes à plat ; `GET /detections` : `{detections, next_cursor}`, gravité `severity` de 0 à 3 (ou `low`/`medium`/`high`/`critical`). Les clés de preuve lues sont
+celles de `internal/detect` du collecteur (`domain`/`requests`, `tx_bytes`/`median_bytes`, `addresses`, `ports`, `resolvers`/`providers`, `sent`/`background`/`reason`,
+`op`/`background_count`, `trigger`/`capability`/`reasons`…), avec des alias pour d'autres formes ; une preuve illisible retombe sur le `summary` du collecteur.
+
+**Écarts avec le contrat §11 (à y consigner)** : (1) l'enveloppe de `/apps/risk` et `/apps/ops` et les clés de `evidence` de chaque type ne sont pas
+spécifiées ; (2) `GET /detections` n'a pas de filtre `package` : la fiche d'application le transmet (ignoré par le contrat) et filtre côté client,
+en enchaînant jusqu'à 6 pages ; un filtre serveur éviterait ce balayage ; (3) `window_from`/`window_to` sont décrits comme portés par chaque détection mais absents de la
+liste des champs de l'API (le collecteur les renvoie : lus s'ils sont là, sinon « détectée le … ») ; (4) l'échelle de `severity` (0 à 3 comme `sev`) n'est pas écrite ;
+(5) le niveau de `app.risk` n'a pas de seuils publiés (repli sur le score : < 35 faible, < 65 moyen, sinon élevé, si le niveau est absent ou inconnu) ;
+(6) le nom du collecteur `app.ops` dans `agent.heartbeat.collectors` n'est pas fixé (la console cherche une clé contenant « ops ») ; (7) `tracking.level_changed.changes`
+n'a pas de type fixé (nombre ou liste : les deux sont lus) ; (8) `/detections` renvoie une détection par domaine de menace et par jour : la phrase « a tenté de joindre
+3 domaines » n'existe que pour une preuve groupée (`domains`).
 
 ## Pistage (page « Pistage »)
 

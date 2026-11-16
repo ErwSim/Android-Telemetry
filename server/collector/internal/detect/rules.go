@@ -424,31 +424,38 @@ func opsOf(uses []store.OpUse) map[string]map[string]store.OpUse {
 	return out
 }
 
-// SMSAbuse: according to app.ops, an application other than the default SMS app sent SMS (at least
-// SMSOtherMin in the day; system applications excepted, and only when the SMS app is known), or any
-// application sent more than SMSDailyMax SMS in the day. Silent without app.ops.
+// SMSAbuse: according to app.ops, an application other than the default SMS app sent SMS or tried to (at
+// least SMSOtherMin attempts in the day, refused ones included: an application stopped by the SMS guard is
+// as telling as one that succeeds; system applications excepted, and only when the SMS app is known), or any
+// application attempted more than SMSDailyMax SMS in the day. The counters of app.ops are lower bounds.
+// Silent without app.ops.
 func SMSAbuse(in OpsInput, t Thresholds) []Finding {
 	ops := opsOf(in.Uses)
 	var out []Finding
 	for _, pkg := range sortedKeys(ops) {
 		sent, ok := ops[pkg]["send_sms"]
-		if !ok || sent.Count <= 0 {
+		attempts := sent.Count + sent.Rejected
+		if !ok || attempts <= 0 {
 			continue
 		}
 		other := in.SMSApps != nil && !in.SMSApps[pkg] && !in.System[pkg]
+		refused := ""
+		if sent.Rejected > 0 {
+			refused = fmt.Sprintf(", %d refusés par le système", sent.Rejected)
+		}
 		var reason, summary string
 		switch {
-		case other && sent.Count >= t.SMSOtherMin:
+		case other && attempts >= t.SMSOtherMin:
 			reason = "not_default_sms_app"
-			summary = fmt.Sprintf("%s, qui n'est pas l'application SMS par défaut, a envoyé %d SMS dans la journée (dont %d en arrière-plan)",
-				in.Labels.of(pkg), sent.Count, sent.Background)
-		case sent.Count > t.SMSDailyMax:
+			summary = fmt.Sprintf("%s, qui n'est pas l'application SMS par défaut, a envoyé ou tenté d'envoyer %d SMS dans la journée (%d envoyés dont %d en arrière-plan%s)",
+				in.Labels.of(pkg), attempts, sent.Count, sent.Background, refused)
+		case attempts > t.SMSDailyMax:
 			reason = "volume"
-			summary = fmt.Sprintf("%s a envoyé %d SMS dans la journée (seuil %d)", in.Labels.of(pkg), sent.Count, t.SMSDailyMax)
+			summary = fmt.Sprintf("%s a envoyé ou tenté d'envoyer %d SMS dans la journée (seuil %d%s)", in.Labels.of(pkg), attempts, t.SMSDailyMax, refused)
 		default:
 			continue
 		}
-		ev := map[string]any{"reason": reason, "sent": sent.Count, "background": sent.Background}
+		ev := map[string]any{"reason": reason, "sent": sent.Count, "background": sent.Background, "rejected": sent.Rejected}
 		if rc, ok := ops[pkg]["read_contacts"]; ok && rc.Count > 0 {
 			ev["read_contacts"] = rc.Count
 		}

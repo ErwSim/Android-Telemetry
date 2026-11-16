@@ -473,6 +473,25 @@ WHERE hour_ms >= (SELECT COALESCE(MAX(hour_ms), 0) FROM event_counts) - 17280000
 		'app.special_access', 'app.role')
 GROUP BY device_id, hour_ms;
 `,
+	// 7: app.ops carries rejected_count (contract §11.2: accesses refused by the system, e.g. by a guard of the
+	// agent): ops_counts keeps it, rebuilt from the events like in migration 6.
+	`
+ALTER TABLE ops_counts ADD COLUMN rej_count INTEGER NOT NULL DEFAULT 0;
+DELETE FROM ops_counts;
+INSERT INTO ops_counts(device_id, hour_ms, package, op, count, bg_count, rej_count, last_ms)
+SELECT device_id, h, pkg, op, min(SUM(c), 9007199254740991), min(SUM(b), 9007199254740991), min(SUM(r), 9007199254740991), MAX(l) FROM (
+	SELECT e.device_id, e.ts_ms - (e.ts_ms % 3600000) AS h,
+		substr(json_extract(a.value, '$.package'), 1, 255) AS pkg, substr(json_extract(a.value, '$.op'), 1, 32) AS op,
+		min(max(COALESCE(CASE WHEN json_type(a.value, '$.count') = 'integer' THEN json_extract(a.value, '$.count') END, 0), 0), 1000000000) AS c,
+		min(max(COALESCE(CASE WHEN json_type(a.value, '$.background_count') = 'integer' THEN json_extract(a.value, '$.background_count') END, 0), 0), 1000000000) AS b,
+		min(max(COALESCE(CASE WHEN json_type(a.value, '$.rejected_count') = 'integer' THEN json_extract(a.value, '$.rejected_count') END, 0), 0), 1000000000) AS r,
+		CASE WHEN json_type(a.value, '$.last_ts') = 'text' THEN CAST((julianday(json_extract(a.value, '$.last_ts')) - 2440587.5) * 86400000 AS INTEGER) END AS l
+	FROM devices d JOIN events e INDEXED BY events_dev_type_ts ON e.device_id = d.device_id AND e.type = 'app.ops',
+		json_each(e.data, '$.apps') a
+	WHERE a.type = 'object' AND json_type(a.value, '$.package') = 'text' AND json_extract(a.value, '$.package') <> ''
+		AND json_type(a.value, '$.op') = 'text' AND json_extract(a.value, '$.op') <> '')
+GROUP BY device_id, h, pkg, op;
+`,
 }
 
 // SchemaVersion is the schema version this binary expects.

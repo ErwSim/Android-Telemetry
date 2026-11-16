@@ -58,7 +58,7 @@ class ContractConformanceTest {
         assertEquals(
             listOf(
                 "heartbeat", "device", "usb", "location", "connectivity", "wifi", "wifi_scan", "hotspot", "nfc", "cell", "bluetooth",
-                "ble_tracker", "net_usage", "apps", "special_access", "foreground", "notifications", "camera", "microphone",
+                "ble_tracker", "net_usage", "apps", "special_access", "app_risk", "app_role", "app_ops", "foreground", "notifications", "camera", "microphone",
                 "security_log", "network_log", "posture",
             ),
             ids,
@@ -85,6 +85,7 @@ class ContractConformanceTest {
             // Not Device Owner on the JVM: the three :policy collectors wait for the role.
             listOf("security_log", "network_log").forEach { assertEquals(it, "unavailable", states[it]) }
             assertEquals("disabled", states["wifi_scan"]) // opt-in
+            assertEquals("disabled", states["app_ops"]) // experimental, opt-in
             // Whatever ran on the JVM (heartbeat, inventory, storage, errors…) follows the contract.
             h.events.forEach { Contract.check(it.type, it.data) }
         }

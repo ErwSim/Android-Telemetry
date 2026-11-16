@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -36,6 +37,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.erwsim.vigie.R
+import io.github.erwsim.vigie.collectors.risk.PackageManagerFactsSource
+import io.github.erwsim.vigie.collectors.risk.RiskAssessment
+import io.github.erwsim.vigie.collectors.risk.RiskLevel
+import io.github.erwsim.vigie.collectors.risk.RiskScorer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import io.github.erwsim.vigie.core.Agent
 import io.github.erwsim.vigie.policy.PolicyModule
 import io.github.erwsim.vigie.policy.engine.CapabilityGuards
@@ -88,7 +95,7 @@ fun GuardCard(agent: Agent, key: GuardKey, state: PolicyUiState, controller: Pol
             Text(stringResource(R.string.guard_apps_count, status.packages.count { r -> r.permissions.any { it.applied } }), style = MaterialTheme.typography.bodySmall)
         }
         if (active && status.permitted != null) {
-            Text(stringResource(R.string.guard_permitted, status.permitted!!.joinToString().ifEmpty { stringResource(R.string.guard_preview_system_only) }), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.guard_permitted, status.permitted.orEmpty().joinToString().ifEmpty { stringResource(R.string.guard_preview_system_only) }), style = MaterialTheme.typography.bodySmall)
         }
         val failures = status?.packages.orEmpty().flatMap { r -> r.permissions.filter { !it.applied }.map { "${r.target} (${CapabilityGuards.short(it.permission)})" } }
         if (failures.isNotEmpty()) Text(stringResource(R.string.guard_failures, failures.joinToString()), color = toneColor(Tone.ERROR), style = MaterialTheme.typography.bodySmall)
@@ -187,7 +194,35 @@ fun GuardPreviewDialog(preview: GuardPreview, onDismiss: () -> Unit, onApply: ()
     )
 }
 
-/** "Applications en quarantaine": what is denied to each, and "Libérer". */
+/**
+ * Risk profile of an app (same scoring as `app.risk`, contract §11.2), computed on the phone: helps the owner
+ * decide whether to release it. Nothing is shown if the facts cannot be read.
+ */
+@Composable
+private fun RiskSummary(pkg: String) {
+    val context = LocalContext.current
+    val assessment by produceState<RiskAssessment?>(null, pkg) {
+        value = withContext(Dispatchers.IO) {
+            try {
+                PackageManagerFactsSource.read(context, pkg)?.let(RiskScorer::score)
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+    val a = assessment ?: return
+    val (level, tone) = when (a.level) {
+        RiskLevel.LOW -> R.string.quarantine_risk_low to Tone.NEUTRAL
+        RiskLevel.MEDIUM -> R.string.quarantine_risk_medium to Tone.WARN
+        RiskLevel.HIGH -> R.string.quarantine_risk_high to Tone.ERROR
+    }
+    Text(stringResource(R.string.quarantine_risk, stringResource(level), a.score), color = toneColor(tone), style = MaterialTheme.typography.bodyMedium)
+    a.reasons.forEach { reason ->
+        Text("• ${stringResource(reason.labelRes)} : ${stringResource(reason.descRes)}", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+/** "Applications en quarantaine": what is denied to each, its risk profile, and "Libérer". */
 @Composable
 fun QuarantineScreen(agent: Agent, resumeTick: Int, modifier: Modifier) {
     val controller = remember { PolicyModule.controller(agent) }
@@ -217,6 +252,7 @@ fun QuarantineScreen(agent: Agent, resumeTick: Int, modifier: Modifier) {
                     ).joinToString("\n"),
                 )
                 r.lastError?.let { Text(stringResource(R.string.policy_item_error, it), color = toneColor(Tone.ERROR), style = MaterialTheme.typography.bodySmall) }
+                RiskSummary(r.target)
                 Button(enabled = !state.busy, onClick = { confirm = r.target }) { Text(stringResource(R.string.quarantine_release)) }
             }
         }

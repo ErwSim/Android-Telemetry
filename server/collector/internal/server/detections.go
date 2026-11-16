@@ -141,6 +141,7 @@ type appOps struct {
 	Label      string      `json:"label,omitempty"`
 	Count      int64       `json:"count"`
 	Background int64       `json:"background_count"`
+	Rejected   int64       `json:"rejected_count"`
 	LastTS     string      `json:"last_ts,omitempty"`
 	Ops        []opsDetail `json:"ops"`
 	last       int64
@@ -150,6 +151,7 @@ type opsDetail struct {
 	Op         string `json:"op"`
 	Count      int64  `json:"count"`
 	Background int64  `json:"background_count"`
+	Rejected   int64  `json:"rejected_count"`
 	LastTS     string `json:"last_ts,omitempty"`
 }
 
@@ -185,13 +187,14 @@ func (s *Server) handleAppsOps(w http.ResponseWriter, r *http.Request) {
 			a = &appOps{Package: u.Package, Label: labels[u.Package], Ops: []opsDetail{}}
 			byPkg[u.Package] = a
 		}
-		d := opsDetail{Op: u.Op, Count: u.Count, Background: u.Background}
+		d := opsDetail{Op: u.Op, Count: u.Count, Background: u.Background, Rejected: u.Rejected}
 		if u.LastMS > 0 {
 			d.LastTS = model.FormatMS(u.LastMS)
 		}
 		a.Ops = append(a.Ops, d)
 		a.Count += u.Count
 		a.Background += u.Background
+		a.Rejected += u.Rejected
 		if u.LastMS > a.last {
 			a.last, a.LastTS = u.LastMS, d.LastTS
 		}

@@ -57,7 +57,7 @@ type opsKey struct {
 	pkg, op string
 }
 
-type opsVal struct{ count, bg, last int64 }
+type opsVal struct{ count, bg, rej, last int64 }
 
 // maxOpCount bounds one count of app.ops (a hostile value can neither wrap around nor dominate).
 const maxOpCount = 1_000_000_000
@@ -77,6 +77,7 @@ func addOps(acc map[opsKey]*opsVal, hour int64, d map[string]any) {
 		}
 		c, _ := model.Int(m, "count")
 		b, _ := model.Int(m, "background_count")
+		r, _ := model.Int(m, "rejected_count")
 		k := opsKey{hour: hour, pkg: clip(p, maxKeyLen), op: clip(op, 32)}
 		v := acc[k]
 		if v == nil {
@@ -85,6 +86,7 @@ func addOps(acc map[opsKey]*opsVal, hour int64, d map[string]any) {
 		}
 		v.count = min(v.count+min(max(c, 0), maxOpCount), maxCountedBytes)
 		v.bg = min(v.bg+min(max(b, 0), maxOpCount), maxCountedBytes)
+		v.rej = min(v.rej+min(max(r, 0), maxOpCount), maxCountedBytes)
 		if s, ok := model.Str(m, "last_ts"); ok {
 			if t, err := time.Parse(time.RFC3339Nano, s); err == nil && t.UnixMilli() > v.last {
 				v.last = t.UnixMilli()
@@ -99,11 +101,11 @@ func writeDetectInputs(ctx context.Context, tx *sql.Tx, deviceID string, ops map
 		if v.last > 0 {
 			last = v.last
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO ops_counts(device_id, hour_ms, package, op, count, bg_count, last_ms) VALUES(?,?,?,?,?,?,?)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO ops_counts(device_id, hour_ms, package, op, count, bg_count, rej_count, last_ms) VALUES(?,?,?,?,?,?,?,?)
 			ON CONFLICT(device_id, hour_ms, package, op) DO UPDATE SET count = min(count + excluded.count, 9007199254740991),
-			bg_count = min(bg_count + excluded.bg_count, 9007199254740991),
+			bg_count = min(bg_count + excluded.bg_count, 9007199254740991), rej_count = min(rej_count + excluded.rej_count, 9007199254740991),
 			last_ms = CASE WHEN last_ms IS NULL OR excluded.last_ms > last_ms THEN excluded.last_ms ELSE last_ms END`,
-			deviceID, k.hour, k.pkg, k.op, v.count, v.bg, last); err != nil {
+			deviceID, k.hour, k.pkg, k.op, v.count, v.bg, v.rej, last); err != nil {
 			return err
 		}
 	}
@@ -425,17 +427,18 @@ type OpUse struct {
 	Op         string `json:"op"`
 	Count      int64  `json:"count"`
 	Background int64  `json:"background_count"`
+	Rejected   int64  `json:"rejected_count"`
 	LastMS     int64  `json:"-"`
 }
 
 // OpsUses returns app.ops per application and operation over the hours in [fromMS, toMS) (all devices when
 // deviceID is empty).
 func (s *Store) OpsUses(ctx context.Context, deviceID string, fromMS, toMS int64) ([]OpUse, error) {
-	q := `SELECT package, op, min(TOTAL(count), 9007199254740991), min(TOTAL(bg_count), 9007199254740991), COALESCE(MAX(last_ms), 0)
+	q := `SELECT package, op, min(TOTAL(count), 9007199254740991), min(TOTAL(bg_count), 9007199254740991), min(TOTAL(rej_count), 9007199254740991), COALESCE(MAX(last_ms), 0)
 		FROM ops_counts WHERE hour_ms >= ? AND hour_ms < ?`
 	args := []any{fromMS, toMS}
 	if deviceID != "" {
-		q = `SELECT package, op, min(TOTAL(count), 9007199254740991), min(TOTAL(bg_count), 9007199254740991), COALESCE(MAX(last_ms), 0)
+		q = `SELECT package, op, min(TOTAL(count), 9007199254740991), min(TOTAL(bg_count), 9007199254740991), min(TOTAL(rej_count), 9007199254740991), COALESCE(MAX(last_ms), 0)
 		FROM ops_counts WHERE device_id = ? AND hour_ms >= ? AND hour_ms < ?`
 		args = []any{deviceID, fromMS, toMS}
 	}
@@ -447,11 +450,11 @@ func (s *Store) OpsUses(ctx context.Context, deviceID string, fromMS, toMS int64
 	var out []OpUse
 	for rows.Next() {
 		var u OpUse
-		var c, b float64
-		if err := rows.Scan(&u.Package, &u.Op, &c, &b, &u.LastMS); err != nil {
+		var c, b, r float64
+		if err := rows.Scan(&u.Package, &u.Op, &c, &b, &r, &u.LastMS); err != nil {
 			return nil, err
 		}
-		u.Count, u.Background = int64(c), int64(b)
+		u.Count, u.Background, u.Rejected = int64(c), int64(b), int64(r)
 		out = append(out, u)
 	}
 	return out, rows.Err()

@@ -229,6 +229,12 @@ func TestSMSAbuse(t *testing.T) {
 	none(t, SMSAbuse(OpsInput{DayMS: day, Uses: under, SMSApps: sms, System: system}, th), "default app at the daily maximum")
 	under[0].Count++
 	one(t, SMSAbuse(OpsInput{DayMS: day, Uses: under, SMSApps: sms, System: system}, th), TypeSMSAbuse, "com.samsung.android.messaging")
+	// Refused attempts count: an application stopped by the SMS guard is reported all the same.
+	f = one(t, SMSAbuse(OpsInput{DayMS: day, Uses: []store.OpUse{{Package: "com.flashlight.pro", Op: "send_sms", Rejected: 500}}, SMSApps: sms}, th),
+		TypeSMSAbuse, "com.flashlight.pro")
+	if f.Evidence["rejected"] != int64(500) || f.Evidence["sent"] != int64(0) || !strings.Contains(f.Summary, "500 refusés") {
+		t.Fatalf("rejected %+v", f)
+	}
 	th.SMSOtherMin = 2
 	none(t, SMSAbuse(OpsInput{DayMS: day, Uses: []store.OpUse{{Package: "com.x", Op: "send_sms", Count: 1}}, SMSApps: sms}, th), "1 SMS under 2")
 	none(t, SMSAbuse(OpsInput{DayMS: day}, th), "no app.ops")

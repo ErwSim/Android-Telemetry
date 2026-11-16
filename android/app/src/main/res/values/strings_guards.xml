@@ -71,6 +71,10 @@
     <string name="quarantine_release">Libérer</string>
     <string name="quarantine_release_confirm">Libérer « %1$s » ? Elle pourra de nouveau vous demander : %2$s.</string>
     <string name="quarantine_absent">désinstallée</string>
+    <string name="quarantine_risk">Profil de risque : %1$s (%2$d/100)</string>
+    <string name="quarantine_risk_low">faible</string>
+    <string name="quarantine_risk_medium">moyen</string>
+    <string name="quarantine_risk_high">élevé</string>
     <string name="quarantine_off">La garde Quarantaine est éteinte : activez-la dans Politique › Gardes.</string>
 
     <string name="guard_channel_name">Gardes</string>

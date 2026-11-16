@@ -31,11 +31,11 @@ const (
 // ScenarioInfo describes the scenarios for the command line help.
 var ScenarioInfo = []struct{ Name, Desc string }{
 	{ScenarioHealthy, "téléphone sain (par défaut) : aucune détection attendue avec les seuils par défaut"},
-	{ScenarioSMSFraud, "fraude au SMS : appli sans icône installée hors store, permission d'envoi, ~2000 SMS par jour, contacts lus, panneau de commande bloqué"},
+	{ScenarioSMSFraud, "fraude au SMS : appli sans icône installée hors store, permission d'envoi, ~2000 SMS par jour, contacts lus, panneau de commande bloqué ; garde SMS activée au bout de 24 h (envois refusés)"},
 	{ScenarioBanking, "cheval de Troie bancaire : accessibilité + superposition + lecture des notifications, serveurs de commande bloqués par la liste de menaces"},
 	{ScenarioProxy, "relais réseau (proxy résidentiel) : centaines d'adresses par heure la nuit, écran éteint"},
 	{ScenarioSpam, "spam par e-mail : connexions aux ports 25 et 587 d'une appli qui n'est pas un client de messagerie"},
-	{ScenarioExfil, "exfiltration : envoi de plusieurs Gio en une heure, la nuit"},
+	{ScenarioExfil, "exfiltration : envoi de plus de 3 Gio en une heure par une appli de galerie"},
 	{ScenarioDNSBypass, "contournement du DNS : appli qui interroge Cloudflare et Google en DoH/DoT"},
 	{ScenarioSpy, "logiciel espion : micro et caméra en arrière-plan, administrateur de l'appareil"},
 	{ScenarioAll, "tous les scénarios d'attaque à la fois"},
@@ -72,7 +72,7 @@ func ParseScenarios(v string) ([]string, error) {
 }
 
 // opAcc accumulates the app.ops of the current hour.
-type opAcc struct{ count, bg int64 }
+type opAcc struct{ count, bg, rej int64 }
 
 type opKey struct{ pkg, op string }
 
@@ -136,10 +136,10 @@ func riskOf(a *app) map[string]any {
 	level := "low"
 	switch {
 	case a.system || a.pkg == "io.github.erwsim.vigie":
-		score = min(score, 30)
-	case score >= 65:
+		score = min(score, 29) // capped at low, reasons kept (contract §11.2)
+	case score >= 60:
 		level = "high"
-	case score >= 35:
+	case score >= 30:
 		level = "medium"
 	}
 	return map[string]any{"package": a.pkg, "label": a.label, "version_code": a.code, "installer": a.installer, "from_store": fromStore,
@@ -164,14 +164,11 @@ func riskSev(level string) int {
 	return 0
 }
 
-// fleetStart emits what the agent reports at its first start: the default applications (app.role) and the
-// risk profile of every installed application (app.risk).
+// fleetStart emits what the agent reports at its first start: the risk profile of every installed
+// application (app.risk). The default applications are not reported then (app.role: the first reading is
+// the reference, without event); the collector knows them from app.special_access (default_apps).
 func (g *Generator) fleetStart(t time.Time) {
 	t = t.Add(4 * time.Second)
-	for i, r := range [][2]string{{"sms", "com.samsung.android.messaging"}, {"dialer", "com.samsung.android.dialer"},
-		{"browser", "com.android.chrome"}, {"assistant", "com.google.android.googlequicksearchbox"}, {"home", "com.sec.android.app.launcher"}} {
-		g.emitS(t.Add(time.Duration(i)*10*time.Millisecond), "app.role", 0, map[string]any{"role": r[0], "new": r[1]})
-	}
 	for i := range apps {
 		d := riskOf(&apps[i])
 		g.emitS(t.Add(time.Duration(100+i*20)*time.Millisecond), "app.risk", riskSev(d["level"].(string)), d)
@@ -183,8 +180,11 @@ func (g *Generator) riskFor(t time.Time, d map[string]any) {
 	g.emitS(t.Add(800*time.Millisecond), "app.risk", riskSev(d["level"].(string)), d)
 }
 
-func (g *Generator) op(pkg, op string, count, bg int64) {
-	if !g.appOps || count <= 0 {
+func (g *Generator) op(pkg, op string, count, bg int64) { g.opRej(pkg, op, count, bg, 0) }
+
+// opRej records uses of an operation, rej of them refused by the system (a guard of the agent).
+func (g *Generator) opRej(pkg, op string, count, bg, rej int64) {
+	if !g.appOps || count+rej <= 0 {
 		return
 	}
 	k := opKey{pkg, op}
@@ -195,6 +195,7 @@ func (g *Generator) op(pkg, op string, count, bg int64) {
 	}
 	a.count += count
 	a.bg += min(bg, count)
+	a.rej += rej
 }
 
 func (g *Generator) spoisson(lambda float64) int64 {
@@ -266,7 +267,8 @@ func (g *Generator) emitOps(from, to time.Time) {
 	for _, k := range keys {
 		a := g.ops[k]
 		last := from.Add(time.Duration(g.srng.Int63n(int64(to.Sub(from))))).UTC().Format("2006-01-02T15:04:05.000Z07:00")
-		list = append(list, map[string]any{"package": k.pkg, "op": k.op, "count": a.count, "background_count": a.bg, "last_ts": last})
+		list = append(list, map[string]any{"package": k.pkg, "op": k.op, "count": a.count, "background_count": a.bg,
+			"rejected_count": a.rej, "last_ts": last})
 	}
 	g.ops = map[opKey]*opAcc{}
 	if len(list) == 0 {
@@ -399,9 +401,9 @@ func attackRisk(a *attack) map[string]any {
 	}
 	level := "low"
 	switch {
-	case score >= 65:
+	case score >= 60:
 		level = "high"
-	case score >= 35:
+	case score >= 30:
 		level = "medium"
 	}
 	return map[string]any{"package": a.pkg, "label": a.label, "version_code": 7, "installer": a.installer,
@@ -430,6 +432,9 @@ func specialAccess(extra map[string][]string) map[string]any {
 	return out
 }
 
+// smsGuardAfter is when the owner turns the SMS guard on in the SMS fraud scenario.
+const smsGuardAfter = 24 * time.Hour
+
 // attackStart emits the installation of an attack application and what follows within minutes.
 func (g *Generator) attackStart(a *attack) {
 	t := a.start
@@ -449,6 +454,12 @@ func (g *Generator) attackStart(a *attack) {
 	case ScenarioSMSFraud:
 		perm(3*time.Minute, "SEND_SMS")
 		perm(3*time.Minute+2*time.Second, "READ_CONTACTS")
+		// A day later the owner turns the SMS guard on (contract §11.1): the attempts go on, refused.
+		g.later(t.Add(smsGuardAfter), func(at time.Time) {
+			g.emitS(at, "security.policy", 0, map[string]any{"action": "guard_enabled", "target": "sms", "profile": "guard:sms", "ok": true})
+			g.emitS(at.Add(200*time.Millisecond), "security.policy", 1, map[string]any{"action": "permission_denied", "target": a.pkg,
+				"permission": "android.permission.SEND_SMS", "profile": "guard:sms", "ok": true})
+		})
 	case ScenarioBanking:
 		perm(2*time.Minute, "RECEIVE_SMS")
 		g.emitS(t.Add(6*time.Minute), "app.special_access", 0, specialAccess(map[string][]string{
@@ -485,7 +496,11 @@ func (g *Generator) attackHour(a *attack, h time.Time) {
 	switch a.name {
 	case ScenarioSMSFraud:
 		n := g.spoisson(85 * frac) // ~2000 per day, around the clock
-		g.op(a.pkg, "send_sms", n, n)
+		if h.Before(a.start.Add(smsGuardAfter)) {
+			g.op(a.pkg, "send_sms", n, n)
+		} else {
+			g.opRej(a.pkg, "send_sms", 0, 0, n) // refused by the SMS guard
+		}
 		g.op(a.pkg, "read_contacts", 1, 1)
 		g.op(a.pkg, "receive_sms", g.spoisson(2*frac), g.spoisson(2*frac))
 		for range g.spoisson(3 * frac) {

@@ -888,7 +888,14 @@ async function runV12(browser) {
   const roles = await page.textContent('[data-testid=roles-table]');
   if (!roles.includes('Navigateur') || !roles.includes('Assistant') || !roles.includes("Filtrage d'appels") || !roles.includes('com.fastcleaner.pro')) fail('rôles par défaut : historique incomplet'); else ok("sécurité : historique des changements de rôle par défaut (dont un filtrage d'appels inquiétant)");
 
-  // ---- Journal : événements de pistage lisibles
+  // ---- Journal : événements de pistage lisibles (changements faits depuis la console, comme le ferait la page Pistage)
+  await page.evaluate(async () => {
+    const put = (path, body) => fetch(`/api/console/tracking/${path}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'vigie' }, body: JSON.stringify(body) });
+    await put('level', { level: 'strict' });
+    await put('override', { domain: 'www.leboncoin.fr', action: 'block' });
+    await put('override', { domain: 'www.leboncoin.fr', action: 'default' });
+    await put('level', { level: 'equilibre' });
+  });
   await page.goto(`${BASE}/evenements`, { waitUntil: 'load' });
   await settle(page, '.tbl');
   await page.click('button.seg-btn:has-text("7 jours")');

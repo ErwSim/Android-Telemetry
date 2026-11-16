@@ -20,6 +20,13 @@ import io.github.erwsim.vigie.collectors.network.NetworkUsageCollector
 import io.github.erwsim.vigie.collectors.network.WifiCollector
 import io.github.erwsim.vigie.collectors.network.WifiScanCollector
 import io.github.erwsim.vigie.collectors.notifications.NotificationEvents
+import io.github.erwsim.vigie.collectors.ops.AppOpsLogic
+import io.github.erwsim.vigie.collectors.ops.OpUsage
+import io.github.erwsim.vigie.collectors.risk.AppFacts
+import io.github.erwsim.vigie.collectors.risk.RiskLogic
+import io.github.erwsim.vigie.collectors.risk.RiskScorer
+import io.github.erwsim.vigie.collectors.roles.RoleChange
+import io.github.erwsim.vigie.collectors.roles.RoleLogic
 import io.github.erwsim.vigie.collectors.sensors.CameraCollector
 import io.github.erwsim.vigie.collectors.sensors.MicState
 import io.github.erwsim.vigie.collectors.sensors.MicrophoneCollector
@@ -129,6 +136,19 @@ class ApkSamples(private val all: List<Collector>, private val t0: Long = 1_763_
                 SpecialAccessSnapshot(listOf("com.bank/.A11y"), null, listOf("io.github.erwsim.vigie/.policy.VigieAdminReceiver"), emptyList(), listOf("org.fdroid.fdroid"), listOf("io.github.erwsim.vigie"), listOf("com.wireguard.android"), mapOf("browser" to "org.mozilla.firefox")).writeTo(this)
             },
         )
+        // Risk profile, default-app change and per-app usage (contract §11.2): same public builders as the collectors.
+        val risky = AppFacts(
+            "org.fake.pdf", label = "Lecteur PDF", versionCode = 3, installer = null,
+            requested = setOf("android.permission.SYSTEM_ALERT_WINDOW"), accessibilityService = true, notificationListener = true,
+        )
+        val riskyScore = RiskScorer.score(risky)
+        sample("app_risk", "app.risk", RiskLogic.data(risky, riskyScore), RiskLogic.severity(riskyScore.level))
+        val clean = AppFacts("org.example", label = "Exemple", versionCode = 12, installer = "com.android.vending")
+        sample("app_risk", "app.risk", RiskLogic.data(clean, RiskScorer.score(clean)))
+        val roleChange = RoleChange("sms", "com.samsung.android.messaging", "org.fake.fastsms")
+        sample("app_role", "app.role", RoleLogic.data(roleChange), RoleLogic.severity(roleChange))
+        AppOpsLogic.events(t0 - 3_600_000L, t0, listOf(OpUsage("org.fake.fastsms", "send_sms", 2000, 2000, t0 - 120_000L), OpUsage("org.example", "camera", 3, 0, null)))
+            .forEach { sample("app_ops", "app.ops", it) }
         sample("foreground", "app.foreground", ForegroundAppCollector.data(ForegroundTracker.Change("resumed", "org.maps", "org.maps.Main")), originTsMs = t0 - 90_000)
         sample("camera", "sensor.camera", CameraCollector.data("0", true, ScreenState(true, false), "org.cam"))
         sample("microphone", "sensor.microphone", MicrophoneCollector.data(MicState(true, "mic", false), ScreenState(false, true), null), Severity.NOTABLE)

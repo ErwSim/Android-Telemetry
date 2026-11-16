@@ -52,7 +52,7 @@ func dump(t *testing.T, st *Store, q string) []string {
 	return out
 }
 
-// The aggregates of migration 6 (ops_counts, app_latest) are those of the ingestion; the hours of the
+// The aggregates of migrations 6 and 7 (ops_counts, app_latest) are those of the ingestion; the hours of the
 // detection inputs are marked to be evaluated, late batches included.
 func TestMigration6DetectionAggregates(t *testing.T) {
 	ctx := context.Background()
@@ -67,7 +67,7 @@ func TestMigration6DetectionAggregates(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Hour).Add(-time.Hour)
 	evs := []*model.Event{
 		parseEv(t, now.Add(time.Minute), "app.ops", `{"apps":[{"package":"p","op":"send_sms","count":5,"background_count":4,"last_ts":"`+model.FormatTS(now.Add(50*time.Second))+`"},
-			{"package":"p","op":"send_sms","count":2,"background_count":-3},{"package":"q","op":"camera","count":1.5},{"op":"camera","count":1},"x"]}`),
+			{"package":"p","op":"send_sms","count":2,"background_count":-3,"rejected_count":40},{"package":"q","op":"camera","count":1.5},{"op":"camera","count":1},"x"]}`),
 		parseEv(t, now.Add(2*time.Minute), "app.ops", `{"apps":[{"package":"p","op":"send_sms","count":1,"background_count":1}]}`),
 		parseEv(t, now.Add(3*time.Minute), "app.risk", `{"package":"p","score":10,"level":"low","reasons":[]}`),
 		parseEv(t, now.Add(4*time.Minute), "app.risk", `{"package":"p","score":80,"level":"high","reasons":["sideloaded"]}`),
@@ -79,10 +79,10 @@ func TestMigration6DetectionAggregates(t *testing.T) {
 	if _, err := st.Ingest(ctx, "d", "", evs, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	opsQ := `SELECT device_id, hour_ms, package, op, count, bg_count, last_ms FROM ops_counts ORDER BY 1,2,3,4`
+	opsQ := `SELECT device_id, hour_ms, package, op, count, bg_count, rej_count, last_ms FROM ops_counts ORDER BY 1,2,3,4`
 	latestQ := `SELECT device_id, kind, key, ts_ms, data FROM app_latest ORDER BY 1,2,3`
 	ops1, latest1 := dump(t, st, opsQ), dump(t, st, latestQ)
-	if len(ops1) != 2 || !strings.Contains(ops1[0], " p send_sms 8 5 ") || !strings.Contains(ops1[1], " q camera 0 0") {
+	if len(ops1) != 2 || !strings.Contains(ops1[0], " p send_sms 8 5 40 ") || !strings.Contains(ops1[1], " q camera 0 0 0") {
 		t.Fatalf("ops %v", ops1)
 	}
 	if len(latest1) != 3 || !strings.Contains(latest1[0], `"score":80`) || !strings.HasPrefix(latest1[2], "d role sms") {
@@ -108,7 +108,8 @@ func TestMigration6DetectionAggregates(t *testing.T) {
 	if _, err := st.w.ExecContext(ctx, `DELETE FROM ops_counts; DELETE FROM app_latest; DELETE FROM detect_dirty;`); err != nil {
 		t.Fatal(err)
 	}
-	for _, q := range []string{part("INSERT INTO ops_counts", "CREATE TABLE app_latest"), part("INSERT INTO app_latest", "CREATE TABLE detections"),
+	m7 := migrations[6]
+	for _, q := range []string{m7[strings.Index(m7, "INSERT INTO ops_counts"):], part("INSERT INTO app_latest", "CREATE TABLE detections"),
 		m[strings.Index(m, "INSERT OR IGNORE INTO detect_dirty"):]} {
 		if _, err := st.w.ExecContext(ctx, q); err != nil {
 			t.Fatal(err)
