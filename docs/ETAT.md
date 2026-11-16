@@ -5,37 +5,61 @@ Dernière mise à jour : 16/11/2026.
 
 ## Où on en est
 
-| Lot | Répertoire | État | Vérifié par exécution ? |
+La v1 est écrite de bout en bout. Le serveur a été exécuté et testé réellement ; **l'application Android n'a
+jamais tourné sur un téléphone** (ni émulateur) : elle est vérifiée par compilation, lint, tests JVM et un essai
+croisé de son code d'envoi contre le vrai collecteur.
+
+| Lot | Répertoire | État | Vérifié par exécution |
 |---|---|---|---|
-| Architecture et contrat | `docs/` | fait | — |
-| Recherche pile serveur | `docs/research/serveur-siem-dns.md` | fait | sources web |
-| Recherche plateforme Android/Samsung | `docs/research/android-plateforme.md` | fait | sources web, rien testé sur appareil |
-| Collecteur Go | `server/collector/` | fait, revue de sécurité faite (6 défauts corrigés) | `go vet`, `go test -race`, essai réel avec simulateur, image Docker construite et lancée ; pas encore derrière Caddy/Wazuh réels |
-| Console web | `server/console/` | fait (revue à faire) | typage, lint, 43 tests, parcours Chromium contre serveur factice et contre le vrai collecteur ; tuiles OSM réelles non testées |
-| Infrastructure Docker | `infra/` | fait | pile réellement démarrée en TLS interne : mTLS, DoT, export → Wazuh (6220/6220 documents), 93/93 règles, rotation des mots de passe, sauvegarde/restauration. **Non testé** : Let's Encrypt/DNS-01, téléchargement des listes de blocage, WireGuard, RAM avec listes chargées |
-| Agent Android | `android/` | socle, 21 collecteurs, module Device Owner et passe d'intégration faits ; revue indépendante en cours | `./gradlew lint test assembleDebug assembleRelease` vert (180 tests JVM, test de conformité au contrat des 21 collecteurs, APK release signé inspecté). **Rien testé sur appareil ; scripts PowerShell jamais exécutés.** Robolectric impossible ici (`gcp.mirrors.maven.org` bloqué par le proxy) |
-| Guides d'installation | `README.md`, `docs/guides/01` à `07` | faits ; à réaligner après les deux lots en cours ci-dessous | commandes relues contre les scripts, aucune exécutée sur VPS ni téléphone |
+| Architecture, contrat | `docs/ARCHITECTURE.md`, `docs/contrat/contrat.md` | fait | — |
+| Recherches plateforme | `docs/research/` | fait | sources web ; points « non vérifié » signalés dans les fichiers |
+| Collecteur Go | `server/collector/` | fait, revue de sécurité faite | `go vet`, `go test -race`, essais réels avec le simulateur, image Docker |
+| Console web | `server/console/` | fait | typage, lint, 43 tests, parcours Chromium contre serveur factice et contre le vrai collecteur ; tuiles OSM réelles non chargées |
+| Infrastructure Docker | `infra/` | fait | pile réellement démarrée en TLS `internal` : mTLS, DoT, export → Wazuh sans perte, 121/121 cas de règles, rotation des mots de passe, sauvegarde/restauration, renouvellements, notification par webhook |
+| Agent Android | `android/` | fait, revue indépendante faite | `./gradlew lint test assembleDebug assembleRelease` vert : 221 tests JVM (1 ignoré : essai croisé, à lancer avec `VIGIE_CROSS_ENROLL`), APK release signé inspecté |
+| Guides utilisateur | `README.md`, `docs/guides/01` à `07` | faits | commandes relues contre les scripts ; aucune exécutée sur un VPS ni sur un téléphone |
 
-## Limites de l'environnement de développement cloud
+## Jamais testé (à faire par le propriétaire)
 
-- `dl.google.com` a été autorisé par le propriétaire : le SDK Android est installé dans `/opt/android-sdk`
-  (à réinstaller dans une nouvelle session : `sdkmanager "platform-tools" "platforms;android-36" …`).
-  Pas de KVM, donc pas d'émulateur : l'agent Android est vérifié par compilation, lint et tests unitaires.
-- Docker fonctionne (lancer `dockerd` à la main), les images Docker Hub se téléchargent ; les conteneurs
-  n'ont pas d'accès Internet sortant sans configurer le proxy.
-- Aucun appareil Android réel ni émulateur : rien de ce qui touche au téléphone n'est testé sur matériel.
+- **Tout le comportement sur le Galaxy S25+** : activation Device Owner, service permanent, collecteurs,
+  politique, issue de secours ADB. La feuille de route est `docs/guides/06-verifications-sur-appareil.md` ;
+  l'ordre d'essai prudent est en tête de `docs/guides/03-telephone.md`.
+- **Scripts PowerShell** (`android/scripts/*.ps1`) : relus ligne à ligne, jamais exécutés.
+- **Serveur en conditions réelles** : Let's Encrypt et défi DNS-01, téléchargement des listes de blocage,
+  résolution DNS en amont, WireGuard, consommation mémoire avec les listes chargées, SMTP avec TLS et
+  authentification, ntfy réel.
 
-## Travaux en cours au 16/11/2026 (à reprendre si la session s'est arrêtée)
+## Limites connues et choix assumés
 
-1. **Revue indépendante de l'app Android** (`android/`) : premier lot de corrections commité (25a1bb9).
-   Reste : chemins relatifs des scripts bash, commande d'enrôlement citée dans l'app, « tout décocher » et
-   verrou DNS éteint par défaut dans l'écran Politique, réenrôlement sans perte du tampon, note sur
-   l'`ExecutionPolicy` PowerShell, mise à jour de `android/README.md` et `ARCHITECTURE-CODE.md`, build final.
-2. **Derniers correctifs d'infrastructure** (`infra/`) : mot de passe console réécrit par `install.sh`,
-   configuration AdGuard écrasée à chaque installation, notification optionnelle (webhook/SMTP) des alertes
-   et du silence de l'agent, renouvellement des certificats internes Wazuh (5 ans).
-3. Ensuite : réaligner `docs/guides/` sur ces changements, puis vérification finale de chaque composant.
+- Journaux réseau du Device Owner : DNS et `connect()` TCP seulement, par lots (~1 h 30) ; UDP/QUIC y échappent.
+- Caméra et micro : usage signalé sans l'application responsable (attribution expérimentale, désactivée par défaut).
+- Pas de lecture des notifications, pas de VPN local, pas de Knox SDK en v1 (voir `docs/ARCHITECTURE.md`).
+- Rien n'est collecté avant le premier déverrouillage suivant un redémarrage ; l'issue de secours ADB non plus
+  ne répond pas avant.
+- Les journaux réseau et de sécurité du système s'allument dès l'activation du Device Owner (interrupteur par
+  collecteur pour les couper) ; Android affiche alors la mention de surveillance du réseau.
+- Un défaut de posture déjà présent à l'enrôlement ne produit pas d'alerte (pas de changement) : vérifier la
+  posture initiale dans la console.
+- Compte console : qui connaît l'identifiant peut le bloquer par des échecs répétés (limite par compte).
+- Tuiles de carte OpenStreetMap publiques par défaut (`VIGIE_TILE_URL` pour en changer).
+- Les échéances des certificats d'appareils (2 ans) ne sont pas notifiées : `infra/enroll.sh --list`.
+- Tampon de l'agent : une horloge durablement fausse en avant fait vieillir les événements environ deux fois
+  plus vite (voir `android/ARCHITECTURE-CODE.md`).
+
+## Environnement de développement cloud (si on y revient)
+
+- SDK Android dans `/opt/android-sdk` (plateformes 36 et 37.0, build-tools 36.0.0) ; il faut que `dl.google.com`
+  soit dans les domaines autorisés de l'environnement. Pas de KVM, donc pas d'émulateur.
+- Robolectric impossible (`gcp.mirrors.maven.org` bloqué par le proxy) : les tests Android sont en JVM pure.
+- Docker : lancer `dockerd` à la main ; les conteneurs n'ont pas d'accès Internet sortant ; Docker Hub peut
+  répondre 429 (les images de base se prennent alors sur `mirror.gcr.io`, voir `server/collector/README.md`).
+- Le keystore de signature utilisé ici était un keystore de test local, non versionné : **le propriétaire génère
+  le sien** (`android/scripts/generate-keystore.*`) et le conserve.
 
 ## Prochaines étapes
 
-Voir la fin de ce fichier, mise à jour au fil des lots.
+1. Propriétaire : installer le serveur (`docs/guides/01-serveur.md`), compiler l'APK avec son propre keystore
+   (`02`), suivre l'ordre d'essai du guide téléphone (`03`), cocher `06` au fur et à mesure et rapporter les
+   écarts.
+2. Corriger ce que les essais sur appareil révèlent (c'est là que se trouvent les défauts restants).
+3. Pistes v2 déjà identifiées : `docs/guides/07-reprise-developpement.md`.
