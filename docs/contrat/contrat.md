@@ -449,6 +449,35 @@ il se reconnecte avec backoff et au retour de la connectivité, et interroge aus
 Chaque création, annulation et résultat est journalisé par le collecteur et exporté vers Wazuh sous le type
 `command.issued` / `command.cancelled` (événements produits par le serveur : `vigie.source = "server"`).
 
+### Précisions (ajoutées après le développement du collecteur)
+
+- `issued_at` doit être à moins de 10 min de l'heure du serveur à la création (sinon `400`) : une horloge de
+  navigateur fausse empêche d'émettre une commande.
+- `message` de `lock` : 200 unités UTF-16 au plus, aucun caractère de contrôle sauf le saut de ligne.
+- Corps de `POST /commands` : seulement `device_id`, `payload`, `sig` (et `id` optionnel, identique à celui
+  du `payload`) ; toute autre clé → `400`. Le `payload` n'admet ni clé inconnue ni clé en double.
+- **Renvoi** : une commande livrée dont le résultat n'arrive pas est renvoyée après 5 min (3 fois au plus).
+  L'agent qui reçoit un `id` déjà traité **renvoie le résultat d'origine** (il le conserve avec l'`id`) ; il
+  ne répond `refused`/`replay` que s'il n'a plus ce résultat, et ce refus ne clôt pas la commande côté
+  serveur. Le premier résultat reçu fait foi ; un résultat arrivé après expiration ou annulation est
+  enregistré sans changer l'état.
+- `command_channel.connected` = un flux est ouvert à l'instant ; un appareil en interrogation a
+  `connected: false`, `mode: "poll"` et se juge sur `last_contact`. Une commande annulée porte
+  `detail: "cancelled"`.
+- Événements produits par le serveur (`vigie.source = "server"`, absents du tampon de l'agent) :
+  `command.issued`, `command.cancelled`, `command.reported`, `command.expired`. Les événements de l'appareil
+  ne portent pas de `source`.
+- Pistage : AdGuard configuré mais injoignable → `adguard: false`, les agrégats déjà stockés restent servis.
+  `status=blocked` = au moins une requête bloquée ; `allowed` = autorisé ou mixte. `override` vise le domaine
+  exact. `level` est absent si l'état d'AdGuard ne correspond à aucun niveau ; `GET /tracking/level` renvoie
+  `{ "adguard", "level", "levels" }`. Les octets par éditeur et les compteurs bloqué/autorisé par application
+  sont des **estimations** (répartition au prorata des requêtes DNS), à présenter comme telles. Codes
+  d'erreur supplémentaires : `502 adguard_error`, `409 corrupt_rules`, `503 levels_not_configured`,
+  `503 adguard_unavailable`.
+- Variables du collecteur ajoutées au §7 : `VIGIE_CMD_KEEPALIVE_S` (120), `VIGIE_ADGUARD_URL`,
+  `VIGIE_ADGUARD_USER`, `VIGIE_ADGUARD_PASSWORD`, `VIGIE_ADGUARD_LEVELS_FILE`, `VIGIE_ADGUARD_POLL_S` (60),
+  `VIGIE_ADGUARD_CLIENTS` (optionnel, `device_id=client,…`).
+
 ## 9. Vue « pistage » : ce qui est bloqué, ce qui passe
 
 Le collecteur lit le journal des requêtes d'AdGuard Home par son API (`VIGIE_ADGUARD_URL`,
