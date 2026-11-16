@@ -181,7 +181,7 @@ function RiskCard({ state, pkg }: { state: ReturnType<typeof useAppRisk>; pkg: s
               <div className="stat">
                 <div className="stat-label">Installateur</div>
                 <div className="stat-value">{r.from_store === false ? 'Hors boutique' : r.from_store ? 'Boutique' : 'Inconnu'}</div>
-                <div className="stat-sub">{installerLabel(r.installer ?? app?.installer)}</div>
+                <div className="stat-sub">{installerLabel(r.installer)}</div>
               </div>
             </div>
             <p className="hint">Le score mesure ce que l'application pourrait faire, pas ce qu'elle fait : c'est un motif de regarder de plus près, pas une preuve.</p>

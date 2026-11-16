@@ -40,6 +40,16 @@ func cmdSim(args []string) error {
 	fakeAGUser := fl.String("fake-adguard-user", "", "faux AdGuard Home : utilisateur (authentification de base ; vide : aucune)")
 	fakeAGPass := fl.String("fake-adguard-password", "", "faux AdGuard Home : mot de passe")
 	fakeAGClient := fl.String("fake-adguard-client", "", "faux AdGuard Home : ClientID des requêtes (défaut : nom de l'appareil)")
+	scenario := fl.String("scenario", sim.ScenarioHealthy, "scénarios séparés par des virgules (voir plus bas) ; sain : aucun")
+	appOps := fl.Bool("app-ops", true, "émettre app.ops (expérimental côté agent : =false pour simuler son absence)")
+	fl.Usage = func() {
+		fmt.Fprintln(fl.Output(), "Usage : vigie-collector sim --enroll <fichier.vigie> [options]")
+		fl.PrintDefaults()
+		fmt.Fprintln(fl.Output(), "\nScénarios (--scenario) :")
+		for _, i := range sim.ScenarioInfo {
+			fmt.Fprintf(fl.Output(), "  %-18s %s\n", i.Name, i.Desc)
+		}
+	}
 	if err := fl.Parse(args); err != nil {
 		return err
 	}
@@ -62,6 +72,10 @@ func cmdSim(args []string) error {
 	}
 	if *backfill < 0 || *backfill > 90*24*time.Hour {
 		return errors.New("--backfill doit être entre 0 et 2160h")
+	}
+	scenarios, err := sim.ParseScenarios(*scenario)
+	if err != nil {
+		return fmt.Errorf("--scenario : %w", err)
 	}
 	f, err := enroll.Read(*enrollPath)
 	if err != nil {
@@ -86,7 +100,19 @@ func cmdSim(args []string) error {
 	stats := &simStats{types: map[string]int{}}
 	start := now.Add(-*backfill)
 	opts := sim.Options{Start: start, Seed: s, Rate: *rate, AgentVersion: *version, SeqBase: now.UnixMilli(),
-		PrivateDNSHost: f.PrivateDNSHost, LateBatches: true, NotificationContent: *notifContent}
+		PrivateDNSHost: f.PrivateDNSHost, LateBatches: true, NotificationContent: *notifContent, AppOps: *appOps, Scenarios: scenarios}
+	if len(scenarios) > 0 {
+		// The attacks start late enough for the phone to have a history (at most the last 48 h of the
+		// backfill, 40 % of it when shorter); without backfill, in a minute.
+		opts.ScenarioStart = now.Add(time.Minute)
+		if *backfill > 0 {
+			opts.ScenarioStart = now.Add(-min(48*time.Hour, *backfill*4/10))
+		}
+		if !*follow {
+			opts.ScenarioEnd = now
+		}
+		fmt.Fprintf(os.Stderr, "Scénarios : %s, à partir de %s\n", strings.Join(scenarios, ", "), opts.ScenarioStart.Format(time.RFC3339))
+	}
 	var fake *adguard.Fake
 	if *fakeAG != "" {
 		fake = adguard.NewFake(*fakeAGUser, *fakeAGPass)

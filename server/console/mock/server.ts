@@ -576,7 +576,13 @@ const server = http.createServer((req, res) => {
         }
         if (route === '/tracking/level') {
           if (typeof b.level !== 'string' || !trk.LEVELS.some((l) => l.key === b.level)) return err(res, 400, 'bad_level', 'Niveau inconnu');
+          const oldLevel = trk.currentLevel(track);
           track.levelChanges.push({ t: Date.now(), level: b.level as trk.Level });
+          // Le collecteur journalise le changement (contrat §9) : `old`, `new`, `changes`, `user` ; sév. 2 si le blocage est affaibli.
+          if (oldLevel !== b.level) {
+            const rank = (l: string) => ['permissif', 'equilibre', 'strict'].indexOf(l);
+            emitAgentEvent('tracking.level_changed', rank(b.level) < rank(oldLevel) ? 2 : 1, { old: oldLevel, new: b.level, changes: [`liste ${b.level}`], user });
+          }
           res.writeHead(204);
           res.end();
           return;
@@ -590,6 +596,7 @@ const server = http.createServer((req, res) => {
             return sendJson(res, 409, { error: 'essential_domain', message: `« ${domain} » est un domaine indispensable au téléphone : le bloquer le casserait.`, breaks: essential.map((breaks) => ({ domain, breaks })) });
           }
           track.overrides.push({ t: Date.now(), domain, action: b.action });
+          emitAgentEvent('tracking.override', b.action === 'block' && b.force !== true ? 1 : 2, { domain, action: b.action, forced: b.force === true, user });
           res.writeHead(204);
           res.end();
           return;

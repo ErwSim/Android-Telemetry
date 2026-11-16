@@ -44,6 +44,6 @@ else
     warn "appops GET_USAGE_STATS : échec (à accorder dans Paramètres › Applications › Accès spéciaux › Accès aux données d'utilisation)"
 fi
 grant android.permission.WRITE_SECURE_SETTINGS "politique : réglages anti-pistage hors liste Device Owner (ble_scan_always_enabled)"
-grant android.permission.DUMP "attribution expérimentale caméra/micro (désactivée par défaut dans l'app)"
+grant android.permission.DUMP "attribution expérimentale caméra/micro et usage réel par appli (app_ops, qui exige aussi l'accès aux statistiques d'usage) ; désactivés par défaut dans l'app"
 info "READ_LOGS n'est pas accordée : Android 13+ exige un consentement à chaque lecture, inutilisable en continu."
 info "Exemptions de batterie : ./battery-exemptions.sh"

@@ -90,7 +90,7 @@ export function RiskView({ risks, inventory, ts }: { risks: AppRisk[]; inventory
         ) : (
           <div className="flush">
             <div className="table-wrap">
-              <table className="tbl" data-testid="risk-table">
+              <table className="tbl risk-tbl" data-testid="risk-table">
                 <thead>
                   <tr>
                     <th scope="col">Application</th>
@@ -110,19 +110,19 @@ export function RiskView({ risks, inventory, ts }: { risks: AppRisk[]; inventory
                     return (
                       <Fragment key={r.package}>
                         <tr className={`risk-${lv.key}`} data-risk={lv.key}>
-                          <td>
+                          <td className="c-app">
                             <button type="button" className="expander" aria-expanded={isOpen} aria-label={`Raisons du score de ${label ?? r.package}`} onClick={() => setOpen(isOpen ? null : r.package)}>
                               {isOpen ? '▾' : '▸'}
                             </button>
                             <AppName pkg={cleanText(r.package, 255)} label={label} />
                           </td>
-                          <td>
+                          <td className="c-score">
                             <ScoreBar risk={r} />
                           </td>
-                          <td>
+                          <td className="c-level">
                             <RiskBadge risk={r} />
                           </td>
-                          <td>
+                          <td className="c-reasons">
                             <ReasonChips reasons={r.reasons} />
                           </td>
                           <td className="hide-sm">

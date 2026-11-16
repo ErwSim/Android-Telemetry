@@ -193,6 +193,12 @@ class ApkSamples(private val all: List<Collector>, private val t0: Long = 1_763_
         engine.logAction("force_stop_protection", "enabled", null, false, "aucun effet constaté")
         engine.logAction("device_owner_cleared", PolicyEngine.OWNER_TARGET, null, true, null)
         engine.logAction("package_disabled", "com.samsung.android.rubin.app", "balanced", true, null)
+        // Capability guards (contract §11.1): target = package or guard key, permission when relevant.
+        engine.logAction("guard_enabled", "sms", "guard:sms", true, null, Severity.NOTABLE)
+        engine.logAction("permission_denied", "com.evil.sms", "guard:sms", true, null, Severity.INFO, "android.permission.SEND_SMS")
+        engine.logAction("quarantined", "com.example.newapp", "guard:quarantine", true, null, Severity.NOTABLE)
+        engine.logAction("released", "com.example.newapp", "guard:quarantine", true, null)
+        engine.logAction("guard_disabled", "accessibility", "guard:accessibility", true, null, Severity.NOTABLE)
         return out.toList()
     }
 

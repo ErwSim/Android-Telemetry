@@ -39,6 +39,8 @@ type pending struct {
 	extra bool
 	// injected marks events added from outside the simulation (command results): random ULID.
 	injected bool
+	// rng, when set, draws the ULID (events of the risk profile, app.ops and scenarios: srng).
+	rng *rand.Rand
 }
 
 type boot struct {
@@ -69,6 +71,13 @@ type Options struct {
 	// OnDNS, when set, is called for every DNS lookup as it is generated (ts of each occurrence): it feeds
 	// a fake AdGuard Home query log coherent with net.dns (sim --fake-adguard).
 	OnDNS func(ts time.Time, host string)
+	// AppOps emits app.ops (contract §11.2, experimental on the phone): hourly operations of the apps.
+	AppOps bool
+	// Scenarios are the attack scenarios to play (ParseScenarios), starting at ScenarioStart; ScenarioEnd
+	// is the end of the simulated period when known (zero: open).
+	Scenarios     []string
+	ScenarioStart time.Time
+	ScenarioEnd   time.Time
 }
 
 // Generator produces events chronologically.
@@ -123,6 +132,11 @@ type Generator struct {
 	onDNS       func(ts time.Time, host string)
 	held        []Event   // late-type events waiting for the next batch delivery
 	nextRelease time.Time // simulated time of the next late batch
+
+	srng    *rand.Rand // risk profile, app.ops, healthy extras and attack scenarios (separate stream)
+	appOps  bool
+	ops     map[opKey]*opAcc
+	attacks []*attack
 }
 
 // isLateType reports whether events of type t are delivered in late batches (LateBatches).
@@ -154,6 +168,7 @@ func New(opts Options) *Generator {
 		xrng:    rand.New(rand.NewSource(opts.Seed ^ 0x5eed0a66)), lrng: rand.New(rand.NewSource(opts.Seed ^ 0x1a7e0b47)),
 		lateBatches: opts.LateBatches,
 		nrng:        rand.New(rand.NewSource(opts.Seed ^ 0x0071f1ca)), content: opts.NotificationContent, onDNS: opts.OnDNS,
+		srng: rand.New(rand.NewSource(opts.Seed ^ 0x5c3a7105)), appOps: opts.AppOps, ops: map[opKey]*opAcc{},
 	}
 	g.nextRelease = start.Add(g.lateInterval())
 	g.lastBatt = int(g.battery)
@@ -166,6 +181,14 @@ func New(opts Options) *Generator {
 	g.uploadedAt = start
 	g.posture = basePosture(start, g.dnsHost)
 	g.startup(start, "boot_completed")
+	g.fleetStart(start)
+	if len(opts.Scenarios) > 0 {
+		at := opts.ScenarioStart
+		if at.IsZero() {
+			at = start
+		}
+		g.planAttacks(opts.Scenarios, at.UTC(), opts.ScenarioEnd)
+	}
 	g.lastDaily = start.In(loc).Format("2006-01-02")
 	if start.In(loc).Hour() < 3 { // daily jobs of today have not run yet
 		g.lastDaily = start.In(loc).AddDate(0, 0, -1).Format("2006-01-02")
@@ -241,6 +264,9 @@ func (g *Generator) flush(to time.Time) []Event {
 		idRng := g.rng
 		if p.extra {
 			idRng = g.xrng
+		}
+		if p.rng != nil {
+			idRng = p.rng
 		}
 		id := ""
 		if p.injected {
@@ -378,8 +404,10 @@ func (g *Generator) step(t0, t1 time.Time) {
 	}
 	for h := g.usageHour.Add(time.Hour); !h.After(t1); h = h.Add(time.Hour) {
 		g.netUsage(g.usageHour, h)
+		g.hourBoundary(g.usageHour, h)
 		g.usageHour = h
 	}
+	g.startAttacks(t1)
 }
 
 // --- location -------------------------------------------------------------
@@ -769,8 +797,8 @@ func (g *Generator) netUsage(from, to time.Time) {
 	sort.Strings(pkgs)
 	for _, p := range pkgs {
 		u := g.usage[p]
-		a := appByPkg(p)
-		list = append(list, map[string]any{"package": p, "uid": a.uid, "rx_bytes": u.rx, "tx_bytes": u.tx, "transport": transport})
+		uid := g.uidOf(p)
+		list = append(list, map[string]any{"package": p, "uid": uid, "rx_bytes": u.rx, "tx_bytes": u.tx, "transport": transport})
 	}
 	g.usage = map[string]*usageAcc{}
 	g.emit(to.Add(time.Duration(g.rng.Intn(20))*time.Second), "net.usage", 0, map[string]any{

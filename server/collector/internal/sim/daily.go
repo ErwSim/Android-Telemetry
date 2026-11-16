@@ -159,8 +159,10 @@ func (g *Generator) daily(t time.Time, updates bool) {
 				continue
 			}
 			a.code++
-			g.emit(t.Add(time.Duration(5+g.rng.Intn(600))*time.Second), "app.updated", 0, map[string]any{
+			ut := t.Add(time.Duration(5+g.rng.Intn(600)) * time.Second)
+			g.emit(ut, "app.updated", 0, map[string]any{
 				"package": a.pkg, "version_name": a.version, "version_code": a.code, "installer": a.installer, "signer_sha256": sha256Hex("signer:" + a.pkg)})
+			g.riskFor(ut, riskOf(a)) // the agent scores an application at each update
 		}
 	}
 	// Inventory split into parts, all carrying the same inventory_id (contract §2).
@@ -294,11 +296,13 @@ func (g *Generator) PlanScenario(from, to time.Time) {
 	inst := at(0.3)
 	g.emit(inst, "app.installed", 0, map[string]any{"package": "fr.vinted", "version_name": "25.44.0", "version_code": 254400,
 		"installer": "com.android.vending", "signer_sha256": sha256Hex("signer:fr.vinted")})
+	g.riskFor(inst, riskOf(&app{pkg: "fr.vinted", label: "Vinted", installer: "com.android.vending", code: 254400, target: 35}))
 	g.emit(inst.Add(3*time.Minute), "app.permission_changed", 0, map[string]any{"package": "fr.vinted", "permission": "android.permission.CAMERA", "granted": true})
 	g.emit(inst.Add(4*time.Minute), "app.permission_changed", 0, map[string]any{"package": "com.instagram.android", "permission": "android.permission.ACCESS_FINE_LOCATION", "granted": false})
 	side := at(0.66)
 	g.emit(side, "app.installed", 2, map[string]any{"package": "com.qrscan.free.reader", "version_name": "3.1.7", "version_code": 317,
 		"installer": "com.google.android.packageinstaller", "signer_sha256": sha256Hex("signer:qrscan")})
+	g.riskFor(side, riskOf(&app{pkg: "com.qrscan.free.reader", label: "QR Scanner", installer: "com.google.android.packageinstaller", code: 317, target: 33}))
 	g.emit(side.Add(26*time.Minute), "app.removed", 0, map[string]any{"package": "com.qrscan.free.reader", "version_name": "3.1.7", "version_code": 317,
 		"installer": "com.google.android.packageinstaller", "signer_sha256": sha256Hex("signer:qrscan")})
 

@@ -227,7 +227,12 @@
   margin-bottom: 3px;
 }
 .type-filter {
-  min-width: 220px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.type-filter select {
+  width: 100%;
+  max-width: 100%;
 }
 a.btn {
   text-decoration: none;
@@ -448,4 +453,48 @@ a.btn {
 }
 .app-link:hover strong {
   text-decoration: underline;
+}
+
+/* Téléphone : les lignes du profil de risque deviennent des fiches (application, score et niveau, raisons). */
+@media (max-width: 860px) {
+  .risk-tbl thead {
+    display: none;
+  }
+  .risk-tbl,
+  .risk-tbl tbody {
+    display: block;
+  }
+  .risk-tbl tbody tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 6px 12px;
+    padding: 10px;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+  }
+  .risk-tbl tbody td {
+    display: block;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+  .risk-tbl td.c-app,
+  .risk-tbl td.c-reasons,
+  .risk-tbl td.detail-cell {
+    grid-column: 1 / -1;
+  }
+  .risk-tbl td.detail-cell {
+    padding: 8px;
+    border-radius: 6px;
+  }
+  .risk-tbl tr.risk-high {
+    box-shadow: inset 4px 0 0 var(--bad);
+  }
+  .risk-tbl tr.risk-medium {
+    box-shadow: inset 4px 0 0 var(--warn);
+  }
+  .risk-tbl tr.risk-high td:first-child,
+  .risk-tbl tr.risk-medium td:first-child {
+    box-shadow: none;
+  }
 }

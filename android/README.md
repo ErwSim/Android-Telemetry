@@ -25,11 +25,12 @@ téléphone ni sur un émulateur** (voir la dernière section).
 | Envoi : lots ≤ 500 événements et ≤ 1 Mio gzip, suppression après accusé, 400 (lot empoisonné : bissection) / 401 / 413 / 429 / 5xx, `Retry-After`, backoff avec gigue, « gros volumes en Wi-Fi seulement », reprise au retour du réseau | fait, testé (MockWebServer) ; **jamais exercé sur appareil ni contre un vrai serveur en 400** |
 | Enrôlement `.vigie` : clé dans l'Android Keystore, jeton chiffré, mTLS, épinglage de l'AC serveur, test `GET /api/v1/ping`, désenrôlement | fait ; analyse et mTLS testés, Keystore Android **non testé** |
 | Service de premier plan (`specialUse` + `location`), démarrage au boot et après mise à jour, redémarrage (sticky + maintenance 15 min), `agent.started/stopped/heartbeat/collector_error/config_changed` | fait, non testé sur appareil |
-| 22 collecteurs : 19 sans privilège (`:collectors`, dont `notifications` qui dépend de l'APK compagnon) et 3 Device Owner (`:policy`), voir « Collecteurs » | faits ; logique et conformité au contrat testées, comportement réel non testé |
+| 25 collecteurs : 22 sans privilège (`:collectors`, dont `notifications` qui dépend de l'APK compagnon, et `app_risk`, `app_role`, `app_ops` du contrat §11.2) et 3 Device Owner (`:policy`), voir « Collecteurs » | faits ; logique et conformité au contrat testées, comportement réel non testé |
 | Commandes à distance (contrat §8) : vérification complète (signature HMAC, anti-rejeu, expiration, verrouillage), canal SSE ou interrogation, sonner / vibrer / localiser / verrouiller + message / effacer, écran « Commandes à distance » | fait ; vérification, canal (MockWebServer) et garde-fous de l'effacement testés (JVM) ; **jamais exécuté sur appareil**, consommation **non mesurée** |
 | Modes de localisation (contrat §10) : GPS seul (défaut), GPS + réseau, fusionné, avec repli | fait ; logique testée, fournisseurs réels non testés |
 | Device Owner : récepteur d'administration, auto-attribution des permissions et protection contre l'arrêt forcé (avec `security.policy`), `agent.tamper`, retrait volontaire sans fausse alerte | fait ; logique testée, non testé sur appareil |
 | Politique Device Owner : profils, DNS privé imposé et repli, paquets, permissions, restrictions, réglages, VPN permanent, « Tout rétablir », retrait du Device Owner, issue de secours ADB | fait ; moteur testé contre une passerelle factice, non testé sur appareil |
+| Gardes de capacités (contrat §11.1) : SMS, appels, accessibilité, claviers, quarantaine des nouvelles applications, listes d'exceptions éditables (réglage « liste de paquets »), écran « Applications en quarantaine », notifications | fait ; testé contre la passerelle factice (dont plantage, état illisible, « Tout rétablir » après les 32 combinaisons) ; **jamais exécuté sur appareil** |
 | Interface Material 3 (Accueil, Collecteurs avec réglages par collecteur, Journal local, Réglages, Enrôlement, Politique) | faite, non testée sur appareil |
 
 ## Versions et outillage
@@ -226,7 +227,7 @@ Replis, du plus au moins recommandé :
 
 ## Collecteurs
 
-L'onglet Collecteurs liste les 22 collecteurs (19 de `:collectors` puis les 3 de `:policy`) : interrupteur,
+L'onglet Collecteurs liste les 25 collecteurs (22 de `:collectors` puis les 3 de `:policy`) : interrupteur,
 état (actif, désactivé, activé mais agent arrêté, indisponible avec la raison), permissions manquantes,
 types émis et **réglages propres** au collecteur. Y sont signalés « Désactivé par défaut » (`wifi_scan`),
 « Device Owner requis » (journaux) et « Réglage expérimental » (attribution caméra/micro). Permissions « ADB » :
@@ -647,11 +648,17 @@ livrer de nouveau après l'activation de l'interrupteur) → non expirée, 5 min
 jamais vue (`replay`) → paramètres dans les bornes (`bad_params`) → Device Owner pour `lock`,
 `clear_lock_message`, `wipe` (`not_device_owner`). Avant la signature, seuls `v`, `id`, `device_id` et `type`
 sont lus, pour refuser ; le reste (paramètres, dates) n'est analysé qu'après. Cinq `bad_signature` en une heure
-bloquent les commandes sensibles une heure (persistant). Anti-rejeu persistant : 500 derniers `id` signés et
-500 derniers `id` simples (deux fenêtres : un serveur compromis qui enverrait des commandes simples en masse ne
-peut pas faire sortir un `id` signé de sa fenêtre). Précisions retenues là où le contrat se tait : clé inconnue
+bloquent les commandes sensibles une heure (persistant). Anti-rejeu persistant : 500 derniers `id` signés,
+500 derniers `id` simples et 500 derniers `id` sensibles **consommés sans signature vérifiable** (trois fenêtres :
+un serveur compromis qui enverrait des commandes en masse ne peut pas faire sortir un `id` signé vérifié de sa
+fenêtre). Précisions de la revue de sécurité v1.1 (contrat §8) appliquées par l'agent : validité de `wipe`
+limitée à **24 h** (`expired` au-delà, et un `wipe` à 7 jours refusé `disabled` n'est pas consommé : il serait
+expiré de toute façon) ; une commande sensible refusée `disabled` (canal coupé) ou `no_code_configured` est
+**consommée** (fenêtre « non vérifiée », si son `device_id` est le bon et ses dates encore valides) et ne
+s'exécutera jamais, même après l'activation du canal ou la saisie du code ; U+2028 et U+2029 refusés dans le
+message de `lock` ; plancher du code (6 caractères différents, 20 chiffres sans lettre). Précisions retenues là où le contrat se tait : clé inconnue
 au premier niveau de `payload` ou `expires_at` antérieur à `issued_at` → `malformed` ; validité de plus de
-30 jours ou `issued_at` à plus de 5 min dans le futur → `expired` ; `sig` sur une commande simple →
+30 jours (24 h pour `wipe`) ou `issued_at` à plus de 5 min dans le futur → `expired` ; `sig` sur une commande simple →
 `malformed` ; `payload` avec une clé en double (même cachée derrière un échappement `\u`) → `malformed` ;
 message de `lock` : 200 unités UTF-16 au plus, aucun caractère de contrôle sauf le saut de ligne
 (`bad_params`, revérifié par l'agent : le serveur n'est pas de confiance). Le vecteur de test du §8 est reproduit à l'octet près
@@ -875,8 +882,8 @@ un VPN fiable).
 
 ### Tout défaire
 
-- **Tout rétablir** (écran Politique, confirmation) : défait tout ce que Vigie a appliqué, du plus récent au
-  plus ancien ; un élément qui résiste reste listé avec son erreur (réessayer). Les journaux restent actifs.
+- **Tout rétablir** (écran Politique, confirmation) : éteint d'abord les gardes (section « Gardes de
+  capacités »), puis défait tout ce que Vigie a appliqué, du plus récent au plus ancien ; un élément qui résiste reste listé avec son erreur (réessayer). Les journaux restent actifs.
   Chaque élément est traité isolément : un échec (y compris l'impossibilité d'écrire l'état, stockage
   plein) n'arrête pas les suivants. Une permission refusée juste avant un plantage, donc jamais confirmée
   dans l'état, est rétablie aussi.
@@ -927,6 +934,123 @@ affiche l'erreur, l'issue de secours reste utilisable). Si l'app ne démarre plu
 4. Un seul paquet à faible risque (ex. Astuces), « Rétablir », puis le profil équilibré ; redémarrer ; tester
    push, Play Store, banque, paiement ; « Tout rétablir » et comparer.
 5. Seulement ensuite, le profil strict, élément par élément.
+
+## Gardes de capacités (contrat §11.1)
+
+Écran **Politique › Gardes**. Une garde verrouille une capacité dont un logiciel malveillant a besoin, **quel que
+soit le vecteur** par lequel il est arrivé (le cas vécu par le propriétaire : une appli qui envoyait 2 000 SMS de
+hameçonnage par jour sans que l'appli SMS ne montre rien). Toutes sont **éteintes par défaut**, activées une par
+une après un **aperçu** qui dit exactement quelle application perd quoi, et défaites par « Rétablir » (bouton
+« Aperçu et désactivation »), « Tout rétablir », le retrait du Device Owner et l'issue de secours ADB. Chaque
+action émet `security.policy` (`profile = "guard:<clé>"`, `action` ∈ `guard_enabled`, `guard_disabled`,
+`permission_denied`, `permission_restored`/`permission_granted`, `quarantined`, `released` ; `target` = paquet
+ou clé de la garde ; `permission` pour une permission).
+
+| Clé | Ce qu'elle fait (API) | Option | Liste |
+|---|---|---|---|
+| `sms` | `setPermissionGrantState(DENIED)` sur `SEND_SMS` pour toute appli qui la demande | + `READ_SMS`, `RECEIVE_SMS`, `RECEIVE_MMS`, `RECEIVE_WAP_PUSH` | applis autorisées (pré-remplie : appli SMS par défaut) |
+| `calls` | idem sur `CALL_PHONE` | + `ANSWER_PHONE_CALLS`, `READ_CALL_LOG`, `WRITE_CALL_LOG` | applis autorisées (pré-remplie : composeur par défaut) |
+| `accessibility` | `setPermittedAccessibilityServices(liste)` | — | services approuvés |
+| `input_methods` | `setPermittedInputMethods(liste)` | — | claviers approuvés |
+| `quarantine` | `setPermissionGrantState(DENIED)` sur SMS, appels, journal d'appels, contacts (`READ/WRITE_CONTACTS`, `GET_ACCOUNTS`), micro, caméra, position en arrière-plan, appareils à proximité (`BLUETOOTH_SCAN/CONNECT/ADVERTISE`, `NEARBY_WIFI_DEVICES`, `UWB_RANGING`, `RANGING`) pour chaque appli **non système installée après l'activation** | — | — (« Libérer » appli par appli) |
+
+### Sémantique réelle des API (sources : javadoc et code AOSP de `DevicePolicyManager`/`DevicePolicyManagerService`, branche principale, lus le 16/11/2026 ; SDK android-37 pour les signatures)
+
+- **`setPermissionGrantState`** : `DENIED` refuse la permission et la **verrouille** dans les Paramètres (« contrôlé
+  par l'administrateur ») ; une permission déjà accordée est **retirée** (Android arrête alors l'appli) ; la
+  demande de l'appli échoue sans boîte de dialogue. La javadoc précise que l'utilisateur ne peut plus gérer
+  **les autres permissions du même groupe** non plus (leur état actuel est conservé) : refuser `SEND_SMS`
+  grise aussi le groupe SMS de l'appli. `DEFAULT` rend la main sans révoquer. Le système relit l'état et
+  renvoie `false` s'il n'est pas atteint (Vigie relit aussi). Un Device Owner ciblant Q+ peut agir sur toutes les
+  applis, système et privilégiées comprises (recherche §3.7) ; Vigie **s'interdit** les applis système. Les
+  permissions marquées `SYSTEM_FIXED` sont probablement refusées (non vérifié, sans objet ici).
+- **`setPermittedAccessibilityServices` / `setPermittedInputMethods`** : liste de **noms de paquets** ; `null` =
+  aucune restriction ; liste vide = services du système seulement ; les services/claviers du système
+  (`ApplicationInfo.isSystemApp()`) restent **toujours** permis et ne peuvent pas être restreints. Un service
+  non système **déjà activé** doit figurer dans la liste, sinon l'appel renvoie `false` et **rien ne change**
+  (`checkPackagesInPermittedListOrSystem`) : ces gardes **ne désactivent jamais** un service déjà actif, elles
+  empêchent d'en activer un nouveau. Vigie ajoute donc d'office les services déjà activés à la liste et
+  l'aperçu les nomme (« gardés, Android l'exige ») : pour en exclure un, le désactiver d'abord dans les
+  Paramètres, puis réappliquer. Le clavier Samsung (`honeyboard`) et les services d'accessibilité Samsung
+  préinstallés sont des applis système : toujours permis.
+
+### Garde-fous (codés en dur)
+
+- Jamais touchés, quelle que soit la liste : Vigie et son compagnon, **toute appli système** (`FLAG_SYSTEM` :
+  SOS d'urgence, opérateur, Samsung), la liste de refus de la politique, et les **détenteurs actuels des rôles**
+  appli SMS, composeur (par défaut et système), clavier en service, écran d'accueil par défaut. Seulement les
+  détenteurs : ni toute appli capable d'être un lanceur (n'importe quelle appli peut déclarer une activité
+  HOME), ni les administrateurs actifs (un logiciel malveillant peut le devenir).
+- **Rôle qui change** (contrôlé à chaque diffusion de paquet, au changement de composeur, à l'ouverture de
+  l'écran et toutes les 15 min) : le nouveau détenteur retrouve ses permissions, **entre dans la liste** de la
+  garde (« la liste suit », `agent.config_changed`) et une notification le dit (« si ce n'est pas vous,
+  vérifiez… »). Une appli en quarantaine choisie comme appli par défaut est libérée automatiquement (notifié).
+- Un échec sur un paquet donne `permission_denied` `ok=false` et n'arrête pas les autres ; il n'est pas retenté à
+  chaque passage (pas de rafale d'événements), mais à la prochaine « Aperçu et réapplication ».
+- Deux éléments qui refusent la même permission (garde SMS et quarantaine, ou une permission du catalogue) la
+  partagent : celui qui est défait en dernier la rétablit, dans son état d'origine.
+- **Persistance** : le même état que le reste de la politique (`vigie_policy`, `commit()` avant chaque
+  changement). Enregistrements `guard:<clé>` (la garde est active, son option, la liste en vigueur, la liste
+  d'avant Vigie pour accessibilité/claviers, les applis libérées) et `guard:<clé>:<paquet>` (les permissions
+  refusées et leur état d'avant). « Tout rétablir » **éteint d'abord toutes les gardes** (aucune ne peut
+  refuser de nouveau ce qui vient d'être rendu si le processus meurt au milieu), puis défait le reste. État
+  illisible : le balayage rend à l'utilisateur toute permission des gardes refusée sans enregistrement sur une
+  appli non système (`DEFAULT` : elle n'est pas ré-accordée, l'appli la redemandera) et lève les listes
+  d'accessibilité et de claviers.
+- La liste choisie dans l'écran n'entre en vigueur qu'à « Aperçu et (ré)application » (l'écran signale une
+  liste modifiée). Les listes sont des réglages « liste de paquets » (`policy.guard.<clé>.allowed`) : chaque
+  modification émet `agent.config_changed`.
+
+### Quand s'appliquent-elles
+
+À l'activation (applis présentes, sauf quarantaine), puis à chaque `PACKAGE_ADDED`/`REPLACED`/`REMOVED` reçu par
+un récepteur dynamique de `:policy` (indépendant du collecteur `apps`), au démarrage de l'agent, à l'ouverture de
+l'écran et au passage de maintenance (15 min). Une mise à jour qui ajoute une permission gardée est donc refusée
+dans la foulée. Quarantaine : une appli est « nouvelle » si son `firstInstallTime` (conservé par les mises à
+jour, remis à zéro par une réinstallation) est postérieur à l'activation ; une appli libérée le reste tant
+qu'elle n'est pas désinstallée.
+
+### Ce que les gardes ne peuvent pas empêcher (franchement)
+
+- **Fenêtre de course** : entre l'installation et le refus, quelques secondes si Vigie tourne, **jusqu'à 15 min**
+  si son processus était arrêté. Une appli fraîchement installée ne peut pas s'exécuter avant d'être lancée
+  (état « arrêté » d'Android), mais une appli qui en installe et lance une autre le peut.
+- **Applis système** et **appli SMS / composeur par défaut** : jamais touchées. Un logiciel malveillant qui se
+  fait choisir comme appli SMS par défaut (boîte de dialogue système) envoie des SMS : Vigie le **signale**
+  (notification, `app.role` côté collecteurs) mais ne le bloque pas.
+- **Autres voies** : SMS préparé par une appli et envoyé par l'appli SMS (il faut appuyer sur Envoyer… ou un
+  service d'accessibilité le fait : d'où la garde Accessibilité) ; appel via le composeur ; VoIP, messageries
+  par Internet ; exfiltration par le réseau (voir les détections du collecteur) ; superposition, écoute des
+  notifications, administrateur de l'appareil (app-ops et accès spéciaux, hors de `setPermissionGrantState`).
+- **Déjà acquis** : un service d'accessibilité ou un clavier déjà activé reste activé ; ce qui a été envoyé
+  avant l'activation est parti. La quarantaine ne touche pas les applis déjà présentes.
+- Une appli de la liste, ou libérée, qui serait compromise ensuite.
+- Depuis Android 13, une appli installée hors magasin ne peut déjà pas activer l'accessibilité sans que
+  l'utilisateur débloque les « paramètres restreints » : la garde Accessibilité couvre aussi les applis du
+  magasin et le cas où l'utilisateur se fait manipuler.
+
+### Ordre d'essai sur le téléphone (du moins au plus risqué) et contrôles
+
+Rien de ceci n'a été exécuté sur un appareil. Avant tout : `rescue-revert` à vide (voir « Issue de secours »).
+
+1. **Quarantaine** (aucun effet immédiat). Installer une petite appli de test (APK ou magasin) : notification
+   « Nouvelle application en quarantaine », Paramètres › Applications › appli › Autorisations : SMS, contacts,
+   micro… grisés « contrôlé par l'administrateur » ; « Libérer » : l'appli redemande. Mettre à jour l'appli
+   libérée : pas de nouvelle quarantaine. Contrôler `quarantined`/`released` dans la console.
+2. **Claviers** (liste vide) : l'aperçu doit lister le clavier tiers éventuellement activé comme « gardé ».
+   Contrôler : saisie normale, y compris le code PIN après redémarrage (Direct Boot : clavier Samsung) ;
+   Paramètres › Gestion globale › Clavier : un clavier non approuvé apparaît non activable.
+3. **Accessibilité** (liste vide) : services déjà activés gardés ; TalkBack/Voice Assistant Samsung toujours
+   activables ; un service tiers non activé ne l'est plus (« désactivé par l'administrateur »).
+4. **Appels** sans option : aperçu (souvent vide) ; appeler depuis le composeur et depuis le carnet d'adresses
+   Samsung ; appel d'urgence (ne pas composer réellement : vérifier seulement que le composeur s'ouvre).
+5. **SMS** sans option : aperçu (applis tierces qui demandent `SEND_SMS`) ; envoyer un SMS depuis Samsung
+   Messages ; SOS d'urgence intact (appli système) ; changer d'appli SMS par défaut et vérifier la notification
+   « Appli par défaut changée » et la liste.
+6. Seulement ensuite les **options** (lecture des SMS : la saisie automatique des codes reçus par SMS dans les
+   applis tierces cesse ; journal d'appels).
+7. Après chaque étape : « Tout rétablir », vérifier que l'état d'avant revient (Autorisations de l'appli,
+   claviers, accessibilité) ; puis `rescue-revert` avec une garde active, et `remove-device-owner` en dernier.
 
 ## Ce qui est vérifié, ce qui ne l'est pas
 

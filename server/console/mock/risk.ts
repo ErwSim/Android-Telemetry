@@ -47,7 +47,7 @@ const EXPLICIT: Record<string, { score: number; reasons: string[] }> = {
   },
   'org.fdroid.fdroid': { score: 41, reasons: ['sideloaded', 'install_packages', 'boot_receiver'] },
   'com.google.android.apps.messaging': { score: 38, reasons: ['sms_send', 'sms_read', 'boot_receiver'] },
-  'com.waze': { score: 36, reasons: ['background_location', 'mic_camera_background', 'boot_receiver'] },
+  'com.waze': { score: 36, reasons: ['background_location', 'mic_camera_background', 'boot_receiver', 'quantum_overlay'] },
   'com.facebook.katana': { score: 27, reasons: ['boot_receiver', 'background_location', 'calls'] },
   'com.whatsapp': { score: 19, reasons: ['calls', 'boot_receiver'] },
   'io.github.erwsim.vigie': { score: 18, reasons: ['device_admin', 'boot_receiver', 'background_location', 'mic_camera_background'] },

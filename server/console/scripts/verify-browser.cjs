@@ -15,8 +15,14 @@ const { chromium } = require('playwright');
 
 const ROOT = path.resolve(__dirname, '..');
 const OUT = process.env.OUT || path.join(ROOT, 'verify-out');
-const PORT = Number(process.env.PORT || 8799);
-const BASE = `http://127.0.0.1:${PORT}`;
+const PORT0 = Number(process.env.PORT || 8799);
+let PORT = PORT0;
+let BASE = `http://127.0.0.1:${PORT}`;
+/** Les parcours des scénarios « sain » et « fraude » tournent contre d'autres instances du serveur factice. */
+function setServer(port) {
+  PORT = port;
+  BASE = `http://127.0.0.1:${port}`;
+}
 const TILE_HOST = 'tile.openstreetmap.org';
 const REAL_TILES = process.env.TILES === 'real';
 fs.mkdirSync(OUT, { recursive: true });
@@ -71,10 +77,16 @@ async function control(body) {
   await fetch(`${BASE}/__mock/control`, { method: 'POST', body: JSON.stringify(body) });
 }
 
+function startMock(port, scenario) {
+  const child = spawn(process.execPath, ['mock/server.ts', '--port', String(port), '--static', 'dist', '--scenario', scenario], { cwd: ROOT, stdio: ['ignore', 'pipe', 'inherit'] });
+  child.stdout.on('data', () => undefined);
+  return child;
+}
+
 async function main() {
   if (!fs.existsSync(path.join(ROOT, 'dist/index.html'))) throw new Error("dist/ absent : lancez d'abord npm run build");
-  const mock = spawn(process.execPath, ['mock/server.ts', '--port', String(PORT), '--static', 'dist'], { cwd: ROOT, stdio: ['ignore', 'pipe', 'inherit'] });
-  mock.stdout.on('data', () => undefined);
+  const mock = startMock(PORT0, 'mixed');
+  const others = [];
   try {
     await waitHealth();
     const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
@@ -84,15 +96,30 @@ async function main() {
       { name: 'clair-telephone', scheme: 'light', viewport: { width: 390, height: 844 }, mobile: true },
       { name: 'sombre-telephone', scheme: 'dark', viewport: { width: 390, height: 844 }, mobile: true },
     ];
-    // ONLY=features : seulement les parcours commandes / pistage / notifications (itération rapide).
-    if (process.env.ONLY !== 'features') {
+    // ONLY=features : seulement les parcours commandes / pistage / notifications ; ONLY=v12 : seulement la version 1.2
+    // (itération rapide).
+    const only = process.env.ONLY;
+    if (!only) {
       for (const sc of scenarios) await runScenario(browser, sc);
       await runBehaviours(browser);
     }
-    await runFeatures(browser);
+    if (!only || only === 'features') await runFeatures(browser);
+    if (!only || only === 'v12') {
+      await runV12(browser);
+      for (const [i, scenario] of ['healthy', 'fraud'].entries()) {
+        const port = PORT0 + 1 + i;
+        const child = startMock(port, scenario);
+        others.push(child);
+        setServer(port);
+        await waitHealth();
+        await runV12Scenario(browser, scenario, scenarios);
+        setServer(PORT0);
+      }
+    }
     await browser.close();
   } finally {
     mock.kill();
+    for (const c of others) c.kill();
   }
   console.log(`\nRésultat : ${failures.length === 0 ? 'OK' : failures.length + ' échec(s)'}`);
   for (const n of notes) console.log('  note : ' + n);
@@ -192,6 +219,8 @@ async function runScenario(browser, sc) {
     ['07-alertes', '/alertes', '.tbl'],
     ['08-commandes', '/commandes', '.cmd-list'],
     ['09-pistage', '/pistage', '.trk-dom tbody tr'],
+    ['10-detections', '/detections', '[data-testid=detection]'],
+    ['11-fiche-application', '/applications/fiche?pkg=com.wallpapers.superhd', '.reasons'],
   ];
   for (const [name, url, sel] of pages) {
     await page.goto(`${BASE}${url}`, { waitUntil: 'load' });
@@ -208,7 +237,7 @@ async function runScenario(browser, sc) {
   await shot(page, sc, '03b-evenement-detail');
 
   await page.goto(`${BASE}/securite`, { waitUntil: 'load' });
-  for (const [tab, name] of [['Journal système', 'log'], ['Caméra et micro', 'capteurs'], ['Certificats d\'AC', 'certs'], ['Cellulaire et BLE', 'radio'], ['Politique appliquée', 'politique'], ['Déverrouillages', 'keyguard']]) {
+  for (const [tab, name] of [['Rôles par défaut', 'roles'], ['Journal système', 'log'], ['Caméra et micro', 'capteurs'], ['Certificats d\'AC', 'certs'], ['Cellulaire et BLE', 'radio'], ['Politique appliquée', 'politique'], ['Déverrouillages', 'keyguard']]) {
     await page.click(`role=tab[name="${tab}"]`);
     await settle(page, '.tbl, .findings');
     await shot(page, sc, `06-securite-${name}`);
@@ -216,7 +245,7 @@ async function runScenario(browser, sc) {
 
   await page.goto(`${BASE}/applications`, { waitUntil: 'load' });
   await settle(page, '.tbl');
-  for (const [tab, name] of [['Permissions dangereuses', 'permissions'], ['Accès spéciaux', 'acces'], ['Historique', 'historique']]) {
+  for (const [tab, name] of [['Inventaire', 'inventaire'], ['Opérations sensibles', 'operations'], ['Permissions dangereuses', 'permissions'], ['Accès spéciaux', 'acces'], ['Historique', 'historique']]) {
     await page.click(`role=tab[name="${tab}"]`);
     await settle(page);
     await shot(page, sc, `05-applications-${name}`);
@@ -697,6 +726,302 @@ async function runFeatures(browser) {
   const extra = [...state.hosts].filter((h) => h !== TILE_HOST);
   if (extra.length) fail(`fonctions : hôtes tiers : ${extra.join(', ')}`); else ok('aucune requête vers un tiers');
   await ctx.close();
+}
+
+/** Parcours de la version 1.2 contre le serveur factice en scénario « mixed » (détections, risque, opérations, rôles, commandes). */
+async function runV12(browser) {
+  console.log('\n== version 1.2 : détections, profil de risque, opérations sensibles, rôles, commandes (scénario mixed)');
+  const sc = { name: 'v12', scheme: 'light', viewport: { width: 1280, height: 900 } };
+  const state = {
+    errors: [],
+    hosts: new Set(),
+    // Route /apps/ops absente (404) : provoquée volontairement pour vérifier l'état vide ; annulation d'une commande signée.
+    expected: (p, st) => (st === 404 && p.startsWith('/api/console/apps/ops')) || (st === 401 && p === '/api/console/me') || (st === 409 && p.includes('/cancel')),
+  };
+  const ctx = await newContext(browser, sc, state);
+  const page = await ctx.newPage();
+  instrument(page, 'v12', state);
+  await login(page);
+  await control({ quiet: true, channel: 'stream', adguard: true, ops_mode: 'normal', agent: { disabled: false, wipe_allowed: true, code_configured: true, device_owner: true, locate_fail: false, deliver_ms: 300, exec_ms: 500 } });
+
+  // ---- Détections : les huit types, un type inconnu, texte hostile, filtres
+  await page.goto(`${BASE}/detections`, { waitUntil: 'load' });
+  await settle(page, '[data-testid=detection]');
+  const types = new Set(await page.locator('[data-testid=detection]').evaluateAll((els) => els.map((e) => e.getAttribute('data-type'))));
+  const want = ['threat_domain', 'upload_spike', 'fanout', 'mail_ports', 'dns_bypass', 'sms_abuse', 'sensor_background', 'new_app_risky'].map((t) => `detect.${t}`);
+  const missing = want.filter((t) => !types.has(t));
+  if (missing.length) fail(`détections : types absents : ${missing.join(', ')}`); else ok(`détections : les 8 types du contrat §11.3 affichés (${types.size} types dont un hors catalogue)`);
+  if (!types.has('detect.quantum_leak')) fail('détections : type inconnu non affiché'); else ok('détection de type inconnu : affichée avec son code et sa description');
+  const main = await page.textContent('.main');
+  if (!main.includes('a tenté de joindre le domaine')) fail('détections : phrase « ce qui a été observé » absente'); else ok('détections : ce qui a été observé est écrit en clair');
+  for (const needle of ["Pourquoi c'est suspect", "Ce que cela peut être d'innocent", 'Que faire', 'Éléments de preuve']) {
+    const n = await page.locator(`.det h4:has-text("${needle}")`).count();
+    if (n < 1) fail(`détections : section « ${needle} » absente`);
+  }
+  await page.waitForSelector(`.det .btn:has-text("Fiche de l'application")`);
+  if (!(await page.locator('.det-guard').count())) fail("détections : rappel de la garde de l'application absent"); else ok('détections : preuves, pourquoi, explications innocentes, que faire, liens et rappel des gardes');
+  if (await page.evaluate(() => window.__pwn !== undefined || !!document.querySelector('.main img, .main script'))) fail('détections : texte hostile interprété'); else ok("noms d'application, domaines et motifs hostiles : affichés comme du texte");
+  if (!main.includes('<img src=x onerror=window.__pwn=1>') || !main.includes('<script>window.__pwn=2</script>.top')) fail('détections : texte hostile non affiché tel quel');
+  if (main.includes('‮')) fail('détections : caractère bidirectionnel conservé');
+  await page.screenshot({ path: path.join(OUT, 'v12-detections-mixte.png'), fullPage: true });
+  // Filtre par type, puis par gravité
+  await page.selectOption('select[aria-label="Type de détection"]', 'detect.sms_abuse');
+  await page.waitForFunction(() => { const c = [...document.querySelectorAll('[data-testid=detection]')]; return c.length > 0 && c.every((e) => e.getAttribute('data-type') === 'detect.sms_abuse'); }, null, { timeout: 15000 });
+  ok('filtre par type : uniquement « Envoi de SMS anormal »');
+  await page.selectOption('select[aria-label="Type de détection"]', '');
+  await page.selectOption('select[aria-label="Gravité minimale"]', '3');
+  await page.waitForFunction(() => { const c = [...document.querySelectorAll('[data-testid=detection]')]; return c.length > 0 && c.every((e) => e.classList.contains('det-sev-3')); }, null, { timeout: 15000 });
+  ok('filtre de gravité : critiques seulement');
+  await page.selectOption('select[aria-label="Gravité minimale"]', '0');
+  // Période : 24 h puis 30 jours
+  await page.click('button.seg-btn:has-text("24 h")');
+  await page.waitForTimeout(800);
+  const n24 = await page.locator('[data-testid=detection]').count();
+  await page.click('button.seg-btn:has-text("30 jours")');
+  await page.waitForTimeout(800);
+  const n30 = await page.locator('[data-testid=detection]').count();
+  if (!(n24 > 0 && n30 > n24)) fail(`période : ${n24} détections sur 24 h, ${n30} sur 30 jours`); else ok(`filtre de période : ${n24} détections sur 24 h, ${n30} sur 30 jours`);
+  await page.click('button.seg-btn:has-text("7 jours")');
+  await page.waitForTimeout(500);
+
+  // Pagination par curseur : 70 détections de plus
+  await control({ more_detections: 70 });
+  await page.click('button:has-text("Actualiser")');
+  await page.waitForSelector('button:has-text("Charger plus")', { timeout: 15000 });
+  const p1 = await page.locator('[data-testid=detection]').count();
+  for (let i = 0; i < 6 && (await page.locator('button:has-text("Charger plus")').count()); i++) {
+    const before = await page.locator('[data-testid=detection]').count();
+    await page.click('button:has-text("Charger plus")');
+    await page.waitForFunction((n) => document.querySelectorAll('[data-testid=detection]').length > n, before, { timeout: 15000 });
+  }
+  const total = await page.locator('[data-testid=detection]').count();
+  const uniq = new Set(await page.locator('[data-testid=detection] .det-time').evaluateAll((els) => els.map((e) => e.getAttribute('datetime') + e.closest('li').textContent.slice(0, 80)))).size;
+  if (!(await page.textContent('.main')).includes('fin de la liste') || total <= p1) fail('pagination : fin de liste non atteinte'); else ok(`pagination par curseur : ${p1} puis ${total} détections (${uniq} distinctes), fin de liste atteinte`);
+
+  // Arrivée en direct (SSE)
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await control({ emit_detection: { type: 'detect.sms_abuse', package: 'com.wallpapers.superhd', label: 'Super Wallpapers HD', severity: 3, evidence: { reason: 'not_default_sms_app', sent: 777, background: 770 }, summary: 'direct' } });
+  await page.waitForSelector('.det.is-new:has-text("777 SMS")', { timeout: 15000 });
+  ok('détection reçue en direct par le flux SSE : carte « nouvelle » affichée sans recharger');
+  await page.screenshot({ path: path.join(OUT, 'v12-detections-direct.png') });
+
+  // ---- Vue d'ensemble : résumé par gravité
+  await page.goto(`${BASE}/`, { waitUntil: 'load' });
+  await settle(page, '[data-testid=verdict]');
+  const ov = await page.textContent('[data-testid=overview-detections]');
+  const critBefore = Number((/(\d+)\s*critique/.exec(ov) || [])[1] || 0);
+  if (!/à examiner/.test(ov) || !critBefore) fail("vue d'ensemble : résumé des détections par gravité absent"); else ok(`vue d'ensemble : ${critBefore} critiques sur 7 jours, résumé par gravité`);
+  await control({ emit_detection: { type: 'detect.sensor_background', package: 'com.sync.helper.svc', label: 'Sync Helper', severity: 3, evidence: { op: 'camera', background_count: 9, count: 9 }, summary: 'direct' } });
+  await page.waitForFunction((n) => { const m = /(\d+)\s*critique/.exec(document.querySelector('[data-testid=overview-detections]')?.textContent || ''); return m && Number(m[1]) > n; }, critBefore, { timeout: 15000 });
+  ok("vue d'ensemble : le résumé se met à jour à l'arrivée d'une détection");
+  await page.screenshot({ path: path.join(OUT, 'v12-vue-ensemble-mixte.png'), fullPage: true });
+
+  // ---- Alertes : articulation avec les détections
+  await page.goto(`${BASE}/alertes`, { waitUntil: 'load' });
+  await page.waitForSelector('.net-intro a[href="/detections"]');
+  ok('alertes : renvoi vers la page Détections');
+
+  // ---- Applications : profil de risque
+  await page.goto(`${BASE}/applications`, { waitUntil: 'load' });
+  await settle(page, '[data-testid=risk-table]');
+  const scores = await page.locator('[data-testid=risk-table] tbody .risk-score strong').allTextContents();
+  const nums = scores.map(Number);
+  if (nums.length < 10 || nums.some((n, i) => i > 0 && n > nums[i - 1])) fail('profil de risque : tri par score décroissant non respecté'); else ok(`profil de risque : ${nums.length} applications triées par score (${nums[0]} … ${nums[nums.length - 1]})`);
+  const high = await page.locator('[data-testid=risk-table] tr.risk-high').count();
+  const tbl = await page.textContent('[data-testid=risk-table]');
+  const combos = ['Profil de cheval de Troie bancaire', 'Profil de fraude au SMS', 'Profil de logiciel espion'].filter((c) => tbl.includes(c));
+  if (combos.length !== 3 || high < 3) fail(`profil de risque : combinaisons ${combos.length}/3, niveaux élevés ${high}`); else ok('profil de risque : les trois combinaisons (banque, SMS, espion) en évidence, niveaux élevés repérés');
+  await page.check('label.check:has-text("Combinaisons seulement") input');
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid=risk-table] tbody tr').length === 3, null, { timeout: 5000 });
+  await page.uncheck('label.check:has-text("Combinaisons seulement") input');
+  await page.fill('input[placeholder="nom ou paquet"]', 'waze');
+  await page.click('[data-testid=risk-table] .expander');
+  await page.waitForSelector('.reasons li:has-text("quantum_overlay")');
+  const unknown = await page.textContent('.reasons');
+  if (!unknown.includes('code inconnu') || !unknown.includes('Position en arrière-plan')) fail('profil de risque : code inconnu / explications absents'); else ok('profil de risque : raisons expliquées en clair ; un code inconnu est affiché tel quel');
+  await page.screenshot({ path: path.join(OUT, 'v12-risque-raisons.png') });
+
+  // ---- Fiche d'une application (ouverture directe : le paquet contient des points)
+  await page.goto(`${BASE}/applications/fiche?pkg=com.wallpapers.superhd`, { waitUntil: 'load' });
+  await page.waitForSelector('.sheet-head h1:has-text("Super Wallpapers HD")');
+  await page.waitForSelector('.det');
+  const sheet = await page.textContent('.main');
+  for (const needle of ['Profil de risque', 'Rôles par défaut', 'Détections concernant cette application', 'Permissions dangereuses accordées', 'Opérations sensibles', 'Domaines contactés', 'Profil de fraude au SMS']) {
+    if (!sheet.includes(needle)) fail(`fiche d'application : « ${needle} » absent`);
+  }
+  const sheetPkgs = await page.locator('.det .det-meta .mono').allTextContents();
+  if (!sheetPkgs.length || sheetPkgs.some((t) => !t.includes('com.wallpapers.superhd'))) fail("fiche : détections d'autres applications affichées"); else ok(`fiche d'application (ouverture directe) : profil, rôles, permissions, opérations, domaines, ${sheetPkgs.length} détections de cette application`);
+  await page.waitForSelector('[data-testid=sheet-ops]');
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.sheet-head h1:has-text("Super Wallpapers HD")');
+  ok("fiche d'application : rechargement de la page (pas de 404)");
+  await page.goto(`${BASE}/applications/fiche?pkg=${encodeURIComponent('com.fastcleaner.pro')}`, { waitUntil: 'load' });
+  await page.waitForSelector(`.role-list:has-text("Filtrage d'appels")`);
+  ok("fiche d'application : rôle « Filtrage d'appels » tenu par une application suspecte");
+  await page.goto(`${BASE}/applications/fiche?pkg=${encodeURIComponent('com.hostile.app')}`, { waitUntil: 'load' });
+  await page.waitForSelector('.det');
+  if (await page.evaluate(() => window.__pwn !== undefined)) fail('fiche : texte hostile interprété');
+  await page.screenshot({ path: path.join(OUT, 'v12-fiche-hostile.png'), fullPage: true });
+
+  // ---- Opérations sensibles : présentes, vides, route absente
+  await page.goto(`${BASE}/applications?tab=ops`, { waitUntil: 'load' });
+  await settle(page, '[data-testid=ops-cards]');
+  const ops = await page.textContent('[data-testid=ops-cards]');
+  if (!/Envoi de SMS/.test(ops) || !/1\s?984/.test(ops) || !/1\s?790 en arrière-plan/.test(ops)) fail('opérations sensibles : envois de SMS (1 984, dont 1 790 en arrière-plan) absents'); else ok('opérations sensibles : qui envoie des SMS, combien, dont en arrière-plan');
+  for (const needle of ['Appels passés', 'Lecture des contacts', 'Micro', 'Caméra']) if (!ops.includes(needle)) fail(`opérations sensibles : « ${needle} » absent`);
+  await page.screenshot({ path: path.join(OUT, 'v12-operations-presentes.png'), fullPage: true });
+  for (const mode of ['empty', '404']) {
+    await control({ ops_mode: mode });
+    await page.reload({ waitUntil: 'load' });
+    await settle(page, '[data-testid=ops-empty]');
+    const e = await page.textContent('[data-testid=ops-empty]');
+    const broken = await page.locator('.state-error').count();
+    if (broken || !/grant-adb-permissions/.test(e) || !/DUMP/.test(e) || !/Collecteurs/.test(e)) fail(`opérations sensibles (${mode}) : état vide incomplet ou écran cassé`);
+    else ok(`opérations sensibles absentes (${mode}) : état vide qui explique l'activation (DUMP par ADB, collecteur expérimental), aucune erreur`);
+  }
+  await page.screenshot({ path: path.join(OUT, 'v12-operations-absentes.png'), fullPage: true });
+  await control({ ops_mode: 'normal' });
+
+  // ---- Sécurité : rôles par défaut
+  await page.goto(`${BASE}/securite?tab=roles`, { waitUntil: 'load' });
+  await settle(page, '[data-testid=roles-table]');
+  const roles = await page.textContent('[data-testid=roles-table]');
+  if (!roles.includes('Navigateur') || !roles.includes('Assistant') || !roles.includes("Filtrage d'appels") || !roles.includes('com.fastcleaner.pro')) fail('rôles par défaut : historique incomplet'); else ok("sécurité : historique des changements de rôle par défaut (dont un filtrage d'appels inquiétant)");
+
+  // ---- Journal : événements de pistage lisibles
+  await page.goto(`${BASE}/evenements`, { waitUntil: 'load' });
+  await settle(page, '.tbl');
+  await page.click('button.seg-btn:has-text("7 jours")');
+  await page.fill('input[list=event-types]', 'tracking.');
+  await page.waitForSelector('.tbl tbody tr:has-text("Niveau de blocage")', { timeout: 15000 });
+  const jt = await page.textContent('.tbl');
+  if (!/Niveau de blocage : .+ → .+ · par admin/.test(jt) || !/Blocage de « www\.leboncoin\.fr »/.test(jt)) fail('journal : tracking.level_changed / tracking.override illisibles'); else ok('journal : tracking.level_changed et tracking.override décrits en clair (qui, quoi, avant → après)');
+  await page.fill('input[list=event-types]', 'detect.');
+  await page.waitForSelector('.tbl tbody tr:has-text("a tenté de joindre")', { timeout: 15000 });
+  ok('journal : détections décrites en clair');
+
+  // ---- Commandes : validité de l'effacement et textes sur les limites de la signature
+  await page.goto(`${BASE}/commandes`, { waitUntil: 'load' });
+  await settle(page, '.cmd-list');
+  const sl = await page.textContent('[data-testid=server-limits]');
+  for (const needle of ['cinq mots tirés au hasard', "n'engagent que le serveur", 'Seul le changement du code', 'ne saisissez plus le code ici', 'servie par le serveur']) {
+    if (!sl.includes(needle)) fail(`commandes : texte « ${needle} » absent des limites de la signature`);
+  }
+  if (sl.includes("ni le verrouiller ni l'effacer")) fail('commandes : ancienne promesse excessive encore affichée');
+  await page.click('button:has-text("Effacer le téléphone…")');
+  await page.waitForSelector('dialog[open]');
+  await page.check('dialog input[type=checkbox]');
+  await page.click('dialog button:has-text("Continuer")');
+  await page.fill('dialog input[type=text]', 's25');
+  await page.click('dialog button:has-text("Continuer")');
+  const wipeOpts = await page.locator('dialog select option').allTextContents();
+  const wipeSel = await page.locator('dialog select').evaluate((e) => e.options[e.selectedIndex].textContent);
+  if (wipeSel !== '15 minutes (par défaut)' || !wipeOpts.includes('24 heures (maximum)') || wipeOpts.some((o) => /jours/.test(o))) fail(`effacement : validités ${wipeOpts.join(' | ')} (défaut : ${wipeSel})`); else ok('effacement : validité 15 minutes par défaut, 24 heures au plus');
+  const dlg = await page.textContent('dialog');
+  if (!/n'engagent que le serveur/.test(dlg) || !/cinq mots/.test(dlg) || !/ne saisissez plus le code ici/.test(dlg)) fail("dialogue d'effacement : limites de la signature non dites"); else ok("dialogue : « annulée / expirée n'engagent que le serveur », code à forte entropie, ne plus saisir le code si le serveur est suspect");
+  await page.screenshot({ path: path.join(OUT, 'v12-commandes-effacement-validite.png') });
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('dialog[open]', { state: 'detached' });
+  // Verrouillage signé en attente puis annulé : « côté serveur » seulement
+  await control({ channel: 'offline' });
+  await page.reload({ waitUntil: 'load' });
+  await settle(page, '.cmd-list');
+  await page.click('button:has-text("Verrouiller…")');
+  await page.waitForSelector('dialog[open]');
+  await page.fill('dialog textarea', 'Test v1.2');
+  await page.check('dialog input[type=checkbox]');
+  await page.fill('#cmd-code', RIGHT_CODE);
+  await page.click('dialog button:has-text("Signer et envoyer")');
+  await page.waitForSelector('dialog[open]', { state: 'detached', timeout: 20000 });
+  await page.waitForSelector('.cmd-tbl tbody tr:first-child:has-text("En attente")');
+  await page.click('.cmd-tbl tbody tr:first-child button:has-text("Annuler")');
+  await page.waitForSelector('.cmd-tbl tbody tr:first-child:has-text("Annulée (côté serveur)")');
+  await page.waitForSelector(`.state-warn:has-text("n'engage que le serveur")`);
+  ok('commande signée annulée : affichée « Annulée (côté serveur) » avec la réserve sur la signature');
+  await control({ channel: 'stream' });
+
+  const csp = await page.evaluate(() => window.__csp);
+  if (csp.length) fail(`v12 : violations CSP : ${[...new Set(csp)].join(' | ')}`); else ok('aucune violation CSP');
+  for (const e of state.errors) fail(e);
+  const extra = [...state.hosts].filter((h) => h !== TILE_HOST);
+  if (extra.length) fail(`v12 : hôtes tiers : ${extra.join(', ')}`); else ok('aucune requête vers un tiers');
+  await ctx.close();
+}
+
+/** Scénarios « téléphone sain » et « fraude au SMS » : captures dans les quatre configurations, et constats. */
+async function runV12Scenario(browser, scenario, scenarios) {
+  console.log(`\n== version 1.2 : scénario ${scenario}`);
+  for (const sc of scenarios) {
+    const state = { errors: [], hosts: new Set() };
+    const ctx = await newContext(browser, sc, state);
+    const page = await ctx.newPage();
+    instrument(page, `${scenario}-${sc.name}`, state);
+    await login(page);
+    const named = { ...sc, name: `${scenario}-${sc.name}` };
+    const light = sc.name === 'clair-bureau';
+    // Détections
+    await page.goto(`${BASE}/detections`, { waitUntil: 'load' });
+    await settle(page, '[data-testid=verdict]');
+    const v = await page.textContent('[data-testid=verdict]');
+    if (light) {
+      if (scenario === 'healthy') {
+        if (!/Rien à signaler/.test(v) || (await page.locator('[data-testid=detection]').count())) fail('scénario sain : « Rien à signaler » attendu'); else ok('scénario sain : « Rien à signaler », aucune détection');
+      } else {
+        if (!/à examiner/.test(v) || !/Super Wallpapers HD/.test(v)) fail('scénario fraude : application la plus préoccupante non désignée'); else ok(`scénario fraude : ${v.match(/\d+ détections? à examiner/)?.[0]}, application la plus préoccupante désignée`);
+        const sms = await page.locator('[data-testid=detection][data-type="detect.sms_abuse"]').count();
+        if (!sms) fail("scénario fraude : aucune détection d'envoi de SMS"); else ok(`scénario fraude : ${sms} détection(s) d'envoi de SMS anormal, gravité critique`);
+        const txt = await page.textContent('[data-testid=detection][data-type="detect.sms_abuse"]');
+        if (!/SMS/.test(txt) || !/arrière-plan/.test(txt)) fail('scénario fraude : phrase des SMS sans arrière-plan');
+      }
+    }
+    await shot(page, named, '10-detections');
+    // Vue d'ensemble
+    await page.goto(`${BASE}/`, { waitUntil: 'load' });
+    await settle(page, '[data-testid=verdict]');
+    await shot(page, named, '01-vue-ensemble');
+    // Risque
+    await page.goto(`${BASE}/applications`, { waitUntil: 'load' });
+    await settle(page, '[data-testid=risk-table]');
+    if (light) {
+      const high = await page.locator('[data-testid=risk-table] tr.risk-high').count();
+      if (scenario === 'healthy' && high) fail(`scénario sain : ${high} application(s) à risque élevé`);
+      else if (scenario === 'fraud' && high !== 1) fail(`scénario fraude : ${high} application(s) à risque élevé (1 attendue)`);
+      else ok(`${scenario} : ${high} application(s) à risque élevé`);
+    }
+    await shot(page, named, '05-applications-risque');
+    // Opérations
+    await page.goto(`${BASE}/applications?tab=ops`, { waitUntil: 'load' });
+    await settle(page, scenario === 'healthy' ? '[data-testid=ops-empty]' : '[data-testid=ops-cards]');
+    if (light) {
+      if (scenario === 'healthy') {
+        const e = await page.textContent('[data-testid=ops-empty]');
+        if (!/grant-adb-permissions/.test(e) || (await page.locator('.state-error').count())) fail('scénario sain : état vide des opérations incorrect'); else ok('scénario sain : app.ops absent, état vide explicatif');
+      } else {
+        const o = await page.textContent('[data-testid=ops-cards]');
+        if (!/1\s?984/.test(o)) fail('scénario fraude : 1 984 SMS attendus'); else ok('scénario fraude : app.ops montre 1 984 SMS dont 1 790 en arrière-plan');
+      }
+    }
+    await shot(page, named, '05-applications-operations');
+    // Fiche
+    if (scenario === 'fraud') {
+      await page.goto(`${BASE}/applications/fiche?pkg=com.wallpapers.superhd`, { waitUntil: 'load' });
+      await settle(page, '.reasons');
+      await shot(page, named, '11-fiche-application');
+    }
+    // Rôles
+    await page.goto(`${BASE}/securite?tab=roles`, { waitUntil: 'load' });
+    await settle(page, '[data-testid=roles-table]');
+    await shot(page, named, '06-securite-roles');
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    if (overflow > 1) fail(`${named.name} : défilement horizontal (${overflow}px)`);
+    const csp = await page.evaluate(() => window.__csp);
+    if (csp.length) fail(`${named.name} : violations CSP : ${[...new Set(csp)].join(' | ')}`);
+    for (const e of state.errors) fail(e);
+    const extra = [...state.hosts].filter((h) => h !== TILE_HOST);
+    if (extra.length) fail(`${named.name} : hôtes tiers : ${extra.join(', ')}`);
+    await ctx.close();
+  }
+  ok(`${scenario} : quatre configurations (clair/sombre, bureau/téléphone) sans erreur console, violation CSP ni requête tierce`);
 }
 
 main().catch((e) => {

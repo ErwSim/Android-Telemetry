@@ -305,6 +305,8 @@ export function applyScenario(events: MockEvent[], scenario: Scenario, now: numb
     det(now - 6 * HOUR, 'detect.dns_bypass', 2, SYNC, { unresolved_ips: 83, connections: 140 }, "Sync Helper s'est connectée à 83 adresses jamais résolues par le DNS du téléphone");
     // Capacité obtenue peu après l'installation (détection `new_app_risky`, déclencheur « capability »).
     det(installSync + 12 * MIN, 'detect.new_app_risky', 2, SYNC, { trigger: 'capability', capability: 'permission:CALL_PHONE', installed_at: new Date(installSync).toISOString(), minutes_after_install: 10, installer: 'com.android.shell', level: 'high', score: 79 }, 'Sync Helper, installée il y a 10 min, a obtenu : appels téléphoniques', 2 * MIN);
+    // Texte hostile venu du téléphone et du réseau : nom d'application, domaine, motif (affichés comme du texte).
+    detDay(now - 12 * HOUR, 'detect.threat_domain', 2, { package: 'com.hostile.app', label: '<img src=x onerror=window.__pwn=1>\u202Etxt.exe' }, { domain: '<script>window.__pwn=2</script>.top', requests: 3, blocked: true, reason: 'Liste : <b>gras</b> [lien](javascript:alert(1))' }, '<img src=x onerror=window.__pwn=3> a demandé un domaine de menace');
     // Type inconnu de la console et détection sans fenêtre : repli lisible.
     det(now - 9 * HOUR, 'detect.quantum_leak', 2, { package: 'com.google.android.apps.photos', label: 'Photos' }, { qubits: 12, note: 'type hors catalogue' }, 'Fuite quantique simulée (type inconnu de la console)', HOUR, false);
   }

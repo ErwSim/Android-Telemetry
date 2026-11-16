@@ -15,8 +15,8 @@ Références : `docs/contrat/contrat.md` (format des événements, **spécificat
 | Module | Package | Contenu |
 |---|---|---|
 | `:core` | `io.github.erwsim.vigie.core` | `Agent` (câblage), commandes à distance (`command/` : vérification, canal, état), modèle d'événement, `EventSink`, tampon `outbox` (Room), envoi (`Uploader`, WorkManager), enrôlement, réglages, interface `Collector` + `CollectorHost`, `Capabilities`, `IntegrityMonitor` (`agent.tamper`). Banc de test partagé (testFixtures) : `CollectorHarness`, référence du contrat `Contract`. |
-| `:collectors` | `…vigie.collectors` | 19 collecteurs **sans** privilège Device Owner (dont `notifications`, alimenté par l'APK compagnon `:notifier`). Point d'entrée : `CollectorsModule.all(context)`. |
-| `:policy` | `…vigie.policy` | Tout ce qui exige le Device Owner : `VigieAdminReceiver`, `DeviceOwnerManager` (auto-attribution des permissions, protection contre l'arrêt forcé), moteur de politique réversible (`engine/`), DNS privé et son repli (`dns/`), 3 collecteurs (journaux de sécurité et réseau, posture), issue de secours ADB (`rescue/RescueReceiver`), état de l'écran Politique (`ui/PolicyController`), exécuteurs `lock`/`clear_lock_message`/`wipe` (`remote/`). Point d'entrée : `PolicyModule`. |
+| `:collectors` | `…vigie.collectors` | 22 collecteurs **sans** privilège Device Owner (dont `notifications`, alimenté par l'APK compagnon `:notifier`). Point d'entrée : `CollectorsModule.all(context)`. |
+| `:policy` | `…vigie.policy` | Tout ce qui exige le Device Owner : `VigieAdminReceiver`, `DeviceOwnerManager` (auto-attribution des permissions, protection contre l'arrêt forcé), moteur de politique réversible (`engine/`), gardes de capacités du contrat §11.1 (`engine/CapabilityGuards`), DNS privé et son repli (`dns/`), 3 collecteurs (journaux de sécurité et réseau, posture), issue de secours ADB (`rescue/RescueReceiver`), état de l'écran Politique (`ui/PolicyController`), exécuteurs `lock`/`clear_lock_message`/`wipe` (`remote/`). Point d'entrée : `PolicyModule`. |
 | `:app` | `…vigie` | `VigieApplication`, service de premier plan `AgentService`, `BootReceiver`, interface Compose (dont l'écran Politique), test de conformité au contrat de bout en bout. |
 
 `VigieApplication` fait `Agent.init(this) { CollectorsModule.all(it) + PolicyModule.collectors(it) }`.
@@ -189,6 +189,13 @@ ctx.emit("device.battery", Severity.INFO) {
   requis ».
 - Toute modification passe par `AgentSettings.set` : `agent.config_changed` (`key`, `old`, `new`) est émis
   automatiquement et le collecteur est redémarré. Aucun réglage ne vient du serveur (flux à sens unique).
+- `SettingKey.PackageListKey(nom, défaut)` : ensemble de noms de paquets (validés, 500 au plus, stockés triés une
+  ligne par paquet ; `set` renvoie `false` et n'écrit rien pour une entrée invalide). Exposé par
+  `SettingSpec.PackageListSpec(key, titreRes, résuméRes, candidates, locked)` : `SettingRow` l'affiche (nom et
+  icône) avec un sélecteur parmi les applis installées (`ui/PackagePicker.kt` : recherche, `candidates` pour
+  restreindre, « Montrer toutes les applications », `locked` pour les paquets toujours épargnés).
+  `agent.config_changed` porte les listes triées jointes par des virgules. `AgentSettings.isSet(key)` dit si
+  le propriétaire a déjà enregistré la valeur (pré-remplissage).
 - Réglages de politique : `PolicyModule.settings` (rendu dans la section « Device Owner » des Réglages).
 - Réglages du socle (tampon, envoi) : écran Réglages.
 
@@ -238,7 +245,7 @@ CollectorHarness(MyCollector()).use { h ->
   un type ou une clé inconnus, un `null`, un mauvais type de valeur. Tout nouveau champ s'y ajoute (après
   le contrat). `app/src/test/…/ContractConformanceTest` fait produire à chaque collecteur de l'APK ses
   événements types (constructeurs de données publics, processeurs de journaux, banc) et vérifie aussi
-  `agent.heartbeat.collectors` (les 22 collecteurs, état `running`/`disabled`/`unavailable`) ; un type
+  `agent.heartbeat.collectors` (les 25 collecteurs, état `running`/`disabled`/`unavailable`) ; un type
   déclaré qui ne peut pas être produit sur la JVM doit y être listé avec sa raison. Les échantillons sont
   dans `ApkSamples`, repris par `CrossServerTest` : envoi au **vrai collecteur** (`server/collector`) par le
   vrai `Uploader`, avec un `.vigie` du vrai `enroll` (ignoré sans `VIGIE_CROSS_ENROLL` ; mode d'emploi en
@@ -331,6 +338,40 @@ le tampon ; un saut en arrière rabat l'horizon aussitôt (les événements écr
 - Les appels bloquants (`setGlobalPrivateDnsModeSpecifiedHost`, sonde DoT) se font hors fil principal.
 - Ne jamais poser `DISALLOW_DEBUGGING_FEATURES` ni couper la signalisation USB (porte de secours ADB).
 
+### Gardes de capacités (contrat §11.1)
+
+| Élément | Où |
+|---|---|
+| Clés, permissions, garde-fous, avis, aperçu, état | `engine/CapabilityGuards.kt` : `GuardKey`, `GuardPermissions`, `GuardSafety`, `GuardNotice`, `GuardPreview`, `GuardStatus` |
+| Moteur des gardes | `CapabilityGuards` (instance `PolicyEngine.guards`) : `preview`, `set`, `reconcile`, `release`, `quarantined`, `status` |
+| Refus et rétablissement des permissions (partagés avec le catalogue) | `PolicyEngine.denyPermissions` / `revertPermissions(only, keepRecord)` / `claimOf` |
+| Passerelle | `DevicePolicyGateway.installedApps/appInfo/roles/accessibilityServices/inputMethods/permitted*` (`AndroidDevicePolicyGateway`, `FakeGateway`) |
+| Câblage | `PolicyModule` : listes `GUARD_LISTS` (`policy.guard.<clé>.allowed`), options `GUARD_EXTENDED`, récepteur `PACKAGE_ADDED/REPLACED/REMOVED` + `ACTION_DEFAULT_DIALER_CHANGED`, `requestGuardReconcile()` (canal fusionné : une rafale = un passage), `guardNoticeListener` (posé par `VigieApplication` → `AgentNotifications.guardNotice`, canal `vigie_guards`) |
+| Interface | `ui/PolicyController` (`previewGuard`, `applyGuard`, `release`) ; `app/…/ui/GuardsUi.kt` (cartes, aperçu, écran `Screen.Quarantine`), `PackagePicker.kt` |
+| Tests | `policy/src/test/…/CapabilityGuardsTest` |
+
+Invariants (ne pas les casser) :
+
+- Enregistrements : `guard:<clé>` (`ItemKind.GUARD` : la garde est active ; option `guard_extended`, liste en
+  vigueur `guard_allowed`, `released` pour la quarantaine, `prev_list`/`prev_list_set`/`applied_list` pour
+  accessibilité/claviers) et `guard:<clé>:<paquet>` (`ItemKind.PERMISSION`, défait comme une permission du
+  catalogue, y compris l'enregistrement `PENDING` d'un plantage). `PolicyEngine.preview/apply` ignorent tout
+  identifiant `guard:` (jamais traité comme orphelin du catalogue).
+- Écrit avant de changer (`PENDING`), confirmé après relecture ; un échec reste dans l'enregistrement, non
+  appliqué, et n'est retenté qu'à `set` (`retryFailed`) : pas de rafale d'événements au rapprochement.
+- `revertAll`/retrait du Device Owner : `switchOff` de **toutes** les gardes par paquet d'abord (aucune
+  modification de l'appareil), puis le reste du plus récent au plus ancien. Désactiver une garde seule : son
+  enregistrement d'abord, puis ses paquets.
+- Une permission refusée par deux enregistrements est « partagée » (`claimOf`) : chacun garde l'état d'origine,
+  `revertPermissions` ne touche pas une permission qu'un autre tient encore.
+- `GuardSafety.exemption` : Vigie, compagnon, `FLAG_SYSTEM`, `PackageDenyList` statique, détenteurs **actuels**
+  des rôles (SMS, composeur, clavier en service, accueil) — jamais `protectedPackages()` (trop large : candidats
+  HOME, administrateurs actifs).
+- Balayage (état illisible) : `CapabilityGuards.sweepLocked` (permissions de `GuardPermissions.ALL` refusées
+  sans enregistrement sur une appli non système → `DEFAULT` ; listes d'accessibilité et de claviers → `null`).
+- Accessibilité/claviers : la liste posée = liste choisie ∪ services non système déjà activés (sinon la
+  plateforme refuse). Retour : liste d'avant (`null` en pratique), relue.
+
 ## 12. Commandes à distance (contrat §8)
 
 Le seul flux serveur → téléphone. Liste fermée, rien d'autre : aucun code de ce chemin n'a accès en écriture
@@ -341,7 +382,7 @@ aux réglages, à la politique ou à l'enrôlement.
 | Modèle | `core/command/CommandModel.kt` | `CommandTypes` (liste fermée, sensibles, Device Owner), `Refusal` (motifs du contrat), `CommandParams` (seuls champs qui atteignent un exécuteur), `AcceptedCommand` (constructeur `internal` : seul le vérificateur en crée), `CommandExecutor`. |
 | Cryptographie | `CommandCrypto.kt` | PBKDF2-HMAC-SHA256 écrit sur `Mac("HmacSHA256")` (l'encodage du mot de passe de `SecretKeyFactory` varie selon le fournisseur : ici toujours UTF-8, sans normalisation, comme `TextEncoder`), HMAC, comparaison `MessageDigest.isEqual`. `isTooWeak` : plancher du code (6 caractères différents ; sans lettre, 20 chiffres), car le serveur peut chercher le code hors ligne à partir d'une commande signée. |
 | État | `CommandStore.kt` | `CommandKeyStore` : `K` scellé par `SecretBox` (clé AES-GCM du Keystore, alias `vigie_command_key`), lié au `device_id`. `CommandStateStore` : deux fenêtres anti-rejeu de 500 (signées / simples), signatures invalides et verrouillage, historique (50), résultats en attente. Tout en `commit()` : ce qui garde une exécution est sur disque avant elle. |
-| Vérification | `CommandVerifier.kt` | Ordre exact du contrat ; avant la signature, seuls `v`, `id`, `device_id`, `type` sont lus. Un `wipe` signé et valide refusé parce que l'effacement n'est pas autorisé consomme son `id` (il ne s'exécutera pas si le serveur le livre de nouveau après l'activation de l'interrupteur). `JsonNesting` : profondeur du JSON bornée avant toute analyse (payload ici, événements et réponses dans `CommandChannel`). `WipeGate` : les six conditions de l'effacement et leur revérification sur l'état courant. |
+| Vérification | `CommandVerifier.kt` | Ordre exact du contrat ; avant la signature, seuls `v`, `id`, `device_id`, `type` sont lus. Un `wipe` signé et valide refusé parce que l'effacement n'est pas autorisé consomme son `id` (il ne s'exécutera pas si le serveur le livre de nouveau après l'activation de l'interrupteur). Revue v1.1 : `withinValidity` (24 h au plus pour `wipe`, 30 jours sinon) ; une commande sensible refusée `disabled` (canal) ou `no_code_configured` est consommée dans une **troisième fenêtre** (`CommandStateStore.consumeUnverified` : sa signature n'est pas vérifiable, elle ne doit pas pouvoir évincer un `id` signé vérifié) ; U+2028/2029 refusés dans `message`. `JsonNesting` : profondeur du JSON bornée avant toute analyse (payload ici, événements et réponses dans `CommandChannel`). `WipeGate` : les six conditions de l'effacement et leur revérification sur l'état courant. |
 | Traitement | `CommandProcessor.kt` | Un à la fois : vérification → exécuteur → `command.result` (sévérités du contrat) → historique → résultat à poster. Commande déjà traitée livrée de nouveau (renvoi du serveur, flux + interrogation) : jamais réexécutée, son résultat d'origine (mémoire de 1000 résultats, `CommandStateStore.rememberResult`) est renvoyé. `wipe` : événement et envoi borné à 10 s **avant** l'exécuteur. |
 | Canal | `CommandChannel.kt`, `AndroidChannelPlatform.kt` | Boucle (une coroutine, `Dispatchers.IO`) : désactivé / non enrôlé / refusé (401-403) / sans réseau → attente d'un signal ; sinon flux SSE (`SseParser`) ou interrogation ; backoff à gigue en `elapsedRealtime` ; signaux : réglages, réseau (`Agent.startNetworkWatch`), envoi de lot (`Agent.handleUploadOutcome`), alarme (`CommandAlarmReceiver`), maintenance. Une file + un ouvrier traitent les commandes pendant que la lecture continue. |
 | Câblage | `RemoteCommands.kt`, `Agent.commands` | Réglages `commands.*`, code (`setCode` lent : hors fil principal), enregistrement des exécuteurs par module (`register`). |
@@ -361,7 +402,8 @@ aux réglages, à la politique ou à l'enrôlement.
   comme un échec, `401`/`403` = arrêt affiché, `404` = 6 h ; une seule alarme en attente à la fois ;
 - l'interrogation à chaque envoi de lot n'a lieu que si le flux n'est pas ouvert, au plus une fois par minute.
 
-**Tests** : `core/src/test/…/command/` (vérification, ordre, vecteur, cas difficiles signés par la console
+**Tests** : `core/src/test/…/command/` (vérification, ordre, vecteur, précisions de la revue v1.1 —
+`CommandReviewPrecisionsTest` —, cas difficiles signés par la console
 — `ConsoleVectorsTest` —, rejeu, `wipe` refusé puis rejoué, verrouillage, plancher du code, canal contre
 MockWebServer), `policy/src/test/…/RemoteCommandsPolicyTest` (matrice des 64 combinaisons de `wipe`,
 isolement de l'appel réel vérifié dans les sources), `app/src/test/…/CommandResultContractTest` (conformité de
