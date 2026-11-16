@@ -93,7 +93,7 @@ Les champs listés sont le minimum ; un collecteur peut en ajouter et doit alors
 | `app.special_access` (au changement + quotidien) | `accessibility_services`, `notification_listeners`, `device_admins`, `overlay_apps`, `unknown_sources_apps`, `usage_access_apps`, `vpn_apps`, `default_apps` (objet) |
 | `app.notification` | `package`, `event` (`posted`/`removed`), `category`, `channel`, `ongoing`, et seulement si l'option contenu est activée : `title`, `text` |
 
-Note : `app.notification` n'est **pas** produit par l'APK principal en v1 (un service d'écoute des notifications dans un APK Device Owner déclenche Play Protect, voir `docs/research/android-plateforme.md`). Le type est réservé à un éventuel module séparé et optionnel.
+Note : `app.notification` est produit par l'**APK compagnon** `:notifier` (séparé et optionnel, voir §10), jamais par un service de l'APK Device Owner.
 
 ### sensor.*
 | Type | `data` |
@@ -224,7 +224,8 @@ Réponse `200` :
 
 Même authentification. Réponse `200` `{ "server_time": "…", "device_id": "…" }`. Sert au test d'enrôlement.
 
-Il n'existe **aucun** point d'API permettant au serveur d'envoyer une commande ou une configuration à l'agent.
+Le serveur ne peut transmettre à l'agent que les commandes du §8 ; il n'existe aucun point d'API de
+configuration ni de politique.
 
 ## 4. Fichier d'enrôlement `.vigie`
 
@@ -366,3 +367,123 @@ Configuration par variables d'environnement :
 Côté Caddy : l'hôte d'ingestion n'expose que `/api/v1/*` (certificat client obligatoire, AC = `pki/ca.crt`
 du collecteur, montée en lecture seule) et pose `X-Vigie-Client-Cert-Sha256` ; l'hôte console n'expose que
 `/api/console/*`, `/healthz` et les fichiers statiques. Caddy supprime tout en-tête `X-Vigie-*` entrant.
+
+## 8. Commandes à distance (console → collecteur → agent)
+
+Liste fermée ; toute autre valeur de `type` est refusée par le collecteur **et** par l'agent.
+
+| `type` | `params` | Niveau |
+|---|---|---|
+| `ring` | `duration_s` (1 à 300, défaut 60), `vibrate` (bool, défaut vrai) : sonnerie à plein volume même en silencieux | simple |
+| `vibrate` | `duration_s` (1 à 60, défaut 10) | simple |
+| `stop_ring` | — | simple |
+| `locate` | — : position précise immédiate (acquisition jusqu'à 60 s) puis envoi immédiat du tampon | simple |
+| `lock` | `message` (optionnel, ≤ 200 caractères, affiché sur l'écran de verrouillage) | **sensible** |
+| `clear_lock_message` | — | **sensible** |
+| `wipe` | — : réinitialisation d'usine | **sensible** + réglage « Autoriser l'effacement à distance » activé dans l'app (éteint par défaut) |
+
+### Objet commande
+
+```json
+{ "id": "01JCQ8Z3K4M5N6P7Q8R9S0T1V2", "payload": "<texte JSON>", "sig": "<base64, absent pour une commande simple>" }
+```
+
+`payload` est une **chaîne** contenant le JSON suivant, construit par le navigateur ; le collecteur la relaie à
+l'octet près et l'agent vérifie la signature sur ces octets avant de l'analyser :
+
+```json
+{"v":1,"id":"01JCQ8Z3K4M5N6P7Q8R9S0T1V2","device_id":"dev_…","type":"lock","params":{"message":"…"},"issued_at":"2026-11-16T10:00:00.000Z","expires_at":"2026-11-23T10:00:00.000Z"}
+```
+
+- `id` : ULID généré par le navigateur, identique dans l'objet et dans `payload`.
+- Durée de validité (`expires_at` − `issued_at`) : 1 h par défaut pour une commande simple, 7 jours pour une
+  commande sensible, 30 jours au plus.
+- **Signature des commandes sensibles** : `sig = base64( HMAC-SHA256( K, octets UTF-8 de payload ) )` avec
+  `K = PBKDF2-HMAC-SHA256( code, sel = "vigie-cmd-v1:" + device_id, 600 000 itérations, 32 octets )`.
+  Le **code de commande** (12 caractères au moins) est choisi par le propriétaire dans l'app, qui ne conserve
+  que `K` (chiffré au repos) ; il est ressaisi dans la console à chaque commande sensible, n'y est jamais
+  mémorisé et n'est **jamais envoyé au serveur** (dérivation et signature par WebCrypto dans le navigateur).
+  Le collecteur ne peut pas vérifier `sig` ; il exige seulement sa présence pour un type sensible.
+- Vecteur de test (à reproduire dans les tests Kotlin, TypeScript et Go) : code `correct horse battery staple`,
+  `device_id` `dev_0123456789abcdef` → `K` =
+  `072a4a8b76845668eff857e6412bd6bde57cf158cf89b2fb9c844a7d66037492` ; pour le `payload`
+  `{"v":1,"id":"01JCQ8Z3K4M5N6P7Q8R9S0T1V2","device_id":"dev_0123456789abcdef","type":"lock","params":{"message":"Téléphone perdu, appelez le 01 23 45 67 89"},"issued_at":"2026-11-16T10:00:00.000Z","expires_at":"2026-11-23T10:00:00.000Z"}`
+  → `sig` = `GWiiJjYxiBHlG1lba410Zxb0kDHsINh4nS9u/GE/OaE=`.
+
+### Vérifications de l'agent (dans cet ordre) et motifs de refus
+
+Canal de commandes activé (`disabled`) ; `payload` analysable, `v` = 1, `id` identique (`malformed`) ;
+`device_id` = le sien (`wrong_device`) ; `type` connu (`unknown_type`) ; pour un type sensible : code défini
+(`no_code_configured`) et signature valide, comparée en temps constant (`bad_signature`) ; `wipe` autorisé
+localement (`disabled`) ; non expirée, avec 5 min de tolérance d'horloge (`expired`) ; `id` jamais exécuté —
+l'agent mémorise les 500 derniers (`replay`) ; paramètres dans les bornes (`bad_params`) ; Device Owner requis
+pour `lock`, `clear_lock_message` et `wipe` (`not_device_owner`). Après 5 `bad_signature` en une heure, l'agent
+refuse toute commande sensible pendant une heure (`locked_out`).
+
+Chaque commande traitée produit un événement `command.result` : `command_id`, `type`, `status`
+(`executed`/`failed`/`refused`), `detail` (motif), `signed` (bool). Sévérité : 0 pour une commande simple
+exécutée, 2 pour `lock`/`wipe` exécutés, 3 pour `bad_signature` et `locked_out`, 1 pour les autres refus.
+Pour `wipe`, l'agent émet l'événement, tente un envoi immédiat (10 s au plus), puis efface.
+Rien dans une commande ne peut modifier un réglage, la politique ou l'enrôlement.
+
+### API côté agent (hôte d'ingestion, même authentification que le §3)
+
+| Méthode et chemin | Rôle |
+|---|---|
+| `GET /api/v1/commands/stream` | Connexion permanente (Server-Sent Events). À la connexion, le serveur envoie les commandes en attente non expirées, puis les nouvelles : `event: command` + `data: <objet commande>`. Commentaire de maintien toutes les 120 s (`VIGIE_CMD_KEEPALIVE_S`). Une seule connexion par appareil (une nouvelle remplace l'ancienne). |
+| `GET /api/v1/commands` | Mode interrogation : `{ "commands": [ … ] }` (commandes en attente non expirées). |
+| `POST /api/v1/commands/{id}/result` | `{ "status": "executed"｜"failed"｜"refused", "detail": "…", "at": "…" }` → `204`. Idempotent. |
+
+L'agent choisit le mode par réglage : connexion permanente (défaut) ou interrogation toutes les 1 à 15 min ;
+il se reconnecte avec backoff et au retour de la connectivité, et interroge aussi à chaque envoi de lot.
+
+### API console (préfixe `/api/console`)
+
+| Méthode et chemin | Paramètres | Réponse |
+|---|---|---|
+| `GET /commands` | `device_id`, `limit` (défaut 50) | `{ "commands": [ { "id","device_id","type","params","signed","status","created_at","created_by","expires_at","delivered_at","result_at","detail" } ] }` ; `status` ∈ `pending`/`delivered`/`executed`/`failed`/`refused`/`expired`/`cancelled` |
+| `POST /commands` | corps `{ "device_id", "payload", "sig" }` | `201 { "id" }`. Le collecteur valide `payload` (type de la liste, bornes des paramètres, appareil existant et non révoqué, validité, `id` inédit, `sig` présent si et seulement si le type est sensible). Limites : 20 commandes par heure et 10 en attente par appareil (`429`). |
+| `POST /commands/{id}/cancel` | — | `204` si encore `pending`, sinon `409` |
+
+`GET /devices` porte en plus `command_channel` : `{ "connected": bool, "mode": "stream"｜"poll"｜"unknown", "last_contact": "…" }`.
+Chaque création, annulation et résultat est journalisé par le collecteur et exporté vers Wazuh sous le type
+`command.issued` / `command.cancelled` (événements produits par le serveur : `vigie.source = "server"`).
+
+## 9. Vue « pistage » : ce qui est bloqué, ce qui passe
+
+Le collecteur lit le journal des requêtes d'AdGuard Home par son API (`VIGIE_ADGUARD_URL`,
+`VIGIE_ADGUARD_USER`, `VIGIE_ADGUARD_PASSWORD`), l'agrège par heure et par domaine (requêtes, bloquées,
+autorisées, motif), et le croise avec `net.dns` (quelle application demande quel domaine) et `net.usage`
+(octets envoyés et reçus par application). Les domaines sont rattachés à un éditeur (Google, Samsung, Meta,
+Microsoft, Amazon, TikTok/ByteDance, publicité et mesure d'audience, autres) par un fichier de suffixes
+versionné dans le collecteur. Le contenu des échanges n'est pas visible (TLS).
+
+API console (préfixe `/api/console`, `from`/`to` requis sauf mention) :
+
+| Méthode et chemin | Paramètres | Réponse |
+|---|---|---|
+| `GET /tracking/summary` | `device_id`, `from`, `to` | `{ "adguard": bool, "level": "equilibre", "levels": [ { "key","name","description" } ], "totals": { "queries","blocked","allowed" }, "publishers": [ { "key","name","queries","blocked","allowed","domains","apps","tx_bytes","rx_bytes" } ] }` |
+| `GET /tracking/domains` | `device_id`, `from`, `to`, `publisher`, `status` (`blocked`/`allowed`/`all`), `q`, `limit` (≤ 200), `cursor` | `{ "domains": [ { "domain","publisher","queries","blocked","allowed","status" (`blocked`/`allowed`/`mixed`),"reason","override" (`block`/`allow`/absent),"apps": [ { "package","count" } ] } ], "next_cursor" }` trié par requêtes décroissantes |
+| `GET /tracking/apps` | `device_id`, `from`, `to`, `publisher` (optionnel : éditeur des domaines contactés) | `{ "apps": [ { "package","label","queries","blocked","allowed","tx_bytes","rx_bytes","top_domains": [ { "domain","count","status" } ] } ] }` |
+| `PUT /tracking/override` | corps `{ "domain", "action": "block"｜"allow"｜"default" }` | `204`. Écrit une règle AdGuard dans un bloc délimité géré par Vigie (les règles saisies à la main dans AdGuard ne sont pas touchées). |
+| `GET /tracking/level` / `PUT /tracking/level` | corps `{ "level" }` | niveau de blocage courant ∈ `permissif`/`equilibre`/`strict` : active ou désactive les listes correspondantes dans AdGuard. La correspondance niveau → listes est un fichier fourni par l'infrastructure (`VIGIE_ADGUARD_LEVELS_FILE`). |
+
+Sans AdGuard configuré ou joignable : `"adguard": false`, la vue est construite depuis `net.dns` seul
+(`status` absent) et les deux `PUT` répondent `503`. Les domaines indispensables (liste d'exceptions Vigie :
+FCM, test de connectivité, mises à jour) ne peuvent pas être bloqués depuis la console sans confirmation
+explicite (`"force": true`), la réponse `409` expliquant ce que le blocage casserait.
+
+## 10. Notifications (APK compagnon) et modes de localisation
+
+- **APK compagnon** `io.github.erwsim.vigie.notifier` : contient le seul `NotificationListenerService`, n'a
+  pas la permission `INTERNET`, a une icône et un écran qui explique ce qu'il fait, est signé par la même clé
+  que l'agent et lui remet les notifications par un canal local protégé par une permission de niveau
+  `signature`. Sans lui, le collecteur `notifications` de l'agent est « indisponible ».
+- `app.notification` : `package`, `event` (`posted`/`removed`), `category`, `channel`, `ongoing`,
+  `importance` ; et seulement si « Contenu des notifications » est activé (éteint par défaut) : `title`, `text`
+  (512 caractères au plus chacun), avec `redacted` (bool) quand un code numérique de 4 à 8 chiffres a été
+  masqué (masquage activé par défaut). Une liste d'apps exclues du contenu est réglable. Les notifications
+  de l'agent lui-même et les notifications permanentes (`ongoing`) répétitives ne sont pas émises.
+- **Localisation** : réglage `mode` du collecteur `location` ∈ `gps` (défaut : GPS + passif), `gps_network`
+  (ajoute le fournisseur réseau), `fused` (fournisseur fusionné). `location.fix.provider` dit le fournisseur
+  réel de chaque position. L'app affiche pour chaque mode ce qui est transmis à Google.

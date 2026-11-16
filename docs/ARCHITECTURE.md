@@ -17,14 +17,22 @@ Android dont l'utilisateur est le propriétaire** (cible : Samsung Galaxy S25+, 
 
 1. **Aucune furtivité.** L'agent affiche une notification permanente, garde son icône, et l'écran d'accueil de
    l'app montre ce qui est collecté. Aucune fonction de masquage. Ce n'est pas un outil de surveillance d'autrui.
-2. **Flux à sens unique.** Le téléphone pousse vers le serveur ; le serveur ne peut **ni** commander le
-   téléphone **ni** modifier sa politique. Un serveur compromis ne donne aucun contrôle sur l'appareil.
-   Toute la politique (DNS, paquets désactivés, restrictions) se règle dans l'app, localement.
+2. **Le serveur ne décide de rien d'important.** Le téléphone pousse ses événements vers le serveur. Dans
+   l'autre sens, le serveur ne peut transmettre que des **commandes d'une liste fermée** (sonner, vibrer,
+   localiser, verrouiller avec message, effacer), jamais de configuration ni de politique : toute la politique
+   (DNS, paquets désactivés, restrictions) se règle dans l'app, localement. Les commandes sensibles
+   (verrouiller, effacer) portent une signature calculée dans le navigateur du propriétaire à partir d'un
+   **code que le serveur ne connaît pas** : un serveur compromis peut au pire faire sonner le téléphone ou lui
+   demander sa position. L'effacement à distance est en plus désactivé par défaut dans l'app. Le canal de
+   commandes se coupe par un interrupteur. (Décision du propriétaire du 16/11/2026 ; la v1 initiale était à
+   sens unique strict.)
 3. **Zéro dépendance Google dans l'agent** : pas de Play Services, Firebase, ML Kit. Localisation par
-   `LocationManager`.
-4. **Pas de contenu privé de tiers** : ni contenu de SMS, ni journal d'appels, ni frappe clavier, ni capture
-   d'écran, ni service d'accessibilité. Le contenu des notifications est désactivé par défaut (métadonnées
-   seulement).
+   `LocationManager`, GPS seul par défaut ; les fournisseurs « réseau » et « fusionné » (qui passent par les
+   Services Google Play) sont un réglage explicite, l'app disant ce qui part alors chez Google.
+4. **Contenu privé de tiers réduit au minimum** : ni contenu de SMS, ni journal d'appels, ni frappe clavier,
+   ni capture d'écran, ni service d'accessibilité. La lecture des notifications vit dans un **APK compagnon
+   séparé et optionnel** (jamais dans l'APK Device Owner) ; le titre et le texte ne sont collectés que si le
+   propriétaire l'active, avec masquage des codes numériques et liste d'apps exclues.
 5. **Tout collecteur est désactivable** individuellement dans l'app.
 6. **Tout ce que l'agent change est réversible** (paquets désactivés, restrictions, DNS) depuis l'app, et une
    procédure de retrait complet du Device Owner est documentée.
@@ -78,13 +86,14 @@ Android dont l'utilisateur est le propriétaire** (cible : Samsung Galaxy S25+, 
 ### Décisions issues de la recherche plateforme (`docs/research/android-plateforme.md`)
 
 - Cible : Android 16/17 (One UI 8/9), `minSdk 36`. Activation Device Owner par ADB uniquement.
-- L'APK principal ne contient **ni** service d'écoute des notifications, **ni** accessibilité, **ni** SMS, **ni**
+- L'APK principal (Device Owner) ne contient **ni** service d'écoute des notifications (il est dans l'APK
+  compagnon `:notifier`), **ni** accessibilité, **ni** SMS, **ni**
   superposition (déclencheurs Play Protect). Pas de Knox SDK en v1.
 - Journaux réseau du Device Owner = DNS + `connect()` TCP par app, remontés par lots (~1 h 30) ; UDP/QUIC y
   échappent. On complète par le journal AdGuard côté serveur (tout le DNS, en direct) et par les volumes par app
   (`NetworkStatsManager`). **Pas de VPN local en v1** (complexité, batterie, conflit avec WireGuard) : piste v2.
-- Localisation : GPS + fournisseur passif seulement (les fournisseurs « network »/« fused » passent par Play
-  Services).
+- Localisation : GPS + fournisseur passif par défaut ; modes « GPS + réseau » et « fusionné » au choix du
+  propriétaire (ils passent par Play Services).
 - Désactivation de paquets : liste de refus embarquée (jamais `kgclient`, paquets OTA, `rkpdapp`, lanceur,
   composeur, Play Store en profil équilibré…) car `setApplicationHidden` n'a pas de garde-fou.
 - Jamais `DISALLOW_DEBUGGING_FEATURES` ni coupure du signal USB : ADB reste la porte de secours.

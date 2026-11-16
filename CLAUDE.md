@@ -21,8 +21,9 @@ commit et textes d'interface en français ; identifiants de code en anglais.
 
 ## Règles
 
-- Principes non négociables de `docs/ARCHITECTURE.md` : aucune furtivité, flux à sens unique (le serveur ne
-  commande jamais le téléphone), aucune dépendance Google dans l'agent, pas de contenu privé de tiers,
-  tout est désactivable et réversible.
+- Principes non négociables de `docs/ARCHITECTURE.md` : aucune furtivité ; le serveur n'envoie au téléphone
+  que des commandes d'une liste fermée (les sensibles signées par un code qu'il ne connaît pas), jamais de
+  configuration ni de politique ; aucune dépendance Google dans l'agent ; contenu privé de tiers réduit au
+  minimum ; tout est désactivable et réversible.
 - Ne jamais committer de secrets (`.env`, clés, `.vigie`, `.p12`) : ils sont générés à l'installation.
 - Dire clairement ce qui a été réellement exécuté/testé et ce qui ne l'a pas été.
