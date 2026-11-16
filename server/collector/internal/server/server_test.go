@@ -43,7 +43,7 @@ type env struct {
 	mu  sync.Mutex
 }
 
-var testPassword = "mot-de-passe-de-test"
+var testPassword = "test-password-0123"
 
 func newEnv(t *testing.T, vars map[string]string) *env {
 	t.Helper()
@@ -426,7 +426,7 @@ func TestConsoleAuth(t *testing.T) {
 	if rec := e.do(http.MethodPost, "/api/console/login", bytes.NewReader(b)); rec.Code != http.StatusForbidden {
 		t.Fatalf("login without X-Requested-With: %d", rec.Code)
 	}
-	if rec := e.login("admin", "mauvais-mot-de-passe"); rec.Code != http.StatusUnauthorized {
+	if rec := e.login("admin", "wrong-password"); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("wrong password: %d", rec.Code)
 	}
 	if rec := e.login("nobody", testPassword); rec.Code != http.StatusUnauthorized {
@@ -477,7 +477,7 @@ func TestLoginRateLimit(t *testing.T) {
 	e.addUser("admin")
 	limited := false
 	for range 12 {
-		if rec := e.login("admin", "mauvais-mot-de-passe"); rec.Code == http.StatusTooManyRequests {
+		if rec := e.login("admin", "wrong-password"); rec.Code == http.StatusTooManyRequests {
 			limited = true
 			break
 		}
@@ -637,7 +637,7 @@ func TestConsoleEvents(t *testing.T) {
 		q(map[string]string{"sev_min": "9"}),
 		q(map[string]string{"type": "NET'"}),
 		q(map[string]string{"cursor": "!!!"}),
-		q(map[string]string{"from": "hier"}),
+		q(map[string]string{"from": "yesterday"}),
 		q(map[string]string{"device_id": "x' OR 1=1"}),
 	} {
 		rec := e.get(c, "/api/console/events", bad)
@@ -857,7 +857,7 @@ func TestAlerts(t *testing.T) {
 		b, _ := io.ReadAll(r.Body)
 		gotBody = string(b)
 		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{"timestamp":"2026-11-15T21:45:00.412+0000",
-			"rule":{"level":10,"id":"100150","description":"Watchpost : traceur BLE"},
+			"rule":{"level":10,"id":"100150","description":"Watchpost: BLE tracker"},
 			"data":{"watchpost":{"type":"net.ble_tracker","device_id":"dev_1","id":"01J","ts":"2026-11-15T21:44:59.000Z"}}}}]}}`)
 	}))
 	defer idx.Close()
@@ -935,12 +935,12 @@ func TestStreamRequiresSession(t *testing.T) {
 }
 
 func TestTileURL(t *testing.T) {
-	e := newEnv(t, map[string]string{"WATCHPOST_TILE_URL": "https://{s}.tiles.example.org/carte/{z}/{x}/{y}.png"})
+	e := newEnv(t, map[string]string{"WATCHPOST_TILE_URL": "https://{s}.tiles.example.org/tiles/{z}/{x}/{y}.png"})
 	rec := e.do(http.MethodGet, "/", nil)
 	if !strings.Contains(rec.Header().Get("Content-Security-Policy"), "connect-src 'self' https://*.tiles.example.org;") {
 		t.Fatalf("CSP %q", rec.Header().Get("Content-Security-Policy"))
 	}
-	if b := e.do(http.MethodGet, "/config.json", nil).Body.String(); !strings.Contains(b, `"tileUrl":"https://{s}.tiles.example.org/carte/{z}/{x}/{y}.png"`) {
+	if b := e.do(http.MethodGet, "/config.json", nil).Body.String(); !strings.Contains(b, `"tileUrl":"https://{s}.tiles.example.org/tiles/{z}/{x}/{y}.png"`) {
 		t.Fatalf("config.json %s", b)
 	}
 }
@@ -961,7 +961,7 @@ func TestStaticAndHeaders(t *testing.T) {
 		t.Fatal("security headers")
 	}
 	// SPA fallback for client routes, 404 for missing assets.
-	if rec := e.do(http.MethodGet, "/carte/jour", nil); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<title>Watchpost") {
+	if rec := e.do(http.MethodGet, "/map/day", nil); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<title>Watchpost") {
 		t.Fatalf("SPA fallback: %d", rec.Code)
 	}
 	if rec := e.do(http.MethodGet, "/assets/missing.js", nil); rec.Code != http.StatusNotFound {

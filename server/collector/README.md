@@ -1,95 +1,96 @@
 # watchpost-collector
 
-Collecteur Go de Watchpost : API d'ingestion (téléphone → serveur), stockage SQLite, API et fichiers de la
-console web, export NDJSON vers Wazuh, PKI cliente, CLI d'enrôlement et simulateur. Spécification :
-[`docs/contrat/contrat.md`](../../docs/contrat/contrat.md) (§3 à §7, commandes à distance §8, vue « pistage » §9,
-détections §11.3).
+Watchpost Go collector: ingestion API (phone → server), SQLite storage, API and files of the web console,
+NDJSON export to Wazuh, client PKI, enrollment CLI and simulator. Specification:
+[`docs/contract/contract.md`](../../docs/contract/contract.md) (§3 to §7, remote commands §8, Tracking page §9,
+detections §11.3).
 
-## Construire
+## Build
 
 ```sh
 cd server/collector
-go build -o bin/watchpost-collector .          # Go 1.24, sans CGO ; console = page de substitution
+go build -o bin/watchpost-collector .          # Go 1.24, no CGO; console = fallback page
 go vet ./... && go test -race ./...
 ```
 
-Pour embarquer la console : `(cd ../console && npm ci && npm run build) && rm -rf web/dist && cp -r ../console/dist web/dist`
-puis `go build`. `web/dist/` n'est pas versionné ; sans lui, `web/fallback/` est servi.
+To embed the console: `(cd ../console && npm ci && npm run build) && rm -rf web/dist && cp -r ../console/dist web/dist`
+then `go build`. `web/dist/` is not versioned; without it, `web/fallback/` is served.
 
-Image Docker (contexte `server/`, construit aussi la console) : `docker build -t watchpost-collector:local server/`.
-Image finale `scratch`, utilisateur 65532, binaire `/usr/local/bin/watchpost-collector`, `HEALTHCHECK` intégré
-(`watchpost-collector healthcheck`). Derrière un proxy à AC privée :
-`docker build --network host --build-arg HTTPS_PROXY=… --secret id=ca_bundle,src=ca.crt …` (les images de
-base se changent par `--build-arg NODE_IMAGE=… GO_IMAGE=…`).
+Docker image (context `server/`, also builds the console): `docker build -t watchpost-collector:local server/`.
+Final image `scratch`, user 65532, binary `/usr/local/bin/watchpost-collector`, built-in `HEALTHCHECK`
+(`watchpost-collector healthcheck`). Behind a proxy with a private CA:
+`docker build --network host --build-arg HTTPS_PROXY=… --secret id=ca_bundle,src=ca.crt …` (the base images
+are changed with `--build-arg NODE_IMAGE=… GO_IMAGE=…`, for example `NODE_IMAGE=mirror.gcr.io/library/node:22-bookworm-slim`
+and `GO_IMAGE=mirror.gcr.io/library/golang:1.24-bookworm` when Docker Hub answers `429`).
 
-## Lancer en développement (avec données simulées)
+## Run in development (with simulated data)
 
 ```sh
 export WATCHPOST_DATA_DIR=$PWD/.dev WATCHPOST_LISTEN=127.0.0.1:8080 WATCHPOST_COOKIE_SECURE=false \
        WATCHPOST_EXPORT_NDJSON=$PWD/.dev/export/events.ndjson WATCHPOST_PUBLIC_INGEST_URL=http://127.0.0.1:8080
-# facultatif : WATCHPOST_CONSOLE_DIR=$PWD/../console/dist (console servie depuis le disque)
+# optional: WATCHPOST_CONSOLE_DIR=$PWD/../console/dist (console served from disk)
 go run . serve &
-go run . enroll --name s25 --out .dev/s25.watchpost
-printf '%s\n' 'motdepasse-console' | go run . user set-password admin
-go run . sim --enroll .dev/s25.watchpost --backfill 48h --follow     # historique puis temps réel
+go run . enroll --name phone --out .dev/phone.watchpost
+printf '%s\n' 'console-password' | go run . user set-password admin
+go run . sim --enroll .dev/phone.watchpost --backfill 48h --follow     # history, then real time
 ```
 
-Console : <http://127.0.0.1:8080/> (admin / motdepasse-console). En `http://` local, le simulateur pose
-lui-même l'en-tête `X-Watchpost-Client-Cert-Sha256` (accepté car 127.0.0.1 est un proxy de confiance par défaut).
+Console: <http://127.0.0.1:8080/> (admin / console-password). Over local `http://`, the simulator sets the
+`X-Watchpost-Client-Cert-Sha256` header itself (accepted because 127.0.0.1 is a trusted proxy by default).
 
-Avec commandes à distance et vue « pistage » (faux AdGuard Home intégré au simulateur, aucun téléphone ni
-AdGuard réel nécessaire) :
+With remote commands and the Tracking page (fake AdGuard Home built into the simulator, no phone or real
+AdGuard needed):
 
 ```sh
 export WATCHPOST_ADGUARD_URL=http://127.0.0.1:3001 WATCHPOST_ADGUARD_USER=watchpost WATCHPOST_ADGUARD_PASSWORD=adguard-demo \
        WATCHPOST_ADGUARD_LEVELS_FILE=$PWD/examples/adguard-levels.example.json WATCHPOST_ADGUARD_POLL_S=10
-go run . serve &          # (avec les variables précédentes)
-go run . sim --enroll .dev/s25.watchpost --backfill 6h --follow \
+go run . serve &          # (with the previous variables)
+go run . sim --enroll .dev/phone.watchpost --backfill 6h --follow \
        --command-code 'correct horse battery staple' \
        --fake-adguard 127.0.0.1:3001 --fake-adguard-user watchpost --fake-adguard-password adguard-demo
 ```
 
-Le simulateur ouvre le flux de commandes (`--commands poll` pour l'interrogation), vérifie chaque commande
-comme l'agent (§8, avec le code `--command-code`), l'« exécute » (message sur la sortie d'erreur), renvoie le
-résultat et l'événement `command.result`. Refus réalistes : mauvais code (`bad_signature`, et `locked_out`
-après 5), `wipe` sans `--allow-wipe` (`disabled`), horloge décalée `--clock-skew 2h` (`expired`), pas de
-`--command-code` (`no_code_configured`). Le faux AdGuard Home reçoit une requête par occurrence de chaque
-`net.dns` simulé (ClientID = nom de l'appareil, `--fake-adguard-client`), décide comme AdGuard (listes
-activées, règles utilisateur, `$important`) et sert `/control/querylog`, `/control/filtering/status`,
-`set_rules`, `set_url`, `add_url` ; il n'écoute qu'une fois l'historique (`--backfill`) inscrit dans son
-journal. Il connaît les URL de `examples/adguard-levels.example.json`.
+The simulator opens the command stream (`--commands poll` for polling), checks each command like the agent
+does (§8, with the passphrase given by `--command-code`), "executes" it (message on the error output), and
+sends back the result and the `command.result` event. Realistic refusals: wrong passphrase (`bad_signature`,
+and `locked_out` after 5), `wipe` without `--allow-wipe` (`disabled`), skewed clock `--clock-skew 2h`
+(`expired`), no `--command-code` (`no_code_configured`). The fake AdGuard Home receives one query per
+occurrence of each simulated `net.dns` (ClientID = device name, `--fake-adguard-client`), decides like
+AdGuard does (enabled lists, user rules, `$important`) and serves `/control/querylog`,
+`/control/filtering/status`, `set_rules`, `set_url`, `add_url`; it only starts listening once the history
+(`--backfill`) is in its log. It knows the URLs of `examples/adguard-levels.example.json`.
 
-## Commandes
+## Commands
 
-| Commande | Rôle |
+| Command | Role |
 |---|---|
-| `serve` | Serveur HTTP ; crée la base, applique les migrations et crée l'AC si absentes. |
-| `enroll --name N --out F.watchpost [--ingest-url URL] [--force]` | Nouvel appareil + fichier d'enrôlement (mode 0600). |
-| `renew <device_id> --out F.watchpost [--ingest-url URL] [--force]` | Nouveau jeton et nouveau certificat pour le **même** appareil (contrat §4), fichier 0600. Refusé pour un appareil inconnu ou révoqué ; un second `renew` avant bascule remplace le couple en attente. |
-| `devices [--json]`, `revoke <device_id>` | Liste (avec la date d'expiration du certificat courant, « à renouveler » sous 30 jours, et « renouvellement en attente »), révocation (effective à la requête suivante, même serveur lancé ; invalide aussi le couple en attente). En JSON : `cert_not_after`, `renewal_pending`, `renewal_issued_at`, `pending_cert_not_after`. |
-| `user set-password <nom>` | Compte console ; mot de passe ≥ 12 caractères, lu sans écho sur un terminal ou sur une ligne de stdin. |
-| `sim --enroll F [--url U] [--backfill 24h] [--follow] [--rate 1] [--interval 15s] [--seed N]` | Simulateur (voir plus bas). |
-| `sim … [--scenario sain\|fraude-sms\|cheval-de-troie\|proxy\|spam\|exfiltration\|contournement-dns\|espion\|tout] [--app-ops=false]` | Scénarios d'attaque (plusieurs séparés par des virgules) et absence d'`app.ops` ; voir « Détections ». |
-| `sim … [--commands stream\|poll\|off] [--poll-interval 1m] [--command-code C] [--allow-wipe] [--clock-skew D] [--notification-content=false] [--fake-adguard ADDR --fake-adguard-user U --fake-adguard-password P --fake-adguard-client ID]` | Agent de commandes simulé (mode continu) et faux AdGuard Home (voir plus haut). |
-| `healthcheck [--url U]`, `version` | Sonde `/healthz` (Compose), version. |
+| `serve` | HTTP server; creates the database, applies the migrations and creates the CA if missing. |
+| `enroll --name N --out F.watchpost [--ingest-url URL] [--force]` | New device + enrollment file (mode 0600). |
+| `renew <device_id> --out F.watchpost [--ingest-url URL] [--force]` | New token and new certificate for the **same** device (contract §4), file 0600. Refused for an unknown or revoked device; a second `renew` before the switch replaces the pending pair. |
+| `devices [--json]`, `revoke <device_id>` | List (with the expiry date of the current certificate, "to renew" within 30 days, and "renewal pending"), revocation (effective at the next request, even with the server running; it also invalidates the pending pair). In JSON: `cert_not_after`, `renewal_pending`, `renewal_issued_at`, `pending_cert_not_after`. |
+| `user set-password <name>` | Console account; password ≥ 12 characters, read without echo on a terminal or as one line of stdin. |
+| `sim --enroll F [--url U] [--backfill 24h] [--follow] [--rate 1] [--interval 15s] [--seed N]` | Simulator (see below). |
+| `sim … [--scenario healthy\|sms-fraud\|banking-trojan\|proxy\|spam\|exfiltration\|dns-bypass\|stalkerware\|silent-sms\|all] [--app-ops=false]` | Attack scenarios (several separated by commas) and absence of `app.ops`; see "Detections". |
+| `sim … [--commands stream\|poll\|off] [--poll-interval 1m] [--command-code C] [--allow-wipe] [--clock-skew D] [--notification-content=false] [--fake-adguard ADDR --fake-adguard-user U --fake-adguard-password P --fake-adguard-client ID]` | Simulated command agent (continuous mode) and fake AdGuard Home (see above). |
+| `healthcheck [--url U]`, `version` | `/healthz` probe (Compose), version. |
 
-Variables : celles du contrat §7, plus `WATCHPOST_TILE_URL` (§6, défaut OpenStreetMap ; servie par
-`GET /config.json` et reprise dans la CSP) et `WATCHPOST_LOG_LEVEL` (`debug`/`info`/`warn`/`error`), et :
+Variables: those of contract §7, plus `WATCHPOST_TILE_URL` (§6, default OpenStreetMap; served by
+`GET /config.json` and reflected in the CSP) and `WATCHPOST_LOG_LEVEL` (`debug`/`info`/`warn`/`error`), and:
 
-| Variable | Défaut | Rôle |
+| Variable | Default | Role |
 |---|---|---|
-| `WATCHPOST_CMD_KEEPALIVE_S` | `120` | Commentaire de maintien du flux de commandes (5 à 3600 s) ; à chaque maintien, les identifiants de l'appareil sont revérifiés (révocation, renouvellement) et les commandes à remettre de nouveau sont envoyées. |
-| `WATCHPOST_ADGUARD_URL` | vide | API d'administration d'AdGuard Home (ex. `http://adguardhome:3000`), `http(s)://hôte[:port][/préfixe]` sans identifiants, requête ni fragment. Vide : vue « pistage » depuis `net.dns` seul. |
-| `WATCHPOST_ADGUARD_USER` / `WATCHPOST_ADGUARD_PASSWORD` | vides | Authentification de base auprès d'AdGuard Home (jamais journalisée). |
-| `WATCHPOST_ADGUARD_LEVELS_FILE` | vide | Fichier de correspondance niveau → listes (format ci-dessous), lu et validé au démarrage (erreur fatale s'il est invalide). Vide : `PUT /tracking/level` répond `503`. |
-| `WATCHPOST_ADGUARD_POLL_S` | `60` | Intervalle de relevé du journal d'AdGuard Home (10 s au moins). |
-| `WATCHPOST_ADGUARD_CLIENTS` | vide | Facultatif : `device_id=client,…` (client = ClientID DoT ou IP vue par AdGuard ; plusieurs paires par appareil possibles). Avec `device_id`, la vue ne compte alors que les requêtes de ces clients ; sans correspondance, tout le journal d'AdGuard est attribué à l'appareil demandé. |
+| `WATCHPOST_CMD_KEEPALIVE_S` | `120` | Keep-alive comment of the command stream (5 to 3600 s); at each keep-alive, the device credentials are checked again (revocation, renewal) and the commands to hand over again are sent. |
+| `WATCHPOST_ADGUARD_URL` | empty | AdGuard Home administration API (e.g. `http://adguardhome:3000`), `http(s)://host[:port][/prefix]` without credentials, query or fragment. Empty: Tracking page built from `net.dns` alone. |
+| `WATCHPOST_ADGUARD_USER` / `WATCHPOST_ADGUARD_PASSWORD` | empty | Basic authentication against AdGuard Home (never logged). |
+| `WATCHPOST_ADGUARD_LEVELS_FILE` | empty | Level → lists mapping file (format below), read and validated at startup (fatal error if invalid). Empty: `PUT /tracking/level` answers `503`. |
+| `WATCHPOST_ADGUARD_POLL_S` | `60` | Polling interval of the AdGuard Home log (10 s at least). |
+| `WATCHPOST_ADGUARD_CLIENTS` | empty | Optional: `device_id=client,…` (client = DoT ClientID or IP as seen by AdGuard; several pairs per device are possible). With `device_id`, the view then counts only the queries of those clients; without a match, the whole AdGuard log is attributed to the requested device. |
 
-## Fichier de niveaux AdGuard (`WATCHPOST_ADGUARD_LEVELS_FILE`)
+## AdGuard levels file (`WATCHPOST_ADGUARD_LEVELS_FILE`)
 
-JSON (UTF-8, 1 Mio au plus), produit par l'infrastructure. Exemple complet :
-[`examples/adguard-levels.example.json`](examples/adguard-levels.example.json) (ses URL sont illustratives :
-l'infrastructure doit vérifier celles qu'elle retient).
+JSON (UTF-8, 1 MiB at most), produced by the infrastructure. Full example:
+[`examples/adguard-levels.example.json`](examples/adguard-levels.example.json) (its URLs are illustrative:
+the infrastructure must check the ones it keeps).
 
 ```json
 {
@@ -97,255 +98,251 @@ l'infrastructure doit vérifier celles qu'elle retient).
   "lists": {
     "adguard_dns":    { "name": "AdGuard DNS filter", "url": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt" },
     "hagezi_samsung": { "name": "HaGeZi - Native Tracker Samsung", "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/native.samsung.txt" },
-    "exceptions":     { "name": "Exceptions Watchpost", "url": "/opt/adguardhome/work/userfilters/watchpost-allow.txt", "allowlist": true }
+    "exceptions":     { "name": "Watchpost exceptions", "url": "/opt/adguardhome/work/userfilters/watchpost-allow.txt", "allowlist": true }
   },
   "levels": [
-    { "key": "permissif", "name": "Permissif", "description": "…", "lists": ["adguard_dns"] },
-    { "key": "equilibre", "name": "Équilibré", "description": "…", "lists": ["adguard_dns", "hagezi_samsung", "exceptions"] },
-    { "key": "strict",    "name": "Strict",    "description": "…", "lists": ["adguard_dns", "hagezi_samsung", "exceptions"] }
+    { "key": "permissive", "name": "Permissive", "description": "…", "lists": ["adguard_dns"] },
+    { "key": "balanced",   "name": "Balanced",   "description": "…", "lists": ["adguard_dns", "hagezi_samsung", "exceptions"] },
+    { "key": "strict",     "name": "Strict",     "description": "…", "lists": ["adguard_dns", "hagezi_samsung", "exceptions"] }
   ]
 }
 ```
 
-- `version` : `1`. Tout champ inconnu est refusé.
-- `lists` : identifiant (`[a-z0-9_-]{1,64}`) → `name` (1 à 128 caractères imprimables : nom donné à la liste
-  si Watchpost l'ajoute), `url` (`http://` ou `https://`, ou chemin absolu d'un fichier local d'AdGuard Home,
-  2048 caractères au plus, chaque URL une seule fois) et `allowlist` (facultatif, défaut `false` : liste
-  d'autorisation, `whitelist_filters` d'AdGuard). Une liste est reconnue dans AdGuard par son URL **exacte**
-  et son genre (blocage / autorisation).
-- `category` (facultatif) : ce que bloque la liste, parmi `threat` (hameçonnage, maliciels, serveurs de commande,
-  arnaques), `ads`, `tracking`, `mixed` (liste générale qui mêle publicité, pistage et quelques menaces), `custom`,
-  `allowlist`. **Seule `threat` change le comportement** : un blocage dû à une liste `threat` (reconnue dans
-  AdGuard Home par son URL exacte) alimente `detect.threat_domain`. Une valeur inconnue est refusée (une faute de
-  frappe ne doit pas éteindre la détection en silence) ; une liste d'autorisation ne peut pas être `threat`.
-  Aucune déduction depuis le nom ou l'URL : sans `"category": "threat"`, aucune liste n'est une liste de menaces
-  (`infra/adguard/niveaux.json` doit donc l'ajouter à `hagezi_tif`). Les blocages de la navigation sécurisée
-  d'AdGuard Home (`FilteredSafeBrowsing`) comptent aussi comme menaces.
-- `levels` : exactement les trois niveaux `permissif`, `equilibre`, `strict` (une fois chacun, dans n'importe
-  quel ordre), avec `name` (64 caractères), `description` (500, peut être vide) et `lists` (identifiants de
-  `lists`, sans doublon).
-- Appliquer un niveau (`PUT /tracking/level`) : chaque liste du fichier est activée si elle figure dans le
-  niveau, désactivée sinon (`POST /control/filtering/set_url`, nom actuel conservé) ; une liste absente
-  d'AdGuard et requise est ajoutée (`POST /control/filtering/add_url`, AdGuard la télécharge : `502` s'il
-  échoue). Les listes qu'AdGuard connaît mais que le fichier ne cite pas ne sont **jamais** touchées.
-- Niveau courant (`level` de `GET /tracking/summary` et `/tracking/level`) : le premier niveau dont les
-  listes du fichier sont exactement celles activées dans AdGuard ; absent si l'état ne correspond à aucun
-  niveau (listes changées à la main) ou si AdGuard est injoignable.
+- `version`: `1`. Any unknown field is refused.
+- `lists`: identifier (`[a-z0-9_-]{1,64}`) → `name` (1 to 128 printable characters: name given to the list if
+  Watchpost adds it), `url` (`http://` or `https://`, or absolute path of a local AdGuard Home file, 2048
+  characters at most, each URL only once) and `allowlist` (optional, default `false`: allowlist, AdGuard's
+  `whitelist_filters`). A list is recognized in AdGuard by its **exact** URL and its kind (block / allow).
+- `category` (optional): what the list blocks, among `threat` (phishing, malware, command servers, scams),
+  `ads`, `tracking`, `mixed` (general-purpose list mixing advertising, tracking and some threats), `custom`,
+  `allowlist`. **Only `threat` changes the behavior**: a block due to a `threat` list (recognized in AdGuard
+  Home by its exact URL) feeds `detect.threat_domain`. An unknown value is refused (a typo must not silently
+  turn the detection off); an allowlist cannot be `threat`. Nothing is deduced from the name or the URL:
+  without `"category": "threat"`, no list is a threat list (`infra/adguard/levels.json` must therefore add it
+  to `hagezi_tif`). AdGuard Home's Safe Browsing blocks (`FilteredSafeBrowsing`) also count as threats.
+- `levels`: exactly the three levels `permissive`, `balanced`, `strict` (once each, in any order), with `name`
+  (64 characters), `description` (500, may be empty) and `lists` (identifiers of `lists`, no duplicates).
+- Applying a level (`PUT /tracking/level`): each list of the file is enabled if it is in the level, disabled
+  otherwise (`POST /control/filtering/set_url`, current name kept); a list that is absent from AdGuard and
+  required is added (`POST /control/filtering/add_url`, AdGuard downloads it: `502` if that fails). The lists
+  that AdGuard knows but the file does not mention are **never** touched.
+- Current level (`level` of `GET /tracking/summary` and `/tracking/level`): the first level whose lists from
+  the file are exactly those enabled in AdGuard; absent if the state matches no level (lists changed by hand)
+  or if AdGuard is unreachable.
 
-## Détections (contrat §11.3 et §11.4)
+## Detections (contract §11.3 and §11.4)
 
-**À lire d'abord : ce qui protège de l'envoi massif de SMS.** Les SMS ne passent pas par le réseau IP : seul
-`app.ops` (collecteur expérimental de l'agent, qui exige `DUMP` accordé par ADB et peut ne jamais fonctionner sur
-Android 16) les compte. **La vraie protection est la garde SMS de l'application** (contrat §11.1) : elle empêche
-toute appli autre que l'appli SMS et le système d'obtenir `SEND_SMS`. Les détections préviennent, elles
-n'empêchent rien.
+**Read this first: what protects against mass SMS sending.** SMS do not go through the IP network: only
+`app.ops` (an experimental collector of the agent, which requires `DUMP` granted through ADB and may never work
+on Android 16) counts them. **The real protection is the app's SMS guard** (contract §11.1): it prevents any
+app other than the SMS app and the system from obtaining `SEND_SMS`. The detections warn, they prevent
+nothing.
 
-| Ce qui est détecté | Sans `app.ops` | Avec `app.ops` |
+| What is detected | Without `app.ops` | With `app.ops` |
 |---|---|---|
-| Une appli (ni appli SMS ni appli système) **détient** `SEND_SMS` | `detect.sms_permission` (sév. 2), à la première observation, inventaire initial compris, puis à chaque nouvel octroi après un retrait | idem |
-| Une appli devient l'appli SMS, Téléphone, clavier ou assistant par défaut | `detect.default_app_changed` (sév. 3 pour SMS) | idem |
-| Une appli installée depuis moins de 24 h est notée `high` ou obtient une capacité sensible | `detect.new_app_risky` | idem |
-| Une appli **envoie** des SMS (ou tente, refus de la garde compris), combien | **rien** : ni le nombre ni le moment des envois ne sont connus | `detect.sms_abuse` (sév. 3), dès la première heure |
-| Micro ou caméra en arrière-plan | **rien** (seuls les événements bruts `sensor.*`) | `detect.sensor_background` |
-| Réseau : serveurs de menaces, envoi massif de données, relais, spam, DoH | `threat_domain`, `upload_spike`, `fanout`, `mail_ports`, `dns_bypass` | idem |
+| An app (neither the SMS app nor a system app) **holds** `SEND_SMS` | `detect.sms_permission` (sev. 2), at the first observation, initial inventory included, then at each new grant after a revocation | same |
+| An app becomes the default SMS app, dialer, keyboard or assistant | `detect.default_app_changed` (sev. 3 for SMS) | same |
+| An app installed less than 24 h ago is rated `high` or obtains a sensitive capability | `detect.new_app_risky` | same |
+| An app **sends** SMS (or tries to, SMS guard refusals included), and how many | **nothing**: neither the number nor the time of the sends is known | `detect.sms_abuse` (sev. 3), from the first hour |
+| Microphone or camera in the background | **nothing** (only the raw `sensor.*` events) | `detect.sensor_background` |
+| Network: threat servers, mass data upload, relays, spam, DoH | `threat_domain`, `upload_spike`, `fanout`, `mail_ports`, `dns_bypass` | same |
 
-L'attaque vécue par le propriétaire (appli du Play Store sans icône, `SEND_SMS` obtenue 30 h après
-l'installation, ~2 000 SMS par jour, serveur absent des listes de menaces) donne **sans `app.ops`** :
-**une seule détection**, `detect.sms_permission` à l'octroi — rien à l'installation (une application de
-boutique avec ce profil n'est notée que `medium` par l'agent, et `detect.new_app_risky` exige `high` ou une
-capacité acquise dans les 24 h), et jamais le volume envoyé ; **avec `app.ops`**, en plus
-`detect.sms_abuse` (scénario `sms-discret` du simulateur, essais plus bas). Un vrai téléphone a souvent, à la
-première observation, quelques applis non système qui détiennent `SEND_SMS` (messagerie vocale visuelle,
-appli d'opérateur, montre connectée…) : une détection chacune, une seule fois — c'est une revue initiale voulue ;
-`POST /detections/mute` les range une fois examinées.
+A discreet store app that obtains `SEND_SMS` about a day after its installation and then sends in bulk
+(~2,000 SMS per day, a server absent from the threat lists) gives, **without `app.ops`**: **a single
+detection**, `detect.sms_permission` at the grant — nothing at installation (a store app with this profile is
+only rated `medium` by the agent, and `detect.new_app_risky` requires `high` or a capability acquired within
+24 h), and never the volume sent; **with `app.ops`**, `detect.sms_abuse` as well (`silent-sms` scenario of the
+simulator, trials below). A real phone often has, at the first observation, a few non-system apps that hold
+`SEND_SMS` (visual voicemail, carrier app, connected watch…): one detection each, only once — this is an
+intended initial review; `POST /detections/mute` files them away once examined.
 
-Détections comportementales calculées côté serveur sur les données déjà reçues, pour être alerté d'un abus
-**quel que soit le vecteur** (SMS, relais réseau, exfiltration, spam, contournement du filtrage). Chaque détection
-est un événement du collecteur (`source = 'server'`, type `detect.*`, `boot_id` `server`) rattaché à l'appareil :
-visible dans `/events`, diffusée sur `GET /stream`, exportée vers Wazuh avec `watchpost.source = "server"`, et listée
-par `GET /detections`. `data` : `package` (si connu), `label`, `window_from`, `window_to`, `summary` (phrase en
-français), `evidence` (objet court et factuel : compteurs, quelques adresses ou domaines ; jamais de contenu de
-notification ni de message). Sévérité (`sev`) : 2, ou 3 quand le signal est sans ambiguïté (voir chaque
-détection). Fenêtres en heures et jours **UTC**.
+Behavioral detections computed on the server from the data already received, to be alerted to an abuse
+**whatever the vector** (SMS, network relay, exfiltration, spam, filter bypass). Each detection is an event of
+the collector (`source = 'server'`, type `detect.*`, `boot_id` `server`) attached to the device: visible in
+`/events`, broadcast on `GET /stream`, exported to Wazuh with `watchpost.source = "server"`, and listed by
+`GET /detections`. `data`: `package` (if known), `label`, `window_from`, `window_to`, `summary` (sentence in
+English), `evidence` (short, factual object: counters, a few addresses or domains; never notification or
+message content). Severity (`sev`): 2, or 3 when the signal is unambiguous (see each detection). Windows in
+**UTC** hours and days.
 
-**Fonctionnement** (`internal/detect`) : une fonction pure par détection (`rules.go`, testée seule), alimentée par
-un travail d'arrière-plan (`engine.go`) toutes les `WATCHPOST_DETECT_INTERVAL_S`. L'ingestion marque dans
-`detect_dirty` chaque heure (de `ts`) d'un appareil où arrive un événement utile (`net.dns`, `net.connect`,
-`net.usage`, `app.ops`, `app.risk`, `app.installed`, `app.permission_changed`, `app.special_access`, `app.role`) ;
-le relevé d'AdGuard Home marque les heures où il compte un blocage « menace ». Le travail ne relit que ces heures
-(et leurs jours) dans les agrégats horaires — `usage_counts` (octets envoyés par application et par heure),
-`top_counts` `connect_dest` (adresses et ports par application et par heure), `top_counts` `dns_hostname`,
-`tracking_counts.threat`, `ops_counts` (migration 6 et 7) — et, pour les événements d'applications (rares), l'index
-`(device_id, type, ts_ms)` : **aucun balayage de la table `events`**. Un lot en retard (journaux réseau livrés
-1 h 30 à 2 h plus tard, ou des jours après une période hors ligne) remarque ses heures, qui sont réévaluées.
-**Regroupement et mises à jour** : **une détection par application, par type et par fenêtre** — le jour UTC pour
-toutes, les 24 h qui suivent l'installation pour `detect.new_app_risky`. Les conditions horaires du contrat
-(`upload_spike`, `fanout`) restent évaluées heure par heure, puis regroupées sur la journée (`evidence` de l'heure
-de pointe, plus `hours`, `first_hour`, `peak_hour`) ; `threat_domain` liste les domaines de l'application dans la
-journée, `new_app_risky` les capacités acquises, `sensor_background` le micro et la caméra. Unicité de
-`detections` sur (appareil, type, sujet = application, début de fenêtre), vérifiée dans la transaction. Quand une
-fenêtre est réévaluée (lot tardif, redémarrage, nouvelles occurrences), la détection existante est **mise à jour
-sur place** (`evidence`, `summary`, sévérité la plus haute, éléments réunis, `updated_at`) au lieu d'en créer une
-autre. **Ce qui est exporté** : un événement `detect.*` à la création ; lors d'une mise à jour, un nouvel
-événement du même type (mêmes champs, plus `"update": true` et `"detection_id"` = `id` de la détection) **seulement
-si** la sévérité augmente ou si un élément apparaît (nouveau domaine, nouvelle capacité, nouvelle opération, nouveau
-port, nouveau résolveur, refus de SMS), et **au plus une fois par heure** et par détection (ce qui est retenu part
-à la mise à jour suivante de la fenêtre) ; une simple hausse des compteurs n'est pas réémise (la console la voit
-par l'API). Les règles Wazuh peuvent donc alerter sur `watchpost.data.update` absent, et suivre les aggravations à
-part. Une heure remarquée pendant son évaluation reste à évaluer (compteur `gen`). Les lectures passent
-par le pool en lecture seule (WAL : l'ingestion n'attend jamais) ; les écritures sont une courte transaction par
-appareil et par tour de 256 heures ; un passage s'arrête après 20 s et reprend au suivant. À la mise à jour, la
-migration 6 marque les deux derniers jours déjà stockés : les détections portent sur les données reçues ensuite.
+**How it works** (`internal/detect`): one pure function per detection (`rules.go`, tested on its own), fed by
+a background job (`engine.go`) every `WATCHPOST_DETECT_INTERVAL_S`. Ingestion marks in `detect_dirty` each
+hour (of `ts`) of a device in which a useful event arrives (`net.dns`, `net.connect`, `net.usage`, `app.ops`,
+`app.risk`, `app.installed`, `app.permission_changed`, `app.special_access`, `app.role`); the AdGuard Home
+poll marks the hours in which it counts a "threat" block. The job only rereads those hours (and their days) in
+the hourly aggregates — `usage_counts` (bytes sent per application and hour), `top_counts` `connect_dest`
+(addresses and ports per application and hour), `top_counts` `dns_hostname`, `tracking_counts.threat`,
+`ops_counts` (migrations 6 and 7) — and, for the application events (rare), the index
+`(device_id, type, ts_ms)`: **no scan of the `events` table**. A late batch (network logs delivered 1 h 30 to
+2 h later, or days after an offline period) marks its hours again, which are evaluated again.
+**Grouping and updates**: **one detection per application, per type and per window** — the UTC day for all of
+them, the 24 h following the installation for `detect.new_app_risky`. The hourly conditions of the contract
+(`upload_spike`, `fanout`) are still evaluated hour by hour, then grouped over the day (`evidence` of the peak
+hour, plus `hours`, `first_hour`, `peak_hour`); `threat_domain` lists the application's domains of the day,
+`new_app_risky` the capabilities acquired, `sensor_background` the microphone and the camera. Uniqueness of
+`detections` on (device, type, subject = application, window start), checked in the transaction. When a window
+is evaluated again (late batch, restart, new occurrences), the existing detection is **updated in place**
+(`evidence`, `summary`, highest severity, merged items, `updated_at`) instead of creating another one.
+**What is exported**: a `detect.*` event at creation; on an update, a new event of the same type (same fields,
+plus `"update": true` and `"detection_id"` = `id` of the detection) **only if** the severity increases or an
+item appears (new domain, new capability, new operation, new port, new resolver, SMS refusal), and **at most
+once per hour** and per detection (what is held back goes out with the next update of the window); a mere
+increase of the counters is not emitted again (the console sees it through the API). The Wazuh rules can
+therefore alert on `watchpost.data.update` absent, and follow the aggravations separately. An hour marked
+during its evaluation stays to be evaluated (counter `gen`). Reads go through the read-only pool (WAL:
+ingestion never waits); writes are one short transaction per device and per round of 256 hours; a run stops
+after 20 s and resumes at the next one. On upgrade, migration 6 marks the last two days already stored: the
+detections cover the data received afterwards.
 
-**Mesure du coût** (`TestDetectionCost`, lancé par `WATCHPOST_DETECT_COST=89 go test ./internal/detect -run Cost -v` ;
-16/11/2026, conteneur de développement, sans `-race`, détections regroupées) : base de **3 061 912 événements**
-(89 jours simulés à `--rate 2`, tous les scénarios d'attaque sur les 40 dernières heures, ~520 Mo), soit 2 137
-heures à évaluer. Évaluation de tout l'arriéré (89 journées réévaluées en entier) : **1,0 s** (11 tours de 256
-heures), **5 Mio de tas** au plus ; l'ingestion simultanée de lots de 500 événements n'en est pas ralentie (médiane
-5 ms, p99 11 ms, avec ou sans le travail). Passage courant après un lot tardif : **28 ms**. Sur ces 89 jours, les
-15 détections concernent les 7 applications des scénarios (`threat_domain` hors mesure : pas d'AdGuard) : aucune
-sur le parc sain.
+**Cost measurement** (`TestDetectionCost`, run with `WATCHPOST_DETECT_COST=89 go test ./internal/detect -run Cost -v`;
+2026-11-16, without `-race`, grouped detections): database of **3,061,912 events** (89
+simulated days at `--rate 2`, all attack scenarios over the last 40 hours, ~520 MB), i.e. 2,137 hours to
+evaluate. Evaluation of the whole backlog (89 days evaluated again in full): **1.0 s** (11 rounds of 256 hours),
+**5 MiB of heap** at most; simultaneous ingestion of batches of 500 events is not slowed down (median 5 ms,
+p99 11 ms, with or without the job). Regular run after a late batch: **28 ms**. Over these 89 days, the 15
+detections concern the 7 applications of the scenarios (`threat_domain` outside the measurement: no AdGuard):
+none on the healthy fleet.
 
-| Détection | Ce qu'elle voit (fenêtre, sujet) | Seuil par défaut et justification | Limites et faux positifs prévisibles |
+| Detection | What it sees (window, subject) | Default threshold and rationale | Limits and foreseeable false positives |
 |---|---|---|---|
-| `detect.threat_domain` | Une application a demandé (`net.dns`) un domaine qu'AdGuard Home a bloqué **au titre d'une liste `category: threat`** ou de sa navigation sécurisée, le même jour UTC (une heure de marge de chaque côté). Une par application et par jour, avec ses domaines. Sév. 3, ou 2 pour le navigateur par défaut ou moins de 3 requêtes (un lien d'hameçonnage suivi une fois). | Aucun seuil : une liste de menaces est faite pour ne rien bloquer d'utile. | Rien sans AdGuard Home ni liste `threat` (journal au démarrage). Croisement par domaine exact sur la journée : si plusieurs appareils partagent AdGuard sans `WATCHPOST_ADGUARD_CLIENTS`, un blocage d'un appareil peut être attribué à la requête d'un autre qui a demandé le même domaine. Faux positifs : ceux de la liste elle-même (domaine légitime classé à tort) ; une application qui affiche des publicités piégées. |
-| `detect.upload_spike` | Octets envoyés (`tx_bytes` de `net.usage`) par une application sur une heure > max(plancher, k × sa médiane horaire sur 14 jours). Médiane des heures **où l'application a envoyé quelque chose**. Évaluée par heure, une par application et par jour (heure de pointe). Sév. 2. | Plancher **1 Gio/h**, k = **10**. Un appel vidéo HD envoie 0,3 à 1 Gio/h, une sauvegarde de photos nocturne quelques centaines de Mio : sous un plancher plus bas, la détection sonnerait chaque semaine. L'exfiltration visée est massive (photothèque, enregistrements). | **Apprentissage** : tant que l'appareil a moins de `WATCHPOST_DETECT_UPLOAD_LEARN_DAYS` (7) jours d'historique `net.usage`, ou que l'application a moins de 24 heures actives sur 14 jours (application nouvelle), seul le plancher s'applique (`evidence.learning = true`) : la détection marche dès le premier jour pour les gros envois et ne s'affine qu'ensuite. Ne voit pas une exfiltration lente (quelques Mio par heure) ni ce qui passe par une autre application (navigateur, messagerie). `net.usage` est rangé dans l'heure de son `ts` (relevé de fin d'heure). Faux positifs : première sauvegarde complète d'une photothèque, envoi d'une longue vidéo, appel vidéo de plusieurs heures en très haute qualité, partage de connexion attribué à une application. |
-| `detect.fanout` | Une application s'est connectée à plus de N adresses **distinctes** (`net.connect`, ports confondus) en une heure. Évaluée par heure, une par application et par jour (heure de pointe). Sév. 2. | **300** ; **100** pour une heure passée écran éteint (écran allumé 5 min au plus d'après `device.screen` ; état inconnu = allumé). Une heure de navigation intense ouvre 50 à 150 adresses écran allumé ; en arrière-plan, une application saine en contacte moins de 20. Un proxy résidentiel en relaie des centaines la nuit. | Ne voit que ce que la journalisation réseau du Device Owner rapporte (connexions TCP par `connect()`), pas le volume relayé. Faux positifs : client BitTorrent ou pair à pair, navigateur sur un site très chargé (écran allumé, rarement au-delà de 300), application de test de débit, scanner réseau, VPN qui serait vu comme une seule application. |
-| `detect.mail_ports` | Une application qui n'est pas un client de messagerie connu s'est connectée aux ports **25, 465 ou 587** (envoi de courriel). Jour, sujet = application. Sév. 2, 3 à partir de 100 connexions ou 20 serveurs (volume de spam). | **1 connexion** : une application ordinaire n'a aucune raison d'envoyer du courriel elle-même. Liste des clients connus : [`internal/detect/mail_clients.txt`](internal/detect/mail_clients.txt), complétée par `WATCHPOST_DETECT_MAIL_CLIENTS`. | Le port 25 est souvent bloqué par les opérateurs (les tentatives sont vues quand même). Faux positifs : un client de messagerie absent de la liste (une alerte par jour jusqu'à l'ajout), une application qui envoie elle-même des rapports par SMTP. |
-| `detect.dns_bypass` | Une application se connecte à un **résolveur DNS public connu** sur un port de `WATCHPOST_DETECT_DNS_BYPASS_PORTS` (443 : DNS sur HTTPS, 853 : DNS sur TLS) : ses requêtes échappent à AdGuard Home et à `net.dns`. Liste versionnée et lisible : [`internal/detect/resolvers.txt`](internal/detect/resolvers.txt) (Google, Cloudflare, Quad9, OpenDNS, AdGuard DNS public, NextDNS, Control D, CleanBrowsing, Mullvad, FDN…, seulement des adresses réservées au DNS). Jour, sujet = application. Sév. 2. | **1 connexion**. Le port 53 n'est pas suivi par défaut : se connecter à 8.8.8.8:53 est l'idiome courant des applications pour tester l'accès à Internet. | **Seconde heuristique du contrat (connexions massives vers des adresses jamais résolues) laissée de côté** : elle n'est pas fiable avec ces données — `net.dns` et `net.connect` arrivent par lots séparés, une adresse résolue peut servir des heures (cache, connexions longues), les applications pair à pair et d'appel (WebRTC, WhatsApp, Telegram) se connectent légitimement à des adresses apprises hors DNS, et les blocs CDN/anycast partagent des adresses entre noms ; elle sonnerait tous les jours. Ne voit pas un résolveur privé ou inconnu (DoH vers un domaine quelconque). Faux positifs : navigateur avec DoH intégré activé (Firefox, Chrome « DNS sécurisé »), application VPN ou « 1.1.1.1 » de Cloudflare, application de diagnostic réseau ; à exempter par `WATCHPOST_DETECT_DNS_BYPASS_EXEMPT` si c'est voulu. |
-| `detect.sms_abuse` | D'après `app.ops` : une application autre que l'appli SMS par défaut (rôle `sms` d'`app.role` ou `default_apps` d'`app.special_access`, y compris un ancien titulaire du jour) a **envoyé ou tenté d'envoyer** des SMS — les tentatives refusées (`rejected_count`, par exemple par la garde SMS) comptent comme des envois —, ou une application en a envoyé ou tenté plus que le maximum du jour. Jour, sujet = application. Sév. 3. | **1** SMS pour une autre application (applications du système exceptées, et seulement quand l'appli SMS est connue) ; **200** par jour pour toute application (un usage intensif reste sous 100 ; le logiciel malveillant visé en envoie 2 000). | Muette sans `app.ops` (expérimental, peut ne jamais arriver) : pas d'erreur. Compteurs = bornes basses. Faux positifs : application d'opérateur ou de double SIM, application de sécurité qui envoie un SMS d'alerte, appli SMS tierce choisie dans la journée avant le relevé du rôle. |
-| `detect.sensor_background` | D'après `app.ops` : micro (`record_audio`) ou caméra utilisés **en arrière-plan** (`background_count`) par une application au-delà d'un seuil par jour. Une par application et par jour (micro et caméra ensemble). Sév. 2. | Micro **10**, caméra **3** par jour. Un appel en arrière-plan compte 1 ou 2 ; un logiciel espion enregistre par dizaines. Exemptés : applications du système, titulaires des rôles téléphone, assistant et filtrage d'appels. | Muette sans `app.ops`. Compte des accès, pas des durées : un seul long enregistrement compte 1. Faux positifs : appels de messagerie nombreux écran éteint, dictaphone ou enregistreur d'appels, application de babyphone, assistant vocal tiers. |
-| `detect.new_app_risky` | Une application de niveau `high` vient d'être installée (`app.risk` dans les 24 h suivant son `app.installed`), ou une application installée depuis moins de 24 h obtient une capacité sensible (permission SMS/journal d'appels/appels accordée, apparition dans les services d'accessibilité, écouteurs de notifications, administrateurs, sources inconnues, superposition, VPN d'`app.special_access`, rôle SMS/téléphone/assistant/clavier/saisie automatique d'`app.role`). Une par installation (fenêtre = 24 h qui suivent), qui liste les capacités acquises. Sév. 2 (3 pour un `combo_*`), 1 pour superposition et VPN. | Pas de seuil. **Seulement une installation récente** : une application `high` déjà présente n'alerte pas (le score mesure des capacités déclarées : contrôle parental, antivirus, automatisation, identification d'appelant sortent `high`) ; Watchpost lui-même est ignoré. | Repose sur `app.installed` : une installation faite pendant que l'agent ne tournait pas n'est pas vue. Faux positifs : installation volontaire d'une application de ce genre (une détection par installation), d'un VPN ou d'un clavier tiers. |
+| `detect.threat_domain` | An application asked (`net.dns`) for a domain that AdGuard Home blocked **because of a `category: threat` list** or its Safe Browsing, on the same UTC day (one hour of margin on each side). One per application and per day, with its domains. Sev. 3, or 2 for the default browser or fewer than 3 requests (a phishing link followed once). | No threshold: a threat list is made to block nothing useful. | Nothing without AdGuard Home or a `threat` list (logged at startup). Matching by exact domain over the day: if several devices share AdGuard without `WATCHPOST_ADGUARD_CLIENTS`, a block for one device may be attributed to the request of another that asked for the same domain. False positives: those of the list itself (legitimate domain wrongly classified); an application that displays booby-trapped ads. |
+| `detect.upload_spike` | Bytes sent (`tx_bytes` of `net.usage`) by an application over an hour > max(floor, k × its hourly median over 14 days). Median of the hours **in which the application sent something**. Evaluated per hour, one per application and per day (peak hour). Sev. 2. | Floor **1 GiB/h**, k = **10**. An HD video call sends 0.3 to 1 GiB/h, a night photo backup a few hundred MiB: under a lower floor, the detection would ring every week. The exfiltration targeted is massive (photo library, recordings). | **Learning**: as long as the device has less than `WATCHPOST_DETECT_UPLOAD_LEARN_DAYS` (7) days of `net.usage` history, or the application has fewer than 24 active hours over 14 days (new application), only the floor applies (`evidence.learning = true`): the detection works from the first day for large uploads and only refines itself afterwards. Does not see a slow exfiltration (a few MiB per hour) nor what goes through another application (browser, messenger). `net.usage` is filed in the hour of its `ts` (end-of-hour reading). False positives: first full backup of a photo library, upload of a long video, a multi-hour very-high-quality video call, tethering attributed to an application. |
+| `detect.fanout` | An application connected to more than N **distinct** addresses (`net.connect`, all ports) in one hour. Evaluated per hour, one per application and per day (peak hour). Sev. 2. | **300**; **100** for an hour spent screen off (screen on 5 min at most according to `device.screen`; unknown state = on). An hour of intense browsing opens 50 to 150 addresses with the screen on; in the background, a healthy application contacts fewer than 20. A residential proxy relays hundreds of them at night. | Only sees what the Device Owner network logging reports (TCP connections through `connect()`), not the volume relayed. False positives: BitTorrent or peer-to-peer client, browser on a very busy site (screen on, rarely beyond 300), speed-test application, network scanner, a VPN that would be seen as a single application. |
+| `detect.mail_ports` | An application that is not a known mail client connected to ports **25, 465 or 587** (sending e-mail). Day, subject = application. Sev. 2, 3 from 100 connections or 20 servers (spam volume). | **1 connection**: an ordinary application has no reason to send e-mail itself. List of known clients: [`internal/detect/mail_clients.txt`](internal/detect/mail_clients.txt), extended by `WATCHPOST_DETECT_MAIL_CLIENTS`. | Port 25 is often blocked by carriers (the attempts are seen all the same). False positives: a mail client missing from the list (one alert per day until it is added), an application that sends reports itself through SMTP. |
+| `detect.dns_bypass` | An application connects to a **known public DNS resolver** on a port of `WATCHPOST_DETECT_DNS_BYPASS_PORTS` (443: DNS over HTTPS, 853: DNS over TLS): its requests escape AdGuard Home and `net.dns`. Versioned, readable list: [`internal/detect/resolvers.txt`](internal/detect/resolvers.txt) (Google, Cloudflare, Quad9, OpenDNS, public AdGuard DNS, NextDNS, Control D, CleanBrowsing, Mullvad, FDN…, only addresses reserved for DNS). Day, subject = application. Sev. 2. | **1 connection**. Port 53 is not followed by default: connecting to 8.8.8.8:53 is the common idiom for applications to test Internet access. | **Second heuristic of the contract (massive connections to addresses never resolved) left out**: it is not reliable with this data — `net.dns` and `net.connect` arrive in separate batches, a resolved address can serve for hours (cache, long connections), peer-to-peer and calling applications (WebRTC, WhatsApp, Telegram) legitimately connect to addresses learned outside DNS, and CDN/anycast blocks share addresses between names; it would ring every day. Does not see a private or unknown resolver (DoH to any domain). False positives: browser with built-in DoH enabled (Firefox, Chrome "secure DNS"), VPN application or Cloudflare's "1.1.1.1", network diagnostic application; to be exempted through `WATCHPOST_DETECT_DNS_BYPASS_EXEMPT` if intended. |
+| `detect.sms_abuse` | According to `app.ops`: an application other than the default SMS app (role `sms` of `app.role` or `default_apps` of `app.special_access`, including a former holder of the day) **sent or tried to send** SMS — refused attempts (`rejected_count`, for example by the SMS guard) count as sends —, or an application sent or tried more than the day's maximum. Day, subject = application. Sev. 3. | **1** SMS for another application (system applications excepted, and only when the SMS app is known); **200** per day for any application (heavy use stays under 100; the malware targeted sends 2,000). | Silent without `app.ops` (experimental, may never arrive): no error. Counters = lower bounds. False positives: carrier or dual-SIM application, security application that sends an alert SMS, third-party SMS app chosen during the day before the role is read. |
+| `detect.sensor_background` | According to `app.ops`: microphone (`record_audio`) or camera used **in the background** (`background_count`) by an application beyond a threshold per day. One per application and per day (microphone and camera together). Sev. 2. | Microphone **10**, camera **3** per day. A background call counts 1 or 2; stalkerware records dozens of times. Exempted: system applications, holders of the phone, assistant and call screening roles. | Silent without `app.ops`. Counts accesses, not durations: a single long recording counts 1. False positives: many messenger calls with the screen off, voice recorder or call recorder, baby monitor application, third-party voice assistant. |
+| `detect.new_app_risky` | An application of level `high` has just been installed (`app.risk` within 24 h of its `app.installed`), or an application installed less than 24 h ago obtains a sensitive capability (SMS/call log/calls permission granted, appearance in the accessibility services, notification listeners, administrators, unknown sources, overlay, VPN of `app.special_access`, SMS/dialer/assistant/keyboard/autofill role of `app.role`). One per installation (window = the following 24 h), which lists the capabilities acquired. Sev. 2 (3 for a `combo_*`), 1 for overlay and VPN. | No threshold. **Only a recent installation**: a `high` application already present does not alert (the score measures declared capabilities: parental control, antivirus, automation, caller identification come out `high`); Watchpost itself is ignored. | Relies on `app.installed`: an installation made while the agent was not running is not seen. False positives: deliberate installation of an application of this kind (one detection per installation), of a third-party VPN or keyboard. |
 
-**Une détection qui sonnerait tous les jours sur un téléphone sain serait ignorée** : les défauts sont mesurés par
-le scénario `sain` du simulateur (21 jours simulés avec appels vidéo, sauvegardes nocturnes, navigation intense,
-client de messagerie sur le port 465, mises à jour, application installée hors store de risque moyen, `app.ops`
-de l'appli SMS, du téléphone et de l'assistant) : **zéro détection** (`TestScenarioHealthyPhoneNoDetection`) ; de
-même sur les 89 jours de la mesure du coût.
+**A detection that rang every day on a healthy phone would be ignored**: the defaults are measured by the
+`healthy` scenario of the simulator (21 simulated days with video calls, night backups, intense browsing, a
+mail client on port 465, updates, an app installed outside a store with medium risk, `app.ops` of the SMS app,
+the dialer and the assistant): **zero detections** (`TestScenarioHealthyPhoneNoDetection`); likewise over the
+89 days of the cost measurement.
 
-| Variable | Défaut | Rôle |
+| Variable | Default | Role |
 |---|---|---|
-| `WATCHPOST_DETECT_ENABLED` | `true` | `false` : aucune détection calculée (les agrégats restent tenus). |
-| `WATCHPOST_DETECT_DISABLE` | vide | Détections éteintes, séparées par des virgules (`fanout,mail_ports` ou `detect.fanout`…). |
-| `WATCHPOST_DETECT_INTERVAL_S` | `300` | Intervalle entre deux passages (10 à 86400 s). |
-| `WATCHPOST_DETECT_UPLOAD_FLOOR_MB` | `1024` | Plancher de `detect.upload_spike`, en Mio par heure. |
-| `WATCHPOST_DETECT_UPLOAD_FACTOR` | `10` | k de k × médiane (1 à 1000). |
-| `WATCHPOST_DETECT_UPLOAD_LEARN_DAYS` | `7` | Historique de l'appareil avant d'utiliser la médiane (0 à 14 jours). |
-| `WATCHPOST_DETECT_FANOUT` / `WATCHPOST_DETECT_FANOUT_SCREEN_OFF` | `300` / `100` | Adresses distinctes par application et par heure (écran allumé / éteint). |
-| `WATCHPOST_DETECT_MAIL_MIN` | `1` | Connexions par jour aux ports 25/465/587. |
-| `WATCHPOST_DETECT_MAIL_CLIENTS` | vide | Paquets ajoutés aux clients de messagerie connus. |
-| `WATCHPOST_DETECT_DNS_BYPASS_MIN` | `1` | Connexions par jour à un résolveur public. |
-| `WATCHPOST_DETECT_DNS_BYPASS_PORTS` | `443,853` | Ports suivis (ajouter `53` pour le DNS en clair). |
-| `WATCHPOST_DETECT_DNS_BYPASS_EXEMPT` | vide | Paquets autorisés à utiliser un résolveur public. |
-| `WATCHPOST_DETECT_SMS_OTHER_MIN` | `1` | SMS (envoyés ou refusés) par jour d'une application autre que l'appli SMS. |
-| `WATCHPOST_DETECT_SMS_DAILY_MAX` | `200` | SMS (envoyés ou refusés) par jour au-delà desquels toute application est signalée. |
-| `WATCHPOST_DETECT_MIC_BG_MIN` / `WATCHPOST_DETECT_CAMERA_BG_MIN` | `10` / `3` | Accès en arrière-plan par jour. |
+| `WATCHPOST_DETECT_ENABLED` | `true` | `false`: no detection computed (the aggregates are still kept). |
+| `WATCHPOST_DETECT_DISABLE` | empty | Detections turned off, separated by commas (`fanout,mail_ports` or `detect.fanout`…). |
+| `WATCHPOST_DETECT_INTERVAL_S` | `300` | Interval between two runs (10 to 86400 s). |
+| `WATCHPOST_DETECT_UPLOAD_FLOOR_MB` | `1024` | Floor of `detect.upload_spike`, in MiB per hour. |
+| `WATCHPOST_DETECT_UPLOAD_FACTOR` | `10` | k of k × median (1 to 1000). |
+| `WATCHPOST_DETECT_UPLOAD_LEARN_DAYS` | `7` | Device history needed before the median is used (0 to 14 days). |
+| `WATCHPOST_DETECT_FANOUT` / `WATCHPOST_DETECT_FANOUT_SCREEN_OFF` | `300` / `100` | Distinct addresses per application and hour (screen on / off). |
+| `WATCHPOST_DETECT_MAIL_MIN` | `1` | Connections per day to ports 25/465/587. |
+| `WATCHPOST_DETECT_MAIL_CLIENTS` | empty | Packages added to the known mail clients. |
+| `WATCHPOST_DETECT_DNS_BYPASS_MIN` | `1` | Connections per day to a public resolver. |
+| `WATCHPOST_DETECT_DNS_BYPASS_PORTS` | `443,853` | Ports followed (add `53` for plain DNS). |
+| `WATCHPOST_DETECT_DNS_BYPASS_EXEMPT` | empty | Packages allowed to use a public resolver. |
+| `WATCHPOST_DETECT_SMS_OTHER_MIN` | `1` | SMS (sent or refused) per day by an application other than the SMS app. |
+| `WATCHPOST_DETECT_SMS_DAILY_MAX` | `200` | SMS (sent or refused) per day above which any application is reported. |
+| `WATCHPOST_DETECT_MIC_BG_MIN` / `WATCHPOST_DETECT_CAMERA_BG_MIN` | `10` / `3` | Background accesses per day. |
 
-**API console** (préfixe `/api/console`) :
+**Contract §11.4 in the collector**:
 
-**Contrat §11.4 dans le collecteur** :
+- `detect.sms_permission` (sev. 2, one per "holding" of `SEND_SMS`: window = start of the holding, one hour;
+  holding = first grant seen in `app.permission_changed`, or first inventory that shows it, then each grant that
+  follows a revocation; a holding that has ended since is reported too). Excluded: the default SMS app
+  (`app.role`, otherwise `default_apps` of `app.special_access`), system apps (contradicted claim excluded),
+  Watchpost.
+- `detect.default_app_changed` (sev. 3 for `sms`, 2 for `dialer`, `keyboard`, `assistant`; one per `app.role`
+  event whose `new` is known; the agent emits nothing at the first reading, so every `app.role` is a change).
+- `detect.inventory_mismatch` (an addition of the collector, to carry over to the contract: it is the "reported"
+  of §11.4).
+- **Mute**: a covered detection is computed and stored with `muted: true`, **without an event** (no Wazuh
+  export, no SSE stream); an update of a muted detection is not exported again. Lifting the mute does not
+  export the past again. Types that cannot be muted: `detect.sms_abuse`, `detect.default_app_changed`,
+  `detect.inventory_mismatch`, `detect.flood`. Server events `detect.muted` (sev. 1) and `detect.unmuted`
+  (sev. 0): `type`, `package`, `reason`, `user`.
+- **Recurrence**: `dns_bypass`, `mail_ports`, `upload_spike`: a **new** detection whose (type, app) already has a
+  detection whose window starts within the 30 days before its own carries `recurring: true` (in the API and in
+  the event data) and its severity is capped at 1 (updates included).
+- **Cap**: 200 new detections per device and per UTC day (of creation); beyond that, nothing is stored except
+  one `detect.flood` (sev. 3, exported once) per device and per day, whose `evidence.suppressed` counts the
+  discarded detections (updated in place, not exported again). Muted detections count.
 
-- `detect.sms_permission` (sév. 2, une par « détention » de `SEND_SMS` : fenêtre = début de la détention, une
-  heure ; détention = premier octroi vu dans `app.permission_changed`, ou premier inventaire qui la montre, puis
-  chaque octroi qui suit un retrait ; une détention terminée depuis est signalée aussi). Exclues : l'appli SMS par
-  défaut (`app.role`, sinon `default_apps` d'`app.special_access`), les applis système (déclaration contredite
-  exclue), Watchpost.
-- `detect.default_app_changed` (sév. 3 pour `sms`, 2 pour `dialer`, `keyboard`, `assistant` ; une par événement
-  `app.role` dont `new` est connu ; l'agent n'émet rien au premier relevé, tout `app.role` est donc un changement).
-- `detect.inventory_mismatch` (ajout du collecteur, à reporter au contrat : c'est le « signalé » du §11.4).
-- **Sourdine** : une détection couverte est calculée et stockée avec `muted: true`, **sans événement** (ni export
-  Wazuh, ni flux SSE) ; une mise à jour d'une détection en sourdine n'est pas réexportée. Lever la sourdine ne
-  réexporte pas le passé. Types non masquables : `detect.sms_abuse`, `detect.default_app_changed`,
-  `detect.inventory_mismatch`, `detect.flood`. Événements serveur `detect.muted` (sév. 1) et `detect.unmuted`
-  (sév. 0) : `type`, `package`, `reason`, `user`.
-- **Récurrence** : `dns_bypass`, `mail_ports`, `upload_spike` : une **nouvelle** détection dont (type, appli) a déjà
-  une détection dont la fenêtre commence dans les 30 jours avant la sienne porte `recurring: true` (dans l'API et
-  dans les données de l'événement) et sa sévérité est plafonnée à 1 (mises à jour comprises).
-- **Plafond** : 200 nouvelles détections par appareil et par jour UTC (de création) ; au-delà, rien n'est stocké
-  sauf une `detect.flood` (sév. 3, exportée une fois) par appareil et par jour, dont `evidence.suppressed` compte
-  les détections écartées (mise à jour sur place, sans réexport). Les détections en sourdine comptent.
-
-Ajouts au contrat §11.3 et §11.4 à reporter (décidés ici, la console les suit) :
+**Console API** (prefix `/api/console`) — additions to contract §11.3 and §11.4 to carry over (the console
+follows them):
 
 - `GET /detections?device_id&package&from&to&type&limit&cursor` → `{ "detections": [ { "id", "ts", "device_id",
   "type", "package", "label", "severity", "summary", "evidence", "window_from", "window_to", "updated_at", "muted",
   "recurring" } ],
-  "next_cursor" }`, de la plus récente à la plus ancienne (par `ts`). `id` = identifiant de l'événement `detect.*`
-  qui a créé la détection (`GET /events/{id}`) ; `ts` = moment de la création ; `updated_at` = dernière mise à jour
-  (absent si jamais mise à jour) ; `severity` = entier **0 à 3, même échelle que `sev`** (en pratique 1 à 3 ;
-  valeur la plus haute atteinte) ; `window_from`/`window_to` = fenêtre (RFC 3339 UTC) ; `package` = filtre exact
-  (`[A-Za-z0-9_.:-]`, 255 au plus, sinon `400`) ; `from`/`to` **facultatifs** (défaut : les 30 derniers jours),
-  portent sur `ts` ; `type` = préfixes séparés par des virgules ; `limit` ≤ 500 (100) ; `cursor` opaque.
-- `GET /apps/risk?device_id` (requis, sinon `400`) → `{ "apps": [ { "package", "label", "version_code",
-  "installer", "from_store", "score", "level", "reasons", …autres champs de l'événement…, "ts" } ] }` : le dernier
-  `app.risk` de chaque application tel que reçu, plus `ts` (heure de cet `app.risk`), score décroissant puis
-  paquet ; `{ "apps": [] }` sans données.
-- `GET /apps/ops?device_id&from&to` (`device_id` facultatif, `from`/`to` requis, heures entières) →
+  "next_cursor" }`, from the most recent to the oldest (by `ts`). `id` = identifier of the `detect.*` event that
+  created the detection (`GET /events/{id}`); `ts` = time of creation; `updated_at` = last update (absent if
+  never updated); `severity` = integer **0 to 3, same scale as `sev`** (in practice 1 to 3; highest value
+  reached); `window_from`/`window_to` = window (RFC 3339 UTC); `package` = exact filter (`[A-Za-z0-9_.:-]`, 255
+  at most, otherwise `400`); `from`/`to` **optional** (default: the last 30 days), apply to `ts`; `type` =
+  comma-separated prefixes; `limit` ≤ 500 (100); `cursor` opaque.
+- `GET /apps/risk?device_id` (required, otherwise `400`) → `{ "apps": [ { "package", "label", "version_code",
+  "installer", "from_store", "score", "level", "reasons", …other fields of the event…, "ts" } ] }`: the latest
+  `app.risk` of each application as received, plus `ts` (time of that `app.risk`), score descending then
+  package; `{ "apps": [] }` without data.
+- `GET /apps/ops?device_id&from&to` (`device_id` optional, `from`/`to` required, whole hours) →
   `{ "apps": [ { "package", "label", "count", "background_count", "rejected_count", "last_ts", "ops": [ { "op",
-  "count", "background_count", "rejected_count", "last_ts" } ] } ] }`, applications par `count` décroissant,
-  opérations aussi ; `label` et `last_ts` absents si inconnus ; `{ "apps": [] }` sans `app.ops`.
+  "count", "background_count", "rejected_count", "last_ts" } ] } ] }`, applications by descending `count`,
+  operations too; `label` and `last_ts` absent if unknown; `{ "apps": [] }` without `app.ops`.
 
-- `POST /detections/mute` corps `{ "device_id", "type", "package", "reason" }` (seules clés admises ; `package`
-  requis, `[A-Za-z0-9_.:-]`, 255 au plus ; `type` = un type `detect.*` connu ; `reason` facultative, 200 caractères
-  au plus, sans caractère de contrôle ; en-tête `X-Requested-With: watchpost`) → `204` (idempotent : un second appel
-  remplace la raison, sans nouvel événement) ; `400 not_mutable` pour un type non masquable, `400
-  invalid_parameter` / `invalid_json`, `404 not_found` pour un appareil inconnu.
-- `DELETE /detections/mute`, même corps → `204`, `404 not_found` s'il n'y a pas cette sourdine.
-- `GET /detections/mutes?device_id` (facultatif) → `{ "mutes": [ { "device_id", "type", "package", "reason",
+- `POST /detections/mute` body `{ "device_id", "type", "package", "reason" }` (only keys allowed; `package`
+  required, `[A-Za-z0-9_.:-]`, 255 at most; `type` = a known `detect.*` type; `reason` optional, 200 characters
+  at most, no control characters; header `X-Requested-With: watchpost`) → `204` (idempotent: a second call
+  replaces the reason, without a new event); `400 not_mutable` for a type that cannot be muted, `400
+  invalid_parameter` / `invalid_json`, `404 not_found` for an unknown device.
+- `DELETE /detections/mute`, same body → `204`, `404 not_found` if there is no such mute.
+- `GET /detections/mutes?device_id` (optional) → `{ "mutes": [ { "device_id", "type", "package", "reason",
   "created_at", "created_by" } ] }`.
 
-Clés d'`evidence` par type (toujours un objet ; listes de scalaires seulement, pour le décodeur de Wazuh) :
+`evidence` keys per type (always an object; lists of scalars only, for Wazuh's decoder):
 
 | Type | `evidence` |
 |---|---|
-| `detect.threat_domain` | `domains` (10 au plus, les plus demandés d'abord), `domain_count`, `requests` (requêtes `net.dns` de l'application), `blocked` (blocages comptés par AdGuard), `lists` (motifs lisibles des listes) |
-| `detect.upload_spike` | `tx_bytes` (heure de pointe), `threshold_bytes`, `median_bytes` (absent pendant l'apprentissage), `history_hours`, `learning`, `screen_on_minutes` (si connu), `hours`, `first_hour`, `peak_hour` |
-| `detect.fanout` | `addresses` (distinctes, heure de pointe), `connections`, `threshold`, `ports` (5 au plus), `sample` (5 adresses au plus), `screen_on_minutes` (si connu), `hours`, `first_hour`, `peak_hour` |
-| `detect.mail_ports` | `connections`, `addresses`, `ports`, `sample` (3 adresses au plus) |
-| `detect.dns_bypass` | `connections`, `resolvers` (`adresse:port`, 5 au plus), `providers` |
-| `detect.sms_abuse` | `reason` (`not_default_sms_app` ou `volume`), `sent`, `background`, `rejected`, `read_contacts` (si utilisé), `default_sms_app` (si connue) |
-| `detect.sensor_background` | `ops` (`record_audio`, `camera`), `microphone_background`, `microphone_count`, `camera_background`, `camera_count` (selon l'opération) |
-| `detect.new_app_risky` | `high_risk` (bool), `capabilities` (codes : `accessibility`, `notification_listener`, `device_admin`, `unknown_sources`, `overlay`, `vpn`, `role:<rôle>`, `permission:<NOM>`), `installer`, `installed_at`, `score`, `level`, `reasons`, `granted`, `from_store` (si un `app.risk` est connu), `minutes_to_first_capability` |
-| `detect.sms_permission` | `permission` (`SEND_SMS`), `source` (`permission_changed` ou `inventory`), `since`, `until` (détention terminée), `installer`, `default_sms_app` (si connue), `score`, `level`, `reasons` (si un `app.risk` est connu) |
-| `detect.default_app_changed` | `role`, `old` (absent si inconnu), `new`, `score`, `level`, `reasons`, `granted` (profil de la nouvelle appli, si connu) |
-| `detect.inventory_mismatch` | `installer`, `contradictions` (`installer:<paquet>`, `app.installed`) |
+| `detect.threat_domain` | `domains` (10 at most, most requested first), `domain_count`, `requests` (`net.dns` requests of the application), `blocked` (blocks counted by AdGuard), `lists` (readable reasons of the lists) |
+| `detect.upload_spike` | `tx_bytes` (peak hour), `threshold_bytes`, `median_bytes` (absent during learning), `history_hours`, `learning`, `screen_on_minutes` (if known), `hours`, `first_hour`, `peak_hour` |
+| `detect.fanout` | `addresses` (distinct, peak hour), `connections`, `threshold`, `ports` (5 at most), `sample` (5 addresses at most), `screen_on_minutes` (if known), `hours`, `first_hour`, `peak_hour` |
+| `detect.mail_ports` | `connections`, `addresses`, `ports`, `sample` (3 addresses at most) |
+| `detect.dns_bypass` | `connections`, `resolvers` (`address:port`, 5 at most), `providers` |
+| `detect.sms_abuse` | `reason` (`not_default_sms_app` or `volume`), `sent`, `background`, `rejected`, `read_contacts` (if used), `default_sms_app` (if known) |
+| `detect.sensor_background` | `ops` (`record_audio`, `camera`), `microphone_background`, `microphone_count`, `camera_background`, `camera_count` (depending on the operation) |
+| `detect.new_app_risky` | `high_risk` (bool), `capabilities` (codes: `accessibility`, `notification_listener`, `device_admin`, `unknown_sources`, `overlay`, `vpn`, `role:<role>`, `permission:<NAME>`), `installer`, `installed_at`, `score`, `level`, `reasons`, `granted`, `from_store` (if an `app.risk` is known), `minutes_to_first_capability` |
+| `detect.sms_permission` | `permission` (`SEND_SMS`), `source` (`permission_changed` or `inventory`), `since`, `until` (holding ended), `installer`, `default_sms_app` (if known), `score`, `level`, `reasons` (if an `app.risk` is known) |
+| `detect.default_app_changed` | `role`, `old` (absent if unknown), `new`, `score`, `level`, `reasons`, `granted` (profile of the new app, if known) |
+| `detect.inventory_mismatch` | `installer`, `contradictions` (`installer:<package>`, `app.installed`) |
 | `detect.flood` | `suppressed`, `limit` |
 
-`app.ops` est exporté vers Wazuh éclaté en `app.ops.app` (une ligne par élément, avec `from` et `to`), comme `net.usage`.
+`app.ops` is exported to Wazuh split into `app.ops.app` (one line per element, with `from` and `to`), like `net.usage`.
 
-### Simulateur : parc sain et scénarios d'attaque
+### Simulator: healthy fleet and attack scenarios
 
-Le simulateur émet désormais aussi le profil de risque et l'usage du parc sain (§11.2) : `app.risk` de chaque
-application au premier démarrage, à chaque mise à jour et installation (capacités **déclarées**, liste `granted`
-des capacités accordées ; une appli d'attaque est notée à l'installation puis de nouveau quand une capacité est
-accordée) (niveaux `low` 0-29, `medium` 30-69,
-`high` 70-100, système et Watchpost plafonnés à `low`), `app.ops` horaire (SMS de l'appli SMS, appels, contacts,
-position, assistant, Bixby…, avec `rejected_count`), pas d'`app.role` au premier relevé (les applications par
-défaut viennent de `app.special_access`). S'y ajoutent des comportements sains trompeurs : appel vidéo WhatsApp
-(250 à 450 Mio envoyés), sauvegarde nocturne Samsung Cloud (jusqu'à 850 Mio), une heure de navigation intense
-dans Chrome (50 à 90 adresses), Samsung Email sur le port 465. `--app-ops=false` simule l'absence d'`app.ops`.
-Ces ajouts ont leur propre source aléatoire : à graine fixe, le reste du flux est inchangé.
+The simulator also emits the risk profile and the usage of the healthy fleet (§11.2): `app.risk` of each
+application at first start, at each update and installation (**declared** capabilities, `granted` list of the
+capabilities granted; an attack application is rated at installation, then again when a capability is
+granted) (levels `low` 0-29, `medium` 30-69, `high` 70-100, system and Watchpost capped at `low`), hourly
+`app.ops` (SMS of the SMS app, calls, contacts, location, assistant, Bixby…, with `rejected_count`), no
+`app.role` at the first reading (the default applications come from `app.special_access`). Misleading healthy
+behaviors are added to it: WhatsApp video call (250 to 450 MiB sent), Samsung Cloud night backup (up to 850
+MiB), an hour of intense browsing in Chrome (50 to 90 addresses), Samsung Email on port 465. `--app-ops=false`
+simulates the absence of `app.ops`. These additions have their own random source: with a fixed seed, the rest
+of the stream is unchanged.
 
-`--scenario` (plusieurs séparés par des virgules) joue des attaques cohérentes dans le temps. Avec `--backfill`,
-elles commencent 48 h avant la fin de l'historique (40 % de l'historique s'il est plus court) et durent jusqu'au
-bout (et au-delà avec `--follow`) ; sans historique, une minute après le lancement. Les domaines de commande sont
-bloqués par la liste de menaces du faux AdGuard Home (`--fake-adguard`, liste activée d'office et déclarée
-`threat` dans `examples/adguard-levels.example.json`).
+`--scenario` (several separated by commas) plays attacks that are consistent over time. With `--backfill`, they
+start 48 h before the end of the history (40 % of the history if it is shorter) and last until the end (and
+beyond with `--follow`); without history, one minute after launch. The command domains are blocked by the
+threat list of the fake AdGuard Home (`--fake-adguard`, list enabled by default and declared `threat` in
+`examples/adguard-levels.example.json`).
 
-| Scénario | Séquence | Détections obtenues |
+| Scenario | Sequence | Detections obtained |
 |---|---|---|
-| `sain` (défaut) | rien de plus que le parc sain | aucune |
-| `fraude-sms` | (donne aussi `sms_permission`) « Lampe Torche Pro » installée hors store (`app.risk` high, `combo_sms_fraud`, sans icône), `SEND_SMS` et `READ_CONTACTS` accordées 3 min après, ~85 SMS par heure en arrière-plan (≈ 2 000 par jour), contacts lus, appels au panneau `panel.sms-gateway-pay.example` ; au bout de 24 h, la garde SMS est activée (`security.policy`) et les envois continuent, refusés (`rejected_count`) | `new_app_risky` (une : risque élevé + envoi de SMS), `sms_abuse` et `threat_domain` (une par jour, refus compris) |
-| `cheval-de-troie` | « Mise à jour du système » hors store (`combo_banking_trojan`), réception de SMS, accessibilité + lecture des notifications + superposition (`app.special_access`) 6 min après, désignée appli SMS par défaut 8 min après (`app.role`), balises vers deux serveurs de commande | `new_app_risky` (une : risque élevé + capacités), `default_app_changed` (sév. 3), `threat_domain` (une par jour, 2 domaines) |
-| `proxy` | « Puzzle Relax » du Play Store (risque faible), de 1 h à 6 h (heure de Paris) 320 à 480 adresses par heure, 250 à 550 Mio envoyés par heure, domaine `relay.proxy-earn.example` | `fanout` et `threat_domain` (une par jour) |
-| `spam` | « Nettoyeur Boost » du Play Store, 20 à 40 serveurs SMTP par heure (ports 587 et 25) | `mail_ports` (sév. 3, une par jour) |
-| `exfiltration` | « Coffre Photos » du Play Store, quelques Mio par heure puis, 36 h après le début (au plus tard 2 h avant la fin de l'historique ; sans historique, 1 h après), 3,1 à 3,9 Gio en une heure | `upload_spike` |
-| `contournement-dns` | « Navigateur Rapide » (service VPN), 3 à 12 connexions par heure à 1.1.1.1:443, 1.0.0.1:443, 8.8.8.8:853, [2606:4700:4700::1111]:443 | `dns_bypass` (une par jour), `new_app_risky` (VPN, sév. 1) |
-| `espion` | « Battery Service » hors store (`combo_stalkerware`), micro, caméra et position en arrière-plan accordés, administrateur de l'appareil, ~4 enregistrements par heure, une photo toutes les 3 h | `new_app_risky` (une : risque élevé + administrateur), `sensor_background` (une par jour, micro et caméra) |
-| `sms-discret` | l'attaque vécue par le propriétaire : « Promo Coupons » du Play Store, sans icône (capacités déclarées `sms_send` + démarrage au boot : `medium`, car venue d'une boutique), petit appel horaire à un serveur absent des listes, `SEND_SMS` accordée 25 à 30 h après l'installation, puis ~85 SMS par heure | `sms_permission` (à l'octroi), `sms_abuse` (une par jour, avec `app.ops` seulement) |
-| `tout` | tous les scénarios d'attaque | tout ce qui précède (`TestScenarioAttacks`) |
+| `healthy` (default) | nothing more than the healthy fleet | none |
+| `sms-fraud` | (also gives `sms_permission`) "Flashlight Pro" installed outside a store (`app.risk` high, `combo_sms_fraud`, no icon), `SEND_SMS` and `READ_CONTACTS` granted 3 min later, ~85 SMS per hour in the background (≈ 2,000 per day), contacts read, calls to the panel `panel.sms-gateway-pay.example`; after 24 h, the SMS guard is enabled (`security.policy`) and the sends go on, refused (`rejected_count`) | `new_app_risky` (one: high risk + SMS sending), `sms_abuse` and `threat_domain` (one per day, refusals included) |
+| `banking-trojan` | "System Update" outside a store (`combo_banking_trojan`), SMS reception, accessibility + notification reading + overlay (`app.special_access`) 6 min later, made the default SMS app 8 min later (`app.role`), beacons to two command servers | `new_app_risky` (one: high risk + capabilities), `default_app_changed` (sev. 3), `threat_domain` (one per day, 2 domains) |
+| `proxy` | "Puzzle Relax" from the Play Store (low risk), from 1 am to 6 am (Paris time) 320 to 480 addresses per hour, 250 to 550 MiB sent per hour, domain `relay.proxy-earn.example` | `fanout` and `threat_domain` (one per day) |
+| `spam` | "Cleaner Boost" from the Play Store, 20 to 40 SMTP servers per hour (ports 587 and 25) | `mail_ports` (sev. 3, one per day) |
+| `exfiltration` | "Photo Vault" from the Play Store, a few MiB per hour then, 36 h after the start (at the latest 2 h before the end of the history; without history, 1 h after), 3.1 to 3.9 GiB in one hour | `upload_spike` |
+| `dns-bypass` | "Fast Browser" (VPN service), 3 to 12 connections per hour to 1.1.1.1:443, 1.0.0.1:443, 8.8.8.8:853, [2606:4700:4700::1111]:443 | `dns_bypass` (one per day), `new_app_risky` (VPN, sev. 1) |
+| `stalkerware` | "Battery Service" outside a store (`combo_stalkerware`), microphone, camera and background location granted, device administrator, ~4 recordings per hour, a photo every 3 h | `new_app_risky` (one: high risk + administrator), `sensor_background` (one per day, microphone and camera) |
+| `silent-sms` | a discreet store app: "Promo Coupons" from the Play Store, no icon (declared capabilities `sms_send` + start at boot: `medium`, since it comes from a store), small hourly call to a server absent from the lists, `SEND_SMS` granted 25 to 30 h after the installation, then ~85 SMS per hour | `sms_permission` (at the grant), `sms_abuse` (one per day, with `app.ops` only) |
+| `all` | all the attack scenarios | everything above (`TestScenarioAttacks`) |
 
-Lancer en local un serveur avec un scénario d'attaque (faux AdGuard Home compris) :
+Run a server locally with an attack scenario (fake AdGuard Home included):
 
 ```sh
 cd server/collector
@@ -355,273 +352,260 @@ export WATCHPOST_DATA_DIR=$PWD/.dev WATCHPOST_LISTEN=127.0.0.1:8080 WATCHPOST_CO
        WATCHPOST_ADGUARD_LEVELS_FILE=$PWD/examples/adguard-levels.example.json WATCHPOST_ADGUARD_POLL_S=10 \
        WATCHPOST_DETECT_INTERVAL_S=15
 go run . serve &
-go run . enroll --name s25 --out .dev/s25.watchpost
-printf '%s\n' 'motdepasse-console' | go run . user set-password admin
-go run . sim --enroll .dev/s25.watchpost --backfill 72h --follow --scenario tout \
+go run . enroll --name phone --out .dev/phone.watchpost
+printf '%s\n' 'console-password' | go run . user set-password admin
+go run . sim --enroll .dev/phone.watchpost --backfill 72h --follow --scenario all \
        --fake-adguard 127.0.0.1:3001 --fake-adguard-user watchpost --fake-adguard-password adguard-demo
 ```
 
-Les détections apparaissent au passage qui suit l'arrivée des données (`WATCHPOST_DETECT_INTERVAL_S`), et celles qui
-dépendent du journal d'AdGuard Home après son relevé (`WATCHPOST_ADGUARD_POLL_S` ; au premier relevé, seules les
-24 dernières heures du journal sont lues).
+The detections appear at the run that follows the arrival of the data (`WATCHPOST_DETECT_INTERVAL_S`), and
+those that depend on the AdGuard Home log after its poll (`WATCHPOST_ADGUARD_POLL_S`; at the first poll, only
+the last 24 hours of the log are read).
 
-### Ce que les détections ne voient pas, et ce qui sonnera à tort (revue v1.2)
+### What the detections do not see, and what will ring wrongly
 
-Essais du 16/11/2026 sur le vrai collecteur, par l'API d'ingestion avec un appareil enrôlé (séquences écrites
-pour la revue, hors simulateur), et fixés par `internal/detect/review_test.go`.
+Trials on the real collector, through the ingestion API with an enrolled device (sequences written by hand,
+outside the simulator), pinned by `internal/detect/blind_spots_test.go`.
 
-**L'attaque vécue par le propriétaire — une appli discrète qui envoie ~2 000 SMS par jour — ne déclenchait aucune
-détection sans `app.ops`** lors de la revue (essai : appli du Play Store notée `medium`, `SEND_SMS` accordée 30 h
-après l'installation, 48 h d'envois). Corrigé par le contrat §11.4 : elle déclenche désormais
-`detect.sms_permission` à l'octroi (et `detect.default_app_changed` si elle se fait appli SMS par défaut) ;
-`internal/detect/review_test.go` l'exige. Le nombre de SMS envoyés reste invisible sans `app.ops` : voir le
-tableau en tête de « Détections ».
+**A discreet app that sends ~2,000 SMS per day triggered no detection without `app.ops`** in the first trial
+(a store app rated `medium`, `SEND_SMS` granted 30 h after the installation, 48 h of sends). Fixed by contract
+§11.4: it now triggers `detect.sms_permission` at the grant (and `detect.default_app_changed` if it makes
+itself the default SMS app); `internal/detect/blind_spots_test.go` requires it. The number of SMS sent stays
+invisible without `app.ops`: see the table at the top of "Detections".
 
-Autres limites constatées :
+Other limits found:
 
-- (Corrigé par le §11.4 : `app.risk` note désormais les capacités **déclarées**, avec une liste `granted` des
-  capacités accordées, lue par `detect.new_app_risky` comme une capacité acquise.) Lors de la revue, la note
-  `app.risk` de l'agent ne comptait `sms_send`, `calls`, la position et le micro que **accordés**
-  (`android/README.md`) : à l'installation, une appli de fraude au SMS installée hors boutique sort `medium`
-  (32), et `high` (77) seulement au passage quotidien qui suit l'octroi. Le scénario `fraude-sms` du simulateur
-  émet, lui, `high` avec `sms_send` dès l'installation : la détection finale est la même, pas son délai. Avec la
-  garde SMS active, la permission n'est jamais accordée et la note reste basse.
-- Un appareil dont l'agent est compromis (identifiants volés) peut mentir. Depuis le §11.4 : un inventaire qui
-  déclare « système » une appli dont l'installateur est un installateur de fichiers APK
-  (`com.google.android.packageinstaller`, `com.android.packageinstaller`, `com.android.shell`) ou qui a un
-  `app.installed` (une appli système est préinstallée) n'est pas cru — l'appli reste soumise à `sms_abuse`,
-  `sms_permission` et `sensor_background` — et c'est signalé par `detect.inventory_mismatch` (sév. 3, non
-  masquable) ; le profil de risque n'est pas utilisé pour ce contrôle (l'agent garde les raisons des applis
-  système, qui le contrediraient toutes). Un mensonge cohérent (appli système déclarée, installateur vide, aucun
-  `app.installed`) reste indécelable. Noyer la console est borné : 200 détections par appareil et par jour, puis
-  une seule `detect.flood` (sév. 3). Une appli malveillante **sans**
-  les identifiants de l'agent ne peut rien de tout cela ; elle peut rester sous les seuils (299 adresses par
-  heure, 199 SMS par jour si elle est l'appli SMS par défaut).
-- Lots en retard : un lot vieux de 6 jours crée la détection avec sa fenêtre d'origine et `ts` = l'heure du
-  calcul ; renvoyé deux fois (mêmes `id`), il ne compte qu'une fois ; plus vieux que la rétention, il est
-  acquitté sans effet ; un `ts` dans le futur est rejeté (`invalid_ts`).
+- (Fixed by §11.4: `app.risk` now rates the **declared** capabilities, with a `granted` list of the
+  capabilities granted, read by `detect.new_app_risky` as a capability acquired.) In the first trial, the agent's
+  `app.risk` score counted `sms_send`, `calls`, location and microphone only when **granted**
+  (`android/README.md`): at installation, an SMS-fraud app installed outside a store comes out `medium` (32),
+  and `high` (77) only at the daily run that follows the grant. The `sms-fraud` scenario of the simulator
+  emits `high` with `sms_send` from the installation: the final detection is the same, not its delay. With the
+  SMS guard active, the permission is never granted and the score stays low.
+- A device whose agent is compromised (stolen credentials) can lie. Since §11.4: an inventory that declares an
+  app "system" whose installer is an APK file installer (`com.google.android.packageinstaller`,
+  `com.android.packageinstaller`, `com.android.shell`) or that has an `app.installed` (a system app is
+  preinstalled) is not believed — the app stays subject to `sms_abuse`, `sms_permission` and
+  `sensor_background` — and this is reported by `detect.inventory_mismatch` (sev. 3, cannot be muted); the
+  risk profile is not used for this check (the agent keeps the reasons of system apps, which would contradict
+  all of them). A consistent lie (system app declared, empty installer, no `app.installed`) stays
+  undetectable. Flooding the console is bounded: 200 detections per device and per day, then a single
+  `detect.flood` (sev. 3). A malicious app **without** the agent's credentials can do none of this; it can
+  stay under the thresholds (299 addresses per hour, 199 SMS per day if it is the default SMS app).
+- Late batches: a batch 6 days old creates the detection with its original window and `ts` = time of the
+  computation; sent twice (same `id`), it counts only once; older than the retention, it is acknowledged
+  without effect; a `ts` in the future is rejected (`invalid_ts`).
 
-**Faux positifs prévisibles sur un téléphone sain** (obtenus par essai ; le scénario `sain` du simulateur reste
-juste sous chaque seuil et ne les montre pas) :
+**Foreseeable false positives on a healthy phone** (obtained by trial; the `healthy` scenario of the simulator
+stays just under each threshold and does not show them):
 
-| Détection | Habitude ordinaire qui la déclenche | Remède |
+| Detection | Ordinary habit that triggers it | Remedy |
 |---|---|---|
-| `detect.upload_spike` | première sauvegarde de photos ou de vidéos (3 Gio en une heure), sauvegarde WhatsApp/Android vers Drive par les Services Google Play, appel vidéo HD d'une heure (≈ 1,3 Gio), partage de connexion | `WATCHPOST_DETECT_UPLOAD_FLOOR_MB` plus haut ; à lire avec l'état de l'écran |
-| `detect.dns_bypass` | Firefox (DNS sur HTTPS vers Cloudflare), Chrome réglé sur un fournisseur de DNS sécurisé, Telegram (dns.google en secours), applis VPN et clients Tailscale ; les Services Google Play s'ils interrogent dns.google (non vérifié sur l'appareil) — **une par appli et par jour, indéfiniment** | `WATCHPOST_DETECT_DNS_BYPASS_EXEMPT` |
-| `detect.mail_ports` | client de messagerie absent de `mail_clients.txt` (essai : Yandex Mail) | `WATCHPOST_DETECT_MAIL_CLIENTS` |
-| `detect.fanout` | appli de podcasts ou de flux RSS qui rafraîchit ~130 flux la nuit (écran éteint : seuil 100, et chaque hôte compte deux fois en IPv4 + IPv6), client BitTorrent, heure de navigation très dense (> 300 adresses) | `WATCHPOST_DETECT_FANOUT_SCREEN_OFF` |
-| `detect.new_app_risky` | toute nouvelle appli qui obtient légitimement une capacité suivie : VPN, gestionnaire de mots de passe (accessibilité), appli de montre (notifications), nouvelle appli SMS ; contrôle parental, antivirus et automatisation sortent `high` | une seule fois par installation |
-| `detect.sms_abuse` (avec `app.ops`) | appli non système qui envoie un SMS avec l'accord du propriétaire : messagerie vocale visuelle, appli de montre, vérification de numéro | `WATCHPOST_DETECT_SMS_OTHER_MIN` |
+| `detect.upload_spike` | first backup of photos or videos (3 GiB in one hour), WhatsApp/Android backup to Drive by Google Play services, one-hour HD video call (≈ 1.3 GiB), tethering | higher `WATCHPOST_DETECT_UPLOAD_FLOOR_MB`; read together with the screen state |
+| `detect.dns_bypass` | Firefox (DNS over HTTPS to Cloudflare), Chrome set to a secure DNS provider, Telegram (dns.google as a fallback), VPN apps and Tailscale clients; Google Play services if they query dns.google (not verified on a device) — **one per app and per day, indefinitely** | `WATCHPOST_DETECT_DNS_BYPASS_EXEMPT` |
+| `detect.mail_ports` | mail client missing from `mail_clients.txt` (trial: Yandex Mail) | `WATCHPOST_DETECT_MAIL_CLIENTS` |
+| `detect.fanout` | podcast or RSS app refreshing ~130 feeds at night (screen off: threshold 100, and each host counts twice over IPv4 + IPv6), BitTorrent client, very dense hour of browsing (> 300 addresses) | `WATCHPOST_DETECT_FANOUT_SCREEN_OFF` |
+| `detect.new_app_risky` | any new app that legitimately obtains a followed capability: VPN, password manager (accessibility), watch app (notifications), new SMS app; parental control, antivirus and automation come out `high` | only once per installation |
+| `detect.sms_abuse` (with `app.ops`) | non-system app that sends an SMS with the user's consent: visual voicemail, watch app, number verification | `WATCHPOST_DETECT_SMS_OTHER_MIN` |
 
-## Choix de conception
+## Design choices
 
-- **SQLite WAL** (`modernc.org/sqlite`, pur Go) : un pool écrivain d'une connexion (`BEGIN IMMEDIATE`) et un
-  pool de lecture `query_only`. `synchronous=FULL` : un lot acquitté (que l'agent supprime) survit à une
-  coupure. Migrations versionnées par `PRAGMA user_version` (`internal/store/db.go`).
-- **Requêtes console sur des millions de lignes** : index `(device_id, ts)`, `(device_id, type, ts)` et
-  `(device_id, sev, ts) WHERE sev > 0`. `/events` découpe la requête en parcours d'index ordonnés (par
-  appareil × type exact ou × sévérité), lus avec `LIMIT n+1` et fusionnés : un type rare reste rapide au milieu
-  de `net.dns`. Curseur opaque `(ts, pk)`. Les statistiques horaires/journalières et les « top » viennent
-  d'agrégats horaires tenus à l'ingestion (`event_counts`, `top_counts`) ; le pas `minute` relit les
-  événements (2000 intervalles au plus). **`/stats/top` compte des occurrences, `/stats/timeline` des
-  événements** : pour `dns_hostname`, `dns_package`, `connect_dest` et `connect_package`, un événement pèse
-  `data.count` (entier entre 1 et 1 000 000 ; absent, fractionnaire, hors bornes ou non numérique : 1), à
-  l'ingestion comme dans la migration 3 qui reconstruit ces agrégats ; les autres genres et `event_type`
-  comptent 1 par événement, et la timeline aussi. Tables dérivées : `locations`, `device_latest` (dernier heartbeat,
-  posture, position, inventaire).
-- **Ingestion** : jeton haché (SHA-256, 256 bits d'entropie) comparé en temps constant ; empreinte du
-  certificat crue seulement si l'appelant est dans `WATCHPOST_TRUSTED_PROXIES`. Limites : 1 Mio compressé /
-  8 Mio décompressé / 500 événements / 256 Kio par événement / profondeur 16. Un événement est inséré ou
-  reconnu comme doublon (`ON CONFLICT(id) DO NOTHING`) dans une transaction par lot. Débit : 5 requêtes/s
-  (rafale 60) par appareil, 10 échecs d'authentification par IP puis 1 toutes les 30 s, 8 lots en parallèle.
-- **Export Wazuh** : curseur persistant (`kv.export_cursor` = dernier `events.pk`, AUTOINCREMENT). Une
-  goroutine lit la base dans l'ordre d'insertion, écrit des lignes complètes (écritures terminées par `\n`),
-  fait `fsync`, puis avance le curseur. L'ingestion ne fait qu'un signal non bloquant : un volume plein ou
-  absent ne la ralentit jamais, et un redémarrage reprend au curseur (au moins une fois : quelques lignes
-  peuvent être dupliquées après un arrêt brutal). Au premier démarrage, l'historique n'est pas rejoué.
-  Le fichier est créé (0640) dès le démarrage de `serve`, avant tout événement : `wazuh-logcollector`
-  ouvre un fichier apparu après son propre démarrage **à la fin**, et en perdrait les premières lignes.
-  Rotation par renommage (`.1`…`.KEEP`), jamais de troncature ; une ligne partielle laissée par un arrêt
-  brutal est terminée par `\n` (ligne ignorée par Wazuh, événement réexporté). `watchpost.data.location` est
-  réservé au point `geo_point` posé par le collecteur sur `location.fix` : une clé `location` venue de
-  l'appareil est retirée de l'export (elle ferait rejeter le document entier par l'indexeur).
-- **Console** : sessions par cookie (`__Host-watchpost_session` en HTTPS) opaques, hachées en base, 12 h
-  d'inactivité, 7 jours au plus ; argon2id (m=64 Mio, t=3, p=2, 2 calculs simultanés au plus) ; 10 échecs
-  par IP et par compte puis 1/min (`429` + `Retry-After`), le jeton étant pris avant la vérification du mot
-  de passe (des tentatives simultanées ne contournent pas la limite) et rendu en cas de succès. `X-Requested-With: watchpost` exigé sur toute requête
-  modifiante. CSP exacte du contrat, `nosniff`, `DENY`, etc. SSE : abonné trop lent déconnecté (le
-  navigateur se reconnecte), flux fermé à l'expiration de la session.
-- **Renouvellement** : `renew` range un second couple (jeton haché + empreinte et PEM du certificat) dans les colonnes
-  `next_*` de `devices` (migration 4). Les deux couples sont acceptés ; le **premier** `ingest` (une fois `device_id`
-  du corps vérifié) ou `ping` authentifié avec le nouveau déclenche, en un seul `UPDATE` atomique, la bascule : le
-  nouveau couple devient courant, l'ancien est refusé (`401`). Un jeton n'est valable qu'avec le certificat de
-  **son** couple (pas de mélange ancien jeton + nouveau certificat, ni l'inverse). Jetons hachés, comparés en
-  temps constant, jamais journalisés ; la bascule est journalisée sans secret. Un renouvellement jamais utilisé
-  reste en attente sans limite de durée (l'ancien couple continue de servir jusqu'à son expiration).
-- **Réponses `400`** : uniquement enveloppe de lot illisible ou invalide (gzip, JSON, champs de l'enveloppe du
-  mauvais type, `events` absent/nul/non tableau, données après l'objet). L'enveloppe est lue sans limite de
-  profondeur (`encoding/json` refuse au-delà de 10 000 niveaux, ce qui rendait tout le lot illisible pour un
-  seul événement pathologique) : un défaut propre à un événement (type, `ts`, taille, imbrication…) va dans `rejected`.
-- **Sens serveur → téléphone** : `/api/v1` n'a que `ingest`, `ping` et les trois routes de commandes du §8 ;
-  aucune réponse ne transporte de configuration ni de politique.
-- **Commandes à distance (§8)** : table `commands` (migration 5). `POST /commands` analyse une **copie** du
-  `payload` (objet JSON unique, sans clé en double ni inconnue, `v` = 1, `id` ULID majuscule inédit et égal à
-  `id` du corps s'il est fourni, `device_id` = celui du corps, appareil existant et non révoqué, type de la
-  liste fermée, paramètres typés et bornés — `message` : 200 unités UTF-16, pas de caractère de contrôle sauf
-  `\n` —, `issued_at` à ±10 min de l'heure du serveur, `expires_at` futur et validité ≤ 30 j) ; la chaîne
-  d'origine est stockée et relayée **à l'octet près** (jamais re-sérialisée ; UTF-8 invalide et U+FFFD
-  refusés pour qu'aucun remplacement ne la modifie). `sig` : obligatoire et au format base64 de 32 octets pour
-  un type sensible, interdit sinon ; le collecteur **ne peut pas** la vérifier (il n'a pas le code). Limites
-  vérifiées dans la transaction d'insertion : 20 créations par heure et 10 commandes ouvertes (pending ou
-  delivered) par appareil (`429` + `Retry-After`) ; corps ≤ 32 Kio, payload ≤ 4 Kio. États : `pending` →
-  `delivered` (passage atomique **avant** l'écriture vers l'agent : une annulation concurrente gagne — la
-  commande n'est pas envoyée — ou reçoit `409`) → `executed`/`failed`/`refused` (premier résultat retenu ; un
-  doublon, ou un refus `replay`, est acquitté `204` sans effet) ; `expired` (balayage toutes les 30 s, et
-  affiché dès l'échéance) ; `cancelled` (seulement depuis `pending`). Un résultat tardif (commande expirée ou
-  annulée) est enregistré : c'est l'état réel du téléphone. Une commande non acquittée par un résultat est
-  renvoyée après 5 min (3 remises au plus ; l'agent, qui ne la réexécute jamais, renvoie alors son résultat
-  d'origine, ou `replay` — non final — s'il ne l'a plus). Si l'écriture vers l'agent échoue, la commande
-  repasse `pending`. **La signature n'est conservée que tant que la commande peut encore être remise** : dès
-  qu'elle est terminée (résultat reçu, expirée, annulée), `sig` est remplacé en base par le repère `-`
-  (`store.SigErased` ; la console continue de la voir « signée »). Une copie ultérieure de la base ou d'une
-  sauvegarde ne contient donc plus de couple (`payload`, `sig`) des commandes passées, qui servirait à
-  chercher hors ligne le code de commande du propriétaire ; un serveur compromis **en direct** voit toujours
-  passer les nouvelles commandes signées.
-- **Flux de commandes** : une connexion par appareil (la nouvelle ferme l'ancienne), 64 au plus
-  (`503` + `Retry-After` au-delà), délai de lecture du serveur levé pour cette seule requête authentifiée,
-  délai d'écriture de 30 s par message (une connexion morte est détectée au plus tard au maintien suivant),
-  une seule goroutine par flux, fermeture de tous les flux à l'arrêt. `GET /devices` → `command_channel` :
-  `connected` = flux ouvert en ce moment ; `mode` = `stream` (flux ouvert ou dernier contact par flux), `poll`
-  (dernière interrogation sans flux ouvert) ou `unknown` ; `last_contact` = dernière ouverture, maintien,
-  interrogation ou résultat.
-- **Événements produits par le collecteur** : `command.issued` (sév. 0 simple, 1 `lock`/`clear_lock_message`,
-  2 `wipe` ; `command_id`, `type`, `signed`, `created_by`, `expires_at`, `params` **sans** `message`,
-  `message_set` pour `lock`), `command.cancelled` (`cancelled_by`), `command.reported` (résultat reçu par
-  l'API : `status`, `detail`, `agent_at`, sévérité du §8) et `command.expired` (`delivered`, sév. 1). Ils sont
-  stockés comme des événements de l'appareil visé (`source = 'server'`, `boot_id` = `server`, `seq` 0),
-  visibles dans `/events` et la chronologie, et exportés avec `watchpost.source = "server"` (les événements
-  d'appareil n'ont pas de `source`). L'événement `command.result` de l'agent arrive, lui, par l'ingestion.
-  Le message de verrouillage reste dans la base (console) : ni dans les journaux du processus, ni dans
-  l'export. Ni `payload`, ni `sig`, ni jeton ne sont journalisés. `tracking.level_changed` et
-  `tracking.override` (voir « Vue pistage ») sont produits de la même façon.
-- **Vue « pistage » (§9)** : le journal d'AdGuard Home (`GET /control/querylog`, du plus récent au plus
-  ancien, 500 entrées par page) est relevé toutes les `WATCHPOST_ADGUARD_POLL_S`, 40 pages au plus par relevé.
-  **Lecture** (`readLog`, `internal/server/tracking.go`) : AdGuard Home v0.107.80 traite `older_than=T` en
-  cherchant dans ses fichiers une entrée dont l'horodatage est **exactement** `T` (`internal/querylog` :
-  `seekTS`, `seekRecord` ; vérifié sur une instance réelle) : si `T` tombe entre deux entrées, il ne renvoie
-  rien des fichiers ; si `T` est postérieur à la dernière, il saute cette dernière entrée. Le collecteur ne
-  passe donc jamais un instant arbitraire : la première page est demandée **sans** `older_than`, les suivantes
-  avec l'horodatage exact de la plus ancienne entrée de la page précédente, et la fenêtre de temps est
-  appliquée ici. Une entrée est comptée par le relevé dont la fenêtre `(repère précédent, maintenant − 60 s]`
-  contient son horodatage : exactement une fois, quel que soit l'instant des relevés. Si un curseur reçoit une
-  réponse courte avant la limite basse (fin réelle du journal, ou entrée du curseur absente des fichiers :
-  restée en mémoire, ou supprimée par une rotation), les horodatages des trois entrées lues juste avant sont
-  essayés avant de conclure. Chaque page est agrégée par
-  heure, client (ClientID, sinon IP) et domaine (`tracking_counts` : requêtes, bloquées, motif lisible : nom
-  de la liste, « Règle personnalisée : … », « Blocage manuel (Watchpost) », service bloqué…) et validée **avec** la
-  position de lecture (`kv.adguard_querylog` : repère, plages restantes avec leur curseur et ses remplaçants)
-  dans la même transaction : un redémarrage reprend sans perte ni double compte. Ce qui n'a pas pu être lu
-  dans le budget de pages (premier relevé : 24 h d'historique ; longue panne) est gardé comme
-  « trou » à combler aux relevés suivants (16 au plus). Bloquée = motif `Filtered*` sauf `FilteredSafeSearch`.
-  Le faux AdGuard Home du simulateur et des tests reproduit ce traitement réel d'`older_than` (deux fichiers,
-  rotation, tampon mémoire : `adguard.Fake.search`, `fake_test.go`). Essai du 16/11/2026 contre un AdGuard
-  Home réel v0.107.80 (conteneur local, `size_memory: 1`, trafic espacé puis en rafales, deux rotations du
-  journal dont une faite par AdGuard Home lui-même, deux redémarrages du collecteur) : 2114 entrées inscrites
-  par AdGuard Home, 2114 comptées, chacune une fois ; l'ancienne lecture (`older_than` = maintenant − 60 s)
-  en comptait 8. Rattrapage d'un journal existant par un collecteur neuf : 824 sur 824, puis 1350 sur 1350
-  avec `size_memory: 50` (trois pages).
-  **Changements faits depuis la console** : `PUT /tracking/level` et `PUT /tracking/override` qui modifient
-  réellement AdGuard Home produisent un événement du collecteur (`source = 'server'`, un par appareil non
-  révoqué, exporté vers Wazuh avec `watchpost.source = "server"`) : `tracking.level_changed` (`old` — absent si
-  l'état ne correspondait à aucun niveau —, `new`, `changes`, `user` ; sév. 2 si le blocage est affaibli ou
-  part d'un état inconnu, 1 sinon) et `tracking.override` (`domain`, `action`, `forced`, `previous` s'il y
-  avait une règle, `user` ; sév. 2 pour une autorisation, le retrait d'un blocage ou le blocage forcé d'un
-  domaine indispensable, 1 sinon). Une demande qui ne change rien ne produit rien.
-  Croisements par agrégats horaires : `top_counts` (`dns_hostname` par paquet, pondéré par `count`) et
-  `usage_counts` (octets reçus/émis par application, migration 5, reconstruite depuis `net.usage`). Rien ne
-  balaie la table `events`. Purge avec la rétention. AdGuard injoignable : `adguard: false`, `PUT` → `503`,
-  les agrégats déjà relevés restent servis ; rien d'autre n'est affecté.
-- **Éditeurs** : [`internal/tracking/publishers.txt`](internal/tracking/publishers.txt), embarqué ; suffixe le
-  plus long, sur frontière de label (`notgoogle.com` → `other`). Clés : `google`, `samsung`, `meta`,
-  `microsoft`, `amazon`, `bytedance`, `ads`, `other`. Octets par éditeur (`tx_bytes`, `rx_bytes`) :
-  **estimation** — les octets de chaque application sont répartis entre éditeurs au prorata de ses requêtes
-  DNS vers leurs domaines.
-- **Règles manuelles** (`PUT /tracking/override`) : domaine en minuscules, labels `[a-z0-9_-]` (forme `xn--`),
-  2 labels au moins, TLD non numérique, 253 caractères au plus : aucun caractère de syntaxe de règle ne peut
-  passer. Règles `||domaine^$important` / `@@||domaine^$important` écrites entre `! watchpost:begin …` et
-  `! watchpost:end` parmi les règles utilisateur (lues par `GET /control/filtering/status`, réécrites par
-  `POST /control/filtering/set_rules` seulement si elles changent ; bloc trié, retiré quand il est vide ;
-  repères incohérents → `409 corrupt_rules`, rien n'est écrit). Une ligne trouvée entre les repères qui
-  n'est pas une règle écrite par Watchpost (règle ou commentaire ajouté là à la main dans AdGuard Home) n'est
-  jamais supprimée : elle est déplacée juste après le bloc. Garde-fou : bloquer un domaine qui est (ou
-  dont un sous-domaine est) indispensable — FCM, test de connectivité, NTP, mises à jour Samsung/Google, hôtes
-  d'ingestion et de DNS privé de Watchpost (`internal/tracking/essential.go`) — répond `409 essential_domain` avec
-  `breaks: [{domain, breaks}]` sans `"force": true`.
-- **Client AdGuard** : URL de la configuration uniquement, aucune redirection suivie, pas de proxy
-  d'environnement, délai de 30 s (2 min pour un changement de niveau), réponses bornées (32 Mio pour le
-  journal).
-- **Fichiers** : base, WAL et `-shm` en 0600 (la base est créée 0600 avant que SQLite n'en dérive les
-  autres), `.watchpost` en 0600 même avec `--force`. La purge de rétention s'applique aussi aux dernières
-  valeurs par appareil (position, heartbeat, posture) affichées par `/devices`.
-- **PKI** : AC ECDSA P-256 (20 ans) dans `pki/ca.{crt,key}` (clé 0600), certificats clients 2 ans,
+- **SQLite WAL** (`modernc.org/sqlite`, pure Go): a one-connection writer pool (`BEGIN IMMEDIATE`) and a
+  `query_only` read pool. `synchronous=FULL`: an acknowledged batch (which the agent deletes) survives a power
+  cut. Migrations versioned by `PRAGMA user_version` (`internal/store/db.go`).
+- **Console queries over millions of rows**: indexes `(device_id, ts)`, `(device_id, type, ts)` and
+  `(device_id, sev, ts) WHERE sev > 0`. `/events` splits the query into ordered index scans (per device × exact
+  type or × severity), read with `LIMIT n+1` and merged: a rare type stays fast in the middle of `net.dns`.
+  Opaque cursor `(ts, pk)`. The hourly/daily statistics and the "top" lists come from hourly aggregates kept at
+  ingestion (`event_counts`, `top_counts`); the `minute` step rereads the events (2000 intervals at most).
+  **`/stats/top` counts occurrences, `/stats/timeline` events**: for `dns_hostname`, `dns_package`,
+  `connect_dest` and `connect_package`, an event weighs `data.count` (integer between 1 and 1,000,000; absent,
+  fractional, out of bounds or non-numeric: 1), at ingestion as in migration 3 which rebuilds these aggregates;
+  the other kinds and `event_type` count 1 per event, and so does the timeline. Derived tables: `locations`,
+  `device_latest` (latest heartbeat, posture, position, inventory).
+- **Ingestion**: hashed token (SHA-256, 256 bits of entropy) compared in constant time; certificate fingerprint
+  believed only if the caller is in `WATCHPOST_TRUSTED_PROXIES`. Limits: 1 MiB compressed / 8 MiB decompressed /
+  500 events / 256 KiB per event / depth 16. An event is inserted or recognized as a duplicate (`ON CONFLICT(id)
+  DO NOTHING`) in one transaction per batch. Rate: 5 requests/s (burst 60) per device, 10 authentication
+  failures per IP then 1 every 30 s, 8 batches in parallel.
+- **Wazuh export**: persistent cursor (`kv.export_cursor` = last `events.pk`, AUTOINCREMENT). A goroutine reads
+  the database in insertion order, writes whole lines (writes ending with `\n`), runs `fsync`, then advances
+  the cursor. Ingestion only sends a non-blocking signal: a full or missing volume never slows it down, and a
+  restart resumes at the cursor (at least once: a few lines may be duplicated after an abrupt stop). At the
+  first start, the history is not replayed. The file is created (0640) as soon as `serve` starts, before any
+  event: `wazuh-logcollector` opens a file that appeared after its own start **at the end**, and would lose
+  its first lines. Rotation by renaming (`.1`…`.KEEP`), never truncation; a partial line left by an abrupt
+  stop is terminated by `\n` (line ignored by Wazuh, event exported again). `watchpost.data.location` is
+  reserved for the `geo_point` set by the collector on `location.fix`: a `location` key coming from the device
+  is removed from the export (it would make the indexer reject the whole document).
+- **Console**: opaque session cookies (`__Host-watchpost_session` over HTTPS), hashed in the database, 12 h of
+  inactivity, 7 days at most; argon2id (m=64 MiB, t=3, p=2, 2 simultaneous computations at most); 10 failures
+  per IP and per account then 1/min (`429` + `Retry-After`), the token being taken before the password
+  verification (simultaneous attempts do not get around the limit) and given back on success.
+  `X-Requested-With: watchpost` required on every modifying request. Exact CSP of the contract, `nosniff`,
+  `DENY`, etc. SSE: a subscriber that is too slow is disconnected (the browser reconnects), stream closed when
+  the session expires.
+- **Renewal**: `renew` puts a second pair (hashed token + fingerprint and PEM of the certificate) in the `next_*`
+  columns of `devices` (migration 4). Both pairs are accepted; the **first** `ingest` (once the body's
+  `device_id` is verified) or authenticated `ping` with the new one triggers the switch, in a single atomic
+  `UPDATE`: the new pair becomes current, the old one is refused (`401`). A token is only valid with the
+  certificate of **its** pair (no mixing of old token + new certificate, nor the reverse). Tokens hashed,
+  compared in constant time, never logged; the switch is logged without a secret. A renewal that is never used
+  stays pending with no time limit (the old pair keeps serving until it expires).
+- **`400` answers**: only an unreadable or invalid batch envelope (gzip, JSON, envelope fields of the wrong
+  type, `events` absent/null/not an array, data after the object). The envelope is read without a depth limit
+  (`encoding/json` refuses beyond 10,000 levels, which made the whole batch unreadable because of a single
+  pathological event): a defect specific to one event (type, `ts`, size, nesting…) goes into `rejected`.
+- **Server → phone direction**: `/api/v1` only has `ingest`, `ping` and the three command routes of §8; no
+  response carries configuration or policy.
+- **Remote commands (§8)**: table `commands` (migration 5). `POST /commands` analyzes a **copy** of the `payload`
+  (single JSON object, no duplicate or unknown key, `v` = 1, upper-case ULID `id` never used before and equal
+  to the body's `id` if provided, `device_id` = the body's, existing and non-revoked device, type of the
+  closed list, typed and bounded parameters — `message`: 200 UTF-16 units, no control character except `\n` —,
+  `issued_at` within ±10 min of the server time, future `expires_at` and validity ≤ 30 d); the original string
+  is stored and relayed **byte for byte** (never reserialized; invalid UTF-8 and U+FFFD are refused so that no
+  replacement modifies it). `sig`: mandatory and in the base64-of-32-bytes format for a sensitive type,
+  forbidden otherwise; the collector **cannot** verify it (it does not have the passphrase). Limits checked in
+  the insertion transaction: 20 creations per hour and 10 open commands (pending or delivered) per device
+  (`429` + `Retry-After`); body ≤ 32 KiB, payload ≤ 4 KiB. States: `pending` → `delivered` (atomic switch
+  **before** the write to the agent: a concurrent cancellation wins — the command is not sent — or receives
+  `409`) → `executed`/`failed`/`refused` (first result kept; a duplicate, or a `replay` refusal, is
+  acknowledged `204` without effect); `expired` (sweep every 30 s, and displayed as soon as the deadline
+  passes); `cancelled` (only from `pending`). A late result (expired or cancelled command) is recorded: it is
+  the real state of the phone. A command not acknowledged by a result is sent again after 5 min (3 deliveries
+  at most; the agent, which never executes it again, then sends back its original result, or `replay` —
+  non-final — if it no longer has it). If the write to the agent fails, the command goes back to `pending`.
+  **The signature is kept only while the command can still be handed over**: as soon as it is finished (result
+  received, expired, cancelled), `sig` is replaced in the database by the marker `-` (`store.SigErased`; the
+  console keeps seeing it as "signed"). A later copy of the database or of a backup therefore no longer
+  contains a (`payload`, `sig`) pair of past commands, which would be used to search the user's command
+  passphrase offline; a server compromised **live** still sees the new signed commands go by.
+- **Command stream**: one connection per device (the new one closes the old one), 64 at most (`503` +
+  `Retry-After` beyond), server read timeout lifted for this single authenticated request, write timeout of
+  30 s per message (a dead connection is detected at the next keep-alive at the latest), a single goroutine per
+  stream, all streams closed at shutdown. `GET /devices` → `command_channel`: `connected` = stream open right
+  now; `mode` = `stream` (stream open or last contact through a stream), `poll` (last polling without an open
+  stream) or `unknown`; `last_contact` = last opening, keep-alive, polling or result.
+- **Events produced by the collector**: `command.issued` (sev. 0 simple, 1 `lock`/`clear_lock_message`, 2
+  `wipe`; `command_id`, `type`, `signed`, `created_by`, `expires_at`, `params` **without** `message`,
+  `message_set` for `lock`), `command.cancelled` (`cancelled_by`), `command.reported` (result received by the
+  API: `status`, `detail`, `agent_at`, severity of §8) and `command.expired` (`delivered`, sev. 1). They are
+  stored like events of the targeted device (`source = 'server'`, `boot_id` = `server`, `seq` 0), visible in
+  `/events` and the timeline, and exported with `watchpost.source = "server"` (device events have no
+  `source`). The agent's `command.result` event arrives through ingestion. The lock message stays in the
+  database (console): neither in the process logs nor in the export. Neither `payload`, nor `sig`, nor token is
+  logged. `tracking.level_changed` and `tracking.override` (see "Tracking page") are produced the same way.
+- **Tracking page (§9)**: the AdGuard Home log (`GET /control/querylog`, from the most recent to the oldest, 500
+  entries per page) is polled every `WATCHPOST_ADGUARD_POLL_S`, 40 pages at most per poll. **Reading**
+  (`readLog`, `internal/server/tracking.go`): AdGuard Home v0.107.80 handles `older_than=T` by looking in its
+  files for an entry whose timestamp is **exactly** `T` (`internal/querylog`: `seekTS`, `seekRecord`; verified
+  on a real instance): if `T` falls between two entries, it returns nothing from the files; if `T` is later
+  than the last one, it skips that last entry. The collector therefore never passes an arbitrary instant: the
+  first page is requested **without** `older_than`, the following ones with the exact timestamp of the oldest
+  entry of the previous page, and the time window is applied here. An entry is counted by the poll whose
+  window `(previous marker, now − 60 s]` contains its timestamp: exactly once, whatever the instant of the
+  polls. If a cursor receives a short answer before the lower bound (real end of the log, or cursor entry
+  missing from the files: still in memory, or deleted by a rotation), the timestamps of the three entries read
+  just before are tried before concluding. Each page is aggregated per hour, client (ClientID, otherwise IP)
+  and domain (`tracking_counts`: queries, blocked, readable reason: name of the list, "Custom rule: …",
+  "Manual block (Watchpost)", blocked service…) and committed **with** the reading position
+  (`kv.adguard_querylog`: marker, remaining ranges with their cursor and its replacements) in the same
+  transaction: a restart resumes without loss or double count. What could not be read within the page budget
+  (first poll: 24 h of history; long outage) is kept as a "gap" to fill at the following polls (16 at most).
+  Blocked = reason `Filtered*` except `FilteredSafeSearch`. The fake AdGuard Home of the simulator and of the
+  tests reproduces this real handling of `older_than` (two files, rotation, memory buffer:
+  `adguard.Fake.search`, `fake_test.go`). Trial (2026-11-16) against a real AdGuard Home v0.107.80 (local
+  container, `size_memory: 1`, spaced traffic then bursts, two rotations of the log, one done by AdGuard Home
+  itself, two restarts of the collector): 2114 entries written by AdGuard Home, 2114 counted, each once; the
+  previous reading (`older_than` = now − 60 s) counted 8. Catch-up of an existing log by a new collector: 824
+  out of 824, then 1350 out of 1350 with `size_memory: 50` (three pages). **Changes made from the console**:
+  `PUT /tracking/level` and `PUT /tracking/override` that actually modify AdGuard Home produce a collector
+  event (`source = 'server'`, one per non-revoked device, exported to Wazuh with `watchpost.source =
+  "server"`): `tracking.level_changed` (`old` — absent if the state matched no level —, `new`, `changes`, `user`;
+  sev. 2 if the blocking is weakened or starts from an unknown state, 1 otherwise) and `tracking.override`
+  (`domain`, `action`, `forced`, `previous` if there was a rule, `user`; sev. 2 for an allow, the removal of a
+  block or the forced block of an essential domain, 1 otherwise). A request that changes nothing produces
+  nothing. Cross-references through hourly aggregates: `top_counts` (`dns_hostname` per package, weighted by
+  `count`) and `usage_counts` (bytes received/sent per application, migration 5, rebuilt from `net.usage`).
+  Nothing scans the `events` table. Purged with the retention. AdGuard unreachable: `adguard: false`, `PUT` →
+  `503`, the aggregates already polled are still served; nothing else is affected.
+- **Publishers**: [`internal/tracking/publishers.txt`](internal/tracking/publishers.txt), embedded; longest suffix,
+  on label boundary (`notgoogle.com` → `other`). Keys: `google`, `samsung`, `meta`, `microsoft`, `amazon`,
+  `bytedance`, `ads`, `other`. Bytes per publisher (`tx_bytes`, `rx_bytes`): **estimate** — the bytes of each
+  application are split between publishers in proportion to its DNS requests to their domains.
+- **Manual rules** (`PUT /tracking/override`): lower-case domain, labels `[a-z0-9_-]` (`xn--` form), 2 labels at
+  least, non-numeric TLD, 253 characters at most: no rule-syntax character can get through. Rules
+  `||domain^$important` / `@@||domain^$important` written between `! watchpost:begin …` and
+  `! watchpost:end` among the user rules (read by `GET /control/filtering/status`, rewritten by
+  `POST /control/filtering/set_rules` only if they change; block sorted, removed when empty; inconsistent
+  markers → `409 corrupt_rules`, nothing is written). A line found between the markers that is not a rule
+  written by Watchpost (rule or comment added there by hand in AdGuard Home) is never deleted: it is moved right
+  after the block. Safeguard: blocking a domain that is (or has a subdomain that is) essential — FCM,
+  connectivity check, NTP, Samsung/Google updates, Watchpost ingestion and private DNS hosts
+  (`internal/tracking/essential.go`) — answers `409 essential_domain` with `breaks: [{domain, breaks}]`
+  without `"force": true`.
+- **AdGuard client**: URL from the configuration only, no redirect followed, no environment proxy, 30 s
+  timeout (2 min for a level change), bounded responses (32 MiB for the log).
+- **Files**: database, WAL and `-shm` in 0600 (the database is created 0600 before SQLite derives the others
+  from it), `.watchpost` in 0600 even with `--force`. The retention purge also applies to the latest
+  per-device values (position, heartbeat, posture) displayed by `/devices`.
+- **PKI**: ECDSA P-256 CA (20 years) in `pki/ca.{crt,key}` (key 0600), client certificates 2 years,
   `CN=<device_id>`, `clientAuth`.
-- **Simulateur** : journée type autour de Paris (domicile 11e, métro ligne 1 jusqu'à La Défense en semaine,
-  vélo et bois de Vincennes le week-end), Wi-Fi/cellules, écran et applications au premier plan, DNS et
-  connexions par paquets Google/Samsung/tiers (~10 000 `net.dns` par jour avec `--rate 1`), usage horaire,
-  inventaires quotidiens (parties liées par `inventory_id`), et un scénario plaçant tous les types rares (redémarrage, traceur BLE, 2G, AC
-  utilisateur, `agent.tamper`, ADB, USB, appli installée hors Play Store, position simulée…) dans la fenêtre
-  de `--backfill` (ou dans la première heure du mode continu). `seq` part de l'heure Unix en ms.
-  L'hôte DNS privé (posture, politique, connectivité) est repris du fichier `.watchpost`. Chaque changement de
-  posture produit un `security.posture_change` par champ modifié (sauf `patch_age_days`, dérivé de la date) :
-  ADB et options développeur, sources inconnues et Play Protect, DNS privé non strict, AC utilisateur ;
-  `sensor.*` portent `screen_on` et `locked` (dont un micro et une caméra utilisés écran éteint et
-  verrouillé par l'appli installée hors Play Store) ; `security.log` suit la table de noms du contrat.
-  Comme le vrai agent : environ 1 `net.dns`/`net.connect` sur 15 est agrégé (`count` 2 à 60,
-  `last_event_ts`), des `security.log` de niveau `info`/`warning`/`error` (parfois agrégés) s'ajoutent, des
-  journaux `pre_reboot: true` précèdent chaque redémarrage, et `net.dns`, `net.connect` et `security.log`
-  sont livrés **par lots tous les 1 h 30 à 2 h** avec leur `ts` d'origine (le reste est livré au fil de l'eau ;
-  sans `--follow`, le dernier lot en attente part à la fin). À graine fixe (`--seed`), le flux est
-  reproductible ; les tirages ajoutés ont leurs propres sources aléatoires, le reste de la simulation n'a pas changé.
+- **Simulator**: typical day around Paris (home in the east of the city, metro line to the business district
+  on weekdays, bike and a park at the weekend), Wi-Fi/cells, screen and foreground applications, DNS and
+  connections per Google/Samsung/third-party package (~10,000 `net.dns` per day with `--rate 1`), hourly usage,
+  daily inventories (parts linked by `inventory_id`), and a scenario placing all the rare types (reboot, BLE
+  tracker, 2G, user CA, `agent.tamper`, ADB, USB, app installed outside the Play Store, mock location…) in the
+  window of `--backfill` (or in the first hour of continuous mode). `seq` starts from the Unix time in ms. The
+  private DNS host (posture, policy, connectivity) is taken from the `.watchpost` file. Each posture change
+  produces one `security.posture_change` per modified field (except `patch_age_days`, derived from the date):
+  ADB and developer options, unknown sources and Play Protect, non-strict private DNS, user CA; `sensor.*`
+  carry `screen_on` and `locked` (including a microphone and a camera used screen off and locked by the app
+  installed outside the Play Store); `security.log` follows the name table of the contract. Like the real
+  agent: about 1 `net.dns`/`net.connect` in 15 is aggregated (`count` 2 to 60, `last_event_ts`), `security.log`
+  entries of level `info`/`warning`/`error` (sometimes aggregated) are added, logs with `pre_reboot: true`
+  precede each reboot, and `net.dns`, `net.connect` and `security.log` are delivered **in batches every 1 h 30
+  to 2 h** with their original `ts` (the rest is delivered as it comes; without `--follow`, the last pending
+  batch goes out at the end). With a fixed seed (`--seed`), the stream is reproducible; the draws added have
+  their own random sources, the rest of the simulation has not changed.
 
-## Limites connues
+## Known limits
 
-- Pistage : `older_than` d'AdGuard est strict : deux requêtes de la même nanoseconde à la frontière de deux
-  pages pourraient être sautées (négligeable). Une entrée n'est comptée qu'une fois vieille de 60 s (les plus
-  récentes attendent le relevé suivant). **`querylog.size_memory` d'AdGuard Home doit rester inférieur à 500**
-  (la taille d'une page) : au-delà (1000 par défaut), un relevé de plus d'une page peut avoir pour curseur une
-  entrée encore en mémoire, et AdGuard Home saute alors la dernière entrée de son fichier (une entrée perdue
-  par relevé de ce genre). À l'inverse, **`size_memory: 1` fait perdre des entrées à AdGuard Home lui-même**
-  dès que des requêtes arrivent en même temps (son tampon d'une entrée est écrasé avant d'être écrit) :
-  mesuré sur une instance réelle v0.107.80 avec 8 clients simultanés, 187 entrées inscrites pour 240 réponses
-  à `size_memory: 1`, 1350 pour 1360 à `size_memory: 50`. Ces entrées n'existent ni pour le collecteur ni
-  pour Wazuh : c'est un réglage de l'infrastructure (voir le rapport de revue du 16/11/2026).
-  Les `apps` d'un domaine et les `blocked`/`allowed`
-  d'une application sont des estimations (AdGuard ne voit pas l'application ; `net.dns` ne voit pas le blocage).
-- Commandes : le collecteur ne vérifie pas `sig` (il n'a pas le code). Sans le code, un serveur compromis
-  peut faire sonner, vibrer ou localiser le téléphone autant qu'il veut, retenir, retarder ou rejouer dans
-  leur période de validité les commandes signées qu'il a reçues, et afficher n'importe quel état dans la
-  console. Il ne peut verrouiller ou effacer que s'il obtient le code : en le cherchant hors ligne à partir
-  d'une commande signée (d'où l'exigence d'un code long et imprévisible, voir `android/README.md`), ou en
-  modifiant la console qu'il sert pour le lire quand le propriétaire le saisit. L'annulation d'une commande
-  n'engage que le serveur : seule l'expiration, ou le changement du code dans l'application, la rend
-  caduque à coup sûr.
+- Tracking: AdGuard's `older_than` is strict: two requests of the same nanosecond at the boundary of two pages
+  could be skipped (negligible). An entry is counted only once it is 60 s old (the most recent ones wait for the
+  next poll). **AdGuard Home's `querylog.size_memory` must stay below 500** (the size of a page): beyond that
+  (1000 by default), a poll of more than one page may have as cursor an entry still in memory, and AdGuard Home
+  then skips the last entry of its file (one entry lost per poll of this kind). Conversely, **`size_memory: 1`
+  makes AdGuard Home itself lose entries** as soon as requests arrive at the same time (its one-entry buffer is
+  overwritten before being written): measured on a real v0.107.80 instance with 8 simultaneous clients, 187
+  entries written for 240 answers at `size_memory: 1`, 1350 for 1360 at `size_memory: 50`. These entries exist
+  neither for the collector nor for Wazuh: this is an infrastructure setting. The `apps` of a domain and the
+  `blocked`/`allowed` of an application are estimates (AdGuard does not see the application; `net.dns` does
+  not see the blocking).
+- Commands: the collector does not verify `sig` (it does not have the passphrase). Without the passphrase, a
+  compromised server can make the phone ring, vibrate or locate itself as much as it wants, hold back, delay or
+  replay within their validity period the signed commands it received, and display any state in the console.
+  It can only lock or erase if it obtains the passphrase: by searching for it offline from a signed command
+  (hence the requirement of a long and unpredictable passphrase, see `android/README.md`), or by modifying the
+  console it serves in order to read it when the user types it. Canceling a command only binds the server: only
+  expiry, or changing the passphrase in the app, makes it surely void.
 
-- Agrégats « top » et timeline horaire/journalière alignés sur des heures/jours **UTC** pleins : les bornes
-  `from`/`to` sont arrondies à l'heure.
-- `/apps` regroupe les parties d'inventaire par `inventory_id` (contrat §2) ; pour un agent qui ne l'envoie
-  pas, repli sur une heuristique (même `parts`, moins d'une heure d'écart).
-- Un événement dont `ts` dépasse l'heure du serveur de plus de 24 h ou précède 2000 est rejeté
-  (`invalid_ts`, définitif) ; la purge de rétention se fait sur `ts`.
-- `ts` est l'heure d'origine : `net.dns`, `net.connect`, `security.log` et `app.foreground` arrivent avec des
-  heures, voire des jours de retard. Tous les agrégats sont rangés dans l'heure UTC de `ts` (jamais celle de
-  réception) et un `ts` ancien est accepté dans la limite de `WATCHPOST_RETENTION_DAYS`. Un événement plus ancien
-  que la rétention est **acquitté sans être stocké** (compté dans `accepted`, pour que l'agent le supprime ;
-  ni agrégat, ni export Wazuh, ni diffusion SSE) : la purge l'aurait supprimé dans l'heure. `last_event_ts` n'est
-  pas utilisé pour le classement. La console doit interroger les statistiques par plage de `ts`, pas « depuis
-  la réception » : un événement tardif modifie les compteurs d'heures déjà passées.
-- Limitation de débit en mémoire (réinitialisée au redémarrage, propre à une instance).
-- Détections : fenêtres en jours et heures UTC ; la rétention s'applique aussi aux détections (fenêtre et moment
-  de la détection tous deux plus anciens que la rétention) et au dernier `app.risk`/`app.role` de chaque
-  application (`GET /apps/risk` perd une application dont le dernier `app.risk` a plus de `WATCHPOST_RETENTION_DAYS`).
-- Caddy limite le corps des requêtes d'ingestion à 9 Mo (infra) : marge au-dessus des 8 Mio décompressés,
-  les limites fines restent celles du collecteur.
+- "Top" aggregates and hourly/daily timeline aligned on whole **UTC** hours/days: the `from`/`to` bounds are
+  rounded to the hour.
+- `/apps` groups the inventory parts by `inventory_id` (contract §2); for an agent that does not send it,
+  fallback to a heuristic (same `parts`, less than one hour apart).
+- An event whose `ts` is more than 24 h beyond the server time or earlier than 2000 is rejected (`invalid_ts`,
+  final); the retention purge is done on `ts`.
+- `ts` is the original time: `net.dns`, `net.connect`, `security.log` and `app.foreground` arrive hours, even
+  days late. All aggregates are filed in the UTC hour of `ts` (never that of reception) and an old `ts` is
+  accepted within the limit of `WATCHPOST_RETENTION_DAYS`. An event older than the retention is **acknowledged
+  without being stored** (counted in `accepted`, so that the agent deletes it; no aggregate, no Wazuh export, no
+  SSE broadcast): the purge would have deleted it within the hour. `last_event_ts` is not used for the
+  ranking. The console must query the statistics by `ts` range, not "since reception": a late event modifies
+  the counters of hours already past.
+- Rate limiting in memory (reset at restart, specific to one instance).
+- Detections: windows in UTC days and hours; the retention also applies to the detections (window and time of
+  the detection both older than the retention) and to the latest `app.risk`/`app.role` of each application
+  (`GET /apps/risk` loses an application whose latest `app.risk` is older than `WATCHPOST_RETENTION_DAYS`).
+- Caddy limits the body of ingestion requests to 9 MB (infra): margin above the 8 MiB decompressed, the fine
+  limits remain those of the collector.

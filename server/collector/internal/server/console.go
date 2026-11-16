@@ -32,7 +32,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 	case errors.As(err, &br):
 		writeError(w, http.StatusBadRequest, br.code, br.msg)
 	case errors.Is(err, store.ErrNotFound):
-		writeError(w, http.StatusNotFound, "not_found", "introuvable")
+		writeError(w, http.StatusNotFound, "not_found", "not found")
 	case errors.Is(err, context.DeadlineExceeded):
 		writeError(w, http.StatusServiceUnavailable, "timeout", "request too long, reduce the interval")
 	case errors.Is(err, context.Canceled):

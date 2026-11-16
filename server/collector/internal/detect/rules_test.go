@@ -271,14 +271,14 @@ func TestNewAppRisky(t *testing.T) {
 	fs := true
 	in := NewAppInput{
 		Installs: []Install{{Package: "com.update.system", Installer: "com.google.android.packageinstaller", TS: inst},
-			{Package: "fr.vinted", Installer: "com.android.vending", TS: inst}, {Package: "io.github.erwsim.watchpost", TS: inst}},
+			{Package: "com.thrift.market", Installer: "com.android.vending", TS: inst}, {Package: "io.github.erwsim.watchpost", TS: inst}},
 		Risks: []Risk{{Package: "com.update.system", Label: "System update", Level: "high", Score: 92, TS: inst + 2000,
 			Reasons: []string{"sideloaded", "accessibility_service", "overlay", "combo_banking_trojan"}},
-			{Package: "fr.vinted", Level: "low", Score: 10, TS: inst + 1000, FromStore: &fs}},
+			{Package: "com.thrift.market", Level: "low", Score: 10, TS: inst + 1000, FromStore: &fs}},
 		Caps: []Capability{{Package: "com.update.system", Kind: "accessibility", TS: inst + 5*60000},
 			{Package: "com.update.system", Kind: "accessibility", TS: inst + 6*60000},        // same capability again
 			{Package: "com.update.system", Kind: "overlay", TS: inst + 25*3600000},           // after 24 h
-			{Package: "fr.vinted", Kind: "permission:CAMERA", TS: inst + 60000},              // not sensitive
+			{Package: "com.thrift.market", Kind: "permission:CAMERA", TS: inst + 60000},      // not sensitive
 			{Package: "com.android.chrome", Kind: "permission:SEND_SMS", TS: inst + 60000},   // not a new app
 			{Package: "io.github.erwsim.watchpost", Kind: "device_admin", TS: inst + 60000}}, // Watchpost itself
 	}

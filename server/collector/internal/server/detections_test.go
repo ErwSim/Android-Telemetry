@@ -99,7 +99,7 @@ func TestDetectionsEndToEnd(t *testing.T) {
 	evs = append(evs, e.event(h.Add(-20*time.Minute), "app.special_access", 0, map[string]any{"default_apps": map[string]any{"sms": "com.samsung.android.messaging"}}),
 		e.event(h.Add(-19*time.Minute), "app.inventory", 0, map[string]any{"inventory_id": "inv1", "part": 1, "parts": 1, "apps": []map[string]any{
 			{"package": "com.samsung.android.messaging", "label": "Messages", "system": true},
-			{"package": "com.flashlight.pro", "label": "Lampe Pro", "system": false}}}))
+			{"package": "com.flashlight.pro", "label": "Flashlight Pro", "system": false}}}))
 	// detect.fanout: 150 distinct addresses screen off (threshold 100); Chrome with 80 stays below.
 	evs = append(evs, e.connects(h.Add(5*time.Minute), "com.proxy.sdk", 150, 443, "198.51")...)
 	evs = append(evs, e.connects(h.Add(6*time.Minute), "com.android.chrome", 80, 443, "203.0")...)
@@ -115,7 +115,7 @@ func TestDetectionsEndToEnd(t *testing.T) {
 	// detect.new_app_risky + detect.sms_abuse + detect.sensor_background.
 	inst := h.Add(10 * time.Minute)
 	evs = append(evs, e.event(inst, "app.installed", 0, map[string]any{"package": "com.flashlight.pro", "version_code": 3, "installer": "com.google.android.packageinstaller"}),
-		e.event(inst.Add(time.Second), "app.risk", 2, map[string]any{"package": "com.flashlight.pro", "label": "Lampe Pro", "version_code": 3,
+		e.event(inst.Add(time.Second), "app.risk", 2, map[string]any{"package": "com.flashlight.pro", "label": "Flashlight Pro", "version_code": 3,
 			"installer": "com.google.android.packageinstaller", "from_store": false, "score": 88, "level": "high",
 			"reasons": []string{"sideloaded", "no_launcher_icon", "sms_send", "boot_receiver", "combo_sms_fraud"}}),
 		e.event(inst.Add(4*time.Minute), "app.permission_changed", 0, map[string]any{"package": "com.flashlight.pro", "permission": "android.permission.SEND_SMS", "granted": true}),
@@ -153,7 +153,7 @@ func TestDetectionsEndToEnd(t *testing.T) {
 		f.Severity != 2 || f.DeviceID != e.dev.DeviceID || f.ID == "" {
 		t.Fatalf("fanout %+v", f)
 	}
-	if s := got["detect.sms_abuse"][0]; s.Label != "Lampe Pro" || s.Evidence["reason"] != "not_default_sms_app" || s.Severity != 3 ||
+	if s := got["detect.sms_abuse"][0]; s.Label != "Flashlight Pro" || s.Evidence["reason"] != "not_default_sms_app" || s.Severity != 3 ||
 		!strings.Contains(s.Summary, "95 SMS") {
 		t.Fatalf("sms %+v", s)
 	}
@@ -282,7 +282,7 @@ func TestDetectionsEndToEnd(t *testing.T) {
 		} `json:"apps"`
 	}
 	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &ops) != nil || len(ops.Apps) != 2 || ops.Apps[0].Package != "com.flashlight.pro" ||
-		ops.Apps[0].Count != 111 || ops.Apps[0].Ops[0].Op != "send_sms" || ops.Apps[0].Ops[0].Background != 95 || ops.Apps[0].Label != "Lampe Pro" {
+		ops.Apps[0].Count != 111 || ops.Apps[0].Ops[0].Op != "send_sms" || ops.Apps[0].Ops[0].Background != 95 || ops.Apps[0].Label != "Flashlight Pro" {
 		t.Fatalf("apps/ops %d %s", rec.Code, rec.Body)
 	}
 	if rec := e.get(c, "/api/console/apps/ops", url.Values{"device_id": {e.dev.DeviceID}}); rec.Code != http.StatusBadRequest {
@@ -302,9 +302,9 @@ func TestDetectionsQuietBelowThresholds(t *testing.T) {
 	evs = append(evs, e.event(h.Add(3*time.Minute), "net.connect", 0, map[string]any{"package": "com.game", "uid": 10700, "ip": "8.8.8.8", "port": 53}))
 	evs = append(evs, e.event(h.Add(59*time.Minute), "net.usage", 0, map[string]any{"from": model.FormatTS(h), "to": model.FormatTS(h.Add(time.Hour)),
 		"apps": []map[string]any{{"package": "com.google.android.apps.photos", "uid": 10601, "rx_bytes": 1, "tx_bytes": 1 << 30, "transport": "wifi"}}}))
-	evs = append(evs, e.event(h.Add(4*time.Minute), "app.installed", 0, map[string]any{"package": "fr.vinted", "installer": "com.android.vending"}),
-		e.event(h.Add(4*time.Minute), "app.risk", 0, map[string]any{"package": "fr.vinted", "score": 30, "level": "medium", "reasons": []string{"boot_receiver"}}),
-		e.event(h.Add(5*time.Minute), "app.permission_changed", 0, map[string]any{"package": "fr.vinted", "permission": "android.permission.CAMERA", "granted": true}))
+	evs = append(evs, e.event(h.Add(4*time.Minute), "app.installed", 0, map[string]any{"package": "com.thrift.market", "installer": "com.android.vending"}),
+		e.event(h.Add(4*time.Minute), "app.risk", 0, map[string]any{"package": "com.thrift.market", "score": 30, "level": "medium", "reasons": []string{"boot_receiver"}}),
+		e.event(h.Add(5*time.Minute), "app.permission_changed", 0, map[string]any{"package": "com.thrift.market", "permission": "android.permission.CAMERA", "granted": true}))
 	e.ingestAll(evs)
 	if n := e.runDetections(); n != 0 {
 		items, _ := e.detections(c, nil)

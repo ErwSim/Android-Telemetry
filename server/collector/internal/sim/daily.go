@@ -296,10 +296,10 @@ func (g *Generator) PlanScenario(from, to time.Time) {
 	g.emit(th.Add(20*time.Minute), "device.thermal", 0, map[string]any{"status": "none"})
 
 	inst := at(0.3)
-	g.emit(inst, "app.installed", 0, map[string]any{"package": "fr.vinted", "version_name": "25.44.0", "version_code": 254400,
-		"installer": "com.android.vending", "signer_sha256": sha256Hex("signer:fr.vinted")})
-	g.riskFor(inst, riskOf(&app{pkg: "fr.vinted", label: "Vinted", installer: "com.android.vending", code: 254400, target: 35}))
-	g.emit(inst.Add(3*time.Minute), "app.permission_changed", 0, map[string]any{"package": "fr.vinted", "permission": "android.permission.CAMERA", "granted": true})
+	g.emit(inst, "app.installed", 0, map[string]any{"package": "com.thrift.market", "version_name": "25.44.0", "version_code": 254400,
+		"installer": "com.android.vending", "signer_sha256": sha256Hex("signer:com.thrift.market")})
+	g.riskFor(inst, riskOf(&app{pkg: "com.thrift.market", label: "Thrift Market", installer: "com.android.vending", code: 254400, target: 35}))
+	g.emit(inst.Add(3*time.Minute), "app.permission_changed", 0, map[string]any{"package": "com.thrift.market", "permission": "android.permission.CAMERA", "granted": true})
 	g.emit(inst.Add(4*time.Minute), "app.permission_changed", 0, map[string]any{"package": "com.instagram.android", "permission": "android.permission.ACCESS_FINE_LOCATION", "granted": false})
 	side := at(0.66)
 	g.emit(side, "app.installed", 2, map[string]any{"package": "com.qrscan.free.reader", "version_name": "3.1.7", "version_code": 317,
@@ -382,7 +382,7 @@ func (g *Generator) PlanScenario(from, to time.Time) {
 		g.emit(t.Add(3*time.Minute), "security.log", 1, map[string]any{"tag": "adb_shell_cmd", "level": "info",
 			"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"command": "pm list packages -3"}})
 		g.emit(t.Add(4*time.Minute), "security.log", 1, map[string]any{"tag": "sync_recv_file", "level": "info",
-			"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"path": "/sdcard/Download/rapport.pdf"}})
+			"log_id": g.rng.Intn(1 << 20), "fields": map[string]any{"path": "/sdcard/Download/report.pdf"}})
 	})
 	g.later(dev.Add(90*time.Minute), func(t time.Time) {
 		g.posture["dev_options"] = false

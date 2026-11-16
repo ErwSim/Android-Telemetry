@@ -1,15 +1,15 @@
-# Image du collecteur Watchpost (contexte de build : server/).
+# Watchpost collector image (build context: server/).
 #
 #   docker build -t watchpost-collector:local server/
 #
-# Derrière un proxy HTTPS à AC privée (environnements d'entreprise ou d'intégration) :
+# Behind an HTTPS proxy with a private CA (corporate or integration environments):
 #   docker build --network host --build-arg HTTPS_PROXY=… \
-#     --secret id=ca_bundle,src=/chemin/ca.crt -t watchpost-collector:local server/
+#     --secret id=ca_bundle,src=/path/to/ca.crt -t watchpost-collector:local server/
 
 ARG NODE_IMAGE=node:22-bookworm-slim
 ARG GO_IMAGE=golang:1.24-bookworm
 
-# --- 1. Console web (facultative : sans console/package.json, la page de substitution est servie)
+# --- 1. Web console (optional: without console/package.json, the fallback page is served)
 FROM ${NODE_IMAGE} AS console
 RUN --mount=type=bind,target=/ctx \
     --mount=type=cache,target=/root/.npm \
@@ -21,10 +21,10 @@ RUN --mount=type=bind,target=/ctx \
       tar --exclude=./node_modules --exclude=./dist -cf - . | tar -xf - -C /build && \
       cd /build && npm ci --no-audit --no-fund && npm run build && cp -r dist/. /out/; \
     else \
-      echo "console/package.json absent : page de substitution"; \
+      echo "console/package.json missing: fallback page"; \
     fi
 
-# --- 2. Binaire Go statique (sans CGO)
+# --- 2. Static Go binary (no CGO)
 FROM ${GO_IMAGE} AS build
 ARG VERSION=dev
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOFLAGS=-trimpath
@@ -48,7 +48,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     printf 'root:x:0:\nwatchpost:x:65532:\n' > /rootfs/etc/group && \
     chown 65532:65532 /rootfs/data /rootfs/export && chmod 0700 /rootfs/data && chmod 0750 /rootfs/export && chmod 1777 /rootfs/tmp
 
-# --- 3. Image finale minimale, utilisateur non privilégié
+# --- 3. Minimal final image, unprivileged user
 FROM scratch
 COPY --from=build /rootfs/ /
 USER 65532:65532

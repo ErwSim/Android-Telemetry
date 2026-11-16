@@ -39,7 +39,7 @@ func (e *env) concurrentLogins(n int, ipOf func(i int) string) (verified, limite
 		go func() {
 			defer wg.Done()
 			<-start
-			rec := e.login("admin", fmt.Sprintf("mauvais-mot-de-passe-%d", i), withRemote(ipOf(i)))
+			rec := e.login("admin", fmt.Sprintf("wrong-password-%d", i), withRemote(ipOf(i)))
 			mu.Lock()
 			defer mu.Unlock()
 			switch rec.Code {

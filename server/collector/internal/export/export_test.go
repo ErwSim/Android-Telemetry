@@ -144,7 +144,7 @@ func TestLineLocation(t *testing.T) {
 // watchpost.data.location as geo_point and rejects the whole document otherwise.
 func TestLineLocationReserved(t *testing.T) {
 	for _, c := range []struct{ typ, data string }{
-		{"net.dns", `{"hostname":"x","location":"ailleurs"}`},
+		{"net.dns", `{"hostname":"x","location":"elsewhere"}`},
 		{"location.fix", `{"lat":"x","location":{"lat":"nord"}}`},
 		{"net.wifi_scan", `{"aps":[{"ssid":"a","location":[1,2,3]}]}`},
 	} {

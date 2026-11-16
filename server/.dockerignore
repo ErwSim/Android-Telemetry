@@ -1,4 +1,4 @@
-# Contexte de build : server/
+# Build context: server/
 **/node_modules
 console/dist
 console/verify-out

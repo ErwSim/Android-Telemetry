@@ -281,21 +281,21 @@ func TestSecurityLogFields(t *testing.T) {
 // The private DNS host comes from the enrollment file.
 func TestPrivateDNSHostFromOptions(t *testing.T) {
 	start := time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC)
-	evs := generateOpts(t, Options{Start: start, Seed: 7, Rate: 0.2, SeqBase: 1, PrivateDNSHost: "dns.essai.test"}, 6*time.Hour)
+	evs := generateOpts(t, Options{Start: start, Seed: 7, Rate: 0.2, SeqBase: 1, PrivateDNSHost: "dns.trial.test"}, 6*time.Hour)
 	n := 0
 	for _, e := range evs {
 		switch e.Type {
 		case "security.posture":
-			if h := e.Data["private_dns_host"]; h != "dns.essai.test" && h != "" {
+			if h := e.Data["private_dns_host"]; h != "dns.trial.test" && h != "" {
 				t.Fatalf("posture private_dns_host %v", h)
 			}
 			n++
 		case "net.connectivity":
-			if e.Data["private_dns_server"] != "dns.essai.test" {
+			if e.Data["private_dns_server"] != "dns.trial.test" {
 				t.Fatalf("connectivity private_dns_server %v", e.Data["private_dns_server"])
 			}
 		case "security.policy":
-			if e.Data["action"] == "private_dns_set" && e.Data["target"] != "dns.essai.test" {
+			if e.Data["action"] == "private_dns_set" && e.Data["target"] != "dns.trial.test" {
 				t.Fatalf("policy target %v", e.Data["target"])
 			}
 		}

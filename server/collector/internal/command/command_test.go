@@ -93,7 +93,7 @@ func TestParseRejects(t *testing.T) {
 		"line separator":      payload(`"type":"lock","params":{"message":"a\u2028b"}`),
 		"paragraph separator": payload(`"type":"lock","params":{"message":"a` + "\u2029" + `b"}`),
 		"raw line separator":  payload(`"type":"lock","params":{"message":"a` + "\u2028" + `b"}`),
-		"bad date":            strings.Replace(payload(`"type":"ring","params":{}`), `2026-11-16T11:00:00.000Z`, `demain`, 1),
+		"bad date":            strings.Replace(payload(`"type":"ring","params":{}`), `2026-11-16T11:00:00.000Z`, `tomorrow`, 1),
 		"missing expires":     `{"v":1,"id":"01JCQ8Z3K4M5N6P7Q8R9S0T1V2","device_id":"d","type":"ring","issued_at":"2026-11-16T10:00:00.000Z"}`,
 		"too large":           payload(`"type":"lock","params":{"message":"` + strings.Repeat(" ", MaxPayloadBytes) + `"}`),
 		"deep nesting":        payload(`"type":"ring","params":{},"x":` + strings.Repeat("[", 40) + strings.Repeat("]", 40)),

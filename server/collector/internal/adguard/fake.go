@@ -84,7 +84,7 @@ const ThreatListURL = "https://raw.githubusercontent.com/hagezi/dns-blocklists/m
 // ThreatDomains are the domains blocked by the threat list of the fake: command servers and phishing sites
 // of the attack scenarios of the simulator (reserved .example names, never real hosts).
 var ThreatDomains = []string{"api.secure-bank-sync.example", "gate.cdn-update-check.example", "panel.sms-gateway-pay.example",
-	"login-banque-verification.example", "relay.proxy-earn.example"}
+	"login-bank-verification.example", "relay.proxy-earn.example"}
 
 // NewFake returns a fake with AdGuard Home's two default lists (the first one enabled), the threat list of
 // the example levels file enabled, and one rule entered by hand.

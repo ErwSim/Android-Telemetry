@@ -35,7 +35,7 @@ type Store struct {
 func (s *Store) SetRetention(d time.Duration) { s.retention = d }
 
 // ErrNotFound is returned when a row does not exist.
-var ErrNotFound = errors.New("introuvable")
+var ErrNotFound = errors.New("not found")
 
 func dsn(path string, readOnly bool) string {
 	q := url.Values{}
@@ -504,7 +504,7 @@ ALTER TABLE detections ADD COLUMN exported_sev INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE detections ADD COLUMN exported_items TEXT NOT NULL DEFAULT '[]';
 UPDATE detections SET exported_ms = ts_ms, exported_sev = sev;
 `,
-	// 9: review of v1.2 (contract §11.4): muted detections (computed and stored, neither exported nor streamed),
+	// 9: contract §11.4: muted detections (computed and stored, neither exported nor streamed),
 	// recurring ones (severity capped at 1), and the mutes set from the console.
 	`
 ALTER TABLE detections ADD COLUMN muted INTEGER NOT NULL DEFAULT 0;

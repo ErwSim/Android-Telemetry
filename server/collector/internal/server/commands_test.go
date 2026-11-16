@@ -165,7 +165,7 @@ func TestCommandLifecycle(t *testing.T) {
 	if code := e.result(id, "done", "", nil); code != http.StatusBadRequest {
 		t.Fatalf("invalid status: %d", code)
 	}
-	other, err := enroll.Create(context.Background(), e.st, e.ca, enroll.Params{Name: "autre", IngestURL: "https://ingest.example.org"}, time.Now())
+	other, err := enroll.Create(context.Background(), e.st, e.ca, enroll.Params{Name: "other", IngestURL: "https://ingest.example.org"}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestCommandValidation(t *testing.T) {
 		return id, cmdPayload(id, dev, typ, params, issued, expires)
 	}
 	sig := "VVQ7B/b3fOzaG+sWd7Fqi7NKVRzdu5L3+NEIKurMXdE="
-	_, lock := mk("lock", `{"message":"Perdu"}`, now, now.Add(7*24*time.Hour))
+	_, lock := mk("lock", `{"message":"Lost"}`, now, now.Add(7*24*time.Hour))
 	_, ring := mk("ring", `{}`, now, now.Add(time.Hour))
 	_, wipe := mk("wipe", `{}`, now, now.Add(time.Hour))
 	_, wipeLong := mk("wipe", `{}`, now, now.Add(24*time.Hour+time.Second))

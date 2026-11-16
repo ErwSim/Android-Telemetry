@@ -36,7 +36,7 @@ func TestVerifyRejectsBadHashes(t *testing.T) {
 }
 
 func TestPolicy(t *testing.T) {
-	if ValidPassword("short") == nil || ValidPassword(strings.Repeat("a", 2000)) == nil || ValidPassword("assez-long-mot-de-passe") != nil {
+	if ValidPassword("short") == nil || ValidPassword(strings.Repeat("a", 2000)) == nil || ValidPassword("long-enough-password") != nil {
 		t.Fatal("password policy")
 	}
 	if !ValidUsername("admin") || ValidUsername("a b") || ValidUsername("") || ValidUsername("x'--") {
