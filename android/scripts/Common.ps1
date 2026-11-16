@@ -1,16 +1,16 @@
-﻿# Shared helpers for the Vigie ADB scripts (dot-sourced: . "$PSScriptRoot\Common.ps1").
+﻿# Shared helpers for the Watchpost ADB scripts (dot-sourced: . "$PSScriptRoot\Common.ps1").
 # The scripts are not signed: Windows refuses them with the default execution policy. Run them with
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\<script>.ps1 [options]
 # which changes nothing in the configuration of the machine (the policy only applies to that process).
 # Device selection: if several devices are connected, set $env:ANDROID_SERIAL = '<serial>' (see "adb devices").
-# Encoding: this file is UTF-8 with BOM so that Windows PowerShell 5.1 reads the French text correctly.
+# Encoding: this file is UTF-8 with BOM so that Windows PowerShell 5.1 reads any non-ASCII text correctly.
 
 $ErrorActionPreference = 'Stop'
-$script:Pkg = if ($env:VIGIE_PACKAGE) { $env:VIGIE_PACKAGE } else { 'io.github.erwsim.vigie' }
-$script:Admin = "$($script:Pkg)/io.github.erwsim.vigie.policy.VigieAdminReceiver"
+$script:Pkg = if ($env:WATCHPOST_PACKAGE) { $env:WATCHPOST_PACKAGE } else { 'io.github.erwsim.watchpost' }
+$script:Admin = "$($script:Pkg)/io.github.erwsim.watchpost.policy.WatchpostAdminReceiver"
 
 function Fail([string]$Message) {
-    Write-Host "ERREUR : $Message" -ForegroundColor Red
+    Write-Host "ERROR: $Message" -ForegroundColor Red
     exit 1
 }
 function Info([string]$Message) { Write-Host "- $Message" }
@@ -38,25 +38,25 @@ function Invoke-AdbShell {
 
 function Assert-Adb {
     if (-not (Get-Command adb -ErrorAction SilentlyContinue)) {
-        Fail 'adb introuvable. Installez « Android SDK Platform-Tools » et ajoutez son dossier au PATH.'
+        Fail 'adb not found. Install ''Android SDK Platform-Tools'' and add its folder to your PATH.'
     }
     $lines = @(Invoke-Adb devices | Select-Object -Skip 1 | Where-Object { $_ -match '\S' })
     $ready = @($lines | Where-Object { $_ -match '\tdevice$' })
     if ($ready.Count -eq 0) {
         if (@($lines | Where-Object { $_ -match '\tunauthorized$' }).Count -gt 0) {
-            Fail 'Téléphone non autorisé : déverrouillez-le et acceptez la clé de débogage USB.'
+            Fail 'Phone not authorized: unlock it and accept the USB debugging key.'
         }
-        Fail 'Aucun téléphone connecté en débogage USB (adb devices). Sur Samsung, désactivez temporairement « Blocage automatique » (Auto Blocker).'
+        Fail 'No phone connected over USB debugging (adb devices). On Samsung, temporarily turn off ''Auto Blocker''.'
     }
     if ($ready.Count -gt 1 -and -not $env:ANDROID_SERIAL) {
-        Fail "Plusieurs appareils connectés : `$env:ANDROID_SERIAL = '<numéro de série>' (voir adb devices)."
+        Fail "Several devices connected: `$env:ANDROID_SERIAL = '<serial number>' (see adb devices)."
     }
 }
 
 function Assert-Installed {
     $out = Invoke-AdbShell pm path $script:Pkg
     if (@($out | Where-Object { $_ -like 'package:*' }).Count -eq 0) {
-        Fail "Vigie ($($script:Pkg)) n'est pas installée. Lancez d'abord install-apk.ps1."
+        Fail "Watchpost ($($script:Pkg)) is not installed. Run install-apk.ps1 first."
     }
 }
 
@@ -70,24 +70,24 @@ function Test-IsTestOnly {
     return (@($dump | Where-Object { $_ -match 'TEST_ONLY' }).Count -gt 0)
 }
 
-# ---- Issue de secours : ordre envoyé à io.github.erwsim.vigie.policy.rescue.RescueReceiver ----
-# Le récepteur exige que l'expéditeur détienne android.permission.FORCE_STOP_PACKAGES
-# (signature|privileged, jamais accordable à une app tierce) : seuls le shell ADB et le système
-# peuvent l'envoyer. Il ne fait que DÉFAIRE ce que Vigie a appliqué.
-$script:RescueReceiver = "$($script:Pkg)/io.github.erwsim.vigie.policy.rescue.RescueReceiver"
-$script:RescueAction = 'io.github.erwsim.vigie.action.RESCUE_REVERT_ALL'
+# ---- ADB rescue: order sent to io.github.erwsim.watchpost.policy.rescue.RescueReceiver ----
+# The receiver requires the sender to hold android.permission.FORCE_STOP_PACKAGES
+# (signature|privileged, never grantable to a third-party app): only the ADB shell and the system
+# can send it. It only UNDOES what Watchpost has applied.
+$script:RescueReceiver = "$($script:Pkg)/io.github.erwsim.watchpost.policy.rescue.RescueReceiver"
+$script:RescueAction = 'io.github.erwsim.watchpost.action.RESCUE_REVERT_ALL'
 
-# Envoie l'ordre (jusqu'à une minute) et renvoie Out (sortie brute), Code (1 tout rétabli,
-# 2 partiel, 3 plus Device Owner, 4 délai dépassé, $null si aucune réponse exploitable) et Data (résumé).
-#   -RemoveOwner : abandonne ensuite le rôle, seulement si tout a pu être défait ;
-#   -Force       : avec -RemoveOwner, abandonne le rôle même si un élément n'a pas pu être défait ;
-#   -Sweep       : rétablit en plus tout ce que le catalogue a pu modifier (état douteux ou perdu).
+# Sends the order (up to one minute) and returns Out (raw output), Code (1 everything restored,
+# 2 partial, 3 no longer Device Owner, 4 timed out, $null if there was no usable answer) and Data (summary).
+#   -RemoveOwner: then gives up the role, only if everything could be undone;
+#   -Force:       with -RemoveOwner, gives up the role even if an item could not be undone;
+#   -Sweep:       also restores everything the catalogue may have changed (doubtful or lost state).
 function Invoke-Rescue([switch]$RemoveOwner, [switch]$Force, [switch]$Sweep) {
     $extra = @()
     if ($RemoveOwner) { $extra += @('--ez', 'remove_owner', 'true') }
     if ($Force) { $extra += @('--ez', 'force', 'true') }
     if ($Sweep) { $extra += @('--ez', 'sweep', 'true') }
-    # Appel natif (pas Invoke-AdbShell) : « -a »/« -n » doivent arriver tels quels à adb.
+    # Native call (not Invoke-AdbShell): "-a" / "-n" must reach adb as they are.
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
@@ -104,7 +104,7 @@ function Invoke-Rescue([switch]$RemoveOwner, [switch]$Force, [switch]$Sweep) {
     return [pscustomobject]@{ Out = $out; Code = $code; Data = $data }
 }
 
-# Extrait « clé=a,b,c » du résumé, en tableau.
+# Extracts "key=a,b,c" from the summary, as an array.
 function Get-RescueField([string]$Data, [string]$Key) {
     foreach ($token in $Data -split ' ') {
         if ($token.StartsWith("$Key=")) { return @($token.Substring($Key.Length + 1) -split ',' | Where-Object { $_ }) }
@@ -112,40 +112,40 @@ function Get-RescueField([string]$Data, [string]$Key) {
     return @()
 }
 
-# État d'un paquet pour l'utilisateur 0, lu dans « dumpsys package » (ligne « User 0: ... hidden=... suspended=... »).
+# State of a package for user 0, read from "dumpsys package" (line "User 0: ... hidden=... suspended=...").
 function Test-PackageFlag([string]$Package, [string]$Flag) {
     $line = @(Invoke-AdbShell dumpsys package $Package | Where-Object { $_ -match '^\s*User 0:' }) | Select-Object -First 1
     return ($line -match "$Flag=true")
 }
 
-# Après la perte du rôle, Vigie ne peut plus rien défaire. Android lève en principe lui-même les
-# politiques du Device Owner retiré (paquets masqués ou suspendus compris) : on vérifie l'état réel
-# de chaque paquet que Vigie avait masqué ou suspendu, et on ne tente « pm unhide » / « pm unsuspend »
-# que pour ceux qui le sont encore. Ces commandes peuvent être refusées au shell ADB (permission
-# MANAGE_USERS, paquets suspendus par un administrateur) : le seul recours est alors de redonner le
-# rôle à Vigie (enable-device-owner) puis de relancer rescue-revert, l'état appliqué étant conservé.
+# Once the role is lost, Watchpost can no longer undo anything. Android normally lifts the removed
+# Device Owner's policies itself (hidden or suspended packages included): the real state of each
+# package Watchpost had hidden or suspended is checked, and "pm unhide" / "pm unsuspend" is only
+# tried for those that still are. These commands may be refused to the ADB shell (MANAGE_USERS
+# permission, packages suspended by an administrator): the only way out is then to give the role
+# back to Watchpost (enable-device-owner) and run rescue-revert again, the applied state having been kept.
 function Restore-Leftovers([string]$Data) {
     $hidden = @(Get-RescueField $Data 'hidden')
     $suspended = @(Get-RescueField $Data 'suspended')
     $stuck = @()
     if ($hidden.Count + $suspended.Count -eq 0) {
-        Info 'Aucun paquet masqué ou suspendu à rétablir.'
+        Info 'No hidden or suspended package to restore.'
     }
     foreach ($p in $hidden) {
-        if (-not (Test-PackageFlag $p 'hidden')) { Ok "$p : visible."; continue }
-        Info "pm unhide $p : $((Invoke-AdbShell pm unhide $p) -join ' ')"
-        if (Test-PackageFlag $p 'hidden') { $stuck += $p } else { Ok "$p : réaffiché." }
+        if (-not (Test-PackageFlag $p 'hidden')) { Ok "${p}: visible."; continue }
+        Info "pm unhide ${p}: $((Invoke-AdbShell pm unhide $p) -join ' ')"
+        if (Test-PackageFlag $p 'hidden') { $stuck += $p } else { Ok "${p}: unhidden." }
     }
     foreach ($p in $suspended) {
-        if (-not (Test-PackageFlag $p 'suspended')) { Ok "$p : actif."; continue }
-        Info "pm unsuspend $p : $((Invoke-AdbShell pm unsuspend $p) -join ' ')"
-        if (Test-PackageFlag $p 'suspended') { $stuck += $p } else { Ok "$p : réactivé." }
+        if (-not (Test-PackageFlag $p 'suspended')) { Ok "${p}: active."; continue }
+        Info "pm unsuspend ${p}: $((Invoke-AdbShell pm unsuspend $p) -join ' ')"
+        if (Test-PackageFlag $p 'suspended') { $stuck += $p } else { Ok "${p}: unsuspended." }
     }
     if ($stuck.Count -gt 0) {
-        Warn "Toujours masqués ou suspendus : $($stuck -join ' ')"
-        Warn "Android réserve leur rétablissement au Device Owner. Redonnez le rôle à Vigie (.\enable-device-owner.ps1, sans comptes sur le téléphone), puis lancez .\rescue-revert.ps1 : Vigie a gardé la liste de ce qu'elle avait appliqué."
+        Warn "Still hidden or suspended: $($stuck -join ' ')"
+        Warn "Android reserves restoring them to the Device Owner. Give the role back to Watchpost (.\enable-device-owner.ps1, with no accounts on the phone), then run .\rescue-revert.ps1: Watchpost kept the list of what it had applied."
     }
     if (@(Get-RescueField $Data 'other_items').Count -gt 0) {
-        Warn "Restrictions, permissions ou DNS privé posés par Vigie ont normalement été levés par Android au retrait du Device Owner ; vérifiez le DNS privé dans Paramètres > Connexions > Plus de paramètres de connexion."
+        Warn "Restrictions, permissions or Private DNS set by Watchpost are normally lifted by Android when the Device Owner is removed; check Private DNS in Settings > Connections > More connection settings."
     }
 }

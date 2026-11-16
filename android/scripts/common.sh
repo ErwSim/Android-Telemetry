@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Shared helpers for the Vigie ADB scripts (sourced, not executed).
+# Shared helpers for the Watchpost ADB scripts (sourced, not executed).
 # Device selection: if several devices are connected, export ANDROID_SERIAL=<serial> (see "adb devices").
 
-PKG="${VIGIE_PACKAGE:-io.github.erwsim.vigie}"
-ADMIN="$PKG/io.github.erwsim.vigie.policy.VigieAdminReceiver"
+PKG="${WATCHPOST_PACKAGE:-io.github.erwsim.watchpost}"
+ADMIN="$PKG/io.github.erwsim.watchpost.policy.WatchpostAdminReceiver"
 
-die() { echo "ERREUR : $*" >&2; exit 1; }
+die() { echo "ERROR: $*" >&2; exit 1; }
 info() { echo "• $*"; }
 ok() { echo "✔ $*"; }
 warn() { echo "⚠ $*" >&2; }
@@ -14,45 +14,45 @@ warn() { echo "⚠ $*" >&2; }
 ashell() { adb shell "$@" | tr -d '\r'; }
 
 require_adb() {
-    command -v adb >/dev/null 2>&1 || die "adb introuvable. Installez « Android SDK Platform-Tools » et ajoutez-le au PATH."
+    command -v adb >/dev/null 2>&1 || die "adb not found. Install 'Android SDK Platform-Tools' and add it to your PATH."
     local count
     count=$(adb devices | tr -d '\r' | awk 'NR>1 && $2=="device"' | wc -l)
     if [ "$count" -eq 0 ]; then
         adb devices | tr -d '\r' | awk 'NR>1 && $2=="unauthorized"' | grep -q . && \
-            die "Téléphone non autorisé : déverrouillez-le et acceptez la clé de débogage USB."
-        die "Aucun téléphone connecté en débogage USB (adb devices). Sur Samsung, désactivez temporairement « Blocage automatique » (Auto Blocker)."
+            die "Phone not authorized: unlock it and accept the USB debugging key."
+        die "No phone connected over USB debugging (adb devices). On Samsung, temporarily turn off 'Auto Blocker'."
     fi
     if [ "$count" -gt 1 ] && [ -z "${ANDROID_SERIAL:-}" ]; then
-        die "Plusieurs appareils connectés : export ANDROID_SERIAL=<numéro de série> (voir adb devices)."
+        die "Several devices connected: export ANDROID_SERIAL=<serial number> (see adb devices)."
     fi
 }
 
 require_installed() {
-    ashell pm path "$PKG" | grep -q '^package:' || die "Vigie ($PKG) n'est pas installée. Lancez d'abord install-apk.sh."
+    ashell pm path "$PKG" | grep -q '^package:' || die "Watchpost ($PKG) is not installed. Run install-apk.sh first."
 }
 
 is_owner() { ashell dpm list-owners 2>/dev/null | grep -q "$PKG"; }
 is_test_only() { ashell dumpsys package "$PKG" | grep -q 'TEST_ONLY'; }
 
-# ---- Issue de secours : ordre envoyé à io.github.erwsim.vigie.policy.rescue.RescueReceiver ----
-# Le récepteur exige que l'expéditeur détienne android.permission.FORCE_STOP_PACKAGES
-# (signature|privileged, jamais accordable à une app tierce) : seuls le shell ADB et le système
-# peuvent l'envoyer. Il ne fait que DÉFAIRE ce que Vigie a appliqué.
-RESCUE_RECEIVER="$PKG/io.github.erwsim.vigie.policy.rescue.RescueReceiver"
-RESCUE_ACTION="io.github.erwsim.vigie.action.RESCUE_REVERT_ALL"
+# ---- ADB rescue: order sent to io.github.erwsim.watchpost.policy.rescue.RescueReceiver ----
+# The receiver requires the sender to hold android.permission.FORCE_STOP_PACKAGES
+# (signature|privileged, never grantable to a third-party app): only the ADB shell and the system
+# can send it. It only UNDOES what Watchpost has applied.
+RESCUE_RECEIVER="$PKG/io.github.erwsim.watchpost.policy.rescue.RescueReceiver"
+RESCUE_ACTION="io.github.erwsim.watchpost.action.RESCUE_REVERT_ALL"
 
-# rescue_broadcast [remove_owner] [force] [sweep] : envoie l'ordre (jusqu'à une minute) et renseigne
-# RESCUE_OUT (sortie brute), RESCUE_CODE (1 tout rétabli, 2 partiel, 3 plus Device Owner,
-# 4 délai dépassé, vide si aucune réponse exploitable) et RESCUE_DATA (résumé).
-#   remove_owner : abandonne ensuite le rôle, seulement si tout a pu être défait ;
-#   force        : avec remove_owner, abandonne le rôle même si un élément n'a pas pu être défait ;
-#   sweep        : rétablit en plus tout ce que le catalogue a pu modifier (état douteux ou perdu).
+# rescue_broadcast [remove_owner] [force] [sweep]: sends the order (up to one minute) and sets
+# RESCUE_OUT (raw output), RESCUE_CODE (1 everything restored, 2 partial, 3 no longer Device Owner,
+# 4 timed out, empty if there was no usable answer) and RESCUE_DATA (summary).
+#   remove_owner: then gives up the role, only if everything could be undone;
+#   force:        with remove_owner, gives up the role even if an item could not be undone;
+#   sweep:        also restores everything the catalogue may have changed (doubtful or lost state).
 rescue_broadcast() {
     local extra=() flag
     for flag in "$@"; do
         case "$flag" in
             remove_owner|force|sweep) extra+=(--ez "$flag" true) ;;
-            *) die "rescue_broadcast : option inconnue $flag" ;;
+            *) die "rescue_broadcast: unknown option $flag" ;;
         esac
     done
     RESCUE_OUT="$(ashell am broadcast --include-stopped-packages -a "$RESCUE_ACTION" -n "$RESCUE_RECEIVER" ${extra[@]+"${extra[@]}"} 2>&1 || true)"
@@ -61,40 +61,40 @@ rescue_broadcast() {
     case "$RESCUE_CODE" in 1|2|3|4) ;; *) RESCUE_CODE="" ;; esac
 }
 
-# Extrait « clé=a,b,c » du résumé, en liste séparée par des espaces.
+# Extracts "key=a,b,c" from the summary, as a space-separated list.
 rescue_field() { printf '%s\n' "$RESCUE_DATA" | tr ' ' '\n' | sed -n "s/^$1=//p" | tr ',' ' '; }
 
-# État d'un paquet pour l'utilisateur 0, lu dans « dumpsys package » (ligne « User 0: … hidden=… suspended=… »).
+# State of a package for user 0, read from "dumpsys package" (line "User 0: ... hidden=... suspended=...").
 pkg_flag() { ashell dumpsys package "$1" 2>/dev/null | grep -m1 -E '^[[:space:]]*User 0:' | grep -q "$2=true"; }
 
-# Après la perte du rôle, Vigie ne peut plus rien défaire. Android lève en principe lui-même les
-# politiques du Device Owner retiré (paquets masqués ou suspendus compris) : on vérifie l'état réel
-# de chaque paquet que Vigie avait masqué ou suspendu, et on ne tente « pm unhide » / « pm unsuspend »
-# que pour ceux qui le sont encore. Ces commandes peuvent être refusées au shell ADB (permission
-# MANAGE_USERS, paquets suspendus par un administrateur) : le seul recours est alors de redonner le
-# rôle à Vigie (enable-device-owner) puis de relancer rescue-revert, l'état appliqué étant conservé.
+# Once the role is lost, Watchpost can no longer undo anything. Android normally lifts the removed
+# Device Owner's policies itself (hidden or suspended packages included): the real state of each
+# package Watchpost had hidden or suspended is checked, and "pm unhide" / "pm unsuspend" is only
+# tried for those that still are. These commands may be refused to the ADB shell (MANAGE_USERS
+# permission, packages suspended by an administrator): the only way out is then to give the role
+# back to Watchpost (enable-device-owner) and run rescue-revert again, the applied state having been kept.
 restore_leftovers() {
     local hidden suspended p stuck=""
     hidden="$(rescue_field hidden)"
     suspended="$(rescue_field suspended)"
     if [ -z "$hidden$suspended" ]; then
-        info "Aucun paquet masqué ou suspendu à rétablir."
+        info "No hidden or suspended package to restore."
     fi
     for p in $hidden; do
-        if ! pkg_flag "$p" hidden; then ok "$p : visible."; continue; fi
-        info "pm unhide $p : $(ashell pm unhide "$p" 2>&1 | tr '\n' ' ')"
-        if pkg_flag "$p" hidden; then stuck="$stuck $p"; else ok "$p : réaffiché."; fi
+        if ! pkg_flag "$p" hidden; then ok "$p: visible."; continue; fi
+        info "pm unhide $p: $(ashell pm unhide "$p" 2>&1 | tr '\n' ' ')"
+        if pkg_flag "$p" hidden; then stuck="$stuck $p"; else ok "$p: unhidden."; fi
     done
     for p in $suspended; do
-        if ! pkg_flag "$p" suspended; then ok "$p : actif."; continue; fi
-        info "pm unsuspend $p : $(ashell pm unsuspend "$p" 2>&1 | tr '\n' ' ')"
-        if pkg_flag "$p" suspended; then stuck="$stuck $p"; else ok "$p : réactivé."; fi
+        if ! pkg_flag "$p" suspended; then ok "$p: active."; continue; fi
+        info "pm unsuspend $p: $(ashell pm unsuspend "$p" 2>&1 | tr '\n' ' ')"
+        if pkg_flag "$p" suspended; then stuck="$stuck $p"; else ok "$p: unsuspended."; fi
     done
     if [ -n "$stuck" ]; then
-        warn "Toujours masqués ou suspendus :$stuck"
-        warn "Android réserve leur rétablissement au Device Owner. Redonnez le rôle à Vigie (./enable-device-owner.sh, sans comptes sur le téléphone), puis lancez ./rescue-revert.sh : Vigie a gardé la liste de ce qu'elle avait appliqué."
+        warn "Still hidden or suspended:$stuck"
+        warn "Android reserves restoring them to the Device Owner. Give the role back to Watchpost (./enable-device-owner.sh, with no accounts on the phone), then run ./rescue-revert.sh: Watchpost kept the list of what it had applied."
     fi
     if [ -n "$(rescue_field other_items)" ]; then
-        warn "Restrictions, permissions ou DNS privé posés par Vigie ont normalement été levés par Android au retrait du Device Owner ; vérifiez le DNS privé dans Paramètres › Connexions › Plus de paramètres de connexion."
+        warn "Restrictions, permissions or Private DNS set by Watchpost are normally lifted by Android when the Device Owner is removed; check Private DNS in Settings > Connections > More connection settings."
     fi
 }

@@ -1,60 +1,60 @@
-﻿# Makes Vigie the Device Owner of the phone (ADB provisioning, no factory reset).
+﻿# Makes Watchpost the Device Owner of the phone (ADB provisioning, no factory reset).
 # Preconditions checked here: no other user/profile, no account, no existing owner.
 # Usage: .\enable-device-owner.ps1
 #
-# Lancement (scripts non signés, sans modifier la politique d'exécution de Windows) :
+# Launching (the scripts are not signed; this leaves the Windows execution policy unchanged):
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\enable-device-owner.ps1
 . "$PSScriptRoot\Common.ps1"
 
 Assert-Adb
 Assert-Installed
 
-Info 'Vérification des propriétaires existants...'
+Info 'Checking existing owners...'
 if (Test-IsOwner) {
-    Ok 'Vigie est déjà Device Owner.'
+    Ok 'Watchpost is already Device Owner.'
     exit 0
 }
 $owners = Invoke-AdbShell dpm list-owners
 if (@($owners | Where-Object { $_ -match 'DeviceOwner|ProfileOwner' }).Count -gt 0) {
     $owners | ForEach-Object { Write-Host "    $_" }
-    Fail "Un autre Device Owner ou Profile Owner est déjà défini. Retirez-le d'abord."
+    Fail 'Another Device Owner or Profile Owner is already set. Remove it first.'
 }
 
-Info 'Vérification des utilisateurs et profils...'
+Info 'Checking users and profiles...'
 $users = @(Invoke-AdbShell pm list users | Where-Object { $_ -match 'UserInfo\{' })
 if ($users.Count -gt 1) {
     $users | ForEach-Object { Write-Host "    $($_.Trim())" }
-    Fail "Plusieurs utilisateurs ou profils existent ($($users.Count)). Supprimez Dossier sécurisé (Secure Folder), Dual Messenger, l'espace privé, le profil professionnel et les invités, puis relancez."
+    Fail "Several users or profiles exist ($($users.Count)). Delete Secure Folder, Dual Messenger, Private Space, the work profile and guest users, then run again."
 }
 
-Info 'Vérification des comptes...'
+Info 'Checking accounts...'
 $accounts = @(Invoke-AdbShell dumpsys account | Where-Object { $_ -match '^\s*Account \{' })
 if ($accounts.Count -gt 0) {
-    Write-Host 'Comptes présents sur le téléphone :'
+    Write-Host 'Accounts present on the phone:'
     $accounts | ForEach-Object { Write-Host "    $($_.Trim())" }
     Write-Host @'
-ERREUR : Android refuse de nommer un Device Owner tant qu'un compte existe.
-Retirez TEMPORAIREMENT chaque compte listé (Paramètres > Comptes et sauvegarde > Gérer les comptes :
-Google, Samsung account, WhatsApp, Signal, Microsoft...), relancez ce script, puis rajoutez vos comptes :
-le mode Device Owner ne les interdit pas. Pensez à vérifier vos sauvegardes et la double
-authentification avant de retirer un compte Google ou Samsung.
+ERROR: Android refuses to set a Device Owner while an account exists.
+TEMPORARILY remove every account listed (Settings > Accounts and backup > Manage accounts:
+Google, Samsung account, WhatsApp, Signal, Microsoft...), run this script again, then add your accounts
+back: Device Owner mode does not forbid them. Check your backups and two-factor authentication
+before removing a Google or Samsung account.
 '@ -ForegroundColor Red
     exit 1
 }
 
 if (Test-IsTestOnly) {
-    Info "APK testOnly : en plus du retrait par l'app ou par remove-device-owner.ps1, « dpm remove-active-admin » restera possible en dernier recours."
+    Info "testOnly APK: besides removal by the app or by remove-device-owner.ps1, 'dpm remove-active-admin' stays available as a last resort."
 } else {
-    Warn "APK NON testOnly : le retrait passera forcément par Vigie (écran Politique ou remove-device-owner.ps1) ; si l'app ne démarre plus, seule une réinitialisation le retirera."
-    $answer = Read-Host 'Continuer quand même ? (oui/non)'
-    if ($answer -ne 'oui') { Fail 'Abandon.' }
+    Warn "APK is NOT testOnly: removal has to go through Watchpost (Policy screen or remove-device-owner.ps1); if the app no longer starts, only a factory reset will remove it."
+    $answer = Read-Host 'Continue anyway? (yes/no)'
+    if ($answer -ne 'yes') { Fail 'Aborted.' }
 }
 
-Info "Activation : dpm set-device-owner $($script:Admin)"
+Info "Enabling: dpm set-device-owner $($script:Admin)"
 Invoke-AdbShell dpm set-device-owner --user 0 $script:Admin | ForEach-Object { Write-Host "    $_" }
 if (Test-IsOwner) {
-    Ok "Vigie est Device Owner. Ouvrez l'app : elle s'accorde ses permissions et active sa protection."
-    Info 'Vous pouvez rajouter vos comptes Google/Samsung. Réactivez le Blocage automatique si vous l''aviez coupé.'
+    Ok 'Watchpost is Device Owner. Open the app: it grants itself its permissions and turns on its protection.'
+    Info 'You can add your Google/Samsung accounts back. Turn Auto Blocker back on if you had turned it off.'
 } else {
-    Fail "L'activation a échoué (voir le message ci-dessus)."
+    Fail 'Activation failed (see the message above).'
 }

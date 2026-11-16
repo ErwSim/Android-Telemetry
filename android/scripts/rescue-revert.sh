@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
-# Issue de secours sans l'interface : demande à Vigie, par ADB, de défaire toute sa politique
-# Device Owner (« Tout rétablir » de l'écran Politique). Vigie reste Device Owner et ses journaux
-# restent actifs.
+# ADB rescue without the interface: asks Watchpost, over ADB, to undo its whole Device Owner
+# policy ("Restore everything" on the Policy screen). Watchpost stays Device Owner and its logs
+# stay on.
 #
-# Mécanisme : diffusion explicite à io.github.erwsim.vigie/.policy.rescue.RescueReceiver (voir
-# common.sh) ; seul le shell ADB ou le système peut l'envoyer, et elle ne peut que défaire.
+# Mechanism: explicit broadcast to io.github.erwsim.watchpost/.policy.rescue.RescueReceiver (see
+# common.sh); only the ADB shell or the system can send it, and it can only undo.
 #
-# Usage : ./rescue-revert.sh                 « Tout rétablir »
-#         ./rescue-revert.sh --sweep         en plus, rétablit tout ce que le catalogue a pu modifier
-#                                            (paquets masqués ou suspendus, restrictions, permissions
-#                                            refusées, DNS privé), même sans trace dans l'état de Vigie
-#         ./rescue-revert.sh --remove-owner  équivaut à ./remove-device-owner.sh (retrait complet)
-# Ne fonctionne qu'après le premier déverrouillage qui suit un redémarrage.
-# Codes de sortie : 0 tout rétabli, 2 partiel, 3 Vigie n'est plus Device Owner, 4 délai dépassé,
-# 5 aucune réponse exploitable de Vigie, 1 autre erreur.
+# Usage: ./rescue-revert.sh                 "Restore everything"
+#        ./rescue-revert.sh --sweep         also restores everything the catalogue may have changed
+#                                           (hidden or suspended packages, restrictions, denied
+#                                           permissions, Private DNS), even with no trace in
+#                                           Watchpost's state
+#        ./rescue-revert.sh --remove-owner  same as ./remove-device-owner.sh (full removal)
+# Only works after the first unlock following a reboot.
+# Exit codes: 0 everything restored, 2 partial, 3 Watchpost is no longer Device Owner, 4 timed out,
+# 5 no usable answer from Watchpost, 1 other error.
 set -euo pipefail
 cd "$(dirname "$0")"
 . ./common.sh
@@ -23,35 +24,35 @@ case "${1:-}" in
     "") ;;
     --remove-owner) exec ./remove-device-owner.sh ;;
     --sweep) flags=(sweep) ;;
-    *) die "Option inconnue : $1 (--sweep ou --remove-owner)." ;;
+    *) die "Unknown option: $1 (--sweep or --remove-owner)." ;;
 esac
 
 require_adb
 require_installed
 
-info "Envoi de l'ordre « Tout rétablir » à Vigie (jusqu'à une minute)…"
+info "Sending the 'Restore everything' order to Watchpost (up to one minute)…"
 rescue_broadcast ${flags[@]+"${flags[@]}"}
 case "$RESCUE_CODE" in
     1)
-        ok "Tout est rétabli ($RESCUE_DATA)."
+        ok "Everything is restored ($RESCUE_DATA)."
         ;;
     2)
-        warn "Rétablissement partiel : $RESCUE_DATA"
-        warn "Réessayez ; si un élément résiste, consultez le journal de l'écran Politique ou le README (section Politique Device Owner). « ./rescue-revert.sh --sweep » rétablit aussi ce dont Vigie aurait perdu la trace."
+        warn "Partial restore: $RESCUE_DATA"
+        warn "Try again; if an item resists, see the log on the Policy screen or the README (Device Owner policy section). './rescue-revert.sh --sweep' also restores what Watchpost may have lost track of."
         exit 2
         ;;
     3)
-        warn "Vigie n'est plus Device Owner : elle ne peut plus rien défaire elle-même ($RESCUE_DATA)."
+        warn "Watchpost is no longer Device Owner: it can no longer undo anything itself ($RESCUE_DATA)."
         restore_leftovers
         exit 3
         ;;
     4)
-        warn "Vigie n'a pas fini dans le délai : l'opération continue sur le téléphone. Relancez ce script dans une minute pour voir le résultat."
+        warn "Watchpost did not finish in time: the operation continues on the phone. Run this script again in a minute to see the result."
         exit 4
         ;;
     *)
         printf '%s\n' "$RESCUE_OUT" >&2
-        warn "Pas de réponse exploitable de Vigie. Vérifiez que le téléphone a été déverrouillé depuis son dernier démarrage, que l'APK installé contient l'issue de secours et qu'il démarre. Dernier recours si l'app ne démarre plus : ./remove-device-owner.sh (APK testOnly)."
+        warn "No usable answer from Watchpost. Check that the phone has been unlocked since its last boot, that the installed APK includes the rescue and that it starts. Last resort if the app no longer starts: ./remove-device-owner.sh (testOnly APK)."
         exit 5
         ;;
 esac

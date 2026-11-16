@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Retrait complet du Device Owner par ADB (équivalent de « Retirer le Device Owner » de l'écran
-# Politique, qui reste le chemin recommandé quand l'app est utilisable).
+# Full removal of the Device Owner over ADB (equivalent to "Remove the Device Owner" on the
+# Policy screen, which stays the recommended path when the app is usable).
 #
-# 1. Chemin normal : l'issue de secours de Vigie (voir common.sh) défait toute la politique, coupe
-#    les journaux réseau et sécurité, retire la protection contre l'arrêt forcé, émet
-#    security.policy « device_owner_cleared » puis appelle clearDeviceOwnerApp. Le retrait étant
-#    annoncé, il n'est pas signalé comme agent.tamper. Fonctionne avec tout APK (testOnly ou non).
-#    Si un élément ne peut pas être défait, Vigie GARDE le rôle (elle seule peut réessayer) et ce
-#    script propose de forcer le retrait.
-# 2. Repli, seulement si Vigie ne répond pas (app qui ne démarre plus) : « dpm remove-active-admin »,
-#    possible uniquement avec un APK testOnly. Vigie ne défait alors rien elle-même (paquets masqués
-#    à réafficher, proposé ensuite) et le retrait est vu comme une désactivation (agent.tamper
-#    admin_disabled / device_owner_lost au prochain démarrage) : c'est attendu.
+# 1. Normal path: Watchpost's rescue (see common.sh) undoes the whole policy, turns off the network
+#    and security logs, removes force-stop protection, emits security.policy "device_owner_cleared"
+#    and then calls clearDeviceOwnerApp. As the removal is announced, it is not reported as
+#    agent.tamper. Works with any APK (testOnly or not).
+#    If an item cannot be undone, Watchpost KEEPS the role (only it can retry) and this script
+#    offers to force the removal.
+# 2. Fallback, only if Watchpost does not answer (app that no longer starts): "dpm remove-active-admin",
+#    possible only with a testOnly APK. Watchpost then undoes nothing itself (hidden packages to
+#    unhide, offered afterwards) and the removal is seen as a deactivation (agent.tamper
+#    admin_disabled / device_owner_lost at the next start): this is expected.
 #
-# Usage : ./remove-device-owner.sh [--uninstall]
+# Usage: ./remove-device-owner.sh [--uninstall]
 set -euo pipefail
 cd "$(dirname "$0")"
 . ./common.sh
@@ -22,65 +22,65 @@ uninstall=0
 case "${1:-}" in
     "") ;;
     --uninstall) uninstall=1 ;;
-    *) die "Option inconnue : $1 (seule --uninstall existe)." ;;
+    *) die "Unknown option: $1 (only --uninstall exists)." ;;
 esac
 
 require_adb
 require_installed
 
 if ! is_owner; then
-    info "Vigie n'est pas Device Owner."
+    info "Watchpost is not Device Owner."
 else
     cat <<'MSG'
-Vigie va tout rétablir, couper ses journaux réseau et de sécurité, puis abandonner le rôle de
-Device Owner. Pour le retrouver, il faudra repasser par enable-device-owner (sans comptes sur le
-téléphone).
+Watchpost will restore everything, turn off its network and security logs, then give up the
+Device Owner role. To get it back, you will have to go through enable-device-owner again (with no
+accounts on the phone).
 MSG
-    read -r -p "Continuer ? (oui/non) " answer
-    [ "$answer" = "oui" ] || die "Abandon."
+    read -r -p "Continue? (yes/no) " answer
+    [ "$answer" = "yes" ] || die "Aborted."
 
-    info "Envoi de l'ordre de retrait à Vigie (jusqu'à une minute)…"
+    info "Sending the removal order to Watchpost (up to one minute)…"
     rescue_broadcast remove_owner
     case "$RESCUE_CODE" in
-        1) ok "Politique rétablie ($RESCUE_DATA)." ;;
+        1) ok "Policy restored ($RESCUE_DATA)." ;;
         2)
-            warn "Rétablissement partiel : $RESCUE_DATA"
+            warn "Partial restore: $RESCUE_DATA"
             if is_owner; then
                 cat <<'MSG'
-Vigie n'a pas pu tout défaire et a donc gardé le rôle de Device Owner : elle seule peut réessayer
-(./rescue-revert.sh, puis ./rescue-revert.sh --sweep). Forcer le retrait laisse ces éléments en
-l'état ; selon la version d'Android, un paquet resté masqué ou suspendu ne peut ensuite plus être
-rétabli que par un Device Owner.
+Watchpost could not undo everything and therefore kept the Device Owner role: only it can retry
+(./rescue-revert.sh, then ./rescue-revert.sh --sweep). Forcing the removal leaves these items as
+they are; depending on the Android version, a package left hidden or suspended can then only be
+restored by a Device Owner.
 MSG
-                read -r -p "Forcer quand même le retrait ? (oui/non) " answer
-                [ "$answer" = "oui" ] || die "Abandon : Vigie reste Device Owner."
+                read -r -p "Force the removal anyway? (yes/no) " answer
+                [ "$answer" = "yes" ] || die "Aborted: Watchpost remains Device Owner."
                 rescue_broadcast remove_owner force
-                [ -n "$RESCUE_CODE" ] || { printf '%s\n' "$RESCUE_OUT" >&2; die "Pas de réponse de Vigie au retrait forcé."; }
+                [ -n "$RESCUE_CODE" ] || { printf '%s\n' "$RESCUE_OUT" >&2; die "No answer from Watchpost to the forced removal."; }
             fi
             ;;
-        3) info "Vigie n'était déjà plus Device Owner ($RESCUE_DATA)." ;;
-        4) warn "Vigie n'a pas fini dans le délai ; vérification du rôle dans 30 s…"; sleep 30 ;;
+        3) info "Watchpost was already no longer Device Owner ($RESCUE_DATA)." ;;
+        4) warn "Watchpost did not finish in time; checking the role in 30 s…"; sleep 30 ;;
         *)
             printf '%s\n' "$RESCUE_OUT" >&2
-            warn "Pas de réponse exploitable de Vigie (app qui ne démarre plus, ou version sans issue de secours)."
-            is_test_only || die "APK non testOnly : Android refuse « dpm remove-active-admin ». Réparez/mettez à jour l'app (même clé de signature) puis relancez ce script, ou réinitialisez le téléphone."
+            warn "No usable answer from Watchpost (app that no longer starts, or a version without rescue)."
+            is_test_only || die "APK is not testOnly: Android refuses 'dpm remove-active-admin'. Repair/update the app (same signing key) then run this script again, or factory-reset the phone."
             cat <<'MSG'
-Repli : « dpm remove-active-admin » (APK testOnly). Vigie ne défera pas sa politique elle-même :
-l'état des paquets qu'elle avait masqués ou suspendus est vérifié ensuite.
-Le retrait sera signalé par agent.tamper (admin_disabled, device_owner_lost) : c'est attendu.
+Fallback: 'dpm remove-active-admin' (testOnly APK). Watchpost will not undo its policy itself:
+the state of the packages it had hidden or suspended is checked afterwards.
+The removal will be reported by agent.tamper (admin_disabled, device_owner_lost): this is expected.
 MSG
-            read -r -p "Utiliser ce repli ? (oui/non) " answer
-            [ "$answer" = "oui" ] || die "Abandon."
+            read -r -p "Use this fallback? (yes/no) " answer
+            [ "$answer" = "yes" ] || die "Aborted."
             ashell dpm remove-active-admin --user 0 "$ADMIN" | sed 's/^/    /'
             ;;
     esac
-    if is_owner; then die "Vigie est toujours Device Owner ($RESCUE_DATA)."; fi
-    ok "Vigie n'est plus Device Owner (la sauvegarde Android, coupée par le mode Device Owner, peut être réactivée dans les Paramètres)."
-    # Ce que Vigie n'a pas pu défaire elle-même (repli, ou éléments restés en échec).
+    if is_owner; then die "Watchpost is still Device Owner ($RESCUE_DATA)."; fi
+    ok "Watchpost is no longer Device Owner (Android backup, turned off by Device Owner mode, can be turned back on in Settings)."
+    # What Watchpost could not undo itself (fallback, or items that stayed in failure).
     rescue_broadcast
     if [ "$RESCUE_CODE" = 3 ]; then restore_leftovers; fi
 fi
 
 if [ "$uninstall" = 1 ]; then
-    adb uninstall "$PKG" && ok "Vigie désinstallée."
+    adb uninstall "$PKG" && ok "Watchpost uninstalled."
 fi

@@ -1,20 +1,21 @@
-﻿# Issue de secours sans l'interface : demande à Vigie, par ADB, de défaire toute sa politique
-# Device Owner (« Tout rétablir » de l'écran Politique). Vigie reste Device Owner et ses journaux
-# restent actifs.
+﻿# ADB rescue without the interface: asks Watchpost, over ADB, to undo its whole Device Owner
+# policy ("Restore everything" on the Policy screen). Watchpost stays Device Owner and its logs
+# stay on.
 #
-# Mécanisme : diffusion explicite à io.github.erwsim.vigie/.policy.rescue.RescueReceiver (voir
-# Common.ps1) ; seul le shell ADB ou le système peut l'envoyer, et elle ne peut que défaire.
+# Mechanism: explicit broadcast to io.github.erwsim.watchpost/.policy.rescue.RescueReceiver (see
+# Common.ps1); only the ADB shell or the system can send it, and it can only undo.
 #
-# Usage : .\rescue-revert.ps1                « Tout rétablir »
-#         .\rescue-revert.ps1 -Sweep         en plus, rétablit tout ce que le catalogue a pu modifier
-#                                            (paquets masqués ou suspendus, restrictions, permissions
-#                                            refusées, DNS privé), même sans trace dans l'état de Vigie
-#         .\rescue-revert.ps1 -RemoveOwner   équivaut à .\remove-device-owner.ps1 (retrait complet)
-# Ne fonctionne qu'après le premier déverrouillage qui suit un redémarrage.
-# Codes de sortie : 0 tout rétabli, 2 partiel, 3 Vigie n'est plus Device Owner, 4 délai dépassé,
-# 5 aucune réponse exploitable de Vigie, 1 autre erreur.
+# Usage: .\rescue-revert.ps1                "Restore everything"
+#        .\rescue-revert.ps1 -Sweep         also restores everything the catalogue may have changed
+#                                           (hidden or suspended packages, restrictions, denied
+#                                           permissions, Private DNS), even with no trace in
+#                                           Watchpost's state
+#        .\rescue-revert.ps1 -RemoveOwner   same as .\remove-device-owner.ps1 (full removal)
+# Only works after the first unlock following a reboot.
+# Exit codes: 0 everything restored, 2 partial, 3 Watchpost is no longer Device Owner, 4 timed out,
+# 5 no usable answer from Watchpost, 1 other error.
 #
-# Lancement (scripts non signés, sans modifier la politique d'exécution de Windows) :
+# Launching (the scripts are not signed; this leaves the Windows execution policy unchanged):
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\rescue-revert.ps1 [options]
 param([switch]$RemoveOwner, [switch]$Sweep)
 . "$PSScriptRoot\Common.ps1"
@@ -27,27 +28,27 @@ if ($RemoveOwner) {
 Assert-Adb
 Assert-Installed
 
-Info "Envoi de l'ordre « Tout rétablir » à Vigie (jusqu'à une minute)..."
+Info 'Sending the ''Restore everything'' order to Watchpost (up to one minute)...'
 $r = Invoke-Rescue -Sweep:$Sweep
 switch ($r.Code) {
-    1 { Ok "Tout est rétabli ($($r.Data))." }
+    1 { Ok "Everything is restored ($($r.Data))." }
     2 {
-        Warn "Rétablissement partiel : $($r.Data)"
-        Warn "Réessayez ; si un élément résiste, consultez le journal de l'écran Politique ou le README (section Politique Device Owner). « .\rescue-revert.ps1 -Sweep » rétablit aussi ce dont Vigie aurait perdu la trace."
+        Warn "Partial restore: $($r.Data)"
+        Warn "Try again; if an item resists, see the log on the Policy screen or the README (Device Owner policy section). '.\rescue-revert.ps1 -Sweep' also restores what Watchpost may have lost track of."
         exit 2
     }
     3 {
-        Warn "Vigie n'est plus Device Owner : elle ne peut plus rien défaire elle-même ($($r.Data))."
+        Warn "Watchpost is no longer Device Owner: it can no longer undo anything itself ($($r.Data))."
         Restore-Leftovers $r.Data
         exit 3
     }
     4 {
-        Warn "Vigie n'a pas fini dans le délai : l'opération continue sur le téléphone. Relancez ce script dans une minute pour voir le résultat."
+        Warn 'Watchpost did not finish in time: the operation continues on the phone. Run this script again in a minute to see the result.'
         exit 4
     }
     default {
         $r.Out | ForEach-Object { Write-Host "    $_" }
-        Warn "Pas de réponse exploitable de Vigie. Vérifiez que le téléphone a été déverrouillé depuis son dernier démarrage, que l'APK installé contient l'issue de secours et qu'il démarre. Dernier recours si l'app ne démarre plus : .\remove-device-owner.ps1 (APK testOnly)."
+        Warn 'No usable answer from Watchpost. Check that the phone has been unlocked since its last boot, that the installed APK includes the rescue and that it starts. Last resort if the app no longer starts: .\remove-device-owner.ps1 (testOnly APK).'
         exit 5
     }
 }

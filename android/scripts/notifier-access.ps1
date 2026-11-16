@@ -1,26 +1,26 @@
-﻿# Grants (default) or withdraws (-Revoke) notification access for the companion "Vigie Notifications".
+﻿# Grants (default) or withdraws (-Revoke) notification access for the companion "Watchpost Notifications".
 # Usage: .\notifier-access.ps1 [-Revoke]
 #
-# Uses "cmd notification allow_listener / disallow_listener <composant> [user_id]" (NotificationManager
+# Uses "cmd notification allow_listener / disallow_listener <component> [user_id]" (NotificationManager
 # shell command, AOSP NotificationShellCmd; not verified on One UI 8/9). Granting it by ADB also works
-# for an app installed outside an app store, whose access switch Android may show as a "paramètre
-# restreint" (restricted setting) in the Settings app.
+# for an app installed outside an app store, whose access switch Android may show as a "restricted
+# setting" in the Settings app.
 #
-# Without ADB: Paramètres > Notifications > ... > Accès aux notifications > Vigie Notifications (search
-# "Accès aux notifications" in Settings: the path depends on the One UI version). If the switch is
-# greyed out ("Paramètre restreint"): Paramètres > Applications > Vigie Notifications > menu (⋮) >
-# "Autoriser les paramètres restreints", then grant the access.
+# Without ADB: Settings > Notifications > ... > Notification access > Watchpost Notifications (search
+# "Notification access" in Settings: the path depends on the One UI version). If the switch is
+# greyed out ("Restricted setting"): Settings > Apps > Watchpost Notifications > menu (⋮) >
+# "Allow restricted settings", then grant the access.
 #
-# Lancement (scripts non signés, sans modifier la politique d'exécution de Windows) :
+# Launching (the scripts are not signed; this leaves the Windows execution policy unchanged):
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\notifier-access.ps1 [options]
 param([switch]$Revoke)
 . "$PSScriptRoot\Common.ps1"
-$NotifierPkg = 'io.github.erwsim.vigie.notifier'
-$Component = "$NotifierPkg/io.github.erwsim.vigie.notifier.NotifierListenerService"
+$NotifierPkg = 'io.github.erwsim.watchpost.notifier'
+$Component = "$NotifierPkg/io.github.erwsim.watchpost.notifier.NotifierListenerService"
 
 Assert-Adb
 if (@(Invoke-AdbShell pm path $NotifierPkg | Where-Object { $_ -like 'package:*' }).Count -eq 0) {
-    Fail "Vigie Notifications ($NotifierPkg) n'est pas installé. Lancez d'abord install-notifier.ps1."
+    Fail "Watchpost Notifications ($NotifierPkg) is not installed. Run install-notifier.ps1 first."
 }
 
 function Test-Enabled {
@@ -32,20 +32,20 @@ if ($Revoke) {
     $out = Invoke-AdbShell cmd notification disallow_listener $Component
     $out | Where-Object { $_ } | ForEach-Object { Info $_ }
     if (Test-Enabled) {
-        Fail 'L''accès semble toujours accordé. Retirez-le à la main : Paramètres > Notifications > ... > Accès aux notifications > Vigie Notifications.'
+        Fail 'Access still seems to be granted. Remove it by hand: Settings > Notifications > ... > Notification access > Watchpost Notifications.'
     }
-    Ok 'Accès aux notifications retiré : Vigie Notifications ne lit plus rien (le collecteur « Notifications » de l''agent passe « indisponible »).'
+    Ok 'Notification access withdrawn: Watchpost Notifications no longer reads anything (the agent''s ''Notifications'' collector becomes ''unavailable'').'
     exit 0
 }
 
 $out = Invoke-AdbShell cmd notification allow_listener $Component
 $out | Where-Object { $_ } | ForEach-Object { Info $_ }
 if (-not (Test-Enabled)) {
-    Warn 'L''accès n''apparaît pas dans enabled_notification_listeners.'
-    Warn 'Accordez-le à la main : Paramètres > Notifications > ... > Accès aux notifications > Vigie Notifications.'
-    Warn 'Interrupteur grisé (« Paramètre restreint ») : Paramètres > Applications > Vigie Notifications > ⋮ > Autoriser les paramètres restreints.'
+    Warn 'The access does not appear in enabled_notification_listeners.'
+    Warn 'Grant it by hand: Settings > Notifications > ... > Notification access > Watchpost Notifications.'
+    Warn 'Switch greyed out (''Restricted setting''): Settings > Apps > Watchpost Notifications > ⋮ > Allow restricted settings.'
     exit 1
 }
-Ok 'Accès aux notifications accordé à Vigie Notifications.'
-Info 'Par défaut seuls l''app, la catégorie, le canal et l''importance sont transmis ; le titre et le texte seulement si vous activez « Contenu des notifications » dans Vigie (Collecteurs > Notifications).'
-Info 'Ouvrez « Vigie Notifications » pour vérifier l''état (service connecté, agent présent, collecte active).'
+Ok 'Notification access granted to Watchpost Notifications.'
+Info 'By default only the app, category, channel and importance are relayed; the title and text only if you turn on ''Notification content'' in Watchpost (Collectors > Notifications).'
+Info 'Open ''Watchpost Notifications'' to check its state (service connected, agent present, collection active).'

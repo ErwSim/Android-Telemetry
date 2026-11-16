@@ -1,20 +1,20 @@
-﻿# Retrait complet du Device Owner par ADB (équivalent de « Retirer le Device Owner » de l'écran
-# Politique, qui reste le chemin recommandé quand l'app est utilisable).
+﻿# Full removal of the Device Owner over ADB (equivalent to "Remove the Device Owner" on the
+# Policy screen, which stays the recommended path when the app is usable).
 #
-# 1. Chemin normal : l'issue de secours de Vigie (voir Common.ps1) défait toute la politique, coupe
-#    les journaux réseau et sécurité, retire la protection contre l'arrêt forcé, émet
-#    security.policy « device_owner_cleared » puis appelle clearDeviceOwnerApp. Le retrait étant
-#    annoncé, il n'est pas signalé comme agent.tamper. Fonctionne avec tout APK (testOnly ou non).
-#    Si un élément ne peut pas être défait, Vigie GARDE le rôle (elle seule peut réessayer) et ce
-#    script propose de forcer le retrait.
-# 2. Repli, seulement si Vigie ne répond pas (app qui ne démarre plus) : « dpm remove-active-admin »,
-#    possible uniquement avec un APK testOnly. Vigie ne défait alors rien elle-même (paquets masqués
-#    à réafficher, proposé ensuite) et le retrait est vu comme une désactivation (agent.tamper
-#    admin_disabled / device_owner_lost au prochain démarrage) : c'est attendu.
+# 1. Normal path: Watchpost's rescue (see Common.ps1) undoes the whole policy, turns off the network
+#    and security logs, removes force-stop protection, emits security.policy "device_owner_cleared"
+#    and then calls clearDeviceOwnerApp. As the removal is announced, it is not reported as
+#    agent.tamper. Works with any APK (testOnly or not).
+#    If an item cannot be undone, Watchpost KEEPS the role (only it can retry) and this script
+#    offers to force the removal.
+# 2. Fallback, only if Watchpost does not answer (app that no longer starts): "dpm remove-active-admin",
+#    possible only with a testOnly APK. Watchpost then undoes nothing itself (hidden packages to
+#    unhide, offered afterwards) and the removal is seen as a deactivation (agent.tamper
+#    admin_disabled / device_owner_lost at the next start): this is expected.
 #
-# Usage : .\remove-device-owner.ps1 [-Uninstall]
+# Usage: .\remove-device-owner.ps1 [-Uninstall]
 #
-# Lancement (scripts non signés, sans modifier la politique d'exécution de Windows) :
+# Launching (the scripts are not signed; this leaves the Windows execution policy unchanged):
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\remove-device-owner.ps1 [options]
 param([switch]$Uninstall)
 . "$PSScriptRoot\Common.ps1"
@@ -23,67 +23,67 @@ Assert-Adb
 Assert-Installed
 
 if (-not (Test-IsOwner)) {
-    Info "Vigie n'est pas Device Owner."
+    Info 'Watchpost is not Device Owner.'
 } else {
     Write-Host @'
-Vigie va tout rétablir, couper ses journaux réseau et de sécurité, puis abandonner le rôle de
-Device Owner. Pour le retrouver, il faudra repasser par enable-device-owner (sans comptes sur le
-téléphone).
+Watchpost will restore everything, turn off its network and security logs, then give up the
+Device Owner role. To get it back, you will have to go through enable-device-owner again (with no
+accounts on the phone).
 '@
-    $answer = Read-Host 'Continuer ? (oui/non)'
-    if ($answer -ne 'oui') { Fail 'Abandon.' }
+    $answer = Read-Host 'Continue? (yes/no)'
+    if ($answer -ne 'yes') { Fail 'Aborted.' }
 
-    Info "Envoi de l'ordre de retrait à Vigie (jusqu'à une minute)..."
+    Info 'Sending the removal order to Watchpost (up to one minute)...'
     $r = Invoke-Rescue -RemoveOwner
     switch ($r.Code) {
-        1 { Ok "Politique rétablie ($($r.Data))." }
+        1 { Ok "Policy restored ($($r.Data))." }
         2 {
-            Warn "Rétablissement partiel : $($r.Data)"
+            Warn "Partial restore: $($r.Data)"
             if (Test-IsOwner) {
                 Write-Host @'
-Vigie n'a pas pu tout défaire et a donc gardé le rôle de Device Owner : elle seule peut réessayer
-(.\rescue-revert.ps1, puis .\rescue-revert.ps1 -Sweep). Forcer le retrait laisse ces éléments en
-l'état ; selon la version d'Android, un paquet resté masqué ou suspendu ne peut ensuite plus être
-rétabli que par un Device Owner.
+Watchpost could not undo everything and therefore kept the Device Owner role: only it can retry
+(.\rescue-revert.ps1, then .\rescue-revert.ps1 -Sweep). Forcing the removal leaves these items as
+they are; depending on the Android version, a package left hidden or suspended can then only be
+restored by a Device Owner.
 '@
-                $answer = Read-Host 'Forcer quand même le retrait ? (oui/non)'
-                if ($answer -ne 'oui') { Fail 'Abandon : Vigie reste Device Owner.' }
+                $answer = Read-Host 'Force the removal anyway? (yes/no)'
+                if ($answer -ne 'yes') { Fail 'Aborted: Watchpost remains Device Owner.' }
                 $r = Invoke-Rescue -RemoveOwner -Force
                 if ($null -eq $r.Code) {
                     $r.Out | ForEach-Object { Write-Host "    $_" }
-                    Fail 'Pas de réponse de Vigie au retrait forcé.'
+                    Fail 'No answer from Watchpost to the forced removal.'
                 }
             }
         }
-        3 { Info "Vigie n'était déjà plus Device Owner ($($r.Data))." }
+        3 { Info "Watchpost was already no longer Device Owner ($($r.Data))." }
         4 {
-            Warn "Vigie n'a pas fini dans le délai ; vérification du rôle dans 30 s..."
+            Warn 'Watchpost did not finish in time; checking the role in 30 s...'
             Start-Sleep -Seconds 30
         }
         default {
             $r.Out | ForEach-Object { Write-Host "    $_" }
-            Warn "Pas de réponse exploitable de Vigie (app qui ne démarre plus, ou version sans issue de secours)."
+            Warn 'No usable answer from Watchpost (app that no longer starts, or a version without rescue).'
             if (-not (Test-IsTestOnly)) {
-                Fail "APK non testOnly : Android refuse « dpm remove-active-admin ». Réparez/mettez à jour l'app (même clé de signature) puis relancez ce script, ou réinitialisez le téléphone."
+                Fail 'APK is not testOnly: Android refuses ''dpm remove-active-admin''. Repair/update the app (same signing key) then run this script again, or factory-reset the phone.'
             }
             Write-Host @'
-Repli : « dpm remove-active-admin » (APK testOnly). Vigie ne défera pas sa politique elle-même :
-l'état des paquets qu'elle avait masqués ou suspendus est vérifié ensuite.
-Le retrait sera signalé par agent.tamper (admin_disabled, device_owner_lost) : c'est attendu.
+Fallback: 'dpm remove-active-admin' (testOnly APK). Watchpost will not undo its policy itself:
+the state of the packages it had hidden or suspended is checked afterwards.
+The removal will be reported by agent.tamper (admin_disabled, device_owner_lost): this is expected.
 '@
-            $answer = Read-Host 'Utiliser ce repli ? (oui/non)'
-            if ($answer -ne 'oui') { Fail 'Abandon.' }
+            $answer = Read-Host 'Use this fallback? (yes/no)'
+            if ($answer -ne 'yes') { Fail 'Aborted.' }
             Invoke-AdbShell dpm remove-active-admin --user 0 $script:Admin | ForEach-Object { Write-Host "    $_" }
         }
     }
-    if (Test-IsOwner) { Fail "Vigie est toujours Device Owner ($($r.Data))." }
-    Ok "Vigie n'est plus Device Owner (la sauvegarde Android, coupée par le mode Device Owner, peut être réactivée dans les Paramètres)."
-    # Ce que Vigie n'a pas pu défaire elle-même (repli, ou éléments restés en échec).
+    if (Test-IsOwner) { Fail "Watchpost is still Device Owner ($($r.Data))." }
+    Ok 'Watchpost is no longer Device Owner (Android backup, turned off by Device Owner mode, can be turned back on in Settings).'
+    # What Watchpost could not undo itself (fallback, or items that stayed in failure).
     $after = Invoke-Rescue
     if ($after.Code -eq 3) { Restore-Leftovers $after.Data }
 }
 
 if ($Uninstall) {
     Invoke-Adb uninstall $script:Pkg | ForEach-Object { Write-Host "  $_" }
-    if ($LASTEXITCODE -eq 0) { Ok 'Vigie désinstallée.' } else { Fail 'Désinstallation impossible.' }
+    if ($LASTEXITCODE -eq 0) { Ok 'Watchpost uninstalled.' } else { Fail 'Could not uninstall.' }
 }
