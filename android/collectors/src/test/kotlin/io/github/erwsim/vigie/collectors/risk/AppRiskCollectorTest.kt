@@ -35,7 +35,8 @@ class AppRiskCollectorTest {
             val byPkg = first.associateBy { it.data["package"]!!.jsonPrimitive.content }
             val t = byPkg.getValue("org.fake.pdf")
             assertEquals("high", t.data["level"]!!.jsonPrimitive.content)
-            assertEquals(97, t.data["score"]!!.jsonPrimitive.content.toInt()) // 15 + 25 + 15 + 12 + 30
+            assertEquals(100, t.data["score"]!!.jsonPrimitive.content.toInt()) // 35 + 25 + 15 + 12 + 30 = 117, bounded
+            assertEquals("[]", t.data["granted"]!!.jsonArray.toString()) // Nothing granted: the profile is still high.
             assertEquals(false, t.data["from_store"]!!.jsonPrimitive.content.toBoolean())
             assertNull(t.data["installer"]) // Unknown installer: absent, not null.
             assertEquals(listOf("sideloaded", "accessibility_service", "notification_listener", "overlay", "combo_banking_trojan"), t.data["reasons"]!!.jsonArray.map { it.jsonPrimitive.content })
@@ -125,8 +126,10 @@ class AppRiskCollectorTest {
         assertTrue(RiskLogic.shouldEmit(null, e, RiskLogic.Trigger.DAILY))
         assertTrue(RiskLogic.shouldEmit(e, e.copy(score = 36), RiskLogic.Trigger.DAILY))
         assertTrue(RiskLogic.shouldEmit(e, e.copy(reasons = listOf("sideloaded")), RiskLogic.Trigger.DAILY))
+        // A grant that changes nothing else is still a change worth telling.
+        assertTrue(RiskLogic.shouldEmit(e, e.copy(granted = listOf("sms_send")), RiskLogic.Trigger.DAILY))
         assertTrue(RiskLogic.shouldEmit(e, e.copy(versionCode = 6), RiskLogic.Trigger.DAILY))
-        val state = mapOf("a.b" to e, "c.d" to RiskEntry(1, 0, emptyList()))
+        val state = mapOf("a.b" to e.copy(granted = listOf("sms_send")), "c.d" to RiskEntry(1, 0, emptyList()))
         assertEquals(state, RiskLogic.decode(RiskLogic.encode(state)))
         assertNull(RiskLogic.decode(null))
         assertNull(RiskLogic.decode("[]"))

@@ -14,7 +14,7 @@ import kotlinx.serialization.json.long
 import kotlinx.serialization.json.int
 
 /** What is remembered of the last `app.risk` emitted for an app (persisted state). */
-data class RiskEntry(val versionCode: Long, val score: Int, val reasons: List<String>)
+data class RiskEntry(val versionCode: Long, val score: Int, val reasons: List<String>, val granted: List<String> = emptyList())
 
 /** Pure logic of the `app_risk` collector: when to emit, what to emit, persistence. */
 object RiskLogic {
@@ -26,16 +26,16 @@ object RiskLogic {
         DAILY,
     }
 
-    fun entryOf(f: AppFacts, a: RiskAssessment) = RiskEntry(f.versionCode, a.score, a.reasonCodes)
+    fun entryOf(f: AppFacts, a: RiskAssessment) = RiskEntry(f.versionCode, a.score, a.reasonCodes, a.grantedCodes)
 
     /**
      * Daily rule: emit if the app was never reported, if its version changed (an update missed while the
-     * agent was not running) or if its score or its reasons changed. An install or an update is always
+     * agent was not running) or if its score, its reasons or its granted capabilities changed. An install or an update is always
      * reported.
      */
     fun shouldEmit(previous: RiskEntry?, now: RiskEntry, trigger: Trigger): Boolean =
         trigger == Trigger.INSTALL_OR_UPDATE || previous == null || previous.versionCode != now.versionCode ||
-            previous.score != now.score || previous.reasons != now.reasons
+            previous.score != now.score || previous.reasons != now.reasons || previous.granted != now.granted
 
     fun severity(level: RiskLevel): Int = when (level) {
         RiskLevel.LOW -> Severity.INFO
@@ -53,6 +53,7 @@ object RiskLogic {
         put("score", a.score)
         put("level", a.level.wire)
         putStrings("reasons", a.reasonCodes)
+        putStrings("granted", a.grantedCodes)
     }
 
     fun encode(state: Map<String, RiskEntry>): String = JsonObject(
@@ -62,6 +63,7 @@ object RiskLogic {
                     "vc" to JsonPrimitive(e.versionCode),
                     "s" to JsonPrimitive(e.score),
                     "r" to JsonArray(e.reasons.map(::JsonPrimitive)),
+                    "g" to JsonArray(e.granted.map(::JsonPrimitive)),
                 ),
             )
         },
@@ -77,6 +79,7 @@ object RiskLogic {
                     versionCode = o.getValue("vc").jsonPrimitive.long,
                     score = o.getValue("s").jsonPrimitive.int,
                     reasons = o.getValue("r").jsonArray.map { it.jsonPrimitive.content },
+                    granted = o["g"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty(),
                 )
             }
         } catch (_: Exception) {

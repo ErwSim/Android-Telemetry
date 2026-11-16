@@ -316,67 +316,80 @@ Rien n'a tourné sur un appareil : tout ce qui suit est testé sur la JVM (logiq
 
 La note est la fonction **pure** `RiskScorer.score(AppFacts)` (`collectors/…/risk/RiskModel.kt`) : elle ne lit que ce
 que `PackageManager` expose (installateur, permissions demandées et accordées, composants déclarés, icône de
-lanceur, `targetSdk`, drapeau débogable), jamais le contenu d'une app. Les points s'additionnent, la note est
-bornée à 100. **Niveaux** : `low` 0 à 29, `medium` 30 à 59, `high` 60 à 100. Les apps du système (`FLAG_SYSTEM`) et
-Vigie sont notées mais **plafonnées à 29** (`low`) ; leurs raisons restent listées, sauf celles qui n'ont pas de sens
-pour une app préinstallée (installateur, icône, version cible, débogage). Chaque code a un libellé et une
-explication en français (`collectors/src/main/res/values/strings_risk.xml`, clés `risk_reason_<code>` et
-`risk_reason_<code>_desc`, accessibles par `RiskReason.fromCode(code)?.labelRes`). Un test vérifie que ce tableau
-et le code disent la même chose.
+lanceur, `targetSdk`, drapeau débogable), jamais le contenu d'une app. **Elle porte sur les capacités
+*déclarées*** (contrat §11.4) : le profil doit servir avant tout octroi (installation, écran de quarantaine) et
+rester élevé quand une garde empêche l'octroi. Les raisons reposant sur une permission d'exécution (`sms_send`,
+`sms_read`, `calls`, `background_location`, `mic_camera_background`, `combo_sms_fraud`) valent leur nombre de points
+**déclarés** ; si la permission est en plus **accordée**, elles gagnent la colonne « + accordée » et entrent dans la
+liste `granted` de l'événement (sous-ensemble de `reasons` : l'intention contre l'état). Les points
+s'additionnent, la note est bornée à 100. **Niveaux** : `low` 0 à 29, `medium` 30 à 69, `high` 70 à 100. Les apps du
+système (`FLAG_SYSTEM`) et Vigie sont notées mais **plafonnées à 29** (`low`) ; leurs raisons restent listées,
+sauf celles qui n'ont pas de sens pour une app préinstallée (installateur, icône, version cible, débogage).
+Chaque code a un libellé et une explication en français (`collectors/src/main/res/values/strings_risk.xml`, clés
+`risk_reason_<code>` et `risk_reason_<code>_desc`, accessibles par `RiskReason.fromCode(code)?.labelRes`). Un test
+vérifie que ce tableau et le code disent la même chose.
 
-| Code | Points | Condition (sur ce que le système expose) |
-|---|---|---|
-| `sideloaded` | 15 | app utilisateur dont l'installateur est absent, un installateur de paquets, un gestionnaire de fichiers ou le shell ADB (et non Play, Galaxy Store, F-Droid) |
-| `unknown_installer` | 12 | app utilisateur installée par une autre app qui n'est pas une boutique (exclut `sideloaded`) |
-| `no_launcher_icon` | 12 | app utilisateur sans activité `MAIN`/`LAUNCHER` activée (une icône désactivée compte comme absente) |
-| `sms_send` | 20 | `SEND_SMS` accordée |
-| `sms_read` | 12 | `READ_SMS`, `RECEIVE_SMS`, `RECEIVE_MMS` ou `RECEIVE_WAP_PUSH` accordée |
-| `calls` | 10 | `CALL_PHONE`, `READ_CALL_LOG`, `WRITE_CALL_LOG`, `ANSWER_PHONE_CALLS` ou `PROCESS_OUTGOING_CALLS` accordée |
-| `accessibility_service` | 25 | déclare un service d'accessibilité (protégé par `BIND_ACCESSIBILITY_SERVICE`), activé ou non |
-| `notification_listener` | 15 | déclare un écouteur de notifications (`BIND_NOTIFICATION_LISTENER_SERVICE`) |
-| `device_admin` | 15 | déclare un récepteur d'administration (`BIND_DEVICE_ADMIN`) |
-| `overlay` | 12 | demande `SYSTEM_ALERT_WINDOW` (la demande compte : l'état « accordé » des accès spéciaux n'est pas fiable dans les drapeaux de paquet) |
-| `install_packages` | 20 | demande `REQUEST_INSTALL_PACKAGES` ou `INSTALL_PACKAGES` |
-| `vpn_service` | 10 | déclare un `VpnService` (`BIND_VPN_SERVICE`) |
-| `boot_receiver` | 5 | déclare un récepteur de `BOOT_COMPLETED` **et** demande `RECEIVE_BOOT_COMPLETED` |
-| `background_location` | 10 | `ACCESS_BACKGROUND_LOCATION` accordée |
-| `mic_camera_background` | 8 | micro ou caméra accordés **et** permission de service de type micro/caméra demandée (ou, avant Android 14, service de premier plan) |
-| `old_target_sdk` | 8 | app utilisateur dont `targetSdk` < 30 |
-| `debuggable` | 10 | app utilisateur marquée `FLAG_DEBUGGABLE` |
-| `combo_banking_trojan` | 30 | `accessibility_service` + `overlay` + (`sms_read` ou `notification_listener`) |
-| `combo_sms_fraud` | 25 | `sms_send` + `boot_receiver`, sans être l'appli SMS par défaut |
-| `combo_stalkerware` | 30 | `no_launcher_icon` + (position accordée, y compris approximative, ou micro) + `boot_receiver` |
+| Code | Déclarée | + accordée | Condition (sur ce que le système expose) |
+|---|---|---|---|
+| `sideloaded` | 35 | 0 | app utilisateur dont l'installateur est absent, un installateur de paquets, un gestionnaire de fichiers ou le shell ADB (et non Play, Galaxy Store, F-Droid) |
+| `unknown_installer` | 25 | 0 | app utilisateur installée par une autre app qui n'est pas une boutique (exclut `sideloaded`) |
+| `no_launcher_icon` | 12 | 0 | app utilisateur sans activité `MAIN`/`LAUNCHER` activée (une icône désactivée compte comme absente) |
+| `sms_send` | 16 | 4 | `SEND_SMS` demandée (+ accordée) |
+| `sms_read` | 6 | 6 | `READ_SMS`, `RECEIVE_SMS`, `RECEIVE_MMS` ou `RECEIVE_WAP_PUSH` demandée (+ accordée) |
+| `calls` | 3 | 7 | `CALL_PHONE`, `READ_CALL_LOG`, `WRITE_CALL_LOG`, `ANSWER_PHONE_CALLS` ou `PROCESS_OUTGOING_CALLS` demandée (+ accordée) |
+| `accessibility_service` | 25 | 0 | déclare un service d'accessibilité (protégé par `BIND_ACCESSIBILITY_SERVICE`), activé ou non |
+| `notification_listener` | 15 | 0 | déclare un écouteur de notifications (`BIND_NOTIFICATION_LISTENER_SERVICE`) |
+| `device_admin` | 15 | 0 | déclare un récepteur d'administration (`BIND_DEVICE_ADMIN`) |
+| `overlay` | 12 | 0 | demande `SYSTEM_ALERT_WINDOW` (la demande compte : l'état « accordé » des accès spéciaux n'est pas fiable dans les drapeaux de paquet) |
+| `install_packages` | 20 | 0 | demande `REQUEST_INSTALL_PACKAGES` ou `INSTALL_PACKAGES` |
+| `vpn_service` | 10 | 0 | déclare un `VpnService` (`BIND_VPN_SERVICE`) |
+| `boot_receiver` | 5 | 0 | déclare un récepteur de `BOOT_COMPLETED` **et** demande `RECEIVE_BOOT_COMPLETED` |
+| `background_location` | 6 | 4 | `ACCESS_BACKGROUND_LOCATION` demandée (+ accordée) |
+| `mic_camera_background` | 3 | 5 | micro ou caméra demandés **et** permission de service de type micro/caméra demandée (ou, avant Android 14, service de premier plan) (+ accordés) |
+| `old_target_sdk` | 8 | 0 | app utilisateur dont `targetSdk` < 30 |
+| `debuggable` | 10 | 0 | app utilisateur marquée `FLAG_DEBUGGABLE` |
+| `combo_banking_trojan` | 30 | 0 | `accessibility_service` + `overlay` + (`sms_read` ou `notification_listener`), sur les capacités déclarées |
+| `combo_sms_fraud` | 20 | 6 | `sms_send` + `boot_receiver`, sans être l'appli SMS par défaut (+ accordée si `SEND_SMS` l'est) |
+| `combo_stalkerware` | 30 | 0 | `no_launcher_icon` + (position ou micro demandés, y compris approximative) + `boot_receiver` |
 
 Une combinaison s'ajoute aux points des raisons qu'elle combine : c'est ce qui sépare un trojan d'une app qui n'a
-qu'un seul de ces pouvoirs. Une lecture qui échoue ne dégrade jamais une app (icône inconnue = présente,
-composants inconnus = absents) ; une liste de paquets vide est une lecture ratée, pas « aucune app ».
+qu'un seul de ces pouvoirs. **Pourquoi ces poids** : sur capacités déclarées, une messagerie ou une banque qui
+déclare des droits SMS, d'appels et de micro (sans les détenir) additionne vite des points ; seule l'**origine**
+(hors boutique : 35) sépare alors une app de fraude au SMS (hors boutique + envoi + boot = 76, `high`) d'une
+messagerie de boutique qui déclare les mêmes droits (65, `medium`) : la marge est de 5 points de chaque côté du
+seuil de 70, c'est mince et dit comme tel. « Hors boutique » seule vaut déjà `medium`. Une lecture qui échoue ne
+dégrade jamais une app (icône inconnue = présente, composants inconnus = absents) ; une liste de paquets vide
+est une lecture ratée, pas « aucune app ».
 
 **Émission.** À chaque `PACKAGE_ADDED` / `PACKAGE_REPLACED` (toujours), puis chaque jour pour les seules apps dont la
-note, les raisons ou la version ont changé depuis la dernière émission (état persistant `risk_state`) ; le premier
-passage les émet toutes une fois. Sévérité : `low` 0, `medium` 1, `high` 2. Champs : `package`, `label`,
-`version_code`, `installer` (absent si inconnu), `from_store`, `score`, `level`, `reasons`.
+note, les raisons, la liste `granted` ou la version ont changé depuis la dernière émission (état persistant
+`risk_state`) ; le premier passage les émet toutes une fois. Sévérité : `low` 0, `medium` 1, `high` 2. Champs :
+`package`, `label`, `version_code`, `installer` (absent si inconnu), `from_store`, `score`, `level`, `reasons`
+(déclarées), `granted` (parmi elles, celles dont la permission est accordée).
 
-**Ce que la note classe mal** (jeu de test `RiskCorpus` : 21 apps légitimes et 12 profils malveillants, bâtis
-d'après les fonctions et permissions habituelles de chaque famille, **pas extraits d'APK réels**) :
+**Ce que la note classe mal** (jeu de test `RiskCorpus` : 23 apps légitimes et 14 profils malveillants, bâtis
+d'après les fonctions et permissions habituelles de chaque famille, **pas extraits d'APK réels** ; mesuré après la
+bascule sur les capacités déclarées) :
 
-- *Faux positifs « élevé »* (4 sur 21) : contrôle parental, suite antivirus, app d'automatisation (type Tasker) et
-  identification d'appelant avec droits SMS. Leurs pouvoirs sont ceux d'un logiciel espion ou d'un trojan, par
-  construction : aucune note fondée sur les capacités ne les sépare. Seul « qui l'a installé et pourquoi » le
-  fait, et ni le système ni cet agent ne le savent.
-- *Faux positifs « moyen »* (4) : gestionnaire de mots de passe et remappage de boutons (accessibilité +
-  superposition), lanceur qui verrouille par l'accessibilité, appli SMS tierce choisie par défaut (elle doit
-  avoir tous les droits SMS : seule la combinaison fraude au SMS lui est épargnée).
-- *Aucune alerte* sur : messagerie, banque, clavier, navigateur, lanceur simple, VPN, composeur, authentificateur,
-  gestionnaire de fichiers, navigation (tous sous 30).
-- *Faux négatifs* : un dropper publié sur la boutique (seule la demande d'installation le trahit : 20, « faible »),
-  un espion qui garde une icône anodine et n'a ni accessibilité ni notification (20 : seul « hors boutique »
-  pèse). Sous-estimés mais « moyen » : fraude au SMS sans démarrage au boot (35, déclenchée par push, donc pas de
-  combinaison) ou distribuée par la boutique (50), dropper hors boutique (35), verrouilleur de rançon (47),
-  adware d'accessibilité (52).
-- Limite de fond : la note juge des **capacités déclarées**, pas des actes. Une app qui obtient ses droits après
-  l'installation (autorisation accordée plus tard, service d'accessibilité activé plus tard) est renotée au
-  prochain passage quotidien (ou à sa mise à jour), pas à l'instant (de même pour une icône que l'app désactive
-  après coup). `app.ops` mesure l'usage réel.
+- *Faux positifs « élevé »* (4 sur 23, inchangé) : contrôle parental, suite antivirus, app d'automatisation (type
+  Tasker) et identification d'appelant avec droits SMS. Leurs pouvoirs sont ceux d'un logiciel espion ou d'un
+  trojan, par construction : aucune note fondée sur les capacités ne les sépare. Seul « qui l'a installé et
+  pourquoi » le fait, et ni le système ni cet agent ne le savent.
+- *Faux positifs « moyen »* (5) : messagerie de boutique qui déclare les droits SMS (65, à 5 points du seuil),
+  gestionnaire de mots de passe et remappage de boutons (accessibilité + superposition), lanceur qui verrouille
+  par l'accessibilité, appli SMS tierce choisie par défaut. Une banque qui déclare la lecture des SMS : 6, `low`.
+- *Aucune alerte* sur : messagerie sans droits SMS, banque, clavier, navigateur, lanceur simple, VPN, composeur,
+  authentificateur, gestionnaire de fichiers, navigation (tous sous 30). Toute app installée hors boutique est au
+  moins `medium` (35) : y compris vos propres installations par ADB (hormis Vigie, plafonnée).
+- *Détectés avant tout octroi* : fraude au SMS hors boutique (76) et espion sans icône (82) sont `high` avec
+  zéro permission accordée ; l'octroi n'ajoute que 10 points à la fraude au SMS et la liste `granted`.
+- *Faux négatifs* : un dropper publié sur la boutique (seule la demande d'installation le trahit : 20, `low`).
+  Sous-estimés mais `medium` : fraude au SMS sans démarrage au boot (55, déclenchée par push, donc pas de
+  combinaison) ou distribuée par la boutique (51), espion à icône anodine (40), dropper hors boutique (55),
+  verrouilleur de rançon (67). Adware d'accessibilité hors boutique : 72, `high`.
+- Limite de fond : la note juge des **capacités déclarées**, pas des actes. Un service d'accessibilité activé
+  plus tard, une icône que l'app désactive après coup ne sont vus qu'au passage quotidien (ou à la mise à jour),
+  pas à l'instant. `app.ops` mesure l'usage réel.
 
 ### `app.role` : les apps par défaut
 

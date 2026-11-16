@@ -58,6 +58,14 @@ object RiskCorpus {
                 requestedOnly = BOOT + perms("FOREGROUND_SERVICE", "FOREGROUND_SERVICE_MICROPHONE", "FOREGROUND_SERVICE_CAMERA"), boot = true,
             ),
         ),
+        legit(
+            "messagerie_declare_sms", RiskLevel.LOW, RiskLevel.MEDIUM, "Messagerie du commerce qui DÉCLARE les droits SMS (envoi, lecture) sans les détenir, avec appels, micro et démarrage au boot.",
+            app(
+                "messagerie_declare_sms", granted = perms("CAMERA", "RECORD_AUDIO", "READ_CONTACTS", "READ_CALL_LOG", "CALL_PHONE"),
+                requestedOnly = SMS_ALL + BOOT + perms("FOREGROUND_SERVICE_MICROPHONE", "FOREGROUND_SERVICE_CAMERA"), boot = true,
+            ),
+        ),
+        legit("banque_declare_sms", RiskLevel.LOW, RiskLevel.LOW, "Banque qui déclare la lecture des SMS (saisie automatique du code), sans démarrage au boot.", app("banque_declare_sms", granted = perms("CAMERA"), requestedOnly = perms("READ_SMS", "RECEIVE_SMS"))),
         legit("banque", RiskLevel.LOW, RiskLevel.LOW, "Caméra (chèque, identité), position, état du téléphone.", app("banque", granted = perms("CAMERA", "ACCESS_FINE_LOCATION", "READ_PHONE_STATE"))),
         legit("clavier_tiers", RiskLevel.LOW, RiskLevel.LOW, "Un clavier n'est pas noté pour son service de saisie.", app("clavier_tiers", granted = perms("READ_CONTACTS", "RECORD_AUDIO"), requestedOnly = BOOT, boot = true)),
         legit("navigateur", RiskLevel.LOW, RiskLevel.LOW, "Caméra, micro, position.", app("navigateur", granted = perms("CAMERA", "RECORD_AUDIO", "ACCESS_FINE_LOCATION"))),
@@ -139,6 +147,14 @@ object RiskCorpus {
             app("fraude_sms", installer = null, granted = perms("SEND_SMS", "READ_CONTACTS"), requestedOnly = BOOT, boot = true),
         ),
         bad(
+            "fraude_sms_avant_octroi", RiskLevel.HIGH, RiskLevel.HIGH, "Le même profil au moment de l'installation : droits SMS déclarés, RIEN d'accordé (garde SMS active ou écran de quarantaine).",
+            app("fraude_sms_avant_octroi", installer = INSTALLER, requestedOnly = perms("SEND_SMS", "READ_CONTACTS") + BOOT, boot = true),
+        ),
+        bad(
+            "espion_avant_octroi", RiskLevel.HIGH, RiskLevel.HIGH, "Espion sans icône à l'installation : position et micro déclarés, rien d'accordé.",
+            app("espion_avant_octroi", installer = null, requestedOnly = perms("ACCESS_FINE_LOCATION", "RECORD_AUDIO") + BOOT, boot = true, launcher = false),
+        ),
+        bad(
             "fraude_sms_sans_boot", RiskLevel.HIGH, RiskLevel.MEDIUM, "Même envoi, déclenché par une notification push : pas de démarrage au boot, donc pas de combinaison.",
             app("fraude_sms_sans_boot", installer = INSTALLER, granted = perms("SEND_SMS")),
         ),
@@ -158,7 +174,7 @@ object RiskCorpus {
             app("espion_minimal", installer = null, granted = perms("ACCESS_FINE_LOCATION"), requestedOnly = BOOT, boot = true, launcher = false),
         ),
         bad(
-            "espion_discret_mais_avec_icone", RiskLevel.HIGH, RiskLevel.LOW, "Espion qui garde une icône anodine (« Notes ») : aucune des trois combinaisons ne le voit, seul « hors boutique » reste.",
+            "espion_discret_mais_avec_icone", RiskLevel.HIGH, RiskLevel.MEDIUM, "Espion qui garde une icône anodine (« Notes ») : aucune des trois combinaisons ne le voit, seuls « hors boutique » et le démarrage au boot restent.",
             app("espion_discret_mais_avec_icone", installer = INSTALLER, granted = perms("ACCESS_FINE_LOCATION", "RECORD_AUDIO", "READ_CONTACTS"), requestedOnly = BOOT, boot = true),
         ),
         bad(
@@ -177,7 +193,7 @@ object RiskCorpus {
             ),
         ),
         bad(
-            "adware_accessibilite", RiskLevel.MEDIUM, RiskLevel.MEDIUM, "Publicité forcée par accessibilité et superposition, hors boutique.",
+            "adware_accessibilite", RiskLevel.HIGH, RiskLevel.HIGH, "Publicité forcée par accessibilité et superposition, hors boutique.",
             app("adware_accessibilite", installer = INSTALLER, requestedOnly = perms("SYSTEM_ALERT_WINDOW"), accessibility = true),
         ),
         bad(

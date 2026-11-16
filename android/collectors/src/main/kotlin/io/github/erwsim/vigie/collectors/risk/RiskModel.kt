@@ -11,9 +11,9 @@ enum class RiskLevel(val wire: String) {
     ;
 
     companion object {
-        /** Score ranges: 0..29 low, 30..59 medium, 60..100 high. */
+        /** Score ranges: 0..29 low, 30..69 medium, 70..100 high. */
         const val MEDIUM_FROM = 30
-        const val HIGH_FROM = 60
+        const val HIGH_FROM = 70
         const val MAX_SCORE = 100
 
         /** Highest score of an app capped at "low" (system apps, Vigie itself). */
@@ -37,31 +37,37 @@ enum class RiskLevel(val wire: String) {
  */
 enum class RiskReason(
     val code: String,
+    /** Points when the capability is DECLARED (permission requested, component declared). */
     val points: Int,
+    /** Extra points when the permission behind it is also GRANTED right now (0 for reasons that are not grantable). */
+    val grantedBonus: Int,
     @StringRes val labelRes: Int,
     @StringRes val descRes: Int,
 ) {
-    SIDELOADED("sideloaded", 15, R.string.risk_reason_sideloaded, R.string.risk_reason_sideloaded_desc),
-    UNKNOWN_INSTALLER("unknown_installer", 12, R.string.risk_reason_unknown_installer, R.string.risk_reason_unknown_installer_desc),
-    NO_LAUNCHER_ICON("no_launcher_icon", 12, R.string.risk_reason_no_launcher_icon, R.string.risk_reason_no_launcher_icon_desc),
-    SMS_SEND("sms_send", 20, R.string.risk_reason_sms_send, R.string.risk_reason_sms_send_desc),
-    SMS_READ("sms_read", 12, R.string.risk_reason_sms_read, R.string.risk_reason_sms_read_desc),
-    CALLS("calls", 10, R.string.risk_reason_calls, R.string.risk_reason_calls_desc),
-    ACCESSIBILITY_SERVICE("accessibility_service", 25, R.string.risk_reason_accessibility_service, R.string.risk_reason_accessibility_service_desc),
-    NOTIFICATION_LISTENER("notification_listener", 15, R.string.risk_reason_notification_listener, R.string.risk_reason_notification_listener_desc),
-    DEVICE_ADMIN("device_admin", 15, R.string.risk_reason_device_admin, R.string.risk_reason_device_admin_desc),
-    OVERLAY("overlay", 12, R.string.risk_reason_overlay, R.string.risk_reason_overlay_desc),
-    INSTALL_PACKAGES("install_packages", 20, R.string.risk_reason_install_packages, R.string.risk_reason_install_packages_desc),
-    VPN_SERVICE("vpn_service", 10, R.string.risk_reason_vpn_service, R.string.risk_reason_vpn_service_desc),
-    BOOT_RECEIVER("boot_receiver", 5, R.string.risk_reason_boot_receiver, R.string.risk_reason_boot_receiver_desc),
-    BACKGROUND_LOCATION("background_location", 10, R.string.risk_reason_background_location, R.string.risk_reason_background_location_desc),
-    MIC_CAMERA_BACKGROUND("mic_camera_background", 8, R.string.risk_reason_mic_camera_background, R.string.risk_reason_mic_camera_background_desc),
-    OLD_TARGET_SDK("old_target_sdk", 8, R.string.risk_reason_old_target_sdk, R.string.risk_reason_old_target_sdk_desc),
-    DEBUGGABLE("debuggable", 10, R.string.risk_reason_debuggable, R.string.risk_reason_debuggable_desc),
-    COMBO_BANKING_TROJAN("combo_banking_trojan", 30, R.string.risk_reason_combo_banking_trojan, R.string.risk_reason_combo_banking_trojan_desc),
-    COMBO_SMS_FRAUD("combo_sms_fraud", 25, R.string.risk_reason_combo_sms_fraud, R.string.risk_reason_combo_sms_fraud_desc),
-    COMBO_STALKERWARE("combo_stalkerware", 30, R.string.risk_reason_combo_stalkerware, R.string.risk_reason_combo_stalkerware_desc),
+    SIDELOADED("sideloaded", 35, 0, R.string.risk_reason_sideloaded, R.string.risk_reason_sideloaded_desc),
+    UNKNOWN_INSTALLER("unknown_installer", 25, 0, R.string.risk_reason_unknown_installer, R.string.risk_reason_unknown_installer_desc),
+    NO_LAUNCHER_ICON("no_launcher_icon", 12, 0, R.string.risk_reason_no_launcher_icon, R.string.risk_reason_no_launcher_icon_desc),
+    SMS_SEND("sms_send", 16, 4, R.string.risk_reason_sms_send, R.string.risk_reason_sms_send_desc),
+    SMS_READ("sms_read", 6, 6, R.string.risk_reason_sms_read, R.string.risk_reason_sms_read_desc),
+    CALLS("calls", 3, 7, R.string.risk_reason_calls, R.string.risk_reason_calls_desc),
+    ACCESSIBILITY_SERVICE("accessibility_service", 25, 0, R.string.risk_reason_accessibility_service, R.string.risk_reason_accessibility_service_desc),
+    NOTIFICATION_LISTENER("notification_listener", 15, 0, R.string.risk_reason_notification_listener, R.string.risk_reason_notification_listener_desc),
+    DEVICE_ADMIN("device_admin", 15, 0, R.string.risk_reason_device_admin, R.string.risk_reason_device_admin_desc),
+    OVERLAY("overlay", 12, 0, R.string.risk_reason_overlay, R.string.risk_reason_overlay_desc),
+    INSTALL_PACKAGES("install_packages", 20, 0, R.string.risk_reason_install_packages, R.string.risk_reason_install_packages_desc),
+    VPN_SERVICE("vpn_service", 10, 0, R.string.risk_reason_vpn_service, R.string.risk_reason_vpn_service_desc),
+    BOOT_RECEIVER("boot_receiver", 5, 0, R.string.risk_reason_boot_receiver, R.string.risk_reason_boot_receiver_desc),
+    BACKGROUND_LOCATION("background_location", 6, 4, R.string.risk_reason_background_location, R.string.risk_reason_background_location_desc),
+    MIC_CAMERA_BACKGROUND("mic_camera_background", 3, 5, R.string.risk_reason_mic_camera_background, R.string.risk_reason_mic_camera_background_desc),
+    OLD_TARGET_SDK("old_target_sdk", 8, 0, R.string.risk_reason_old_target_sdk, R.string.risk_reason_old_target_sdk_desc),
+    DEBUGGABLE("debuggable", 10, 0, R.string.risk_reason_debuggable, R.string.risk_reason_debuggable_desc),
+    COMBO_BANKING_TROJAN("combo_banking_trojan", 30, 0, R.string.risk_reason_combo_banking_trojan, R.string.risk_reason_combo_banking_trojan_desc),
+    COMBO_SMS_FRAUD("combo_sms_fraud", 20, 6, R.string.risk_reason_combo_sms_fraud, R.string.risk_reason_combo_sms_fraud_desc),
+    COMBO_STALKERWARE("combo_stalkerware", 30, 0, R.string.risk_reason_combo_stalkerware, R.string.risk_reason_combo_stalkerware_desc),
     ;
+
+    /** True if the reason can be "granted" (it rests on a runtime permission), hence appears in `app.risk.granted`. */
+    val grantable: Boolean get() = grantedBonus > 0
 
     companion object {
         private val BY_CODE = entries.associateBy { it.code }
@@ -105,8 +111,13 @@ data class AppFacts(
     val debuggable: Boolean = false,
 )
 
-data class RiskAssessment(val score: Int, val level: RiskLevel, val reasons: List<RiskReason>) {
+/**
+ * [reasons]: what the app DECLARES (the profile serves before any grant: install, quarantine screen).
+ * [granted]: the subset of [reasons] whose permissions are also granted now (intent versus state).
+ */
+data class RiskAssessment(val score: Int, val level: RiskLevel, val reasons: List<RiskReason>, val granted: List<RiskReason> = emptyList()) {
     val reasonCodes: List<String> get() = reasons.map { it.code }
+    val grantedCodes: List<String> get() = granted.map { it.code }
 }
 
 /** Pure scoring function of `app.risk`: facts in, score / level / reasons out. */
@@ -145,6 +156,11 @@ object RiskScorer {
     /** Target SDK below which an app escapes the protections added since Android 10. */
     const val OLD_TARGET_SDK_BELOW = 30
 
+    /**
+     * Score on DECLARED capabilities (permissions requested, components declared), plus a bonus for the
+     * grantable ones that are also granted. An app that declares SMS permissions without holding them is
+     * rated on its declaration; granting them raises the score a little and adds the reason to `granted`.
+     */
     fun score(f: AppFacts): RiskAssessment {
         val fromStore = f.installer != null && f.installer in STORES
         val userApp = !f.system && !f.isSelf
@@ -157,12 +173,7 @@ object RiskScorer {
         val noLauncher = userApp && !f.launcherActivity
         if (noLauncher) r += RiskReason.NO_LAUNCHER_ICON
 
-        // Capabilities.
-        val smsSend = SMS_SEND.any { it in f.granted }
-        val smsRead = SMS_READ.any { it in f.granted }
-        if (smsSend) r += RiskReason.SMS_SEND
-        if (smsRead) r += RiskReason.SMS_READ
-        if (CALLS.any { it in f.granted }) r += RiskReason.CALLS
+        // Components and special requests: declared only (nothing to grant).
         if (f.accessibilityService) r += RiskReason.ACCESSIBILITY_SERVICE
         if (f.notificationListener) r += RiskReason.NOTIFICATION_LISTENER
         if (f.deviceAdminReceiver) r += RiskReason.DEVICE_ADMIN
@@ -173,23 +184,38 @@ object RiskScorer {
         if (f.vpnService) r += RiskReason.VPN_SERVICE
         val boot = f.bootReceiver && "android.permission.RECEIVE_BOOT_COMPLETED" in f.requested
         if (boot) r += RiskReason.BOOT_RECEIVER
-        if ("android.permission.ACCESS_BACKGROUND_LOCATION" in f.granted) r += RiskReason.BACKGROUND_LOCATION
-        val micCamera = MIC_CAMERA.any { it in f.granted }
-        if (micCamera && (FGS_MIC_CAMERA.any { it in f.requested } || (f.targetSdk < 34 && "android.permission.FOREGROUND_SERVICE" in f.requested))) {
-            r += RiskReason.MIC_CAMERA_BACKGROUND
-        }
         if (userApp && f.targetSdk < OLD_TARGET_SDK_BELOW) r += RiskReason.OLD_TARGET_SDK
         if (userApp && f.debuggable) r += RiskReason.DEBUGGABLE
 
+        // Permission-based reasons, evaluated twice: on what is requested, and on what is granted.
+        val declared = permissionReasons(f, f.requested, boot, noLauncher, overlay)
+        val held = permissionReasons(f, f.granted, boot, noLauncher, overlay)
+        r += declared
+        val granted = RiskReason.entries.filter { it.grantable && it in held && it in declared }
+
+        val reasons = RiskReason.entries.filter { it in r } // Stable order: the table's.
+        var score = minOf(RiskLevel.MAX_SCORE, reasons.sumOf { it.points } + granted.sumOf { it.grantedBonus })
+        if (f.system || f.isSelf) score = minOf(score, RiskLevel.LOW_MAX)
+        return RiskAssessment(score, RiskLevel.of(score), reasons, granted)
+    }
+
+    /** The reasons that rest on permissions, judged on [perms] (the requested or the granted ones). */
+    private fun permissionReasons(f: AppFacts, perms: Set<String>, boot: Boolean, noLauncher: Boolean, overlay: Boolean): Set<RiskReason> {
+        val r = LinkedHashSet<RiskReason>()
+        val smsSend = SMS_SEND.any { it in perms }
+        val smsRead = SMS_READ.any { it in perms }
+        if (smsSend) r += RiskReason.SMS_SEND
+        if (smsRead) r += RiskReason.SMS_READ
+        if (CALLS.any { it in perms }) r += RiskReason.CALLS
+        if ("android.permission.ACCESS_BACKGROUND_LOCATION" in perms) r += RiskReason.BACKGROUND_LOCATION
+        if (MIC_CAMERA.any { it in perms } && (FGS_MIC_CAMERA.any { it in f.requested } || (f.targetSdk < 34 && "android.permission.FOREGROUND_SERVICE" in f.requested))) {
+            r += RiskReason.MIC_CAMERA_BACKGROUND
+        }
         // The three combinations of the contract.
         if (f.accessibilityService && overlay && (smsRead || f.notificationListener)) r += RiskReason.COMBO_BANKING_TROJAN
         if (smsSend && boot && !f.defaultSmsApp) r += RiskReason.COMBO_SMS_FRAUD
-        val locationOrMic = LOCATION.any { it in f.granted } || "android.permission.RECORD_AUDIO" in f.granted
+        val locationOrMic = LOCATION.any { it in perms } || "android.permission.RECORD_AUDIO" in perms
         if (noLauncher && locationOrMic && boot) r += RiskReason.COMBO_STALKERWARE
-
-        val reasons = RiskReason.entries.filter { it in r } // Stable order: the table's.
-        var score = minOf(RiskLevel.MAX_SCORE, reasons.sumOf { it.points })
-        if (f.system || f.isSelf) score = minOf(score, RiskLevel.LOW_MAX)
-        return RiskAssessment(score, RiskLevel.of(score), reasons)
+        return r
     }
 }

@@ -65,7 +65,9 @@ class RiskScorerTest {
         cases.forEach { (reason, f) ->
             val a = RiskScorer.score(f)
             assertEquals("${reason.code} alone", listOf(reason), a.reasons)
-            assertEquals(reason.code, reason.points, a.score)
+            // `facts()` both requests and grants what it is given: a grantable reason also earns its bonus.
+            assertEquals(reason.code, reason.points + if (reason.grantable) reason.grantedBonus else 0, a.score)
+            assertEquals(reason.code, if (reason.grantable) listOf(reason) else emptyList<RiskReason>(), a.granted)
         }
         // The three combinations (and only they) are missing above: they need several facts at once.
         assertEquals(RiskReason.entries.size - 3, cases.size)
@@ -105,7 +107,8 @@ class RiskScorerTest {
         val f = facts(
             installer = null, granted = setOf(p + "SEND_SMS"), requested = setOf(p + "RECEIVE_BOOT_COMPLETED"), boot = true,
         )
-        val expected = RiskReason.SIDELOADED.points + RiskReason.SMS_SEND.points + RiskReason.BOOT_RECEIVER.points + RiskReason.COMBO_SMS_FRAUD.points
+        val expected = RiskReason.SIDELOADED.points + RiskReason.SMS_SEND.points + RiskReason.SMS_SEND.grantedBonus + RiskReason.BOOT_RECEIVER.points +
+            RiskReason.COMBO_SMS_FRAUD.points + RiskReason.COMBO_SMS_FRAUD.grantedBonus
         assertEquals(expected, RiskScorer.score(f).score)
     }
 
@@ -144,8 +147,47 @@ class RiskScorerTest {
         assertEquals(RiskLevel.LOW, RiskLevel.of(0))
         assertEquals(RiskLevel.LOW, RiskLevel.of(29))
         assertEquals(RiskLevel.MEDIUM, RiskLevel.of(30))
-        assertEquals(RiskLevel.MEDIUM, RiskLevel.of(59))
-        assertEquals(RiskLevel.HIGH, RiskLevel.of(60))
+        assertEquals(RiskLevel.MEDIUM, RiskLevel.of(69))
+        assertEquals(RiskLevel.HIGH, RiskLevel.of(70))
+    }
+
+    // ---- Declared capabilities versus granted ones (contract §11.4) ----
+
+    private val smsDeclared = setOf(p + "SEND_SMS", p + "READ_SMS", p + "RECEIVE_SMS", p + "RECEIVE_BOOT_COMPLETED")
+
+    @Test
+    fun theProfileRestsOnDeclaredCapabilitiesAndGrantedOnesAreListedApart() {
+        // Declared, nothing granted: the reasons and the combination are there from the installation.
+        val declaredOnly = AppFacts("test.app", installer = null, requested = smsDeclared, bootReceiver = true)
+        val a = RiskScorer.score(declaredOnly)
+        assertEquals(listOf(RiskReason.SIDELOADED, RiskReason.SMS_SEND, RiskReason.SMS_READ, RiskReason.BOOT_RECEIVER, RiskReason.COMBO_SMS_FRAUD), a.reasons)
+        assertTrue(a.granted.isEmpty())
+        assertEquals(RiskLevel.HIGH, a.level) // An SMS-fraud profile is high BEFORE any grant (and stays so if a guard prevents it).
+        // Same app once SEND_SMS is granted: same reasons, a little more, and the grant is told.
+        val granted = RiskScorer.score(declaredOnly.copy(granted = setOf(p + "SEND_SMS")))
+        assertEquals(a.reasons, granted.reasons)
+        assertEquals(listOf(RiskReason.SMS_SEND, RiskReason.COMBO_SMS_FRAUD), granted.granted)
+        assertEquals(a.score + RiskReason.SMS_SEND.grantedBonus + RiskReason.COMBO_SMS_FRAUD.grantedBonus, granted.score)
+        // Granting READ_SMS only: sms_read is granted, the sending combination is not.
+        assertEquals(listOf(RiskReason.SMS_READ), RiskScorer.score(declaredOnly.copy(granted = setOf(p + "READ_SMS"))).granted)
+        // `granted` is always a subset of `reasons`; special accesses and components never appear in it.
+        val all = RiskScorer.score(declaredOnly.copy(granted = smsDeclared, accessibilityService = true, requested = smsDeclared + (p + "SYSTEM_ALERT_WINDOW")))
+        assertTrue(all.reasons.containsAll(all.granted))
+        assertTrue(all.granted.all { it.grantable })
+    }
+
+    @Test
+    fun aStoreMessengerOrBankDeclaringSmsPermissionsIsNotHigh() {
+        // Declares SMS send/read, calls and microphone, holds calls and microphone but NOT the SMS permissions.
+        val messenger = AppFacts(
+            "test.messenger", installer = "com.android.vending",
+            requested = smsDeclared + setOf(p + "CALL_PHONE", p + "READ_CALL_LOG", p + "RECORD_AUDIO", p + "CAMERA", p + "FOREGROUND_SERVICE_MICROPHONE"),
+            granted = setOf(p + "CALL_PHONE", p + "READ_CALL_LOG", p + "RECORD_AUDIO", p + "CAMERA"), bootReceiver = true,
+        )
+        assertEquals(RiskLevel.MEDIUM, RiskScorer.score(messenger).level)
+        // A bank that declares SMS reading (OTP autofill), no boot receiver.
+        val bank = AppFacts("test.bank", installer = "com.android.vending", requested = setOf(p + "READ_SMS", p + "RECEIVE_SMS", p + "CAMERA"), granted = setOf(p + "CAMERA"))
+        assertEquals(RiskLevel.LOW, RiskScorer.score(bank).level)
     }
 
     @Test
@@ -206,11 +248,13 @@ class RiskScorerTest {
         RiskCorpus.ALL.forEach { println("  %-34s %-9s %3d %-6s %s".format(it.id, it.kind, RiskScorer.score(it.facts).score, level(it), RiskScorer.score(it.facts).reasonCodes)) }
         // What the owner relies on: the four families the contract targets are all at least "medium", and the
         // three canonical ones (banking trojan, SMS fraud, full spyware) are "high".
-        assertEquals(listOf("espion_discret_mais_avec_icone", "installateur_charge_utile_boutique"), badLow)
-        assertTrue(listOf("troyen_bancaire", "fraude_sms", "espion_sans_icone", "espion_minimal").all { id -> level(bad.first { it.id == id }) == RiskLevel.HIGH })
+        assertEquals(listOf("installateur_charge_utile_boutique"), badLow)
+        assertTrue(listOf("troyen_bancaire", "fraude_sms", "fraude_sms_avant_octroi", "espion_sans_icone", "espion_minimal", "espion_avant_octroi").all { id -> level(bad.first { it.id == id }) == RiskLevel.HIGH })
         assertEquals(setOf("identification_appelant", "controle_parental", "antivirus", "automatisation"), legitHigh.toSet())
+        // A store messenger that declares SMS rights without holding them is noisy (medium) but never a false alarm.
+        assertEquals(RiskLevel.MEDIUM, level(legit.first { it.id == "messagerie_declare_sms" }))
         // No ordinary app (messaging, bank, keyboard, browser, launcher, VPN, dialer, authenticator, files) is above "low".
-        val ordinary = setOf("messagerie_chiffree", "banque", "clavier_tiers", "navigateur", "lanceur", "vpn", "composeur_tiers", "authentificateur", "gestionnaire_fichiers", "navigation_hors_ligne", "banque_ancienne")
+        val ordinary = setOf("messagerie_chiffree", "banque", "clavier_tiers", "navigateur", "lanceur", "vpn", "composeur_tiers", "authentificateur", "gestionnaire_fichiers", "navigation_hors_ligne", "banque_ancienne", "banque_declare_sms")
         assertTrue(legit.filter { it.id in ordinary }.all { level(it) == RiskLevel.LOW })
     }
 
@@ -236,9 +280,10 @@ class RiskScorerTest {
     fun readmeTableAgreesWithTheCode() {
         val text = moduleFile("../README.md").readText()
         for (r in RiskReason.entries) {
-            val row = Regex("\\|\\s*`${r.code}`\\s*\\|\\s*(\\d+)\\s*\\|").find(text)
-            assertTrue("README row of ${r.code} (| `${r.code}` | ${r.points} | …)", row != null)
-            assertEquals("points of ${r.code} in the README", r.points, row!!.groupValues[1].toInt())
+            val row = Regex("\\|\\s*`${r.code}`\\s*\\|\\s*(\\d+)\\s*\\|\\s*\\+?(\\d+)\\s*\\|").find(text)
+            assertTrue("README row of ${r.code} (| `${r.code}` | ${r.points} | +${r.grantedBonus} | …)", row != null)
+            assertEquals("declared points of ${r.code} in the README", r.points, row!!.groupValues[1].toInt())
+            assertEquals("granted bonus of ${r.code} in the README", r.grantedBonus, row.groupValues[2].toInt())
         }
     }
 }

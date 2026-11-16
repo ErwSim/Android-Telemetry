@@ -173,6 +173,7 @@ object Contract {
         "app.risk" to mapOf(
             "package" to S, "label" to S, "version_code" to I, "installer" to S, "from_store" to B, "score" to I,
             "level" to oneOf("low", "medium", "high"), "reasons" to Field(Kind.STRINGS, RISK_REASONS),
+            "granted" to Field(Kind.STRINGS, RISK_REASONS),
         ),
         "app.role" to mapOf("role" to S, "old" to S, "new" to S),
         "app.ops" to mapOf(
