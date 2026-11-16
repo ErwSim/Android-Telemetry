@@ -1,1201 +1,1194 @@
-# Vigie Agent (Android)
+# Watchpost Agent (Android)
 
-Agent de télémétrie de sécurité installé par le propriétaire sur **son propre** téléphone (cible : Galaxy S25+,
-Android 16/17, One UI 8/9, non rooté), promu **Device Owner** par ADB. Il collecte des événements, les garde
-dans un tampon hors-ligne et les envoie par lots (HTTPS + certificat client) au collecteur Vigie enrôlé.
+Security-telemetry agent that the user installs on their **own** phone (target: Android 16/17, Samsung One UI
+8/9, not rooted), promoted to **Device Owner** over ADB. It collects events, keeps them in an offline buffer and
+uploads them in batches (HTTPS + client certificate) to the enrolled Watchpost collector.
 
-Principes (voir `../docs/ARCHITECTURE.md`) : notification permanente et icône visible, aucun envoi ailleurs que
-vers l'adresse enrôlée, le serveur ne peut transmettre que des commandes d'une liste fermée (sonner, vibrer,
-localiser, verrouiller, effacer ; les sensibles signées par un code qu'il ne connaît pas, canal coupé par
-défaut), aucune dépendance Google (ni Play Services, ni Firebase, ni ML Kit ; les modes de localisation
-« réseau » et « fusionné » passent par les Services Google Play sur choix explicite), pas de contenu privé de
-tiers, chaque collecteur désactivable, tout réversible.
+Principles (see `../docs/ARCHITECTURE.md`): permanent notification and visible icon, nothing sent anywhere
+except the enrolled address, the server can only send commands from a closed list (ring, vibrate, locate,
+lock, erase; the sensitive ones signed with a passphrase it does not know, channel off by default), no Google
+dependency (no Play Services, Firebase or ML Kit; the "network" and "fused" location modes go through Google
+Play services only when you explicitly choose them), no private third-party content, every collector can be
+disabled, everything is reversible.
 
-Développeurs (ajout de collecteurs, module Device Owner) : lire **`ARCHITECTURE-CODE.md`**.
+Developers (adding collectors, Device Owner module): read **`ARCHITECTURE-CODE.md`**.
 
-## Contenu de cette version
+## Contents of this version
 
-« Testé » signifie ici : tests JVM dans l'environnement de développement. **Rien n'a été exécuté sur un
-téléphone ni sur un émulateur** (voir la dernière section).
+"Tested" here means: JVM tests. **Nothing has been run on a phone or on an emulator** (see the last section).
 
-| Élément | État |
+| Item | Status |
 |---|---|
-| Tampon Room (`seq` transactionnel, plafond 200 Mio / 30 j, purge « plus anciens de plus faible sévérité » + `agent.buffer_overflow`) ; purge par âge protégée contre un saut de l'horloge murale (`AgeHorizon`) | fait, testé (JVM) |
-| Horodatage d'origine des événements relevés après coup (`app.foreground`, `net.dns`, `net.connect`, `security.log`) | fait, testé |
-| Envoi : lots ≤ 500 événements et ≤ 1 Mio gzip, suppression après accusé, 400 (lot empoisonné : bissection) / 401 / 413 / 429 / 5xx, `Retry-After`, backoff avec gigue, « gros volumes en Wi-Fi seulement », reprise au retour du réseau | fait, testé (MockWebServer) ; **jamais exercé sur appareil ni contre un vrai serveur en 400** |
-| Enrôlement `.vigie` : clé dans l'Android Keystore, jeton chiffré, mTLS, épinglage de l'AC serveur, test `GET /api/v1/ping`, désenrôlement | fait ; analyse et mTLS testés, Keystore Android **non testé** |
-| Service de premier plan (`specialUse` + `location`), démarrage au boot et après mise à jour, redémarrage (sticky + maintenance 15 min), `agent.started/stopped/heartbeat/collector_error/config_changed` | fait, non testé sur appareil |
-| 25 collecteurs : 22 sans privilège (`:collectors`, dont `notifications` qui dépend de l'APK compagnon, et `app_risk`, `app_role`, `app_ops` du contrat §11.2) et 3 Device Owner (`:policy`), voir « Collecteurs » | faits ; logique et conformité au contrat testées, comportement réel non testé |
-| Commandes à distance (contrat §8) : vérification complète (signature HMAC, anti-rejeu, expiration, verrouillage), canal SSE ou interrogation, sonner / vibrer / localiser / verrouiller + message / effacer, écran « Commandes à distance » | fait ; vérification, canal (MockWebServer) et garde-fous de l'effacement testés (JVM) ; **jamais exécuté sur appareil**, consommation **non mesurée** |
-| Modes de localisation (contrat §10) : GPS seul (défaut), GPS + réseau, fusionné, avec repli | fait ; logique testée, fournisseurs réels non testés |
-| Device Owner : récepteur d'administration, auto-attribution des permissions et protection contre l'arrêt forcé (avec `security.policy`), `agent.tamper`, retrait volontaire sans fausse alerte | fait ; logique testée, non testé sur appareil |
-| Politique Device Owner : profils, DNS privé imposé et repli, paquets, permissions, restrictions, réglages, VPN permanent, « Tout rétablir », retrait du Device Owner, issue de secours ADB | fait ; moteur testé contre une passerelle factice, non testé sur appareil |
-| Gardes de capacités (contrat §11.1) : SMS, appels, accessibilité, claviers, quarantaine des nouvelles applications, listes d'exceptions éditables (réglage « liste de paquets »), écran « Applications en quarantaine », notifications | fait ; testé contre la passerelle factice (dont plantage, état illisible, « Tout rétablir » après les 32 combinaisons) ; **jamais exécuté sur appareil** |
-| Interface Material 3 (Accueil, Collecteurs avec réglages par collecteur, Journal local, Réglages, Enrôlement, Politique) | faite, non testée sur appareil |
+| Room buffer (transactional `seq`, cap 200 MiB / 30 days, "oldest of lowest severity" purge + `agent.buffer_overflow`); age purge protected against a wall-clock jump (`AgeHorizon`) | done, tested (JVM) |
+| Origin timestamp of events read after the fact (`app.foreground`, `net.dns`, `net.connect`, `security.log`) | done, tested |
+| Upload: batches ≤ 500 events and ≤ 1 MiB gzip, deletion after acknowledgement, 400 (poisoned batch: bisection) / 401 / 413 / 429 / 5xx, `Retry-After`, jittered backoff, "large volumes on Wi-Fi only", resume when the network returns | done, tested (MockWebServer); **never exercised on a device nor against a real server returning 400** |
+| `.watchpost` enrollment: key in the Android Keystore, encrypted token, mTLS, server CA pinning, `GET /api/v1/ping` test, unenrollment | done; parsing and mTLS tested, Android Keystore **not tested** |
+| Foreground service (`specialUse` + `location`), start at boot and after an update, restart (sticky + 15 min maintenance), `agent.started/stopped/heartbeat/collector_error/config_changed` | done, not tested on a device |
+| 25 collectors: 22 without privilege (`:collectors`, including `notifications`, which depends on the companion APK, and `app_risk`, `app_role`, `app_ops` of contract §11.2) and 3 Device Owner ones (`:policy`), see "Collectors" | done; logic and contract conformance tested, real behavior not tested |
+| Remote commands (contract §8): full verification (HMAC signature, anti-replay, expiry, lockout), SSE channel or polling, ring / vibrate / locate / lock + message / erase, "Remote commands" screen | done; verification, channel (MockWebServer) and wipe safeguards tested (JVM); **never run on a device**, consumption **not measured** |
+| Location modes (contract §10): GPS only (default), GPS + network, fused, with fallback | done; logic tested, real providers not tested |
+| Device Owner: admin receiver, permission self-grant and force-stop protection (with `security.policy`), `agent.tamper`, voluntary removal without false alert | done; logic tested, not tested on a device |
+| Device Owner policy: profiles, enforced Private DNS and fallback, packages, permissions, restrictions, settings, always-on VPN, "Restore everything", Device Owner removal, ADB rescue | done; engine tested against a fake gateway, not tested on a device |
+| Capability guards (contract §11.1): SMS, calls, accessibility, keyboards, quarantine of new apps, editable exception lists ("package list" setting), "Quarantined apps" screen, notifications | done; tested against the fake gateway (including crash, unreadable state, "Restore everything" after the 32 combinations); **never run on a device** |
+| Material 3 interface (Home, Collectors with per-collector settings, Local event log, Settings, Enrollment, Policy) | done, not tested on a device |
 
-## Versions et outillage
+## Versions and tooling
 
-| Élément | Version | Remarque |
+| Item | Version | Note |
 |---|---|---|
-| Gradle (wrapper) | 9.9.1 | `gradle/wrapper/` versionné |
-| Android Gradle Plugin | 9.5.1 | Kotlin intégré à AGP (pas de plugin `kotlin-android` appliqué) |
+| Gradle (wrapper) | 9.9.1 | `gradle/wrapper/` is versioned |
+| Android Gradle Plugin | 9.5.1 | Kotlin built into AGP (no `kotlin-android` plugin applied) |
 | Kotlin | 2.4.21 | KSP 2.3.14 (Room) |
-| `compileSdk` / `targetSdk` / `minSdk` | 37 / 37 / 36 | plateforme SDK `android-37.0`, build-tools 36.0.0 |
-| JDK | 17 minimum (vérifié avec 21) | |
-| Bibliothèques | Room 2.8.5, WorkManager 2.12.0, OkHttp 5.5.1, kotlinx-serialization 1.13.0, coroutines 1.11.0, Compose BOM 2026.09.00 (Material 3) | AndroidX uniquement côté Google |
+| `compileSdk` / `targetSdk` / `minSdk` | 37 / 37 / 36 | SDK platform `android-37.0`, build-tools 36.0.0 |
+| JDK | 17 minimum (verified with 21) | |
+| Libraries | Room 2.8.5, WorkManager 2.12.0, OkHttp 5.5.1, kotlinx-serialization 1.13.0, coroutines 1.11.0, Compose BOM 2026.09.00 (Material 3) | AndroidX only on the Google side |
 
-## Construire
+## Building
 
-Prérequis : JDK 17+, SDK Android (`ANDROID_HOME`, ou `sdk.dir=` dans `android/local.properties`) avec
-`platforms;android-37.0` et `build-tools;36.0.0` (AGP les télécharge si les licences sont acceptées).
+Prerequisites: JDK 17+, Android SDK (`ANDROID_HOME`, or `sdk.dir=` in `android/local.properties`) with
+`platforms;android-37.0` and `build-tools;36.0.0` (AGP downloads them if the licenses are accepted).
 
 ```bash
 cd android
-./gradlew assembleDebug                 # Windows : .\gradlew.bat assembleDebug
-./gradlew lint test                     # vérifications (lint Android + tests JVM)
+./gradlew assembleDebug                 # Windows: .\gradlew.bat assembleDebug
+./gradlew lint test                     # checks (Android lint + JVM tests)
 ```
 
-### Signature de la version release (une seule fois, puis à conserver)
+### Signing the release build (once, then keep it)
 
 ```bash
-./scripts/generate-keystore.sh          # Windows : .\scripts\generate-keystore.ps1
+./scripts/generate-keystore.sh          # Windows: .\scripts\generate-keystore.ps1
 ./gradlew assembleRelease               # → app/build/outputs/apk/release/app-release.apk
 ```
 
-Le script crée `android/keystore/vigie-release.jks` et `android/keystore.properties` (tous deux ignorés par
-git). On peut aussi fournir `VIGIE_KEYSTORE_FILE`, `VIGIE_KEYSTORE_PASSWORD`, `VIGIE_KEY_ALIAS`,
-`VIGIE_KEY_PASSWORD` dans l'environnement. Sans clé, `assembleRelease` produit un APK **non signé**.
+The script creates `android/keystore/watchpost-release.jks` and `android/keystore.properties` (both ignored by
+git). You can also provide `WATCHPOST_KEYSTORE_FILE`, `WATCHPOST_KEYSTORE_PASSWORD`, `WATCHPOST_KEY_ALIAS`,
+`WATCHPOST_KEY_PASSWORD` in the environment (the script itself reads `WATCHPOST_KEYSTORE_PASSWORD` as the
+password to use instead of a random one). Without a key, `assembleRelease` produces an **unsigned** APK.
 
-> **Sauvegardez la clé (chiffrée, hors de l'ordinateur).** Android n'accepte une mise à jour que signée par
-> la même clé. Pour un Device Owner, il n'y a pas de contournement : sans la clé d'origine, il faut retirer le
-> Device Owner (ou réinitialiser le téléphone) avant d'installer une version signée autrement. L'APK est
-> signé en schéma v3 (suffisant pour Android 9+, et permet une rotation de clé future).
+> **Back up the key (encrypted, off the computer).** Android only accepts an update signed by the same key.
+> For a Device Owner there is no workaround: without the original key, you have to remove the Device Owner (or
+> factory-reset the phone) before installing a build signed differently. The APK is signed with scheme v3
+> (enough for Android 9+, and it allows a future key rotation).
 
-### Paramètres de construction
+### Build parameters
 
-| Paramètre | Défaut | Rôle |
+| Parameter | Default | Role |
 |---|---|---|
-| `-Pvigie.testOnly=true\|false` | `true` | `android:testOnly`. Impose `adb install -t` (les scripts le font). `true` garde un dernier recours si l'app ne démarre plus : `adb shell dpm remove-active-admin` (voir « Retirer le Device Owner »). `false` : seul Vigie (écran Politique ou issue de secours ADB) pourra retirer le rôle, ou une réinitialisation. |
-| `-Pvigie.versionCode=N` | `1` | À **augmenter** à chaque mise à jour. |
-| `-Pvigie.versionName=x.y.z` | `0.1.0` | Version affichée et envoyée (`agent_version`). |
+| `-Pwatchpost.testOnly=true\|false` | `true` | `android:testOnly`. Requires `adb install -t` (the scripts do it). `true` keeps a last resort if the app no longer starts: `adb shell dpm remove-active-admin` (see "Removing the Device Owner"). `false`: only Watchpost (Policy screen or ADB rescue) can remove the role, or a factory reset. |
+| `-Pwatchpost.versionCode=N` | `1` | Must be **increased** at every update. |
+| `-Pwatchpost.versionName=x.y.z` | `0.1.0` | Displayed and sent version (`agent_version`). |
 
-## Installer et activer
+## Installing and enabling
 
-Tous les scripts sont dans `android/scripts/`, en double : `*.sh` (Linux/macOS) et `*.ps1` (Windows
-PowerShell). Les `.ps1` ne sont pas signés : Windows les refuse avec sa politique d'exécution par défaut.
-Lancez-les ainsi, sans rien changer à la configuration de la machine (la dérogation ne vaut que pour ce
-processus) : `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-apk.ps1 [options]`.
-Un chemin de fichier passé à un script (`install-apk`, `push-enrollment`) est relatif au dossier d'où vous
-le lancez. Ils exigent `adb` (Android SDK Platform-Tools) dans le `PATH` et un téléphone en débogage USB.
-Avec plusieurs appareils connectés : `export ANDROID_SERIAL=…` / `$env:ANDROID_SERIAL = '…'`.
+All the scripts are in `android/scripts/`, in two parallel sets: `*.sh` (Linux/macOS) and `*.ps1` (Windows
+PowerShell). The `.ps1` files are not signed: Windows refuses them with its default execution policy.
+Launch them like this, without changing anything in the machine's configuration (the exception only applies
+to that process): `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-apk.ps1 [options]`.
+A file path passed to a script (`install-apk`, `push-enrollment`) is relative to the directory you launch it
+from. The scripts need `adb` (Android SDK Platform-Tools) in the `PATH` and a phone with USB debugging.
+With several devices connected: `export ANDROID_SERIAL=…` / `$env:ANDROID_SERIAL = '…'`. The scripts that ask
+for confirmation expect a typed `yes` or `no`.
 
-1. **Préparer le téléphone** : Options de développement › Débogage USB ; désactiver temporairement le
-   « Blocage automatique » (Auto Blocker) de Samsung, qui bloque les commandes USB.
-2. **Installer** : `./scripts/install-apk.sh [app.apk]` (`adb install -r -t`).
-3. **Activer le Device Owner** : `./scripts/enable-device-owner.sh`. Le script vérifie qu'aucun autre
-   propriétaire n'existe, qu'il n'y a qu'un utilisateur (pas de Dossier sécurisé, Dual Messenger, espace
-   privé, profil pro, invité) et **aucun compte** : Android refuse sinon. Retirez temporairement les comptes
-   (Google, Samsung, messageries…), activez, puis rajoutez-les : le Device Owner ne l'interdit pas.
-   Effets connus du mode Device Owner : sauvegarde Android coupée (réactivable), Dossier sécurisé, Dual
-   Messenger et espace privé indisponibles, mention « appareil géré ».
-4. **Ouvrir Vigie** : en Device Owner, l'app s'accorde ses permissions d'exécution (localisation,
-   notifications, Bluetooth, téléphone…) et active la protection contre l'arrêt forcé (chaque action émet
-   `security.policy`). Chaque permission n'est auto-accordée qu'**une fois** par activation du Device Owner :
-   si vous en retirez une ensuite dans les Paramètres, Vigie ne la reprend pas d'elle-même (le collecteur
-   passe « indisponible », `agent.tamper` `permission_revoked` est émis, l'onglet Collecteurs propose de la
-   redonner). Sans Device Owner (mode dégradé), accorder les permissions depuis l'onglet
-   Collecteurs. Dans les deux cas, `./scripts/grant-adb-permissions.sh` accorde aussi celles qui ne
-   s'obtiennent que par ADB : accès à l'utilisation (`PACKAGE_USAGE_STATS` + app-op : `net_usage`,
-   `foreground`), `WRITE_SECURE_SETTINGS` (réglage anti-pistage de la politique), `DUMP` (attribution
-   expérimentale caméra/micro, désactivée par défaut). En mode dégradé il accorde aussi les permissions
-   d'exécution (`BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, `READ_PHONE_STATE`, localisation…).
-5. **Batterie** : `./scripts/battery-exemptions.sh`, puis à la main sur Samsung : Paramètres › Batterie ›
-   Limites d'utilisation en arrière-plan › Applications jamais en veille › Vigie.
-6. **Réactiver** le Blocage automatique si souhaité (son interaction avec un Device Owner tiers n'est pas
-   vérifiée, voir la recherche plateforme).
+1. **Prepare the phone**: Developer options › USB debugging; temporarily turn off Samsung's "Auto Blocker",
+   which blocks USB commands.
+2. **Install**: `./scripts/install-apk.sh [app.apk]` (`adb install -r -t`).
+3. **Enable the Device Owner**: `./scripts/enable-device-owner.sh`. The script checks that no other owner
+   exists, that there is a single user (no Secure Folder, Dual Messenger, Private Space, work profile, guest) and
+   **no account**: Android refuses otherwise. Temporarily remove the accounts (Google, Samsung, messengers…),
+   enable, then add them back: the Device Owner does not forbid them. Known effects of Device Owner mode:
+   Android backup turned off (can be turned back on), Secure Folder, Dual Messenger and Private Space
+   unavailable, "managed device" mention.
+4. **Open Watchpost**: as Device Owner, the app grants itself its runtime permissions (location,
+   notifications, Bluetooth, phone…) and turns on force-stop protection (each action emits
+   `security.policy`). Each permission is auto-granted only **once** per Device Owner activation:
+   if you remove one afterwards in Settings, Watchpost does not take it back by itself (the collector
+   becomes "unavailable", `agent.tamper` `permission_revoked` is emitted, the Collectors tab offers to
+   grant it again). Without Device Owner (degraded mode), grant the permissions from the Collectors tab. In
+   both cases, `./scripts/grant-adb-permissions.sh` also grants those that can only be obtained over ADB:
+   usage access (`PACKAGE_USAGE_STATS` + app-op: `net_usage`, `foreground`), `WRITE_SECURE_SETTINGS` (the
+   policy's anti-tracking setting), `DUMP` (experimental camera/microphone attribution, off by default). In
+   degraded mode it also grants the runtime permissions (`BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`,
+   `READ_PHONE_STATE`, location…).
+5. **Battery**: `./scripts/battery-exemptions.sh`, then by hand on Samsung: Settings › Battery ›
+   Background usage limits › Never sleeping apps › Watchpost.
+6. **Turn Auto Blocker back on** if you wish (its interaction with a third-party Device Owner has not been
+   verified, see the platform research).
 
-## Enrôler
+## Enrolling
 
-1. Sur le serveur : `sudo ./enroll.sh s25` depuis `infra/` (installation Docker Compose, produit
-   `./s25.vigie`) ; avec le collecteur lancé seul : `vigie-collector enroll --name s25 --out s25.vigie`.
-2. Copier par câble : `./scripts/push-enrollment.sh chemin/vers/s25.vigie` (→ `Téléchargements` ; le chemin
-   est relatif au dossier d'où vous lancez le script).
-3. Dans l'app : Réglages › Enrôlement › « Importer un fichier .vigie », vérifier le résumé, « Enrôler ».
-   La clé privée est importée dans l'Android Keystore (non exportable) puis oubliée ; le jeton est chiffré
-   par une clé AES du Keystore ; un test `GET /api/v1/ping` est lancé ; l'app tente de supprimer le fichier.
-4. Supprimer toutes les copies du fichier : `./scripts/push-enrollment.sh --remove s25.vigie` et sur le PC.
+1. On the server: `sudo ./enroll.sh phone` from `infra/` (Docker Compose installation, produces
+   `./phone.watchpost`); with the collector running on its own:
+   `watchpost-collector enroll --name phone --out phone.watchpost`.
+2. Copy it over the cable: `./scripts/push-enrollment.sh path/to/phone.watchpost` (→ `Download`; the path is
+   relative to the directory you launch the script from).
+3. In the app: Settings › Enrollment › "Import a .watchpost file", check the summary, "Enroll this device".
+   The private key is imported into the Android Keystore (non-exportable) then forgotten; the token is
+   encrypted by a Keystore AES key; a `GET /api/v1/ping` test is run; the app tries to delete the file.
+4. Delete every copy of the file: `./scripts/push-enrollment.sh --remove phone.watchpost` and on the PC.
 
-Si `server_ca_pem` est présent, seule cette AC est acceptée pour le serveur. Sinon, seules les AC du système
-(jamais celles ajoutées par l'utilisateur). Les redirections HTTP sont refusées. Avant l'enrôlement, les
-événements restent sur le téléphone (dans la limite du tampon). « Désenrôler » efface clé, jeton et
-événements en attente ; la collecte locale continue.
+If `server_ca_pem` is present, only that CA is accepted for the server. Otherwise, only the system CAs
+(never those added by the user). HTTP redirects are refused. Before enrollment, events stay on the phone (within
+the buffer limit). "Unenroll" erases key, token and pending events; local collection continues.
 
-**Renouveler sans désenrôler** (le certificat client expire au bout de 2 ans ; l'écran Enrôlement affiche
-la date et la signale 30 jours avant) : produire un nouveau fichier `.vigie` sur le serveur, puis
-Enrôlement › « Importer un nouveau fichier .vigie ». Avant de valider, l'écran dit ce que deviennent les
-événements en attente :
+**Renewing without unenrolling** (the client certificate expires after 2 years; the Enrollment screen shows
+the date and flags it 30 days ahead): produce a new `.watchpost` file on the server, then
+Enrollment › "Import a new .watchpost file". Before you confirm, the screen says what happens to the pending
+events:
 
-| Nouveau fichier | Tampon |
+| New file | Buffer |
 |---|---|
-| même adresse d'ingestion, même `device_id` (renouvellement) | conservé |
-| même adresse, autre `device_id` | conservé, envoyé sous le nouvel identifiant (`agent.config_changed` `enrollment.device_id` le signale) |
-| autre adresse d'ingestion | **effacé** : rien de ce qui a été collecté pour un serveur n'est envoyé à un autre |
+| same ingestion address, same `device_id` (renewal) | kept |
+| same address, other `device_id` | kept, sent under the new identifier (`agent.config_changed` `enrollment.device_id` flags it) |
+| other ingestion address | **erased**: nothing collected for one server is ever sent to another |
 
-Pour renouveler le certificat d'un appareil (valable 2 ans) sans scinder son historique, le serveur émet un
-fichier pour le **même** identifiant : `sudo ./enroll.sh --renew <nom|dev_…>` depuis `infra/` (ou
-`vigie-collector renew <device_id> --out <fichier.vigie>`). L'ancien jeton et l'ancien certificat restent
-acceptés jusqu'au premier envoi avec les nouveaux. `enroll` sans `--renew` crée un nouvel appareil (deuxième
-cas du tableau). Le jeton (512 caractères ASCII visibles au plus) et l'identifiant sont validés à l'import.
+To renew a device's certificate (valid for 2 years) without splitting its history, the server issues a file
+for the **same** identifier: `sudo ./enroll.sh --renew <name|dev_…>` from `infra/` (or
+`watchpost-collector renew <device_id> --out <file.watchpost>`). The old token and the old certificate stay
+accepted until the first upload with the new ones. `enroll` without `--renew` creates a new device (second
+case of the table). The token (512 visible ASCII characters at most) and the identifier are validated at import.
 
-## Mettre à jour
+## Updating
 
 ```bash
-./gradlew assembleRelease -Pvigie.versionCode=2 -Pvigie.versionName=0.2.0
+./gradlew assembleRelease -Pwatchpost.versionCode=2 -Pwatchpost.versionName=0.2.0
 ./scripts/install-apk.sh
 ```
 
-Même clé de signature obligatoire, `versionCode` strictement croissant. L'agent redémarre seul après la mise
-à jour (`MY_PACKAGE_REPLACED`). Les données (tampon, enrôlement, réglages) sont conservées.
+Same signing key is mandatory, `versionCode` strictly increasing. The agent restarts by itself after the update
+(`MY_PACKAGE_REPLACED`). The data (buffer, enrollment, settings) is kept.
 
-## Retirer le Device Owner et désinstaller
+## Removing the Device Owner and uninstalling
 
-**Chemin recommandé** : dans l'app, écran **Politique › Retirer le Device Owner** (confirmation). Vigie défait
-toute sa politique, coupe les journaux réseau et sécurité, retire la protection contre l'arrêt forcé, émet
-`security.policy` `device_owner_cleared`, puis abandonne le rôle (`clearDeviceOwnerApp`). Le retrait étant
-annoncé, il n'est **pas** signalé comme `agent.tamper`. Fonctionne avec tout APK, testOnly ou non. On peut
-ensuite désinstaller Vigie normalement et réactiver la sauvegarde Android dans les Paramètres.
+**Recommended path**: in the app, **Policy › Remove Device Owner** screen (confirmation). Watchpost undoes its
+whole policy, turns off the network and security logs, removes force-stop protection, emits
+`security.policy` `device_owner_cleared`, then gives up the role (`clearDeviceOwnerApp`). As the removal is
+announced, it is **not** reported as `agent.tamper`. Works with any APK, testOnly or not. You can then
+uninstall Watchpost normally and turn Android backup back on in Settings.
 
-Replis, du plus au moins recommandé :
+Fallbacks, from the most to the least recommended:
 
-1. **Sans l'interface, par ADB** : `./scripts/remove-device-owner.sh [--uninstall]` (`-Uninstall` en
-   PowerShell). Il envoie à Vigie le même ordre que l'écran, par l'issue de secours (voir « Issue de secours
-   sans interface »), puis vérifie que le rôle a disparu. `rescue-revert.sh --remove-owner` y renvoie.
-   Si un élément ne peut pas être défait, Vigie **garde le rôle** (elle seule peut réessayer) et le script
-   demande s'il faut forcer le retrait.
-2. **Si Vigie ne répond plus** (app qui ne démarre pas) et que l'APK est **testOnly** : le même script
-   propose alors `adb shell dpm remove-active-admin`. Vigie ne défait rien elle-même dans ce cas. D'après le
-   code AOSP (branche principale), Android lève lui-même les politiques de l'administrateur retiré, paquets
-   masqués compris ; le script vérifie l'état réel de chaque paquet que Vigie avait masqué ou suspendu
-   (`dumpsys package`) et ne tente `pm unhide` / `pm unsuspend` que pour ceux qui le sont encore. Ces deux
-   commandes peuvent être refusées au shell ADB (`MANAGE_USERS` n'est pas dans le manifeste AOSP du shell ;
-   un paquet suspendu par un administrateur ne l'est pas par le shell) : le recours est alors de redonner
-   le rôle à Vigie (`enable-device-owner`) et de relancer `rescue-revert`, l'état appliqué étant conservé.
-   Le retrait est signalé par `agent.tamper` (`admin_disabled`, `device_owner_lost`), ce qui est attendu.
-3. APK non testOnly et app inutilisable : mettre à jour l'app (même clé de signature) pour la réparer, sinon
-   réinitialisation du téléphone.
+1. **Without the interface, over ADB**: `./scripts/remove-device-owner.sh [--uninstall]` (`-Uninstall` in
+   PowerShell). It sends Watchpost the same order as the screen, through the rescue (see "ADB rescue without
+   the interface"), then checks that the role is gone. `rescue-revert.sh --remove-owner` redirects to it.
+   If an item cannot be undone, Watchpost **keeps the role** (only it can retry) and the script
+   asks whether to force the removal.
+2. **If Watchpost no longer answers** (app that does not start) and the APK is **testOnly**: the same script
+   then offers `adb shell dpm remove-active-admin`. Watchpost undoes nothing itself in that case. According to
+   the AOSP code (main branch), Android lifts the removed administrator's policies by itself, hidden
+   packages included; the script checks the real state of each package Watchpost had hidden or suspended
+   (`dumpsys package`) and only tries `pm unhide` / `pm unsuspend` for those that still are. These two
+   commands may be refused to the ADB shell (`MANAGE_USERS` is not in the AOSP shell manifest;
+   a package suspended by an administrator is not one the shell can restore): the way out is then to give
+   the role back to Watchpost (`enable-device-owner`) and run `rescue-revert` again, the applied state having been kept.
+   The removal is reported by `agent.tamper` (`admin_disabled`, `device_owner_lost`), which is expected.
+3. Non-testOnly APK and unusable app: update the app (same signing key) to repair it, otherwise factory-reset
+   the phone.
 
-## Fonctionnement (résumé)
+## How it works (summary)
 
-- **Service de premier plan** permanent, types `specialUse` (+ `location` si la permission est accordée) ;
-  notification « Vigie collecte… » avec le nombre d'événements en attente et l'heure du dernier envoi.
-- **WorkManager** : envoi périodique (15 min par défaut) et au retour du réseau, collectes périodiques
-  (heartbeat 15 min, inventaire quotidien), maintenance toutes les 15 min (âge du tampon, intégrité,
-  redémarrage du service si besoin).
-- **Envoi déclenché** aussi par tout événement `sev >= 2` et par un tampon de plus de 500 événements.
-- **Lot refusé en `400`** (contrat §3 : enveloppe illisible, déterministe) : au lieu de bloquer la file
-  jusqu'à la purge par âge, l'agent coupe le lot en deux et renvoie chaque moitié (environ 2·log2(500) ≈ 18
-  requêtes par événement fautif, au plus 60 refus `400`/`413` par passage, puis backoff `PROTOCOL` normal
-  de 5 min à 6 h). Un événement qui reçoit encore `400` **seul** est supprimé, compté dans `dropped_total`
-  et tracé par un `agent.collector_error` (`collector` = `upload`, type et id de l'événement, jamais son
-  contenu ; 5 au plus par passage). Garde-fou : avant toute suppression, l'agent envoie un lot **sans
-  événement** (même enveloppe) ; s'il reçoit aussi `400`, la faute est dans l'enveloppe ou le serveur, rien
-  n'est supprimé (`last_error` = `http_400_envelope`, backoff). Un `5xx`, `429`, `401`/`403` ne coupe jamais
-  un lot. Un arrêt brutal en cours de bissection ne perd rien : seul le tampon est durable, la bissection
-  reprend sur ce qui reste.
-- **Saut de l'horloge murale et purge par âge** : la purge utilise un « horizon » (`AgeHorizon`) qui avance au
-  plus deux fois plus vite que l'horloge monotone (`elapsedRealtime`) et jamais au-delà de l'horloge murale.
-  Un saut en avant de plus de 30 jours ne vide donc plus le tampon (une horloge qui reste fausse vieillit les
-  événements au plus deux fois plus vite) ; un saut en arrière ne fait pas purger les événements écrits
-  ensuite. Après un redémarrage, l'horizon ne peut avancer que de 2 jours au-delà de sa dernière valeur.
-- **Écritures groupées** : jusqu'à 3 s en mémoire avant une transaction unique (immédiat si `sev >= 2`). Un
-  arrêt brutal peut perdre ces quelques secondes, jamais créer de trou ni de doublon de `seq`.
-- **Direct Boot** non utilisé : rien n'est collecté entre un redémarrage et le premier déverrouillage (le
-  tampon et l'enrôlement sont dans le stockage chiffré par les identifiants). `device.boot` est émis après
-  le déverrouillage.
-- **Certificate Transparency** (imposée par défaut avec `targetSdk 37`) est désactivée dans
-  `network_security_config.xml` : une AC serveur privée n'a pas de SCT. L'app ne contacte que l'hôte enrôlé
-  et, en mode AC privée, l'épinglage est plus strict que la CT.
-- **`agent.tamper`** : demande ou désactivation de l'administrateur, permission retirée, arrêt forcé détecté
-  (`ApplicationExitInfo`), perte du rôle Device Owner. Un retrait volontaire par l'app (écran Politique ou
-  issue de secours ADB) est annoncé au préalable : il produit `security.policy` `device_owner_cleared` et
-  aucun `agent.tamper`.
-- **Horodatage** : `ts` est l'heure de l'événement. Pour les événements que le système livre après coup
-  (`app.foreground`, `net.dns`, `net.connect`, `security.log`), c'est l'heure d'origine donnée par le système
-  (pour un regroupement, la première occurrence ; `count` et `last_event_ts` dans `data`), et `elapsed_ms`
-  est estimé pour cet instant (0 si l'événement précède le démarrage en cours). `seq` reste l'ordre
-  d'émission : `ts` n'est donc pas forcément croissant avec `seq`.
+- **Permanent foreground service**, types `specialUse` (+ `location` if the permission is granted);
+  notification "Watchpost is collecting…" with the number of pending events and the time of the last upload.
+- **WorkManager**: periodic upload (15 min by default) and when the network returns, periodic collections
+  (heartbeat 15 min, daily inventory), maintenance every 15 min (buffer age, integrity,
+  service restart if needed).
+- **Upload also triggered** by any `sev >= 2` event and by a buffer of more than 500 events.
+- **Batch refused with `400`** (contract §3: unreadable envelope, deterministic): instead of blocking the queue
+  until the age purge, the agent splits the batch in two and resends each half (about 2·log2(500) ≈ 18
+  requests per faulty event, at most 60 `400`/`413` refusals per pass, then normal `PROTOCOL` backoff
+  from 5 min to 6 h). An event that still gets `400` **alone** is deleted, counted in `dropped_total`
+  and traced by an `agent.collector_error` (`collector` = `upload`, type and id of the event, never its
+  content; 5 at most per pass). Safeguard: before any deletion, the agent sends a batch with **no
+  event** (same envelope); if that also gets `400`, the fault is in the envelope or the server, nothing
+  is deleted (`last_error` = `http_400_envelope`, backoff). A `5xx`, `429`, `401`/`403` never splits
+  a batch. A sudden stop during bisection loses nothing: only the buffer is durable, the bisection
+  resumes on what remains.
+- **Wall-clock jump and age purge**: the purge uses a "horizon" (`AgeHorizon`) that advances at
+  most twice as fast as the monotonic clock (`elapsedRealtime`) and never beyond the wall clock.
+  A forward jump of more than 30 days therefore no longer empties the buffer (a clock that stays wrong ages
+  events at most twice as fast); a backward jump does not make the events written afterwards get purged. After
+  a reboot, the horizon can only advance by 2 days beyond its last value.
+- **Grouped writes**: up to 3 s in memory before a single transaction (immediate if `sev >= 2`). A
+  sudden stop can lose those few seconds, never create a gap or a duplicate `seq`.
+- **Direct Boot** not used: nothing is collected between a reboot and the first unlock (the
+  buffer and the enrollment are in credential-encrypted storage). `device.boot` is emitted after
+  the unlock.
+- **Certificate Transparency** (enforced by default with `targetSdk 37`) is disabled in
+  `network_security_config.xml`: a private server CA has no SCT. The app only contacts the enrolled host
+  and, in private-CA mode, pinning is stricter than CT.
+- **`agent.tamper`**: administrator request or deactivation, permission removed, force stop detected
+  (`ApplicationExitInfo`), loss of the Device Owner role. A voluntary removal by the app (Policy screen or
+  ADB rescue) is announced beforehand: it produces `security.policy` `device_owner_cleared` and
+  no `agent.tamper`.
+- **Timestamps**: `ts` is the time of the event. For events that the system delivers after the fact
+  (`app.foreground`, `net.dns`, `net.connect`, `security.log`), it is the origin time given by the system
+  (for a grouping, the first occurrence; `count` and `last_event_ts` in `data`), and `elapsed_ms`
+  is estimated for that instant (0 if the event precedes the current boot). `seq` stays the emission
+  order: `ts` is therefore not necessarily increasing with `seq`.
 
-## Collecteurs
+## Collectors
 
-L'onglet Collecteurs liste les 25 collecteurs (22 de `:collectors` puis les 3 de `:policy`) : interrupteur,
-état (actif, désactivé, activé mais agent arrêté, indisponible avec la raison), permissions manquantes,
-types émis et **réglages propres** au collecteur. Y sont signalés « Désactivé par défaut » (`wifi_scan`),
-« Device Owner requis » (journaux) et « Réglage expérimental » (attribution caméra/micro). Permissions « ADB » :
-`./scripts/grant-adb-permissions.sh`. Noms de types, de champs et types des valeurs : `docs/contrat/contrat.md`
-§2 et ses précisions, vérifiés par les tests JVM (référence unique `Contract` du banc de test partagé).
+The Collectors tab lists the 25 collectors (the 22 of `:collectors` then the 3 of `:policy`): switch,
+state (active, disabled, enabled but agent stopped, unavailable with the reason), missing permissions,
+emitted types and the collector's **own settings**. It flags "Disabled by default" (`wifi_scan`),
+"Device Owner required" (logs) and "Experimental setting" (camera/microphone attribution). "ADB" permissions:
+`./scripts/grant-adb-permissions.sh`. Type names, field names and value types: `../docs/contract/contract.md`
+§2 and its precisions, checked by the JVM tests (single reference `Contract` of the shared test bench).
 
-| Collecteur (id) | Émet | Capacité requise | Coût |
+| Collector (id) | Emits | Required capability | Cost |
 |---|---|---|---|
-| Battement de cœur (`heartbeat`) | `agent.heartbeat` | — | WorkManager 15 min |
-| Appareil (`device`) | `device.inventory`, `boot`, `shutdown`, `screen`, `battery`, `power_save`, `storage`, `thermal`, `time_changed`, `timezone_changed`, `airplane_mode` | — | diffusions + relevé quotidien |
-| USB (`usb`) | `device.usb` (câble, fonctions dont `adb`, appareil ou accessoire branché) | — | diffusions, ≤ 60/h |
-| Localisation (`location`) | `location.fix`, `location.provider` | localisation précise (+ arrière-plan) | GPS adaptatif + passif ; modes « GPS + réseau » et « fusionné » en option (voir ci-dessous) |
-| Connectivité (`connectivity`) | `net.connectivity` | — (ACCESS_NETWORK_STATE) | rappel système, ≤ 60/h |
-| Wi-Fi (`wifi`) | `net.wifi` connecté/déconnecté | localisation précise pour SSID/BSSID (sinon omis) | rappel système, aucun balayage |
-| Réseaux Wi-Fi voisins (`wifi_scan`, **désactivé par défaut**) | `net.wifi_scan` (≤ 60 points d'accès) | localisation précise | passif (balayages des autres) ; actif optionnel ≥ 30 min ; ≤ 1 événement / 15 min |
-| Point d'accès mobile (`hotspot`) | `net.hotspot` | — | diffusion système |
-| NFC (`nfc`) | `net.nfc` | matériel NFC | diffusion système |
-| Réseau mobile (`cell`) | `net.cell`, `net.cell_security` (`downgrade_2g`, sév. 2) | téléphonie ; localisation précise pour les identifiants de cellule et « Téléphone » (READ_PHONE_STATE) pour le suivi cellule par cellule et le signal (optionnelles) | TelephonyCallback, ≤ 1 événement / 20 s hors changement de techno |
-| Bluetooth (`bluetooth`) | `net.bluetooth` (état, connexions) | « Appareils à proximité » pour les connexions (optionnelle) | diffusions, ≤ 120/h |
-| Traceurs (`ble_tracker`) | `net.ble_tracker` (sév. 2) | BLUETOOTH_SCAN + localisation précise | balayage BLE basse consommation filtré matériellement, résultats groupés 60 s, Bluetooth allumé |
-| Volumes réseau (`net_usage`) | `net.usage` horaire par app et transport | accès à l'utilisation (ADB) **ou** Device Owner | WorkManager 1 h, 2 requêtes |
-| Applications (`apps`) | `app.inventory` (parties < 16 Kio, `inventory_id`), `app.installed/updated/removed`, `app.permission_changed` | — (QUERY_ALL_PACKAGES) | diffusions + parcours des paquets toutes les heures, libellés une fois par jour |
-| Accès spéciaux (`special_access`) | `app.special_access` | — | au changement (paquets, réglages, extinction d'écran ≤ 1/15 min) + quotidien |
-| App au premier plan (`foreground`) | `app.foreground` (changements d'app seulement) | accès à l'utilisation (ADB ou Paramètres) | relevé 60 s écran allumé uniquement + WorkManager 15 min ; 100 à 400/jour |
-| Notifications (`notifications`) | `app.notification` (titre et texte seulement sur option) | APK compagnon « Vigie Notifications » installé, même clé, accès aux notifications (voir « Notifications ») | relayé par le compagnon ; ≤ 20 / app / 10 min, quelques dizaines par jour |
-| Caméra (`camera`) | `sensor.camera` (+ `screen_on`, `locked`) | — | rappel système, ≤ 120/h |
-| Microphone (`microphone`) | `sensor.microphone` (+ `screen_on`, `locked`) | — | rappel système, ≤ 120/h |
+| Heartbeat (`heartbeat`) | `agent.heartbeat` | — | WorkManager 15 min |
+| Device (`device`) | `device.inventory`, `boot`, `shutdown`, `screen`, `battery`, `power_save`, `storage`, `thermal`, `time_changed`, `timezone_changed`, `airplane_mode` | — | broadcasts + daily reading |
+| USB (`usb`) | `device.usb` (cable, functions including `adb`, device or accessory plugged in) | — | broadcasts, ≤ 60/h |
+| Location (`location`) | `location.fix`, `location.provider` | precise location (+ background) | adaptive + passive GPS; "GPS + network" and "fused" modes optional (see below) |
+| Connectivity (`connectivity`) | `net.connectivity` | — (ACCESS_NETWORK_STATE) | system callback, ≤ 60/h |
+| Wi-Fi (`wifi`) | `net.wifi` connected/disconnected | precise location for SSID/BSSID (otherwise omitted) | system callback, no scanning |
+| Neighbouring Wi-Fi networks (`wifi_scan`, **disabled by default**) | `net.wifi_scan` (≤ 60 access points) | precise location | passive (other apps' scans); optional active ≥ 30 min; ≤ 1 event / 15 min |
+| Mobile hotspot (`hotspot`) | `net.hotspot` | — | system broadcast |
+| NFC (`nfc`) | `net.nfc` | NFC hardware | system broadcast |
+| Mobile network (`cell`) | `net.cell`, `net.cell_security` (`downgrade_2g`, sev. 2) | telephony; precise location for cell identifiers and "Phone" (READ_PHONE_STATE) for cell-by-cell tracking and signal (optional) | TelephonyCallback, ≤ 1 event / 20 s except on a technology change |
+| Bluetooth (`bluetooth`) | `net.bluetooth` (state, connections) | "Nearby devices" for connections (optional) | broadcasts, ≤ 120/h |
+| Trackers following you (`ble_tracker`) | `net.ble_tracker` (sev. 2) | BLUETOOTH_SCAN + precise location | low-power BLE scan filtered by the hardware, results grouped over 60 s, Bluetooth on |
+| Network volumes per app (`net_usage`) | hourly `net.usage` per app and transport | usage access (ADB) **or** Device Owner | WorkManager 1 h, 2 queries |
+| Apps (`apps`) | `app.inventory` (parts < 16 KiB, `inventory_id`), `app.installed/updated/removed`, `app.permission_changed` | — (QUERY_ALL_PACKAGES) | broadcasts + package walk every hour, labels once a day |
+| Special access (`special_access`) | `app.special_access` | — | on change (packages, settings, screen off ≤ 1/15 min) + daily |
+| Foreground app (`foreground`) | `app.foreground` (app changes only) | usage access (ADB or Settings) | 60 s reading with the screen on only + WorkManager 15 min; 100 to 400/day |
+| Notifications (`notifications`) | `app.notification` (title and text only on option) | companion APK "Watchpost Notifications" installed, same key, notification access (see "Notifications") | relayed by the companion; ≤ 20 / app / 10 min, a few dozen per day |
+| Camera (`camera`) | `sensor.camera` (+ `screen_on`, `locked`) | — | system callback, ≤ 120/h |
+| Microphone (`microphone`) | `sensor.microphone` (+ `screen_on`, `locked`) | — | system callback, ≤ 120/h |
 
-Détails et limites :
+Details and limits:
 
-- **Champs absents** plutôt que valeurs factices : `<unknown ssid>`, `02:00:00:00:00:00`, `CellInfo.UNAVAILABLE`,
-  RSSI −127 ne sont jamais émis.
-- **`net.cell`** : `tech` = nom de `NETWORK_TYPE_*` en minuscules (`gsm`, `edge`, `umts`, `lte`, `nr`…) et
-  `none` hors service. **`net.cell_security`** : seule la rétrogradation vers la 2G (données ou voix) est
-  détectable sans privilège ; chiffrement nul et demande d'identifiant sont des API système. Mesure efficace :
-  `DISALLOW_CELLULAR_2G` (module `:policy`).
-- **`net.ble_tracker`** : AirTag/Find My « séparé du propriétaire », SmartTag (0xFD5A), Tile (0xFEED/0xFEEC),
-  Localiser de Google en mode anti-pistage (0xFEAA, trame 0x41). Alerte si vu ≥ 4 fois (une fois par minute au
-  plus), sur ≥ 30 min, pendant un déplacement ≥ 500 m (réglables), positions tirées du cache passif ; rien
-  sans position connue. Un changement d'adresse du traceur (rotation) remet le compte à zéro.
-- **Modes de localisation** (réglage « Mode de localisation » du collecteur, contrat §10) :
+- **Absent fields** rather than dummy values: `<unknown ssid>`, `02:00:00:00:00:00`, `CellInfo.UNAVAILABLE`,
+  RSSI −127 are never emitted.
+- **`net.cell`**: `tech` = lowercase name of `NETWORK_TYPE_*` (`gsm`, `edge`, `umts`, `lte`, `nr`…) and
+  `none` when out of service. **`net.cell_security`**: only the downgrade to 2G (data or voice) is
+  detectable without privilege; null ciphering and identifier requests are system APIs. Effective measure:
+  `DISALLOW_CELLULAR_2G` (`:policy` module).
+- **`net.ble_tracker`**: AirTag/Find My "separated from owner", SmartTag (0xFD5A), Tile (0xFEED/0xFEEC),
+  Google Find Hub in unknown-tracker-alert mode (0xFEAA, frame 0x41). Alert if seen ≥ 4 times (once a minute
+  at most), over ≥ 30 min, during a movement ≥ 500 m (adjustable), positions taken from the passive cache; nothing
+  without a known position. A change of the tracker's address (rotation) resets the count.
+- **Location modes** ("Location mode" setting of the collector, contract §10):
 
-  | Mode | Fournisseurs demandés | Ce qui part chez Google | Gain attendu |
+  | Mode | Providers requested | What goes to Google | Expected gain |
   |---|---|---|---|
-  | `gps` (défaut) | `GPS_PROVIDER` (+ passif si activé) | rien par Vigie (l'assistance GNSS XTRA/SUPL est réglée par le système) | — ; souvent aucune position en intérieur |
-  | `gps_network` | GPS + `NETWORK_PROVIDER` | réseaux Wi-Fi et antennes alentour (fournisseur réseau = Services Google Play, actif seulement si « Précision de la localisation Google » est activée) | position approximative en intérieur en quelques secondes ; un peu plus de consommation |
-  | `fused` | `FUSED_PROVIDER` seul | idem (fournisseur fusionné des Services Google Play) | position rapide, souvent précise en intérieur, moins de temps GNSS |
+  | `gps` (default) | `GPS_PROVIDER` (+ passive if enabled) | nothing by Watchpost (GNSS assistance XTRA/SUPL is handled by the system) | —; often no position indoors |
+  | `gps_network` | GPS + `NETWORK_PROVIDER` | surrounding Wi-Fi networks and cell towers (network provider = Google Play services, only active if "Google Location Accuracy" is enabled) | approximate indoor position within seconds; a bit more consumption |
+  | `fused` | `FUSED_PROVIDER` only | same (fused provider of Google Play services) | fast position, often accurate indoors, less GNSS time |
 
-  `location.fix.provider` est le fournisseur réel de chaque position (`gps`, `network`, `fused`, `passive`). Un
-  fournisseur absent ou désactivé est ignoré ; s'il ne reste rien, repli sur le GPS seul (réévalué à chaque
-  changement de fournisseur et toutes les minutes tant qu'on est en repli). La cadence adaptative (mouvement /
-  arrêt, mouvement significatif) et la détection `mock` s'appliquent dans les trois modes. En `gps_network`,
-  une position réseau arrivée moins d'un demi-intervalle après une position GPS n'est pas émise.
-  `location.provider` est émis pour le GPS et les fournisseurs du mode choisi.
-- **`net.usage`** : le système compte par tranches d'environ 2 h et répartit au prorata : valeurs horaires
-  estimées, fenêtre terminée depuis au moins 30 min, rattrapage ≤ 24 h, 100 apps au plus par événement.
-- **`app.special_access`** : services d'accessibilité et administrateurs (API publiques) ; écouteurs de
-  notifications (réglage sécurisé `enabled_notification_listeners`, omis si illisible) ; superposition,
-  installation d'apps inconnues, accès à l'utilisation (app-op de chaque app qui demande la permission) ;
-  `vpn_apps` = apps qui **déclarent** un VpnService (le propriétaire du VPN actif n'est pas visible) ;
-  `default_apps` : navigateur, accueil, téléphone, SMS, clavier, assistant et saisie automatique si lisibles.
-- **`app.foreground`** : `ts` est l'heure de l'événement d'usage donnée par le système, pas celle du relevé
-  (qui peut avoir jusqu'à 60 s de retard).
-- **Attribution expérimentale** (réglage « Attribution expérimentale (DUMP) » des collecteurs Caméra et
-  Microphone, désactivé par défaut) : avec `DUMP` accordée par ADB, `Debug.dumpService("appops", --op …)` est
-  analysé pour remplir `package` quand une seule app utilise la caméra ou le micro. Format texte non garanti,
-  refus SELinux possible : sans certitude, `package` reste absent. Pas d'attribution de la localisation (aucun
-  type au contrat).
-- **Non écrits** (choix) : écoute des notifications, accessibilité, SMS/appels (principe 4) ; tout ce qui exige
-  le Device Owner (journaux réseau et sécurité, posture, politique : module `:policy`).
+  `location.fix.provider` is the real provider of each position (`gps`, `network`, `fused`, `passive`). An absent
+  or disabled provider is ignored; if none is left, fall back to GPS only (re-evaluated at each
+  provider change and every minute while in fallback). The adaptive rate (movement /
+  stationary, significant motion) and `mock` detection apply in all three modes. In `gps_network`,
+  a network position arriving less than half an interval after a GPS position is not emitted.
+  `location.provider` is emitted for GPS and the providers of the chosen mode.
+- **`net.usage`**: the system counts in slices of about 2 h and distributes pro rata: estimated hourly
+  values, window ended at least 30 min ago, catch-up ≤ 24 h, 100 apps at most per event.
+- **`app.special_access`**: accessibility services and administrators (public APIs); notification
+  listeners (secure setting `enabled_notification_listeners`, omitted if unreadable); overlay,
+  installation of unknown apps, usage access (app-op of each app that requests the permission);
+  `vpn_apps` = apps that **declare** a VpnService (the owner of the active VPN is not visible);
+  `default_apps`: browser, home, phone, SMS, keyboard, assistant and autofill if readable.
+- **`app.foreground`**: `ts` is the time of the usage event given by the system, not that of the reading
+  (which can be up to 60 s late).
+- **Experimental attribution** ("Experimental attribution (DUMP)" setting of the Camera and
+  Microphone collectors, off by default): with `DUMP` granted over ADB, `Debug.dumpService("appops", --op …)` is
+  parsed to fill `package` when a single app uses the camera or microphone. Text format not guaranteed,
+  SELinux denial possible: without certainty, `package` stays absent. No attribution for location (no
+  type in the contract).
+- **Not written** (by choice): notification listening, accessibility, SMS/calls (principle 4); everything that
+  requires the Device Owner (network and security logs, posture, policy: `:policy` module).
 
-## Profil de risque et usage
+## Risk profile and usage
 
-Trois collecteurs de `:collectors` répondent à une question : **quelle application est capable de, ou est en
-train de, faire ce que faisait le logiciel malveillant de l'ancien téléphone** (2 000 SMS d'hameçonnage par jour
-que l'appli SMS ne montrait pas), quel que soit le vecteur. Spécification : `docs/contrat/contrat.md` §11.2.
-Rien n'a tourné sur un appareil : tout ce qui suit est testé sur la JVM (logique, banc partagé), pas sur le Galaxy S25+.
+Three collectors of `:collectors` answer one question: **which application is able to do, or is currently
+doing, what banking-trojan, SMS-fraud and stalkerware apps do** (for example mass-sending phishing SMS that
+the SMS app never shows), whatever the vector. Specification: `../docs/contract/contract.md` §11.2.
+Nothing has run on a device: everything below is tested on the JVM (logic, shared bench), not on a phone.
 
-| Collecteur (id) | Émet | Capacité requise | Coût |
+| Collector (id) | Emits | Required capability | Cost |
 |---|---|---|---|
-| Profil de risque (`app_risk`) | `app.risk` | — (QUERY_ALL_PACKAGES) | à chaque installation et mise à jour, puis quotidien (6 requêtes de composants + 1 parcours des paquets) ; une centaine d'événements au premier passage, ensuite seulement les changements |
-| Apps par défaut (`app_role`) | `app.role` | — | au changement (paquets, réglages, extinction d'écran ≤ 1/15 min) + WorkManager 1 h ; quelques appels système |
-| Usage des opérations (`app_ops`, **expérimental, désactivé par défaut**) | `app.ops` | `DUMP` **et** `PACKAGE_USAGE_STATS` accordées par ADB | WorkManager 1 h : 10 lectures bornées (8 s, 3 Mo chacune), 300 lignes au plus |
+| Risk profile of apps (`app_risk`) | `app.risk` | — (QUERY_ALL_PACKAGES) | at each installation and update, then daily (6 component queries + 1 package walk); about a hundred events on the first pass, then only the changes |
+| Default apps (changes) (`app_role`) | `app.role` | — | on change (packages, settings, screen off ≤ 1/15 min) + WorkManager 1 h; a few system calls |
+| Sensitive operations usage (`app_ops`, **experimental, disabled by default**) | `app.ops` | `DUMP` **and** `PACKAGE_USAGE_STATS` granted over ADB | WorkManager 1 h: 10 bounded reads (8 s, 3 MB each), 300 lines at most |
 
-### `app.risk` : la note, ses raisons, sa pondération
+### `app.risk`: the score, its reasons, its weighting
 
-La note est la fonction **pure** `RiskScorer.score(AppFacts)` (`collectors/…/risk/RiskModel.kt`) : elle ne lit que ce
-que `PackageManager` expose (installateur, permissions demandées et accordées, composants déclarés, icône de
-lanceur, `targetSdk`, drapeau débogable), jamais le contenu d'une app. **Elle porte sur les capacités
-*déclarées*** (contrat §11.4) : le profil doit servir avant tout octroi (installation, écran de quarantaine) et
-rester élevé quand une garde empêche l'octroi. Les raisons reposant sur une permission d'exécution (`sms_send`,
-`sms_read`, `calls`, `background_location`, `mic_camera_background`, `combo_sms_fraud`) valent leur nombre de points
-**déclarés** ; si la permission est en plus **accordée**, elles gagnent la colonne « + accordée » et entrent dans la
-liste `granted` de l'événement (sous-ensemble de `reasons` : l'intention contre l'état). Les points
-s'additionnent, la note est bornée à 100. **Niveaux** : `low` 0 à 29, `medium` 30 à 69, `high` 70 à 100. Les apps du
-système (`FLAG_SYSTEM`) et Vigie sont notées mais **plafonnées à 29** (`low`) ; leurs raisons restent listées,
-sauf celles qui n'ont pas de sens pour une app préinstallée (installateur, icône, version cible, débogage).
-Chaque code a un libellé et une explication en français (`collectors/src/main/res/values/strings_risk.xml`, clés
-`risk_reason_<code>` et `risk_reason_<code>_desc`, accessibles par `RiskReason.fromCode(code)?.labelRes`). Un test
-vérifie que ce tableau et le code disent la même chose.
+The score is the **pure** function `RiskScorer.score(AppFacts)` (`collectors/…/risk/RiskModel.kt`): it only reads
+what `PackageManager` exposes (installer, requested and granted permissions, declared components, launcher icon,
+`targetSdk`, debuggable flag), never the content of an app. **It is about the *declared* capabilities**
+(contract §11.4): the profile must be useful before any grant (installation, quarantine screen) and
+stay high when a guard prevents the grant. The reasons based on a runtime permission (`sms_send`,
+`sms_read`, `calls`, `background_location`, `mic_camera_background`, `combo_sms_fraud`) are worth their **declared**
+points; if the permission is also **granted**, they gain the "+ granted" column and enter the
+`granted` list of the event (a subset of `reasons`: intent versus state). The points
+add up, the score is capped at 100. **Levels**: `low` 0 to 29, `medium` 30 to 69, `high` 70 to 100. System
+apps (`FLAG_SYSTEM`) and Watchpost are scored but **capped at 29** (`low`); their reasons stay listed,
+except those that make no sense for a preinstalled app (installer, icon, target version, debugging).
+Each code has a label and an explanation in English (`collectors/src/main/res/values/strings_risk.xml`, keys
+`risk_reason_<code>` and `risk_reason_<code>_desc`, reachable through `RiskReason.fromCode(code)?.labelRes`). A test
+checks that this table and the code say the same thing.
 
-| Code | Déclarée | + accordée | Condition (sur ce que le système expose) |
+| Code | Declared | + granted | Condition (on what the system exposes) |
 |---|---|---|---|
-| `sideloaded` | 35 | 0 | app utilisateur dont l'installateur est absent, un installateur de paquets, un gestionnaire de fichiers ou le shell ADB (et non Play, Galaxy Store, F-Droid) |
-| `unknown_installer` | 25 | 0 | app utilisateur installée par une autre app qui n'est pas une boutique (exclut `sideloaded`) |
-| `no_launcher_icon` | 12 | 0 | app utilisateur sans activité `MAIN`/`LAUNCHER` activée (une icône désactivée compte comme absente) |
-| `sms_send` | 16 | 4 | `SEND_SMS` demandée (+ accordée) |
-| `sms_read` | 6 | 6 | `READ_SMS`, `RECEIVE_SMS`, `RECEIVE_MMS` ou `RECEIVE_WAP_PUSH` demandée (+ accordée) |
-| `calls` | 3 | 7 | `CALL_PHONE`, `READ_CALL_LOG`, `WRITE_CALL_LOG`, `ANSWER_PHONE_CALLS` ou `PROCESS_OUTGOING_CALLS` demandée (+ accordée) |
-| `accessibility_service` | 25 | 0 | déclare un service d'accessibilité (protégé par `BIND_ACCESSIBILITY_SERVICE`), activé ou non |
-| `notification_listener` | 15 | 0 | déclare un écouteur de notifications (`BIND_NOTIFICATION_LISTENER_SERVICE`) |
-| `device_admin` | 15 | 0 | déclare un récepteur d'administration (`BIND_DEVICE_ADMIN`) |
-| `overlay` | 12 | 0 | demande `SYSTEM_ALERT_WINDOW` (la demande compte : l'état « accordé » des accès spéciaux n'est pas fiable dans les drapeaux de paquet) |
-| `install_packages` | 20 | 0 | demande `REQUEST_INSTALL_PACKAGES` ou `INSTALL_PACKAGES` |
-| `vpn_service` | 10 | 0 | déclare un `VpnService` (`BIND_VPN_SERVICE`) |
-| `boot_receiver` | 5 | 0 | déclare un récepteur de `BOOT_COMPLETED` **et** demande `RECEIVE_BOOT_COMPLETED` |
-| `background_location` | 6 | 4 | `ACCESS_BACKGROUND_LOCATION` demandée (+ accordée) |
-| `mic_camera_background` | 3 | 5 | micro ou caméra demandés **et** permission de service de type micro/caméra demandée (ou, avant Android 14, service de premier plan) (+ accordés) |
-| `old_target_sdk` | 8 | 0 | app utilisateur dont `targetSdk` < 30 |
-| `debuggable` | 10 | 0 | app utilisateur marquée `FLAG_DEBUGGABLE` |
-| `combo_banking_trojan` | 30 | 0 | `accessibility_service` + `overlay` + (`sms_read` ou `notification_listener`), sur les capacités déclarées |
-| `combo_sms_fraud` | 20 | 6 | `sms_send` + `boot_receiver`, sans être l'appli SMS par défaut (+ accordée si `SEND_SMS` l'est) |
-| `combo_stalkerware` | 30 | 0 | `no_launcher_icon` + (position ou micro demandés, y compris approximative) + `boot_receiver` |
+| `sideloaded` | 35 | 0 | user app whose installer is absent, a package installer, a file manager or the ADB shell (and not Play, Galaxy Store, F-Droid) |
+| `unknown_installer` | 25 | 0 | user app installed by another app that is not a store (excludes `sideloaded`) |
+| `no_launcher_icon` | 12 | 0 | user app without an enabled `MAIN`/`LAUNCHER` activity (a disabled icon counts as absent) |
+| `sms_send` | 16 | 4 | `SEND_SMS` requested (+ granted) |
+| `sms_read` | 6 | 6 | `READ_SMS`, `RECEIVE_SMS`, `RECEIVE_MMS` or `RECEIVE_WAP_PUSH` requested (+ granted) |
+| `calls` | 3 | 7 | `CALL_PHONE`, `READ_CALL_LOG`, `WRITE_CALL_LOG`, `ANSWER_PHONE_CALLS` or `PROCESS_OUTGOING_CALLS` requested (+ granted) |
+| `accessibility_service` | 25 | 0 | declares an accessibility service (protected by `BIND_ACCESSIBILITY_SERVICE`), enabled or not |
+| `notification_listener` | 15 | 0 | declares a notification listener (`BIND_NOTIFICATION_LISTENER_SERVICE`) |
+| `device_admin` | 15 | 0 | declares an admin receiver (`BIND_DEVICE_ADMIN`) |
+| `overlay` | 12 | 0 | requests `SYSTEM_ALERT_WINDOW` (the request counts: the "granted" state of special access is not reliable in the package flags) |
+| `install_packages` | 20 | 0 | requests `REQUEST_INSTALL_PACKAGES` or `INSTALL_PACKAGES` |
+| `vpn_service` | 10 | 0 | declares a `VpnService` (`BIND_VPN_SERVICE`) |
+| `boot_receiver` | 5 | 0 | declares a `BOOT_COMPLETED` receiver **and** requests `RECEIVE_BOOT_COMPLETED` |
+| `background_location` | 6 | 4 | `ACCESS_BACKGROUND_LOCATION` requested (+ granted) |
+| `mic_camera_background` | 3 | 5 | microphone or camera requested **and** microphone/camera foreground-service-type permission requested (or, before Android 14, a foreground service) (+ granted) |
+| `old_target_sdk` | 8 | 0 | user app whose `targetSdk` < 30 |
+| `debuggable` | 10 | 0 | user app marked `FLAG_DEBUGGABLE` |
+| `combo_banking_trojan` | 30 | 0 | `accessibility_service` + `overlay` + (`sms_read` or `notification_listener`), on the declared capabilities |
+| `combo_sms_fraud` | 20 | 6 | `sms_send` + `boot_receiver`, without being the default SMS app (+ granted if `SEND_SMS` is) |
+| `combo_stalkerware` | 30 | 0 | `no_launcher_icon` + (location or microphone requested, approximate included) + `boot_receiver` |
 
-Une combinaison s'ajoute aux points des raisons qu'elle combine : c'est ce qui sépare un trojan d'une app qui n'a
-qu'un seul de ces pouvoirs. **Pourquoi ces poids** : sur capacités déclarées, une messagerie ou une banque qui
-déclare des droits SMS, d'appels et de micro (sans les détenir) additionne vite des points ; seule l'**origine**
-(hors boutique : 35) sépare alors une app de fraude au SMS (hors boutique + envoi + boot = 76, `high`) d'une
-messagerie de boutique qui déclare les mêmes droits (65, `medium`) : la marge est de 5 points de chaque côté du
-seuil de 70, c'est mince et dit comme tel. « Hors boutique » seule vaut déjà `medium`. Une lecture qui échoue ne
-dégrade jamais une app (icône inconnue = présente, composants inconnus = absents) ; une liste de paquets vide
-est une lecture ratée, pas « aucune app ».
+A combination adds to the points of the reasons it combines: this is what separates a trojan from an app that
+has only one of these powers. **Why these weights**: on declared capabilities, a messenger or a bank that
+declares SMS, call and microphone rights (without holding them) quickly accumulates points; only the
+**origin** (outside a store: 35) then separates an SMS-fraud app (outside a store + sending + boot = 76, `high`)
+from a store messenger that declares the same rights (65, `medium`): the margin is 5 points on each side of the
+threshold of 70, which is thin and stated as such. "Outside a store" alone is already `medium`. A reading that fails never
+downgrades an app (unknown icon = present, unknown components = absent); an empty package list
+is a failed reading, not "no apps".
 
-**Émission.** À chaque `PACKAGE_ADDED` / `PACKAGE_REPLACED` (toujours), puis chaque jour pour les seules apps dont la
-note, les raisons, la liste `granted` ou la version ont changé depuis la dernière émission (état persistant
-`risk_state`) ; le premier passage les émet toutes une fois. Sévérité : `low` 0, `medium` 1, `high` 2. Champs :
-`package`, `label`, `version_code`, `installer` (absent si inconnu), `from_store`, `score`, `level`, `reasons`
-(déclarées), `granted` (parmi elles, celles dont la permission est accordée).
+**Emission.** At each `PACKAGE_ADDED` / `PACKAGE_REPLACED` (always), then every day for only the apps whose
+score, reasons, `granted` list or version changed since the last emission (persistent state
+`risk_state`); the first pass emits them all once. Severity: `low` 0, `medium` 1, `high` 2. Fields:
+`package`, `label`, `version_code`, `installer` (absent if unknown), `from_store`, `score`, `level`, `reasons`
+(declared), `granted` (among them, those whose permission is granted).
 
-**Ce que la note classe mal** (jeu de test `RiskCorpus` : 23 apps légitimes et 14 profils malveillants, bâtis
-d'après les fonctions et permissions habituelles de chaque famille, **pas extraits d'APK réels** ; mesuré après la
-bascule sur les capacités déclarées) :
+**What the score misranks** (test set `RiskCorpus`: 23 legitimate apps and 14 malicious profiles, built
+from the usual functions and permissions of each family, **not extracted from real APKs**; measured with the
+declared capabilities):
 
-- *Faux positifs « élevé »* (4 sur 23, inchangé) : contrôle parental, suite antivirus, app d'automatisation (type
-  Tasker) et identification d'appelant avec droits SMS. Leurs pouvoirs sont ceux d'un logiciel espion ou d'un
-  trojan, par construction : aucune note fondée sur les capacités ne les sépare. Seul « qui l'a installé et
-  pourquoi » le fait, et ni le système ni cet agent ne le savent.
-- *Faux positifs « moyen »* (5) : messagerie de boutique qui déclare les droits SMS (65, à 5 points du seuil),
-  gestionnaire de mots de passe et remappage de boutons (accessibilité + superposition), lanceur qui verrouille
-  par l'accessibilité, appli SMS tierce choisie par défaut. Une banque qui déclare la lecture des SMS : 6, `low`.
-- *Aucune alerte* sur : messagerie sans droits SMS, banque, clavier, navigateur, lanceur simple, VPN, composeur,
-  authentificateur, gestionnaire de fichiers, navigation (tous sous 30). Toute app installée hors boutique est au
-  moins `medium` (35) : y compris vos propres installations par ADB (hormis Vigie, plafonnée).
-- *Détectés avant tout octroi* : fraude au SMS hors boutique (76) et espion sans icône (82) sont `high` avec
-  zéro permission accordée ; l'octroi n'ajoute que 10 points à la fraude au SMS et la liste `granted`.
-- *Faux négatifs* : un dropper publié sur la boutique (seule la demande d'installation le trahit : 20, `low`).
-  Sous-estimés mais `medium` : fraude au SMS sans démarrage au boot (55, déclenchée par push, donc pas de
-  combinaison) ou distribuée par la boutique (51), espion à icône anodine (40), dropper hors boutique (55),
-  verrouilleur de rançon (67). Adware d'accessibilité hors boutique : 72, `high`.
-- Limite de fond : la note juge des **capacités déclarées**, pas des actes. Un service d'accessibilité activé
-  plus tard, une icône que l'app désactive après coup ne sont vus qu'au passage quotidien (ou à la mise à jour),
-  pas à l'instant. `app.ops` mesure l'usage réel.
+- *"High" false positives* (4 of 23): parental control, antivirus suite, automation app (Tasker-like) and
+  caller identification with SMS rights. Their powers are those of spyware or a trojan, by construction: no
+  capability-based score separates them. Only "who installed it and why" does, and neither the system nor this
+  agent knows it.
+- *"Medium" false positives* (5): store messenger that declares SMS rights (65, 5 points from the threshold),
+  password manager and button remapper (accessibility + overlay), launcher that locks through
+  accessibility, third-party SMS app chosen as default. A bank that declares SMS reading: 6, `low`.
+- *No alert* on: messenger without SMS rights, bank, keyboard, browser, simple launcher, VPN, dialer,
+  authenticator, file manager, navigation (all below 30). Any app installed outside a store is
+  at least `medium` (35): including your own installations over ADB (except Watchpost, capped).
+- *Detected before any grant*: SMS fraud outside a store (76) and spyware without an icon (82) are `high` with
+  zero permissions granted; the grant only adds 10 points to SMS fraud and the `granted` list.
+- *False negatives*: a dropper published on the store (only the install request gives it away: 20, `low`).
+  Underestimated but `medium`: SMS fraud without a start at boot (55, triggered by push, so no
+  combination) or distributed by the store (51), spyware with a harmless icon (40), dropper outside a store (55),
+  ransom locker (67). Accessibility adware outside a store: 72, `high`.
+- Fundamental limit: the score judges **declared capabilities**, not acts. An accessibility service enabled
+  later, an icon that the app disables afterwards, are only seen at the daily pass (or on update),
+  not instantly. `app.ops` measures the real usage.
 
-### `app.role` : les apps par défaut
+### `app.role`: default apps
 
-Lu **sans privilège système**, d'après `android.jar` de l'API 37 : `RoleManager` ne donne à une app que
-`isRoleAvailable`, `isRoleHeld` (pour elle-même) et `createRequestRoleIntent`. `getRoleHolders` est une API système
-(`OBSERVE_ROLE_HOLDERS`, niveau signature) : un Device Owner n'a pas plus de droits ici. Sont donc suivis, par les
-API publiques correspondantes (`DefaultApps`, une seule implémentation) :
+Read **without system privilege**, from the API 37 `android.jar`: `RoleManager` only gives an app
+`isRoleAvailable`, `isRoleHeld` (for itself) and `createRequestRoleIntent`. `getRoleHolders` is a system API
+(`OBSERVE_ROLE_HOLDERS`, signature level): a Device Owner has no more rights here. The following are therefore
+tracked through the corresponding public APIs (`DefaultApps`, a single implementation):
 
-| Rôle | Lecture | Fiabilité |
+| Role | Reading | Reliability |
 |---|---|---|
-| `sms` | `Telephony.Sms.getDefaultSmsPackage` | fiable |
-| `dialer` | `TelecomManager.getDefaultDialerPackage` | fiable |
-| `browser`, `home` | app qui résout l'intention par défaut (`MATCH_DEFAULT_ONLY`) | fiable |
-| `keyboard` | réglage sécurisé `default_input_method` (constante publique) | fiable |
-| `assistant`, `autofill` | réglages sécurisés cachés `assistant`, `autofill_service` | **non garantie** : certains systèmes refusent la lecture ; une valeur absente veut dire « inconnue », jamais « retirée » |
+| `sms` | `Telephony.Sms.getDefaultSmsPackage` | reliable |
+| `dialer` | `TelecomManager.getDefaultDialerPackage` | reliable |
+| `browser`, `home` | app that resolves the default intent (`MATCH_DEFAULT_ONLY`) | reliable |
+| `keyboard` | secure setting `default_input_method` (public constant) | reliable |
+| `assistant`, `autofill` | hidden secure settings `assistant`, `autofill_service` | **not guaranteed**: some systems refuse the reading; an absent value means "unknown", never "removed" |
 
-**Non lisibles, donc omis** (jamais devinés) : `call_screening`, `call_redirection`, `emergency`, `notes`, `wallet`
-(aucun accesseur public pour une autre app). `keyboard` et `autofill` ne sont pas des rôles Android mais des
-réglages : ils sont ajoutés parce qu'un clavier ou un service de saisie malveillant lit tout ce qui est tapé ;
-le contrat ne les nomme pas (à y ajouter).
+**Not readable, therefore omitted** (never guessed): `call_screening`, `call_redirection`, `emergency`, `notes`, `wallet`
+(no public accessor for another app). `keyboard` and `autofill` are not Android roles but
+settings: they are added because a malicious keyboard or autofill service reads everything that is typed;
+the contract does not name them (to be added there).
 
-**Articulation avec `app.special_access`** : les deux utilisent la même lecture. `special_access.default_apps` dit
-l'**état courant** (quotidien et à chaque changement) ; `app.role` dit la **transition** datée (`old` → `new`, le
-premier relevé n'étant qu'une référence, sans événement). Une valeur n'est donc jamais dite deux fois de façon
-contradictoire ; seul l'instant de lecture peut différer de quelques secondes. Sévérité 2 pour `sms`, `dialer`,
-`assistant`, `keyboard`, `autofill`, 1 pour `browser` et `home`. `old` est absent s'il n'y avait pas de valeur,
-`new` absent si le rôle n'est plus attribué.
+**Relation with `app.special_access`**: both use the same reading. `special_access.default_apps` gives the
+**current state** (daily and at each change); `app.role` gives the dated **transition** (`old` → `new`, the
+first reading being only a reference, without an event). A value is therefore never stated twice in a
+contradictory way; only the time of reading can differ by a few seconds. Severity 2 for `sms`, `dialer`,
+`assistant`, `keyboard`, `autofill`, 1 for `browser` and `home`. `old` is absent if there was no value,
+`new` absent if the role is no longer assigned.
 
-### `app.ops` : l'usage réel (expérimental)
+### `app.ops`: real usage (experimental)
 
-Désactivé par défaut (carte « Usage des opérations sensibles (expérimental) »). Pour chacune des dix opérations du
-contrat, il compte **combien d'accès le système a autorisés** à chaque app pendant la dernière heure, dont ceux en
-arrière-plan (états `bg` et `cch` du système ; `fgsvc` compte comme premier plan). Un événement par heure, seulement
-pour les apps qui ont utilisé une opération, 300 lignes au plus (coupées en parties de 12 Kio), `from`/`to` = les
-deux relevés. **Le premier relevé n'est qu'une référence** (aucun événement).
+Disabled by default ("Sensitive operations usage (experimental)" card). For each of the ten operations of the
+contract, it counts **how many accesses the system allowed** to each app during the last hour, including those in the
+background (system states `bg` and `cch`; `fgsvc` counts as foreground). One event per hour, only
+for apps that used an operation, 300 lines at most (cut into 12 KiB parts), `from`/`to` = the
+two readings. **The first reading is only a reference** (no event).
 
-- **Prérequis** : `DUMP` **et** `PACKAGE_USAGE_STATS`, par `scripts/grant-adb-permissions.sh`. Le code source du
-  service (`AppOpsService.dump` → `DumpUtils.checkDumpAndUsageStatsPermission`) exige les deux : `DUMP` seule est
-  refusée. Les attributions caméra/micro expérimentales (`AppOpsDump`) ont la même exigence.
-- **Source** : `Debug.dumpService("appops", fd, ["--history", "--op", OP])`, soit le texte de
-  `adb shell dumpsys appops --history --op SEND_SMS`. Seul l'**historique** donne des compteurs (`[bg-s] =
-  access=37`) ; l'état courant ne donne que la date du dernier accès, lue (une lecture par opération utilisée)
-  pour remplir `last_ts`. Un compteur est la **différence** entre deux relevés des sommes de l'historique
-  (les dates des instantanés de l'historique ne sont pas fiables : relatives à un « début d'époque »). Une somme
-  qui baisse (anciens instantanés expirés) vaut 0 : c'est une borne basse. Un relevé espacé de plus de 24 h est
-  une nouvelle référence.
-- **Ce qui est compté** : `count` = accès autorisés (`access=`), `rejected_count` = accès **refusés** par le
-  système (`reject=`), `background_count` = part de `count` en arrière-plan. Une opération seulement refusée est
-  émise aussi (`count` 0) ; un envoi de SMS refusé est de sévérité 2. Honnêteté sur le refus : le système ne le
-  note que lorsque l'app-op est consultée et dit non (mode ignoré). Un envoi bloqué plus tôt, au contrôle de la
-  permission d'exécution (c'est ce que fait la garde `sms` de `:policy`, qui refuse la permission), peut ne jamais
-  atteindre l'app-op et donc ne jamais apparaître : **non vérifié** (sources de téléphonie introuvables), à
-  tester avec la garde active. Un envoi de SMS = une demande d'envoi, pas un nombre de parties ; en mode
-  d'historique « passif » ou désactivé le système ne compte rien (le collecteur s'en déclare indisponible). Les
-  apps qui partagent un même UID apparaissent sous chacun de leurs paquets.
-- **Échec propre** : permission refusée, option inconnue, sortie vide, historique absent (dont le magasin SQLite
-  d'Android 16 derrière un indicateur, dont le dump n'imprime alors aucune section `History:`) ou désactivé, format non
-  reconnu, sortie trop grosse, délai dépassé, `dumpService` refusé : si **aucune** des dix opérations n'est lisible,
-  le collecteur devient « indisponible » avec la raison en français, émet **un seul** `agent.collector_error`
-  (`<code>: <raison>`, un nouveau seulement si la raison change), ne réessaie qu'après 6 h. Si seules quelques
-  opérations échouent, les autres continuent et l'opération en échec garde sa référence.
-- **Sobriété** : 10 lectures par heure (8 s et 3 Mo au plus chacune, 60 s au total), plus une lecture d'état par
-  opération utilisée (4 s). Le service tient ses verrous d'historique le temps d'écrire la sortie (effet non mesuré, sans doute de quelques millisecondes).
-- **Format** : relevé dans les sources AOSP d'Android 14, 15 et 16 (`AppOpsService`, `HistoricalRegistry` et
-  `LegacyHistoricalRegistry`, `AppOpsManager.keyToString`, `TimeUtils.formatDuration`), identique sur les trois ;
-  **jamais observé sur le Samsung**. Les tests lisent des extraits écrits d'après ces sources, pas des
+- **Prerequisites**: `DUMP` **and** `PACKAGE_USAGE_STATS`, through `scripts/grant-adb-permissions.sh`. The source code of the
+  service (`AppOpsService.dump` → `DumpUtils.checkDumpAndUsageStatsPermission`) requires both: `DUMP` alone is
+  refused. The experimental camera/microphone attributions (`AppOpsDump`) have the same requirement.
+- **Source**: `Debug.dumpService("appops", fd, ["--history", "--op", OP])`, i.e. the text of
+  `adb shell dumpsys appops --history --op SEND_SMS`. Only the **history** gives counters (`[bg-s] =
+  access=37`); the current state only gives the date of the last access, read (one reading per used operation)
+  to fill `last_ts`. A counter is the **difference** between two readings of the history sums
+  (the dates of the history snapshots are not reliable: relative to an "epoch start"). A sum
+  that drops (old snapshots expired) counts as 0: it is a lower bound. A reading more than 24 h after the previous
+  one is a new reference.
+- **What is counted**: `count` = allowed accesses (`access=`), `rejected_count` = accesses **refused** by the
+  system (`reject=`), `background_count` = share of `count` in the background. An operation that was only refused is
+  emitted too (`count` 0); a refused SMS send has severity 2. Honesty about refusal: the system
+  only records it when the app-op is queried and says no (ignored mode). A send blocked earlier, at the runtime
+  permission check (which is what the `sms` guard of `:policy` does, denying the permission), may never
+  reach the app-op and therefore never appear: **not verified** (telephony sources not found), to be
+  tested with the guard active. One SMS send = one send request, not a number of parts; in "passive" history
+  mode or when disabled the system counts nothing (the collector declares itself unavailable). Apps
+  that share a UID appear under each of their packages.
+- **Clean failure**: permission denied, unknown option, empty output, absent history (including Android 16's SQLite
+  store behind a flag, whose dump then prints no `History:` section) or disabled, unrecognized
+  format, output too large, timeout, `dumpService` refused: if **none** of the ten operations is readable,
+  the collector becomes "unavailable" with the reason in English, emits **a single** `agent.collector_error`
+  (`<code>: <reason>`, a new one only if the reason changes), and retries only after 6 h. If only a few
+  operations fail, the others continue and the failing operation keeps its reference.
+- **Frugality**: 10 reads per hour (8 s and 3 MB at most each, 60 s in total), plus one state read per
+  used operation (4 s). The service holds its history locks while writing the output (effect not measured, probably a few
+  milliseconds).
+- **Format**: taken from the AOSP sources of Android 14, 15 and 16 (`AppOpsService`, `HistoricalRegistry` and
+  `LegacyHistoricalRegistry`, `AppOpsManager.keyToString`, `TimeUtils.formatDuration`), identical across the three;
+  **never observed on a Samsung phone**. The tests read excerpts written from these sources, not
   captures.
 
-**À vérifier sur le téléphone** : (1) `adb shell dumpsys appops --history --op SEND_SMS` produit bien des lignes
-`[bg-s] = access=N` sur One UI (sinon `app.ops` se déclarera indisponible, sans dommage) ; (2) `Debug.dumpService`
-n'est pas refusé par SELinux pour l'app (et la sortie arrive jusqu'à l'agent) ; (3) la taille d'une lecture
-(un `--history --op` imprime les en-têtes de tous les paquets, quelques centaines de Kio) ; (4) qu'envoyer un SMS
-depuis une app incrémente bien `SEND_SMS` pour *son* paquet ; (5) la liste de `RoleManager` : `app.special_access`
-et `app.role` après un changement de navigateur, de clavier et d'appli SMS ; (6) quelques notes au hasard contre la
-réalité, surtout les apps de contrôle parental ou d'automatisation si vous en avez.
+**To verify on the phone**: (1) `adb shell dumpsys appops --history --op SEND_SMS` does produce
+`[bg-s] = access=N` lines on One UI (otherwise `app.ops` will declare itself unavailable, harmlessly); (2) `Debug.dumpService`
+is not refused by SELinux for the app (and the output reaches the agent); (3) the size of a read
+(a `--history --op` prints the headers of all packages, a few hundred KiB); (4) that sending an SMS
+from an app does increment `SEND_SMS` for *its* package; (5) the `RoleManager` list: `app.special_access`
+and `app.role` after a change of browser, keyboard and SMS app; (6) a few scores at random against
+reality, especially parental-control or automation apps if you have any.
 
-## Notifications (APK compagnon)
+## Notifications (companion APK)
 
-Le collecteur `notifications` de l'agent dit **quelles apps affichent des notifications**. La lecture des
-notifications n'est **pas** dans l'APK Device Owner : elle vit dans un APK séparé et optionnel, **Vigie
-Notifications** (`io.github.erwsim.vigie.notifier`, module `:notifier`), qui contient le seul
-`NotificationListenerService` du projet (principe 4 ; un DPC qui écoute aussi les notifications a déjà été
-bloqué par Play Protect, voir `../docs/research/android-plateforme.md` §2.4 et §9 : si le compagnon l'est, l'agent
-n'est pas touché). Le compagnon n'a **ni** la permission `INTERNET` **ni** aucune permission sensible, n'embarque
-aucune bibliothèque (ni AndroidX, ni réseau, ni Google), a une icône et un écran qui expliquent ce qu'il fait,
-son état et comment le retirer. Il ne garde rien : ni historique, ni contenu, ni fichier (état en mémoire).
+The agent's `notifications` collector says **which apps display notifications**. Reading
+notifications is **not** in the Device Owner APK: it lives in a separate, optional APK, **Watchpost
+Notifications** (`io.github.erwsim.watchpost.notifier`, `:notifier` module), which contains the project's only
+`NotificationListenerService` (principle 4; a DPC that also listens to notifications has already been
+blocked by Play Protect, see `../docs/research/android-platform.md` §2.4 and §9: if the companion is, the agent
+is not affected). The companion has **neither** the `INTERNET` permission **nor** any sensitive permission, embeds
+no library (no AndroidX, no network, no Google), and has an icon and a screen that explain what it does,
+its state and how to remove it. It keeps nothing: no history, no content, no file (state in memory).
 
-### Ce qui est transmis (`app.notification`, contrat §10)
+### What is relayed (`app.notification`, contract §10)
 
-| Toujours | Seulement si « Contenu des notifications » est activé (désactivé par défaut) |
+| Always | Only if "Notification content" is enabled (off by default) |
 |---|---|
-| `package`, `event` (`posted`/`removed`), `category`, `channel`, `ongoing`, `importance` (`none`, `min`, `low`, `default`, `high`, `max`) | `title`, `text` (512 caractères au plus, comptés en points de code), `redacted` (vrai si un code a été masqué ; absent si le masquage est désactivé) |
+| `package`, `event` (`posted`/`removed`), `category`, `channel`, `ongoing`, `importance` (`none`, `min`, `low`, `default`, `high`, `max`) | `title`, `text` (512 characters at most, counted in code points), `redacted` (true if a code was masked; absent if masking is disabled) |
 
-- **Contenu éteint** (défaut) : le titre et le texte ne quittent jamais le processus du compagnon (le filtrage
-  se fait chez lui, avant le canal, d'après les réglages lus chez l'agent ; l'agent applique la même règle une
-  seconde fois à la réception).
-- **Masquage des codes** (activé par défaut) : toute suite de 4 à 8 chiffres est remplacée par `••••` avant la
-  troncature (un code n'est jamais coupé en deux). Détail de la règle et de ses limites ci-dessous.
-- **Apps exclues du contenu** (seul le nom de l'app part) : pré-remplie avec des banques et apps de paiement
-  courantes en France, authentificateurs, gestionnaires de mots de passe, **SMS et téléphone** (pas de contenu
-  de SMS ni de journal d'appels, principe 4). C'est une liste de **noms de paquet** : une app n'est reconnue que
-  par son nom exact, la liste est donc forcément incomplète (autre banque, variante régionale, app renommée) ;
-  noms non vérifiés un par un sur un appareil. Ajoutez vos apps sensibles.
-- **Apps ignorées** (rien ne part) : vide par défaut.
-- **Jamais transmis** : les notifications de Vigie et du compagnon ; les mises à jour d'une notification qui
-  n'ont rien changé ; plus d'une mise à jour par notification toutes les 30 s ; les mises à jour des
-  notifications **permanentes** (`ongoing`, service de premier plan, musique, téléchargement, minuteur, appel,
-  navigation, entraînement : seuls le premier affichage et le retrait partent ; « Téléchargement terminé », qui
-  n'est plus permanent, part une fois) ; les résumés de groupe (chaque notification du groupe part, pas le
-  résumé) ; le retrait d'une notification qui n'a pas été transmise ; au-delà de **20 événements par app et par
-  10 minutes** (les retraits de notifications transmises passent toujours). Les notifications déjà affichées
-  quand le compagnon démarre ne sont pas transmises. Volume typique : quelques dizaines d'événements par jour.
-- Android 15+ masque déjà le contenu des notifications qu'il reconnaît comme codes à usage unique aux écouteurs
-  « non fiables » comme le compagnon : le masquage de Vigie est une seconde couche.
+- **Content off** (default): the title and text never leave the companion's process (filtering
+  is done on its side, before the channel, from the settings read from the agent; the agent applies the same rule a
+  second time on reception).
+- **Code masking** (on by default): any run of 4 to 8 digits is replaced by `••••` before
+  truncation (a code is never cut in two). Details of the rule and its limits below.
+- **Apps excluded from content** (only the app name goes): pre-filled with common banking and payment apps
+  (the pre-filled list targets French banks), authenticators, password managers, **SMS and phone** (no SMS
+  content nor call log, principle 4). It is a list of **package names**: an app is only recognized
+  by its exact name, so the list is necessarily incomplete (other bank, regional variant, renamed app);
+  names not checked one by one on a device. Add your sensitive apps.
+- **Ignored apps** (nothing goes): empty by default.
+- **Never relayed**: the notifications of Watchpost and of the companion; updates of a notification that
+  changed nothing; more than one update per notification every 30 s; updates of
+  **ongoing** notifications (`ongoing`, foreground service, music, download, timer, call,
+  navigation, workout: only the first display and the removal go; "Download complete", which
+  is no longer ongoing, goes once); group summaries (each notification of the group goes, not
+  the summary); the removal of a notification that was not relayed; beyond **20 events per app and per
+  10 minutes** (removals of relayed notifications always go through). Notifications already displayed
+  when the companion starts are not relayed. Typical volume: a few dozen events per day.
+- Android 15+ already hides the content of notifications it recognizes as one-time codes from "untrusted"
+  listeners such as the companion: Watchpost's masking is a second layer.
 
-**Règle de masquage** (`notifier/protocol/…/CodeRedactor.kt`, testée par `CodeRedactorTest`) : une suite de chiffres
-(toutes écritures) dont les groupes sont séparés par **une** espace, espace insécable ou un tiret (`123456`,
-`123 456`, `123-456`, `G-123456`, `code123456`) est masquée en entier si elle compte 4 à 8 chiffres ; plus
-longue (téléphone, IBAN, carte), seuls ses groupes de 4 à 8 chiffres le sont. Une partie de nombre décimal
-(`1234,56`) ou de date à barres obliques (`16/11/2026`) est laissée.
-- **Masqué à tort** : années (`2026`), montants sans décimales (`1500 €`, `1 500 €`), dates ISO (`2026-11-16`),
-  codes postaux (`75011`), blocs de 4 chiffres de numéros de téléphone écrits par blocs de 4 (`+44 20 7946 0958`),
-  blocs d'IBAN, numéros de commande ou de suivi de 4 à 8 chiffres.
-- **Laissé passer** : codes de 3 chiffres ou de 9 et plus, codes alphanumériques (`A1B2C3`), codes écrits avec un
-  point ou une virgule (`123.456`, `1234.5678`), avec deux séparateurs ou une barre oblique entre les groupes,
-  code en petits groupes collé par une espace à un autre nombre (`123 456 2026` : seul `2026` est masqué),
-  codes écrits en lettres. Les numéros de téléphone en blocs de 2 chiffres (`06 12 34 56 78`) ne sont pas masqués.
+**Masking rule** (`notifier/protocol/…/CodeRedactor.kt`, tested by `CodeRedactorTest`): a run of digits
+(all scripts) whose groups are separated by **one** space, non-breaking space or hyphen (`123456`,
+`123 456`, `123-456`, `G-123456`, `code123456`) is masked entirely if it has 4 to 8 digits; if longer
+(phone, IBAN, card), only its groups of 4 to 8 digits are. A part of a decimal number
+(`1234,56`) or of a slash-separated date (`16/11/2026`) is left alone.
+- **Wrongly masked**: years (`2026`), amounts without decimals (`1500 €`, `1 500 €`), ISO dates (`2026-11-16`),
+  postal codes (`75011`), 4-digit blocks of phone numbers written in blocks of 4 (`+44 20 7946 0958`),
+  IBAN blocks, order or tracking numbers of 4 to 8 digits.
+- **Let through**: codes of 3 digits or of 9 and more, alphanumeric codes (`A1B2C3`), codes written with a
+  dot or a comma (`123.456`, `1234.5678`), with two separators or a slash between the groups,
+  a code in small groups joined by a space to another number (`123 456 2026`: only `2026` is masked),
+  codes written out in words. Phone numbers in blocks of 2 digits (`06 12 34 56 78`) are not masked.
 
-### Installer et activer
+### Installing and enabling
 
-1. Construire avec **le même keystore** que l'agent (même construction) : `./gradlew :notifier:assembleRelease`
-   → `notifier/build/outputs/apk/release/notifier-release.apk` (même configuration de signature que `:app`,
-   lue dans `keystore.properties` ou les variables `VIGIE_*` ; `-Pvigie.testOnly`, `-Pvigie.versionCode`
-   et `-Pvigie.versionName` s'appliquent aussi). Un compagnon signé par une autre clé est refusé à
-   l'installation à côté de l'agent (`INSTALL_FAILED_DUPLICATE_PERMISSION`) et ne pourrait de toute façon
-   rien lui remettre. Débogage avec débogage, release avec release.
-2. `./scripts/install-notifier.sh [notifier.apk]` (`adb install -r -t`, compare ensuite les clés de signature
-   de l'agent et du compagnon). L'ordre d'installation agent/compagnon est indifférent.
-3. Accès aux notifications : `./scripts/notifier-access.sh` (`adb shell cmd notification allow_listener
-   io.github.erwsim.vigie.notifier/io.github.erwsim.vigie.notifier.NotifierListenerService`, puis vérification
-   dans `settings get secure enabled_notification_listeners`). Sans ADB : bouton « Réglage d'accès aux
-   notifications » du compagnon, ou Paramètres › Notifications › … › Accès aux notifications (le chemin varie
-   selon la version de One UI). Une app installée hors magasin d'apps peut y apparaître grisée
-   (**« Paramètre restreint »**) : Paramètres › Applications › Vigie Notifications › ⋮ › « Autoriser les
-   paramètres restreints », puis accorder l'accès ; la commande ADB n'est pas concernée par ce blocage.
-4. Ouvrir « Vigie Notifications » : accès accordé, service d'écoute connecté, agent présent (même clé), collecte
-   active, contenu activé ou non d'après l'agent, dernière notification relayée et compteurs.
-5. Dans Vigie, onglet Collecteurs › Notifications : le collecteur passe de « indisponible » (compagnon absent,
-   signé par une autre clé ou sans accès, raison affichée) à « actif » (au plus tard au prochain passage de
-   maintenance, 15 min ; aussitôt si le compagnon signale son service d'écoute).
+1. Build with **the same keystore** as the agent (same build): `./gradlew :notifier:assembleRelease`
+   → `notifier/build/outputs/apk/release/notifier-release.apk` (same signing configuration as `:app`,
+   read from `keystore.properties` or the `WATCHPOST_*` variables; `-Pwatchpost.testOnly`, `-Pwatchpost.versionCode`
+   and `-Pwatchpost.versionName` also apply). A companion signed with another key is refused at
+   installation next to the agent (`INSTALL_FAILED_DUPLICATE_PERMISSION`) and could not hand anything over to it
+   anyway. Debug with debug, release with release.
+2. `./scripts/install-notifier.sh [notifier.apk]` (`adb install -r -t`, then compares the signing keys
+   of the agent and the companion). The installation order of agent/companion does not matter.
+3. Notification access: `./scripts/notifier-access.sh` (`adb shell cmd notification allow_listener
+   io.github.erwsim.watchpost.notifier/io.github.erwsim.watchpost.notifier.NotifierListenerService`, then a check
+   in `settings get secure enabled_notification_listeners`). Without ADB: the companion's "Notification access
+   settings" button, or Settings › Notifications › … › Notification access (the path varies
+   with the One UI version). An app installed outside an app store may appear greyed out there
+   (**"Restricted setting"**): Settings › Apps › Watchpost Notifications › ⋮ › "Allow restricted
+   settings", then grant the access; the ADB command is not affected by this block.
+4. Open "Watchpost Notifications": access granted, listener service connected, agent present (same key), collection
+   active, content enabled or not according to the agent, last relayed notification and counters.
+5. In Watchpost, Collectors tab › Notifications: the collector goes from "unavailable" (companion absent,
+   signed with another key or without access, reason displayed) to "active" (at the latest at the next
+   maintenance pass, 15 min; immediately if the companion reports its listener service).
 
-### Régler
+### Configuring
 
-- **Dans Vigie** (Collecteurs › Notifications) : l'interrupteur du collecteur (désactivé : le compagnon ne
-  transmet plus rien), « Contenu des notifications » (désactivé par défaut), « Masquer les codes numériques »
-  (activé par défaut). Chaque changement émet `agent.config_changed` et prévient le compagnon.
-- **Dans le compagnon** : les deux listes d'apps (un nom de paquet par ligne, `#` pour un commentaire),
-  « Enregistrer dans Vigie » ou « Rétablir les listes par défaut ». Elles sont **stockées dans l'agent** (clés
-  `notifications.content_excluded_packages` et `notifications.ignored_packages` de ses réglages ; le cadre de
-  réglages de l'agent n'a pas de type « liste » éditable), chaque changement émet `agent.config_changed`
-  (`old`/`new` : noms séparés par des virgules, 1 000 caractères au plus). Entrées invalides refusées et
-  affichées ; 500 apps au plus par liste.
+- **In Watchpost** (Collectors › Notifications): the collector's switch (off: the companion
+  relays nothing any more), "Notification content" (off by default), "Mask numeric codes"
+  (on by default). Each change emits `agent.config_changed` and notifies the companion.
+- **In the companion**: the two app lists (one package name per line, `#` for a comment),
+  "Save in Watchpost" or "Restore the default lists". They are **stored in the agent** (keys
+  `notifications.content_excluded_packages` and `notifications.ignored_packages` of its settings; the agent's
+  settings framework has no editable "list" type), each change emits `agent.config_changed`
+  (`old`/`new`: names separated by commas, 1,000 characters at most). Invalid entries are refused and
+  displayed; 500 apps at most per list.
 
-### Canal local (sécurité)
+### Local channel (security)
 
-- Le compagnon appelle un **fournisseur de contenu** de l'agent (`ContentResolver.call`, autorité
-  `io.github.erwsim.vigie.notifications`) : appel synchrone, qui démarre le processus de l'agent s'il ne tourne
-  pas (pas de démarrage de service en arrière-plan, donc pas de restriction Android 12+), sans liaison à gérer.
-  Visibilité entre paquets : `<queries>` sur le paquet de l'agent côté compagnon ; l'agent voit tout
+- The companion calls a **content provider** of the agent (`ContentResolver.call`, authority
+  `io.github.erwsim.watchpost.notifications`): a synchronous call, which starts the agent's process if it is not
+  running (no background service start, hence no Android 12+ restriction), with no binding to manage.
+  Cross-package visibility: `<queries>` on the agent's package on the companion side; the agent sees everything
   (`QUERY_ALL_PACKAGES`).
-- Protégé par la permission **`io.github.erwsim.vigie.permission.NOTIFICATION_RELAY`** de niveau `signature`,
-  **déclarée par les deux APK** (même clé : pas de conflit, et l'ordre d'installation ou la désinstallation de
-  l'un ne la fait pas disparaître). L'agent vérifie en plus, à chaque appel, que l'appelant détient la
-  permission, que son uid et son paquet attribué sont ceux du compagnon et que sa clé de signature est la sienne.
-- Dans l'autre sens, l'agent n'envoie qu'une diffusion vide « réglages modifiés » au récepteur du compagnon
-  (protégé par la même permission) ; le compagnon relit alors les réglages. Il les relit aussi au plus toutes les
-  minutes et dès que l'agent répond avec une autre version. Tant qu'il n'a pas pu les lire, il ne transmet rien.
-- Tailles bornées des deux côtés : titre et texte 512 points de code, catégorie 64, canal 128, paquet 255
-  caractères, 32 clés par appel ; au-delà, l'agent refuse l'appel (rien n'est enregistré). 300 appels par minute
-  au plus côté agent ; file de 256 notifications au plus côté compagnon.
-- Agent absent, arrêté, en cours de mise à jour ou collecteur désactivé : le compagnon **abandonne** les
-  notifications de ce moment (il ne les garde pas pour plus tard) et le compte (« non remises ») ; après un échec
-  il ne réessaie pas pendant 10 s. Si le processus de l'agent a été relancé par l'appel avant que son service ne
-  redémarre les collecteurs, l'événement est écrit directement dans le tampon de l'agent.
+- Protected by the **`io.github.erwsim.watchpost.permission.NOTIFICATION_RELAY`** permission of `signature` level,
+  **declared by both APKs** (same key: no conflict, and the installation order or the uninstallation of
+  one does not make it disappear). The agent also checks, on each call, that the caller holds the
+  permission, that its uid and its attributed package are the companion's and that its signing key is its own.
+- In the other direction, the agent only sends an empty "settings changed" broadcast to the companion's receiver
+  (protected by the same permission); the companion then re-reads the settings. It also re-reads them at most every
+  minute and as soon as the agent answers with another version. As long as it could not read them, it relays nothing.
+- Bounded sizes on both sides: title and text 512 code points, category 64, channel 128, package 255
+  characters, 32 keys per call; beyond that, the agent refuses the call (nothing is recorded). 300 calls per minute
+  at most on the agent side; queue of 256 notifications at most on the companion side.
+- Agent absent, stopped, being updated or collector disabled: the companion **drops** the
+  notifications of that moment (it does not keep them for later) and counts them ("not delivered"); after a failure
+  it does not retry for 10 s. If the agent's process was restarted by the call before its service
+  restarts the collectors, the event is written directly into the agent's buffer.
 
-### Retirer
+### Removing
 
-- Couper la collecte en gardant le compagnon : désactiver le collecteur « Notifications » dans Vigie.
-- Retirer l'accès : `./scripts/notifier-access.sh --revoke` (`cmd notification disallow_listener …`), ou le
-  réglage d'accès aux notifications.
-- Désinstaller : `./scripts/uninstall-notifier.sh` (retire l'accès puis `adb uninstall`), ou depuis les
-  Paramètres. L'agent continue sans lui ; les listes restent dans les réglages de l'agent.
+- Stop the collection while keeping the companion: disable the "Notifications" collector in Watchpost.
+- Withdraw the access: `./scripts/notifier-access.sh --revoke` (`cmd notification disallow_listener …`), or the
+  notification access setting.
+- Uninstall: `./scripts/uninstall-notifier.sh` (withdraws the access then `adb uninstall`), or from
+  Settings. The agent keeps running without it; the lists stay in the agent's settings.
 
-### Ce qui est vérifié, ce qui ne l'est pas
+### What is verified, what is not
 
-- **Vérifié dans l'environnement de développement** : compilation, lint (aucun avertissement sur le
-  compagnon), APK debug et release (R8) ; le manifeste du compagnon ne demande que la permission du canal (pas
-  d'`INTERNET`), son code release ne contient que le sien ; l'APK de l'agent ne contient aucun
-  `NotificationListenerService`, déclare la permission de signature et l'exige sur son fournisseur ; tests JVM
-  du masquage, des listes, de la troncature, de la réduction du bruit, de la validation côté agent (charges
-  hostiles) et de la conformité de `app.notification` ; scripts bash essayés contre un faux `adb` (les `.ps1`
-  n'ont pas été exécutés).
-- **Rien n'a été exécuté sur un téléphone.** À vérifier sur le S25+, par ordre de risque :
-  1. réaction de **Play Protect** à l'installation du compagnon (et éventuelle analyse de l'agent ensuite) ;
-  2. accès accordé par `cmd notification allow_listener` sur One UI 8/9, et l'affichage « paramètre
-     restreint » dans les Paramètres ;
-  3. **survie du service d'écoute** (gestion de la batterie Samsung : au besoin, Vigie Notifications dans
-     « Applications jamais en veille ») et reconnexion après redémarrage, mise à jour ou arrêt forcé ;
-  4. canal quand l'agent est tué, en cours de mise à jour ou arrêté (« non remises » doit augmenter, aucune
-     erreur) et démarrage de l'agent par l'appel du compagnon ;
-  5. lecture de `enabled_notification_listeners` par l'agent (sinon le collecteur se fie à ce que dit le
-     compagnon) ; diffusion « réglages modifiés » reçue par le compagnon ;
-  6. contenu réel des notifications des apps courantes (messageries, codes reçus par SMS déjà masqués par
-     Android 15+, notifications groupées) et volume quotidien.
+- **Verified** (JVM tests and build checks, no device): compilation, lint (no warning on the
+  companion), debug and release APKs (R8); the companion's manifest only requests the channel permission (no
+  `INTERNET`), its release code only contains its own; the agent's APK contains no
+  `NotificationListenerService`, declares the signature permission and requires it on its provider; JVM tests
+  of masking, lists, truncation, noise reduction, agent-side validation (hostile
+  payloads) and `app.notification` conformance; bash scripts tried against a fake `adb` (the `.ps1` files
+  were not run).
+- **Nothing has been run on a phone.** To verify on the phone, in order of risk:
+  1. the reaction of **Play Protect** to the companion's installation (and a possible later scan of the agent);
+  2. access granted by `cmd notification allow_listener` on One UI 8/9, and the "restricted
+     setting" display in Settings;
+  3. **survival of the listener service** (Samsung battery management: if needed, Watchpost Notifications in
+     "Never sleeping apps") and reconnection after a reboot, an update or a force stop;
+  4. the channel when the agent is killed, being updated or stopped ("not delivered" must increase, no
+     error) and the agent's startup by the companion's call;
+  5. the agent's reading of `enabled_notification_listeners` (otherwise the collector relies on what the
+     companion says); "settings changed" broadcast received by the companion;
+  6. the real content of notifications of common apps (messengers, codes received by SMS already masked by
+     Android 15+, grouped notifications) and the daily volume.
 
-## Commandes à distance
+## Remote commands
 
-Décision du propriétaire du 16/11/2026 (principe 2 révisé, contrat §8) : le serveur peut transmettre au
-téléphone des commandes d'une **liste fermée**, et rien d'autre. Aucune commande ne peut modifier un réglage,
-la politique ou l'enrôlement : un type inconnu, un paramètre en trop ou hors bornes est **refusé**, jamais
-interprété. Écran **Réglages › Commandes à distance** (ou carte « Commandes à distance » de l'accueil).
+Principle 2 (contract §8): the server can send the phone commands from a **closed list**, and nothing else.
+No command can change a setting, the policy or the enrollment: an unknown type, an extra parameter or one
+out of bounds is **refused**, never interpreted. **Settings › Remote commands** screen (or the "Remote
+commands" card on Home).
 
-| Commande | Effet sur le téléphone | Exige | API Android |
+| Command | Effect on the phone | Requires | Android API |
 |---|---|---|---|
-| `ring` (`duration_s` 1–300, `vibrate`) | sonnerie d'alarme en boucle à plein volume (flux alarme, volume remis ensuite), vibration en option, notification « Vigie fait sonner ce téléphone » avec **Arrêter** | canal activé | `MediaPlayer` en `USAGE_ALARM`, `AudioManager.setStreamVolume(STREAM_ALARM)`, `VibrationAttributes.USAGE_ALARM` |
-| `vibrate` (`duration_s` 1–60) | vibration seule | canal activé | `VibratorManager` |
-| `stop_ring` | arrête sonnerie ou vibration | canal activé | — |
-| `locate` | position immédiate par le collecteur `location` dans **son** mode (jusqu'à 60 s), puis envoi immédiat du tampon | canal activé, collecteur `location` actif | `LocationManager.getCurrentLocation` |
-| `lock` (`message` ≤ 200 caractères, optionnel) | message sur l'écran de verrouillage puis verrouillage immédiat | **signée**, Device Owner | `setDeviceOwnerLockScreenInfo`, `lockNow` |
-| `clear_lock_message` | retire le message | **signée**, Device Owner | `setDeviceOwnerLockScreenInfo(null)` |
-| `wipe` | réinitialisation d'usine | **signée**, Device Owner, « Autoriser l'effacement à distance » | `DevicePolicyManager.wipeDevice(0)` |
+| `ring` (`duration_s` 1–300, `vibrate`) | looping alarm ringtone at full volume (alarm stream, volume restored afterwards), optional vibration, notification "Watchpost is making this phone ring" with **Stop** | channel enabled | `MediaPlayer` with `USAGE_ALARM`, `AudioManager.setStreamVolume(STREAM_ALARM)`, `VibrationAttributes.USAGE_ALARM` |
+| `vibrate` (`duration_s` 1–60) | vibration only | channel enabled | `VibratorManager` |
+| `stop_ring` | stops the ringtone or vibration | channel enabled | — |
+| `locate` | immediate position by the `location` collector in **its** mode (up to 60 s), then immediate upload of the buffer | channel enabled, `location` collector active | `LocationManager.getCurrentLocation` |
+| `lock` (`message` ≤ 200 characters, optional) | message on the lock screen then immediate lock | **signed**, Device Owner | `setDeviceOwnerLockScreenInfo`, `lockNow` |
+| `clear_lock_message` | removes the message | **signed**, Device Owner | `setDeviceOwnerLockScreenInfo(null)` |
+| `wipe` | factory reset | **signed**, Device Owner, "Allow remote erase" | `DevicePolicyManager.wipeDevice(0)` |
 
-Chaque commande traitée produit `command.result` (`command_id`, `type`, `status` = `executed`/`failed`/`refused`,
-`detail`, `signed`), une ligne de l'historique local et **une notification sur le téléphone** (une commande ne
-passe jamais inaperçue) ; le résultat est aussi envoyé au serveur (`POST /api/v1/commands/{id}/result`, gardé et
-renvoyé tant qu'il n'est pas acquitté). La notification permanente et l'accueil disent quand le canal est actif.
+Each processed command produces `command.result` (`command_id`, `type`, `status` = `executed`/`failed`/`refused`,
+`detail`, `signed`), a line in the local history and **a notification on the phone** (a command never
+goes unnoticed); the result is also sent to the server (`POST /api/v1/commands/{id}/result`, kept and
+resent until acknowledged). The permanent notification and Home say when the channel is active.
 
-### Mettre en service
+### Putting it into service
 
-1. Enrôler l'appareil (le code dépend de son identifiant).
-2. **Commandes à distance** › « Recevoir les commandes à distance » (**désactivé par défaut**), mode
-   « Connexion permanente » (défaut) ou « Interrogation périodique » (1 à 15 min).
-3. **Code de commande** : 12 caractères au moins, saisi deux fois. Il n'est connu que du téléphone et de vous ;
-   le serveur ne le reçoit pas et ne peut ni verrouiller ni effacer sans lui. **Cette promesse a deux
-   limites** (l'écran les dit) : le serveur voit passer les commandes signées et peut donc essayer des codes
-   hors ligne — de l'ordre de 15 000 essais par seconde et par carte graphique haut de gamme malgré les
-   600 000 itérations (ordre de grandeur tiré des bancs publics de PBKDF2-HMAC-SHA256, non mesuré ici) :
-   12 chiffres tombent en environ deux années-carte, soit quelques jours de matériel loué, un mot du
-   dictionnaire suivi de chiffres en quelques heures, alors que cinq mots tirés au hasard ou 16 caractères
-   aléatoires sont hors de portée ; et le code est saisi dans la console, que ce même serveur sert (un serveur
-   compromis peut modifier la page et le lire). L'app refuse un code de moins de 6 caractères différents, ou
-   sans lettre avec moins de 20 chiffres (`CommandCrypto.isTooWeak` : un plancher, pas une mesure de force).
-   **Changer le code rend caduques toutes les commandes déjà signées**, y compris celles que le serveur
-   détiendrait encore. Il est ressaisi dans la console à chaque commande sensible. Le téléphone n'en garde que la clé dérivée
-   `K = PBKDF2-HMAC-SHA256(code, "vigie-cmd-v1:" + device_id, 600 000, 32 octets)`, chiffrée par une clé AES du
-   Keystore ; le code lui-même n'est conservé nulle part (pas même dans l'écran). Après un réenrôlement sous un
-   autre identifiant, l'app demande de le ressaisir. « Supprimer le code » remet aussi l'effacement à distance
-   à « interdit ».
-4. Optionnel : **Autoriser l'effacement à distance** (désactivé par défaut ; activation seulement avec un code
-   défini et après avoir tapé EFFACER dans la confirmation). Chaque changement de ces réglages émet
-   `agent.config_changed` (`commands.enabled`, `commands.mode`, `commands.allow_wipe`, `commands.code` avec
-   `set`/`changed`/`unset`, jamais le code).
-5. Si un message de verrouillage a été posé, l'écran propose « Effacer le message » (localement, sans commande).
+1. Enroll the device (the passphrase depends on its identifier).
+2. **Remote commands** › "Receive remote commands" (**off by default**), mode
+   "Permanent connection" (default) or "Periodic polling" (1 to 15 min).
+3. **Command passphrase**: 12 characters at least, entered twice. It is known only to the phone and to you;
+   the server does not receive it and can neither lock nor erase without it. **This promise has two
+   limits** (the screen says them): the server sees the signed commands go by and can therefore try passphrases
+   offline — on the order of 15,000 guesses per second per high-end graphics card despite the
+   600,000 iterations (order of magnitude taken from public PBKDF2-HMAC-SHA256 benchmarks, not measured here):
+   12 digits fall in about two card-years, i.e. a few days of rented hardware, a dictionary word followed by digits in a few hours,
+   whereas five randomly drawn words or 16 random characters are out of reach; and the passphrase is entered into
+   the console, which this same server serves (a compromised server can modify the page and read it). The app refuses a passphrase with fewer than 6 distinct
+   characters, or without a letter and with fewer than 20 digits (`CommandCrypto.isTooWeak`: a floor, not a strength
+   measure). **Changing the passphrase invalidates every command already signed**, including those the server might
+   still hold. It is entered again in the console for each sensitive command. The phone only keeps the derived key
+   `K = PBKDF2-HMAC-SHA256(passphrase, "watchpost-cmd-v1:" + device_id, 600,000, 32 bytes)`, encrypted by a Keystore AES key;
+   the passphrase itself is kept nowhere (not even on the screen). After a re-enrollment under another
+   identifier, the app asks for it to be entered again. "Delete the passphrase" also sets remote erase
+   back to "forbidden".
+4. Optional: **Allow remote erase** (off by default; enabling only with a passphrase
+   set and after typing ERASE in the confirmation). Each change of these settings emits
+   `agent.config_changed` (`commands.enabled`, `commands.mode`, `commands.allow_wipe`, `commands.code` with
+   `set`/`changed`/`unset`, never the passphrase).
+5. If a lock message has been set, the screen offers "Clear the message" (locally, without a command).
 
-### Vérifications (dans l'ordre du contrat)
+### Verifications (in the order of the contract)
 
-canal activé (`disabled`) → `payload` analysable, `v` = 1, même `id` (`malformed`) → `device_id` (`wrong_device`)
-→ type de la liste (`unknown_type`) → pour un type sensible : code défini (`no_code_configured`), pas de
-verrouillage temporaire (`locked_out`), HMAC-SHA256 sur les **octets UTF-8 exacts** de `payload`, comparé en
-temps constant (`bad_signature`) → `wipe` autorisé (`disabled` ; l'`id` d'un `wipe` signé et encore valide
-refusé ici est **consommé** : le serveur garde la commande signée jusqu'à son expiration et pourrait sinon la
-livrer de nouveau après l'activation de l'interrupteur) → non expirée, 5 min de tolérance (`expired`) →
-jamais vue (`replay`) → paramètres dans les bornes (`bad_params`) → Device Owner pour `lock`,
-`clear_lock_message`, `wipe` (`not_device_owner`). Avant la signature, seuls `v`, `id`, `device_id` et `type`
-sont lus, pour refuser ; le reste (paramètres, dates) n'est analysé qu'après. Cinq `bad_signature` en une heure
-bloquent les commandes sensibles une heure (persistant). Anti-rejeu persistant : 500 derniers `id` signés,
-500 derniers `id` simples et 500 derniers `id` sensibles **consommés sans signature vérifiable** (trois fenêtres :
-un serveur compromis qui enverrait des commandes en masse ne peut pas faire sortir un `id` signé vérifié de sa
-fenêtre). Précisions de la revue de sécurité v1.1 (contrat §8) appliquées par l'agent : validité de `wipe`
-limitée à **24 h** (`expired` au-delà, et un `wipe` à 7 jours refusé `disabled` n'est pas consommé : il serait
-expiré de toute façon) ; une commande sensible refusée `disabled` (canal coupé) ou `no_code_configured` est
-**consommée** (fenêtre « non vérifiée », si son `device_id` est le bon et ses dates encore valides) et ne
-s'exécutera jamais, même après l'activation du canal ou la saisie du code ; U+2028 et U+2029 refusés dans le
-message de `lock` ; plancher du code (6 caractères différents, 20 chiffres sans lettre). Précisions retenues là où le contrat se tait : clé inconnue
-au premier niveau de `payload` ou `expires_at` antérieur à `issued_at` → `malformed` ; validité de plus de
-30 jours (24 h pour `wipe`) ou `issued_at` à plus de 5 min dans le futur → `expired` ; `sig` sur une commande simple →
-`malformed` ; `payload` avec une clé en double (même cachée derrière un échappement `\u`) → `malformed` ;
-message de `lock` : 200 unités UTF-16 au plus, aucun caractère de contrôle sauf le saut de ligne
-(`bad_params`, revérifié par l'agent : le serveur n'est pas de confiance). Le vecteur de test du §8 est reproduit à l'octet près
-(`CommandVerifierTest`). Tout JSON venu du serveur (payload, événement du flux, réponse d'interrogation) est
-refusé au-delà de quelques niveaux d'imbrication **avant** d'être analysé (`JsonNesting`) : l'analyseur est
-récursif et un débordement de pile, qui n'est pas une `Exception`, arrêterait le canal.
+channel enabled (`disabled`) → parsable `payload`, `v` = 1, same `id` (`malformed`) → `device_id` (`wrong_device`)
+→ type in the list (`unknown_type`) → for a sensitive type: passphrase set (`no_code_configured`), no
+temporary lockout (`locked_out`), HMAC-SHA256 over the **exact UTF-8 bytes** of `payload`, compared in
+constant time (`bad_signature`) → `wipe` allowed (`disabled`; the `id` of a signed and still valid `wipe`
+refused here is **consumed**: the server keeps the signed command until it expires and could otherwise
+deliver it again after the switch is turned on) → not expired, 5 min tolerance (`expired`) →
+never seen (`replay`) → parameters within bounds (`bad_params`) → Device Owner for `lock`,
+`clear_lock_message`, `wipe` (`not_device_owner`). Before the signature, only `v`, `id`, `device_id` and `type`
+are read, in order to refuse; the rest (parameters, dates) is only parsed afterwards. Five `bad_signature` in one hour
+block the sensitive commands for an hour (persistent). Persistent anti-replay: last 500 signed `id`s,
+last 500 plain `id`s and last 500 sensitive `id`s **consumed without a verifiable signature** (three windows:
+a compromised server sending commands in bulk cannot push a verified signed `id` out of its
+window). Precisions of contract §8 applied by the agent: `wipe` validity
+limited to **24 h** (`expired` beyond, and a 7-day `wipe` refused `disabled` is not consumed: it would be
+expired anyway); a sensitive command refused `disabled` (channel off) or `no_code_configured` is
+**consumed** ("unverified" window, if its `device_id` is the right one and its dates still valid) and will
+never run, even after the channel is enabled or the passphrase is entered; U+2028 and U+2029 refused in the
+`lock` message; passphrase floor (6 distinct characters, 20 digits without letters). Precisions retained where the contract is silent: unknown key
+at the first level of `payload` or `expires_at` earlier than `issued_at` → `malformed`; validity of more than
+30 days (24 h for `wipe`) or `issued_at` more than 5 min in the future → `expired`; `sig` on a plain command →
+`malformed`; `payload` with a duplicate key (even hidden behind a `\u` escape) → `malformed`;
+`lock` message: 200 UTF-16 units at most, no control character except line feed
+(`bad_params`, re-checked by the agent: the server is not trusted). The test vector of §8 is reproduced to the byte
+(`CommandVerifierTest`). Any JSON coming from the server (payload, stream event, polling response) is
+refused beyond a few levels of nesting **before** being parsed (`JsonNesting`): the parser is
+recursive and a stack overflow, which is not an `Exception`, would stop the channel.
 
-Ce que la signature ne couvre pas, par construction : une commande signée reste exécutable jusqu'à son
-`expires_at` (7 jours par défaut dans la console), quoi qu'affiche la console — un serveur compromis peut la
-retenir puis la livrer plus tard, ou ignorer une annulation (l'annulation n'existe que côté serveur). Parade
-locale : changer le code de commande, ou couper le canal ou l'effacement à distance.
+What the signature does not cover, by construction: a signed command stays executable until its
+`expires_at` (7 days by default in the console), whatever the console displays — a compromised server can
+hold it back then deliver it later, or ignore a cancellation (cancellation only exists on the server side). Local
+countermeasure: change the command passphrase, or turn off the channel or remote erase.
 
-### Effacement à distance : garde-fous
+### Remote erase: safeguards
 
-`wipe` est la seule action irréversible de l'app. Elle exige **toutes** ces conditions : canal activé, code
-défini, signature valide, « Autoriser l'effacement à distance » activé, commande non expirée et jamais vue, et
-Vigie Device Owner. L'agent émet d'abord `command.result` (`executed`, sév. 2), tente d'envoyer le tampon et le
-résultat (10 s au plus), **revérifie toutes les conditions sur l'état courant** (un interrupteur coupé pendant
-ces 10 s annule tout), puis appelle `wipeDevice(0)`. Choix d'API : `wipeData` lève `IllegalStateException` pour
-une app ciblant l'API 34+ appelée sur l'utilisateur système (là où vit un Device Owner) ; `wipeDevice` (API 34)
-est l'appel prévu pour réinitialiser l'appareil et exige la politique `<wipe-data/>` (déclarée dans
-`policy/src/main/res/xml/device_admin.xml`, avec `<force-lock/>` pour `lockNow`). Drapeaux 0 : la protection
-contre la réinitialisation (compte Google) et les eSIM sont **conservées** — un voleur ne peut pas réutiliser le
-téléphone, vous gardez votre ligne. L'appel réel n'existe qu'à un endroit (`AndroidFactoryReset`), construit à
-un seul endroit (`PolicyModule.registerCommandExecutors`) ; `RemoteCommandsPolicyTest` vérifie les 64
-combinaisons des six conditions (une seule efface) et, dans les sources, qu'aucun autre chemin n'appelle
+`wipe` is the app's only irreversible action. It requires **all** these conditions: channel enabled, passphrase
+set, valid signature, "Allow remote erase" enabled, command not expired and never seen, and
+Watchpost as Device Owner. The agent first emits `command.result` (`executed`, sev. 2), tries to upload the buffer and the
+result (10 s at most), **re-checks all the conditions on the current state** (a switch turned off during
+those 10 s cancels everything), then calls `wipeDevice(0)`. API choice: `wipeData` throws `IllegalStateException` for
+an app targeting API 34+ called on the system user (where a Device Owner lives); `wipeDevice` (API 34)
+is the call meant to reset the device and requires the `<wipe-data/>` policy (declared in
+`policy/src/main/res/xml/device_admin.xml`, with `<force-lock/>` for `lockNow`). Flags 0: factory reset
+protection (Google account) and eSIMs are **kept** — a thief cannot reuse the
+phone, and you keep your line. The real call exists in a single place (`AndroidFactoryReset`), built in
+a single place (`PolicyModule.registerCommandExecutors`); `RemoteCommandsPolicyTest` checks the 64
+combinations of the six conditions (only one erases) and, in the sources, that no other path calls
 `wipeDevice`/`wipeData`.
 
-### Limites réelles
+### Real limits
 
-- **« Ne pas déranger »** : la sonnerie utilise le flux alarme, qui n'est coupé ni par le mode silencieux ni
-  par le mode vibreur. Si le mode « Ne pas déranger » du propriétaire coupe les alarmes (« Silence total », ou
-  alarmes désactivées dans le mode), le son reste coupé : une app ciblant Android 15+ ne peut plus désactiver le
-  « Ne pas déranger » de l'utilisateur (`setInterruptionFilter` ne pilote plus que sa propre règle), et être
-  Device Owner ne donne aucun droit sur ce mode. Le résultat le dit (`detail` = `dnd_alarms_muted`) ; la
-  vibration et la notification restent.
-- **`lock` sans écran de verrouillage sécurisé** (pas de code, schéma ou empreinte) : `lockNow` éteint seulement
-  l'écran. Le message s'affiche sur l'écran de verrouillage tant qu'il n'est pas retiré (commande ou app).
-- **`locate` en mode GPS seul** : en intérieur, souvent aucune position en 60 s (`failed`, `no_fix`) ; les modes
-  réseau/fusionné répondent mieux, au prix de ce qu'ils transmettent à Google. Collecteur `location` coupé ou
-  sans permission : `failed`, `location_unavailable` (une commande ne passe jamais outre un choix local).
-- **Politiques d'administration ajoutées** (`force-lock`, `wipe-data`) : elles sont lues à l'activation de
-  l'administrateur. Sur un téléphone où Vigie était déjà Device Owner avec une version antérieure, vérifier que
-  `lock` fonctionne après la mise à jour (sinon : `SecurityException` → `failed`, `lock_refused`).
+- **"Do not disturb"**: the ringtone uses the alarm stream, which is muted neither by silent mode nor
+  by vibrate mode. If the user's "Do not disturb" mode mutes alarms ("Total silence", or
+  alarms turned off in the mode), the sound stays muted: an app targeting Android 15+ can no longer turn off the
+  user's "Do not disturb" (`setInterruptionFilter` now only drives its own rule), and being
+  Device Owner gives no right over this mode. The result says so (`detail` = `dnd_alarms_muted`); the
+  vibration and the notification remain.
+- **`lock` without a secure lock screen** (no PIN, pattern or fingerprint): `lockNow` only turns the screen
+  off. The message is displayed on the lock screen until it is removed (command or app).
+- **`locate` in GPS-only mode**: indoors, often no position within 60 s (`failed`, `no_fix`); the
+  network/fused modes answer better, at the price of what they send to Google. `location` collector off or
+  without permission: `failed`, `location_unavailable` (a command never overrides a local choice).
+- **Added admin policies** (`force-lock`, `wipe-data`): they are read when the administrator is
+  activated. On a phone where Watchpost was already Device Owner with an earlier version, check that
+  `lock` works after the update (otherwise: `SecurityException` → `failed`, `lock_refused`).
 
-### Canal et consommation (à mesurer sur le téléphone)
+### Channel and consumption (to measure on the phone)
 
-- **Connexion permanente** : `GET /api/v1/commands/stream` (Server-Sent Events) avec le même client TLS à
-  certificat client que l'envoi. Aucun verrou de veille permanent : une lecture bloquante sur une connexion TCP
-  au repos. Délai de lecture 300 s (2,5 × le maintien de 120 s du serveur : un maintien perdu est toléré). Les
-  minuteries s'arrêtent quand le processeur dort : une alarme inexacte autorisée en veille profonde
-  (`setAndAllowWhileIdle`, au plus une fois toutes les 15 min environ ; Android en espace l'effet d'au moins
-  9 min en Doze) vérifie qu'un octet est arrivé depuis moins de 5 min, sinon la connexion est rouverte. Verrou
-  de veille seulement pendant le traitement d'une commande (≤ 2 min), autour d'une interrogation (≤ 60 s) et
-  après une alarme (≤ 30 s).
-- **Coût attendu** : chaque maintien du serveur (toutes les 2 min) réveille le modem s'il est au repos — c'est
-  la principale dépense, surtout en réseau mobile. Un service de premier plan garde normalement l'accès réseau
-  en Doze (à vérifier sur One UI). Si la consommation est trop forte : mode « Interrogation périodique ».
-- **Interrogation** : `GET /api/v1/commands` à l'intervalle choisi (alarme inexacte ; en veille profonde
-  l'intervalle réel s'allonge), et à chaque envoi d'événements quand le flux n'est pas ouvert (au plus une fois
-  par minute ; inutile quand le flux est ouvert, qui livre déjà les commandes en attente).
-- **Pas de boucle** : sans réseau, rien n'est tenté jusqu'au retour du réseau (rappel système) ; échecs en
-  backoff exponentiel avec gigue (5 s → 15 min ; `429` et `Retry-After` respectés ; `404` = serveur sans canal :
-  6 h) ; un flux qui meurt aussitôt ouvert compte comme un échec ; un flux qui a vécu est rouvert après 2 à 10 s.
-  **`401`/`403` arrête tout** et l'écran l'affiche (« refusé par le serveur ») jusqu'à un réenrôlement, un
-  changement de réglage ou « Reconnecter ». Changement de réseau (Wi-Fi ↔ mobile) : le flux est rouvert aussitôt.
-- **Renvoi** (contrat §8) : le serveur livre de nouveau une commande dont le résultat n'est pas arrivé (après
-  5 min, 3 fois au plus), et le flux puis l'interrogation peuvent livrer la même. Une commande déjà traitée
-  n'est **jamais réexécutée** (ni `wipe`, ni `lock`, ni `ring`) : l'agent renvoie son **résultat d'origine**,
-  conservé avec l'`id` (1000 derniers), sans nouvel événement ni nouvelle ligne d'historique ; il ne répond
-  `refused`/`replay` que pour un `id` encore dans la fenêtre anti-rejeu dont il n'a plus le résultat.
+- **Permanent connection**: `GET /api/v1/commands/stream` (Server-Sent Events) with the same client-certificate TLS
+  client as the upload. No permanent wake lock: a blocking read on an idle TCP connection.
+  Read timeout 300 s (2.5 × the server's 120 s keep-alive: one lost keep-alive is tolerated). Timers
+  stop when the CPU sleeps: an inexact alarm allowed in deep sleep
+  (`setAndAllowWhileIdle`, at most once every 15 min or so; Android spaces its effect by at least
+  9 min in Doze) checks that a byte arrived less than 5 min ago, otherwise the connection is reopened. Wake lock
+  only while processing a command (≤ 2 min), around a poll (≤ 60 s) and
+  after an alarm (≤ 30 s).
+- **Expected cost**: each server keep-alive (every 2 min) wakes the modem if it is idle — this is
+  the main expense, especially on a mobile network. A foreground service normally keeps network access
+  in Doze (to be verified on One UI). If consumption is too high: "Periodic polling" mode.
+- **Polling**: `GET /api/v1/commands` at the chosen interval (inexact alarm; in deep sleep
+  the real interval lengthens), and at each event upload when the stream is not open (at most once
+  a minute; pointless when the stream is open, which already delivers pending commands).
+- **No loop**: without network, nothing is tried until the network returns (system callback); failures in
+  jittered exponential backoff (5 s → 15 min; `429` and `Retry-After` respected; `404` = server without a channel:
+  6 h); a stream that dies as soon as it is opened counts as a failure; a stream that lived is reopened after 2 to 10 s.
+  **`401`/`403` stops everything** and the screen shows it ("refused by the server") until a re-enrollment, a
+  settings change or "Reconnect". Network change (Wi-Fi ↔ mobile): the stream is reopened at once.
+- **Resend** (contract §8): the server delivers again a command whose result has not arrived (after
+  5 min, 3 times at most), and the stream then polling can deliver the same one. A command already processed
+  is **never re-executed** (neither `wipe`, nor `lock`, nor `ring`): the agent sends back its **original result**,
+  kept with the `id` (last 1000), with no new event or history line; it only answers
+  `refused`/`replay` for an `id` still in the anti-replay window whose result it no longer has.
 
-### Ce qui est vérifié, ce qui ne l'est pas
+### What is verified, what is not
 
-- **Vérifié (JVM)** : vecteur de test du §8 (et vecteurs PBKDF2 de la RFC 7914), **cas difficiles signés par
-  le vrai code TypeScript de la console** (`ConsoleVectorsTest` rejoue
-  `server/console/src/lib/fixtures/command-vectors.json` : accents, émojis, guillemets, sauts de ligne, texte
-  bidirectionnel, codes non ASCII, décomposés ou bordés d'espaces), chaque motif de refus et
-  l'ordre des vérifications, anti-rejeu après redémarrage, `wipe` refusé interrupteur coupé puis rejoué
-  interrupteur activé (y compris après saturation de la mémoire des résultats par des commandes simples),
-  JSON imbriqué à l'excès, plancher du code de commande, verrouillage après 5 signatures invalides, matrice
-  des garde-fous de `wipe`, revérification avant l'effacement, client du canal contre MockWebServer (flux SSE,
-  coupure, reconnexion, surveillance du flux, `401`, absence de réseau, bascule vers l'interrogation, résultat
-  renvoyé après coupure, livraison en double, renvoi du résultat d'origine sans réexécution — `wipe`, `lock`,
-  `ring`), conformité de `command.result` au contrat (`CommandResultContractTest`).
-- **Essai croisé contre le vrai collecteur** (`CrossCommandsTest`, ignoré sans les variables `VIGIE_CROSS_*`,
-  mode d'emploi en tête du fichier ; exécuté le 16/11/2026 contre `vigie-collector serve` en `http://` local) :
-  commandes créées par l'API console avec un `payload` et une signature construits comme la console
-  (`ring`, `lock` signé avec un message accentué sur deux lignes, `wipe` signé, `lock` signé avec un autre
-  code), livrées par le vrai flux SSE puis par l'interrogation, vérifiées par le vrai client ; le serveur a
-  enregistré `executed` pour les commandes légitimes et `refused`/`bad_signature` pour la fausse. Deux essais
-  ajoutés par la revue de sécurité (16/11/2026, mêmes conditions) : les 13 cas difficiles **signés par le vrai
-  code de la console** (`node server/console/scripts/command-vectors.ts <device_id>`) traversent le vrai
-  collecteur et sont acceptés par le vrai vérificateur avec leur message exact ; et le **renvoi après 5 min par
-  le vrai serveur** : `lock` et `wipe` (réinitialisation factice) dont le résultat n'était pas parvenu au
-  serveur sont livrés de nouveau, ne sont pas réexécutés, et leur résultat d'origine est enregistré ; un
-  `ring` dont le résultat ne pouvait pas partir est renvoyé entre-temps, n'est pas rejoué, et son résultat
-  arrive à la reprise.
-- **Rien n'a été exécuté sur un téléphone.** À vérifier sur le S25+, par ordre de risque :
-  1. **`wipe`** : avec un téléphone de test ou une sauvegarde complète, vérifier que `wipeDevice(0)` réinitialise
-     bien (et qu'il ne se passe rien tant que l'interrupteur est coupé) ;
-  2. **`lock`** : `lockNow` et l'affichage du message par One UI sur l'écran de verrouillage
-     (`setDeviceOwnerLockScreenInfo`), puis `clear_lock_message` et « Effacer le message » ;
-  3. **consommation du canal permanent** sur 24 h en Wi-Fi puis en réseau mobile (Paramètres › Batterie,
-     `adb shell dumpsys batterystats`), comparée au mode interrogation ; si elle est forte, essayer un maintien
-     serveur plus long (`VIGIE_CMD_KEEPALIVE_S`, **240 s au plus** : le délai de lecture de l'agent est de
-     300 s, et sans dépasser le délai de NAT de l'opérateur) ou le mode interrogation ;
-  4. **réception en Doze** : écran éteint depuis plus d'une heure, envoyer `ring` ; noter le délai (la connexion
-     doit rester ouverte grâce au service de premier plan) ; `adb shell dumpsys deviceidle force-idle` pour forcer ;
-  5. **sonnerie** en mode silencieux, vibreur et « Ne pas déranger » (avec et sans alarmes autorisées), volume
-     d'alarme remis ensuite, bouton « Arrêter » sur l'écran de verrouillage ;
-  6. `locate` dans les trois modes de localisation, en intérieur et dehors ; reconnexion après passage Wi-Fi ↔
-     mobile, mode avion, redémarrage du serveur ; comportement après révocation (`401` affiché, plus d'essais).
+- **Verified (JVM)**: the test vector of §8 (and the PBKDF2 vectors of RFC 7914), **hard cases signed by
+  the console's real TypeScript code** (`ConsoleVectorsTest` replays
+  `server/console/src/lib/fixtures/command-vectors.json`: accents, emoji, quotes, line breaks, bidirectional
+  text, non-ASCII passphrases, decomposed or padded with spaces), each refusal reason and
+  the order of the checks, anti-replay after a restart, `wipe` refused with the switch off then replayed
+  with the switch on (including after the results memory was saturated by plain commands),
+  excessively nested JSON, command passphrase floor, lockout after 5 invalid signatures, matrix
+  of the `wipe` safeguards, re-check before the erase, channel client against MockWebServer (SSE stream,
+  cut, reconnection, stream monitoring, `401`, no network, switch to polling, result
+  resent after a cut, duplicate delivery, resend of the original result without re-execution — `wipe`, `lock`,
+  `ring`), conformance of `command.result` to the contract (`CommandResultContractTest`).
+- **Cross-check against the real collector** (`CrossCommandsTest`, skipped without the `WATCHPOST_CROSS_*` variables,
+  instructions at the top of the file; run against `watchpost-collector serve` over a local `http://`):
+  commands created by the console API with a `payload` and a signature built like the console does
+  (`ring`, signed `lock` with an accented two-line message, signed `wipe`, signed `lock` with another
+  passphrase), delivered by the real SSE stream then by polling, verified by the real client; the server
+  recorded `executed` for the legitimate commands and `refused`/`bad_signature` for the fake one. Two further
+  checks under the same conditions: the 13 hard cases **signed by the console's real
+  code** (`node server/console/scripts/command-vectors.ts <device_id>`) go through the real
+  collector and are accepted by the real verifier with their exact message; and the **resend after 5 min by
+  the real server**: `lock` and `wipe` (fake reset) whose result had not reached the
+  server are delivered again, are not re-executed, and their original result is recorded; a
+  `ring` whose result could not be sent is resent in the meantime, is not replayed, and its result
+  arrives on resumption.
+- **Nothing has been run on a phone.** To verify on the phone, in order of risk:
+  1. **`wipe`**: with a test phone or a full backup, check that `wipeDevice(0)` does reset
+     (and that nothing happens while the switch is off);
+  2. **`lock`**: `lockNow` and the display of the message by One UI on the lock screen
+     (`setDeviceOwnerLockScreenInfo`), then `clear_lock_message` and "Clear the message";
+  3. **consumption of the permanent channel** over 24 h on Wi-Fi then on a mobile network (Settings › Battery,
+     `adb shell dumpsys batterystats`), compared with polling mode; if it is high, try a longer server
+     keep-alive (`WATCHPOST_CMD_KEEPALIVE_S`, **240 s at most**: the agent's read timeout is
+     300 s, and without exceeding the carrier's NAT timeout) or polling mode;
+  4. **reception in Doze**: screen off for more than an hour, send `ring`; note the delay (the connection
+     must stay open thanks to the foreground service); `adb shell dumpsys deviceidle force-idle` to force it;
+  5. **ringtone** in silent mode, vibrate mode and "Do not disturb" (with and without alarms allowed), alarm
+     volume restored afterwards, "Stop" button on the lock screen;
+  6. `locate` in the three location modes, indoors and outdoors; reconnection after a Wi-Fi ↔
+     mobile switch, airplane mode, server restart; behavior after revocation (`401` displayed, no more attempts).
 
-## Politique Device Owner
+## Device Owner policy
 
-Module `:policy`, écran **Réglages › Device Owner › Politique**. **Rien n'est appliqué automatiquement** : en
-dehors du socle (auto-attribution des permissions de Vigie, protection contre l'arrêt forcé) et des journaux
-ci-dessous, c'est le propriétaire qui choisit un profil, ajuste les éléments, lit l'aperçu (« Ce qui va
-changer ») et applique. Chaque action émet `security.policy` (`action`, `target`, `profile` = `equilibre`/
-`strict`, `ok`, `error`) et une ligne du journal local de l'écran. L'état appliqué (avec l'état antérieur de
-chaque élément) est écrit **avant** chaque changement (SharedPreferences `vigie_policy`, `commit()`), puis
-confirmé après relecture de l'effet : il survit aux mises à jour de l'app et aux redémarrages, et « Rétablir »
-remet exactement l'état d'avant. Un échec (exception, refus Samsung, effet non constaté) donne `ok=false` avec
-l'erreur et n'empêche pas les autres éléments. Aucune politique ne vient du serveur.
+`:policy` module, **Settings › Device Owner › Policy** screen. **Nothing is applied automatically**: apart from the
+base (self-grant of Watchpost's permissions, force-stop protection) and the logs
+below, the user chooses a profile, adjusts the items, reads the preview ("What will change")
+and applies. Each action emits `security.policy` (`action`, `target`, `profile` = `balanced`/
+`strict`, `ok`, `error`) and a line in the screen's local log. The applied state (with the previous state of
+each item) is written **before** each change (SharedPreferences `watchpost_policy`, `commit()`), then
+confirmed after reading back the effect: it survives app updates and reboots, and "Restore" puts back
+exactly the state from before. A failure (exception, Samsung refusal, effect not observed) gives `ok=false` with
+the error and does not prevent the other items. No policy comes from the server.
 
-**N'appliquer qu'une partie** : « Tout décocher » (carte Profil) éteint tous les interrupteurs, DNS privé,
-verrou et sauvegarde compris ; cocher ensuite seulement ce qu'on veut essayer (par exemple le DNS privé
-seul), « Aperçu », « Appliquer ». Chaque section (applications, permissions, restrictions) a aussi « Tout
-décocher ici » et « Cocher les choix par défaut ». Ce qui est déjà appliqué et n'est plus coché est rétabli
-à l'application suivante (l'aperçu le montre).
+**Applying only a part**: "Uncheck everything" (Profile card) turns off every switch, Private DNS,
+lock and backup included; then check only what you want to try (for example Private DNS
+alone), "Preview", "Apply". Each section (apps, permissions, restrictions) also has "Uncheck everything
+here" and "Check the default choices". What is already applied and no longer checked is restored
+at the next application (the preview shows it).
 
-### Journaux et posture (collecteurs, onglet Collecteurs)
+### Logs and posture (collectors, Collectors tab)
 
-| Collecteur (id) | Émet | Remarques |
+| Collector (id) | Emits | Notes |
 |---|---|---|
-| Journal de sécurité (`security_log`) | `security.log` | lots livrés par le système (≤ 2 h) ; `fields` selon la table du contrat (`argN` sinon) ; `app_process_start` agrégé par heure (désactivable) ; connexions Wi-Fi/Bluetooth désactivables ; journaux d'avant redémarrage lus une fois par démarrage si l'appareil les fournit (`pre_reboot: true`) |
-| Journal réseau (`network_log`) | `net.dns`, `net.connect` | lots ≤ 1200 entrées (≤ 1 h 30) ; paquet et uid (uid partagés : `android.uid.system`…) ; agrégation des requêtes identiques par fenêtre (10 min, réglable : `count`, `last_event_ts`) ; émission par paquets de 100 ; lot notifié pendant l'arrêt de l'agent récupéré au démarrage suivant ; lots perdus signalés en `agent.collector_error` |
-| Posture (`posture`) | `security.posture`, `security.posture_change`, `security.ca_cert`, `security.keyguard` | au démarrage, chaque jour et à chaque changement (observateurs de réglages, magasin de certificats, Device Owner, changement de code) ; un champ illisible est omis ; fonctionne partiellement sans Device Owner |
+| System security log (`security_log`) | `security.log` | batches delivered by the system (≤ 2 h); `fields` according to the contract table (`argN` otherwise); `app_process_start` aggregated per hour (can be disabled); Wi-Fi/Bluetooth connections can be disabled; pre-reboot logs read once per boot if the device provides them (`pre_reboot: true`) |
+| System network log (`network_log`) | `net.dns`, `net.connect` | batches ≤ 1200 entries (≤ 1 h 30); package and uid (shared uids: `android.uid.system`…); identical requests aggregated per window (10 min, adjustable: `count`, `last_event_ts`); emission in groups of 100; a batch notified while the agent was stopped is retrieved at the next start; lost batches reported as `agent.collector_error` |
+| Security posture (`posture`) | `security.posture`, `security.posture_change`, `security.ca_cert`, `security.keyguard` | at startup, every day and at each change (settings observers, certificate store, Device Owner, passcode change); an unreadable field is omitted; works partially without Device Owner |
 
-Ces trois collecteurs sont actifs par défaut (comme tout collecteur). Couper `network_log` ou `security_log`
-dans l'onglet Collecteurs coupe aussi la journalisation du système (`security.policy` `network_logging` /
-`security_logging`). Le journal réseau fait afficher par Android la mention « réseau surveillé ». Le `ts` d'un
-`net.dns`, `net.connect` ou `security.log` est l'heure d'origine de l'entrée (première occurrence s'il y a
-regroupement), pas l'heure de récupération.
+These three collectors are active by default (like any collector). Turning off `network_log` or `security_log`
+in the Collectors tab also turns off the system's logging (`security.policy` `network_logging` /
+`security_logging`). Network logging makes Android display the "network monitored" mention. The `ts` of a
+`net.dns`, `net.connect` or `security.log` is the origin time of the entry (first occurrence if
+grouped), not the retrieval time.
 
-### Profils
+### Profiles
 
-| | Équilibré (par défaut) | Strict (= équilibré + …) |
+| | Balanced (default) | Strict (= balanced + …) |
 |---|---|---|
-| Paquets | 35 (28 cochés) : Customization Service, Knox Analytics, DSMS, Device Quality Agent, diagnostics réseau et journaux Samsung, Device ID Service (OAID), AdServices / On-Device Personalization / Federated Compute de Google, Market Feedback, Partner Setup, apps Meta préinstallées… ; optionnels : Bixby, Samsung Free, Android System Intelligence, Gemini | 22 (8 cochés) : compte Samsung, Samsung Cloud, Experience Service, Samsung Push, Update Center, OMC Agent, KLMS, Appli Google ; optionnels : Find My Mobile, Samsung Wallet/Pay/Pass, Galaxy Store, Entretien de l'appareil, Services Google Play, GSF, Play Store |
-| Permissions refusées | localisation de l'Appli Google (+ optionnel : Samsung Internet, Météo) | micro/caméra/contacts de l'Appli Google, Bixby ; optionnel : localisation d'arrière-plan et appareils à proximité des Services Google Play, capteurs de Samsung Health |
-| Restrictions | pas d'ajout d'utilisateur, pas de 2G, pas de sources inconnues, pas de capture ni de suggestions de contenu | + pas d'ajout de certificats, pas de mode sans échec, pas de contenu envoyé à l'assistant, UWB, Thread, partage Bluetooth ; optionnel : eSIM, transfert USB, NFC |
-| Réglages | recherche Bluetooth permanente coupée (`ble_scan_always_enabled=0`, si WRITE_SECURE_SETTINGS) ; sauvegarde Android réactivée | sauvegarde laissée coupée |
-| DNS privé | imposé vers l'hôte de l'enrôlement (`private_dns_host`), verrouillé | idem |
+| Packages | 35 (28 checked): Customization Service, Knox Analytics, DSMS, Device Quality Agent, Samsung network diagnostics and logs, Device ID Service (OAID), Google AdServices / On-Device Personalization / Federated Compute, Market Feedback, Partner Setup, preinstalled Meta apps…; optional: Bixby, Samsung Free, Android System Intelligence, Gemini | 22 (8 checked): Samsung account, Samsung Cloud, Experience Service, Samsung Push, Update Center, OMC Agent, KLMS, Google app; optional: Find My Mobile, Samsung Wallet/Pay/Pass, Galaxy Store, Device care, Google Play services, GSF, Play Store |
+| Denied permissions | location of the Google app (+ optional: Samsung Internet, Weather) | microphone/camera/contacts of the Google app, Bixby; optional: background location and nearby devices of Google Play services, Samsung Health sensors |
+| Restrictions | no adding users, no 2G, no unknown sources, no screen capture or content suggestions | + no adding certificates, no safe mode, no content sent to the assistant, UWB, Thread, Bluetooth sharing; optional: eSIM, USB transfer, NFC |
+| Settings | permanent Bluetooth scanning turned off (`ble_scan_always_enabled=0`, if WRITE_SECURE_SETTINGS); Android backup re-enabled | backup left off |
+| Private DNS | enforced to the enrollment host (`private_dns_host`), locked | same |
 
-**Ce que le strict casse** (cochés par défaut) : compte Samsung, Galaxy Store, Samsung Cloud, Find My Mobile
-(via le compte), notifications Samsung, Appli Google / Assistant / Entourer pour chercher, recherche vocale,
-mode sans échec, ajout de certificats (Wi-Fi d'entreprise). Les éléments à risque élevé ou critique (Services
-Google Play, Play Store, paiement, antivol, NFC) ne sont **jamais cochés par défaut**.
+**What strict breaks** (checked by default): Samsung account, Galaxy Store, Samsung Cloud, Find My Mobile
+(through the account), Samsung notifications, Google app / Assistant / Circle to Search, voice search,
+safe mode, adding certificates (enterprise Wi-Fi). High-risk or critical items (Google
+Play services, Play Store, payment, anti-theft, NFC) are **never checked by default**.
 
-Données : `policy/src/main/res/raw/policy_catalog.json` (versionné, lisible : paquet, éditeur, rôle, risque,
-effet connu, méthode, profil), tiré de `docs/research/android-plateforme.md` §7. Un paquet absent est ignoré.
-Méthode : **masquer** (`setApplicationHidden`, services arrêtés) pour les agents d'arrière-plan, **suspendre**
-(`setPackagesSuspended`, icône grisée) pour les apps visibles.
+Data: `policy/src/main/res/raw/policy_catalog.json` (versioned, readable: package, publisher, role, risk,
+known effect, method, profile), drawn from `../docs/research/android-platform.md` §7. An absent package is ignored.
+Method: **hide** (`setApplicationHidden`, services stopped) for background agents, **suspend**
+(`setPackagesSuspended`, greyed-out icon) for visible apps.
 
-### Garde-fous (codés en dur, plus forts que le catalogue)
+### Safeguards (hard-coded, stronger than the catalogue)
 
-- **Liste de refus** des paquets (`PackageDenyList`) : `kgclient` et `sm.policy` (verrouillage jusqu'à
-  réinitialisation), paquets OTA (`soagent`, `wssyncmldm`…), attestation (`rkpdapp`, `knox.attestation`),
-  modules système (permissions, réseau, WebView, `ext.services`, `configupdater`), `diagmonagent` (boucle de
-  relance), `securitylogagent`, Routines, clavier Samsung, lanceur, téléphone, SMS, alertes d'urgence,
-  installeurs, Paramètres, SystemUI, `com.android.shell` (ADB), fournisseurs de contenu, Vigie ; plus, lus à
-  l'exécution : lanceur(s), composeur, app SMS, claviers activés, installeurs, administrateurs actifs, VPN
-  permanent. Vérifiée à l'aperçu **et** au moment d'appliquer.
-- **Restrictions** (`RestrictionGuard`) : seules les clés d'une **liste vérifiée** peuvent être posées (2G,
-  sources inconnues, ajout d'utilisateur, capture de contenu, certificats, mode sans échec, eSIM, UWB,
-  Thread, NFC, partage Bluetooth, transfert de fichiers USB, saisie automatique). Toute autre clé est
-  refusée, même si un catalogue la liste ; sont en outre nommément interdites `no_debugging_features`
-  (couperait ADB), `no_share_location`, `no_factory_reset`, comptes, installation d'apps, réseau mobile,
-  Wi-Fi, VPN… Le signal de données USB n'est jamais coupé (aucun appel à
+- **Deny list** of packages (`PackageDenyList`): `kgclient` and `sm.policy` (lock until a factory
+  reset), OTA packages (`soagent`, `wssyncmldm`…), attestation (`rkpdapp`, `knox.attestation`),
+  system modules (permissions, network, WebView, `ext.services`, `configupdater`), `diagmonagent` (restart
+  loop), `securitylogagent`, Routines, Samsung keyboard, launcher, phone, SMS, emergency alerts,
+  installers, Settings, SystemUI, `com.android.shell` (ADB), content providers, Watchpost; plus, read at
+  runtime: launcher(s), dialer, SMS app, enabled keyboards, installers, active administrators, always-on
+  VPN. Checked at preview **and** at the moment of applying.
+- **Restrictions** (`RestrictionGuard`): only the keys of a **verified list** can be set (2G,
+  unknown sources, adding users, content capture, certificates, safe mode, eSIM, UWB,
+  Thread, NFC, Bluetooth sharing, USB file transfer, autofill). Any other key is
+  refused, even if a catalogue lists it; in addition `no_debugging_features`
+  (would cut ADB), `no_share_location`, `no_factory_reset`, accounts, app installation, mobile network,
+  Wi-Fi, VPN… are explicitly forbidden. The USB data signal is never cut (no call to
   `setUsbDataSignalingEnabled(false)`).
-- **Réglages** (`SettingGuard`) : `WRITE_SECURE_SETTINGS` permet d'écrire n'importe quelle clé
-  (`adb_enabled`, `user_setup_complete`, `private_dns_mode`…) ; seules `global:ble_scan_always_enabled` et
-  `global:wifi_scan_always_enabled` sont admises.
-- Un élément appliqué qu'une version plus récente des garde-fous refuse (ou un paquet devenu lanceur,
-  clavier…) est **défait** à l'application suivante.
-- Un élément déjà en place sans Vigie (paquet déjà masqué, restriction déjà posée, permission déjà refusée)
-  n'est ni touché ni enregistré : « Tout rétablir » ne le défait donc pas.
+- **Settings** (`SettingGuard`): `WRITE_SECURE_SETTINGS` allows writing any key
+  (`adb_enabled`, `user_setup_complete`, `private_dns_mode`…); only `global:ble_scan_always_enabled` and
+  `global:wifi_scan_always_enabled` are admitted.
+- An applied item that a newer version of the safeguards refuses (or a package that became a launcher,
+  keyboard…) is **undone** at the next application.
+- An item already in place without Watchpost (package already hidden, restriction already set, permission already denied)
+  is neither touched nor recorded: "Restore everything" therefore does not undo it.
 
-### DNS privé imposé
+### Enforced Private DNS
 
-1. Vigie vérifie d'abord, depuis le téléphone, que l'hôte répond : poignée de main TLS sur le port 853
-   (AC système, vérification du nom) **et** une requête DNS dans la session. Sinon rien n'est changé
-   (`private_dns_set` `ok=false`, « vérification préalable »).
-2. `setGlobalPrivateDnsModeSpecifiedHost` (hors fil principal) ; codes `HOST_NOT_SERVING` /
-   `FAILURE_SETTING` rapportés ; relecture du mode.
-3. Verrou optionnel `disallow_config_private_dns`.
-   Le verrou est **éteint par défaut** : imposer d'abord le DNS sans verrou, vérifier quelques jours
-   qu'Internet fonctionne partout (Wi-Fi, mobile, portails captifs), puis verrouiller.
-4. **Repli** (Réglages › Device Owner) : si le réseau n'est plus validé **et** que le contrôle DoT de l'hôte
-   (par ses dernières adresses connues) échoue sans interruption pendant 15 min (5 à 240), le DNS repasse en
-   mode automatique pour garder Internet ; `security.policy` sév. 2 (alerte Wazuh). Dès que l'hôte répond de
-   nouveau, il est réimposé (réglable). Compromis : un attaquant qui bloque le port 853 obtient ce repli, mais
-   jamais en silence ; désactiver le repli fait primer la protection (plus d'Internet tant que le serveur ne
-   répond pas : « Tout rétablir » ou l'issue de secours ADB le défait).
-5. Rétablir remet le mode d'avant (`off` par `setGlobalSetting(private_dns_mode)`, automatique ou hôte
-   précédent).
-6. Si un utilisateur non affilié existe (invité, utilisateur secondaire, mode maintenance Samsung), Android
-   refuse les API DNS dédiées (`checkAllUsersAreAffiliatedWithDevice`) : le repli et le retour au mode
-   automatique passent alors par `setGlobalSetting(private_dns_mode)`, qui n'a pas cette condition.
+1. Watchpost first checks, from the phone, that the host answers: TLS handshake on port 853
+   (system CA, name verification) **and** a DNS query within the session. Otherwise nothing is changed
+   (`private_dns_set` `ok=false`, "pre-check").
+2. `setGlobalPrivateDnsModeSpecifiedHost` (off the main thread); codes `HOST_NOT_SERVING` /
+   `FAILURE_SETTING` reported; the mode is read back.
+3. Optional lock `disallow_config_private_dns`.
+   The lock is **off by default**: enforce the DNS first without the lock, check for a few days
+   that the Internet works everywhere (Wi-Fi, mobile, captive portals), then lock.
+4. **Fallback** (Settings › Device Owner): if the network is no longer validated **and** the host's DoT check
+   (through its last known addresses) fails without interruption for 15 min (5 to 240), the DNS goes back to
+   automatic mode to keep Internet access; `security.policy` sev. 2 (Wazuh alert). As soon as the host answers
+   again, it is enforced again (adjustable). Trade-off: an attacker who blocks port 853 gets this fallback, but
+   never silently; disabling the fallback makes protection take precedence (no more Internet while the server does not
+   answer: "Restore everything" or the ADB rescue undoes it).
+5. Restoring puts back the previous mode (`off` through `setGlobalSetting(private_dns_mode)`, automatic or the
+   previous host).
+6. If an unaffiliated user exists (guest, secondary user, Samsung maintenance mode), Android
+   refuses the dedicated DNS APIs (`checkAllUsersAreAffiliatedWithDevice`): the fallback and the return to
+   automatic mode then go through `setGlobalSetting(private_dns_mode)`, which has no such condition.
 
-Le repli ne tourne que si le processus de Vigie vit (service de premier plan, ou passage de maintenance
-toutes les 15 min, sans contrainte réseau). Pendant le délai de repli, le téléphone est **sans Internet**.
+The fallback only runs if Watchpost's process is alive (foreground service, or the maintenance pass
+every 15 min, without a network constraint). During the fallback delay, the phone has **no Internet**.
 
-Recherche Wi-Fi permanente, diagnostics Samsung et identifiant publicitaire Google n'ont pas de clé de
-réglage dont l'effet soit établi (stockés hors des Paramètres depuis Android 11, ou propres à Samsung/GMS) :
-non gérés, à couper à la main (Paramètres › Localisation › Services de localisation ; Paramètres › Google ›
-Annonces). VPN permanent : choisir une app VPN installée (option « bloquer sans VPN » à n'utiliser qu'avec
-un VPN fiable).
+Permanent Wi-Fi scanning, Samsung diagnostics and the Google advertising ID have no setting key
+whose effect is established (stored outside Settings since Android 11, or specific to Samsung/GMS):
+not managed, to be turned off by hand (Settings › Location › Location services; Settings › Google ›
+Ads). Always-on VPN: choose an installed VPN app ("block without VPN" option only to be used with
+a reliable VPN).
 
-### Tout défaire
+### Undoing everything
 
-- **Tout rétablir** (écran Politique, confirmation) : éteint d'abord les gardes (section « Gardes de
-  capacités »), puis défait tout ce que Vigie a appliqué, du plus récent au plus ancien ; un élément qui résiste reste listé avec son erreur (réessayer). Les journaux restent actifs.
-  Chaque élément est traité isolément : un échec (y compris l'impossibilité d'écrire l'état, stockage
-  plein) n'arrête pas les suivants. Une permission refusée juste avant un plantage, donc jamais confirmée
-  dans l'état, est rétablie aussi.
-- **État illisible** : l'état appliqué est relu enregistrement par enregistrement (un enregistrement
-  inconnu d'une autre version ne fait pas perdre les autres). S'il a été illisible, même en partie, « Tout
-  rétablir » ajoute un **balayage du catalogue** : paquets du catalogue masqués ou suspendus réaffichés,
-  restrictions du catalogue et verrou DNS levés, permissions du catalogue refusées rendues à l'utilisateur,
-  DNS privé sorti de l'hôte enrôlé. Rien hors du catalogue n'est touché ; un réglage dont la valeur
-  d'origine est inconnue est signalé, à rétablir à la main.
-- **Retirer le Device Owner** (confirmation + case « J'ai compris ») : tout rétablir, couper journaux réseau
-  et sécurité, retirer la protection contre l'arrêt forcé, `device_owner_cleared`, puis
-  `clearDeviceOwnerApp`. S'arrête avant le retrait si quelque chose n'a pas pu être rétabli (« Retirer quand
-  même » possible). Fonctionne aussi avec un APK non testOnly. Le retrait est annoncé à l'agent : pas
-  d'`agent.tamper` (voir « Retirer le Device Owner et désinstaller »).
+- **Restore everything** (Policy screen, confirmation): first turns off the guards (section "Capability
+  guards"), then undoes everything Watchpost applied, from the most recent to the oldest; an item that resists stays listed with its error (retry). The logs stay active.
+  Each item is handled in isolation: a failure (including being unable to write the state, storage
+  full) does not stop the following ones. A permission denied just before a crash, therefore never confirmed
+  in the state, is restored too.
+- **Unreadable state**: the applied state is read back record by record (a record
+  unknown from another version does not make the others lost). If it was unreadable, even partly, "Restore
+  everything" adds a **catalogue sweep**: catalogue packages hidden or suspended are shown again,
+  catalogue restrictions and the DNS lock lifted, catalogue permissions denied given back to the user,
+  Private DNS taken off the enrolled host. Nothing outside the catalogue is touched; a setting whose original
+  value is unknown is flagged, to be restored by hand.
+- **Remove Device Owner** (confirmation + "I understand" box): restore everything, turn off network
+  and security logs, remove force-stop protection, `device_owner_cleared`, then
+  `clearDeviceOwnerApp`. Stops before the removal if something could not be restored ("Remove
+  anyway" possible). Also works with a non-testOnly APK. The removal is announced to the agent: no
+  `agent.tamper` (see "Removing the Device Owner and uninstalling").
 
-### Issue de secours sans interface (ADB)
+### ADB rescue without the interface
 
 ```bash
-./scripts/rescue-revert.sh          # « Tout rétablir », Vigie reste Device Owner (PowerShell : .\scripts\rescue-revert.ps1)
-./scripts/rescue-revert.sh --sweep  # + balayage du catalogue, si l'état de Vigie est douteux (PowerShell : -Sweep)
-./scripts/remove-device-owner.sh    # + retirer le Device Owner (= rescue-revert.sh --remove-owner)
+./scripts/rescue-revert.sh          # "Restore everything", Watchpost stays Device Owner (PowerShell: .\scripts\rescue-revert.ps1)
+./scripts/rescue-revert.sh --sweep  # + catalogue sweep, if Watchpost's state is doubtful (PowerShell: -Sweep)
+./scripts/remove-device-owner.sh    # + remove the Device Owner (= rescue-revert.sh --remove-owner)
 ```
 
-Le script envoie une diffusion explicite à `…policy.rescue.RescueReceiver`. Ce récepteur exige que
-l'expéditeur détienne `android.permission.FORCE_STOP_PACKAGES`, de niveau `signature|privileged` sans
-drapeau `development` ni `appop` (vérifié dans le manifeste du framework android-37) : aucune app tierce ne
-peut l'obtenir, même par `pm grant`. La détiennent : le shell ADB (`packages/Shell/AndroidManifest.xml`
-d'AOSP, pour `am force-stop`), le système, et les apps signées par la clé de la plateforme ou privilégiées
-et autorisées par le constructeur (donc des apps Samsung préinstallées, jamais une app installée par
-l'utilisateur). Le récepteur ne peut que **défaire**. Résultat rendu à `am broadcast` : 1 tout rétabli,
-2 partiel (détail), 3 Vigie n'est plus Device Owner (le script vérifie alors l'état des paquets qu'elle
-avait désactivés), 4 délai dépassé (l'opération continue).
-Codes de sortie de `rescue-revert` : ceux ci-dessus, et 5 si Vigie ne répond pas. Avec `remove_owner`, le rôle
-n'est abandonné que si tout a été défait (`force` pour passer outre, proposé par le script).
+The script sends an explicit broadcast to `…policy.rescue.RescueReceiver`. This receiver requires the sender to
+hold `android.permission.FORCE_STOP_PACKAGES`, of `signature|privileged` level without the `development` flag
+nor `appop` (checked in the android-37 framework manifest): no third-party app can obtain it, even through
+`pm grant`. It is held by: the ADB shell (AOSP `packages/Shell/AndroidManifest.xml`, for `am force-stop`),
+the system, and apps signed with the platform key or privileged and allowed by the manufacturer (so
+preinstalled Samsung apps, never an app installed by the user). The receiver can only **undo**. Result returned
+to `am broadcast`: 1 everything restored, 2 partial (detail), 3 Watchpost is no longer Device Owner (the script then checks
+the state of the packages it had disabled), 4 timed out (the operation continues).
+Exit codes of `rescue-revert`: those above, and 5 if Watchpost does not answer. With `remove_owner`, the role
+is only given up if everything was undone (`force` to override, offered by the script).
 
-Limites : l'app n'est pas « direct boot aware » (son état est en stockage chiffré par l'identifiant) : après
-un redémarrage, l'issue de secours ne répond qu'**après le premier déverrouillage**. Elle a besoin que le
-processus de l'app démarre : `VigieApplication` tolère pour cela un agent qui ne s'initialise pas (l'écran
-affiche l'erreur, l'issue de secours reste utilisable). Si l'app ne démarre plus du tout,
-`remove-device-owner.sh` propose le repli `dpm remove-active-admin` (APK testOnly uniquement).
+Limits: the app is not "direct boot aware" (its state is in credential-encrypted storage): after
+a reboot, the rescue only answers **after the first unlock**. It needs the app's
+process to start: `WatchpostApplication` therefore tolerates an agent that does not initialize (the screen
+shows the error, the rescue stays usable). If the app no longer starts at all,
+`remove-device-owner.sh` offers the `dpm remove-active-admin` fallback (testOnly APK only).
 
-### À vérifier sur le téléphone avant d'appliquer un profil
+### To verify on the phone before applying a profile
 
-1. `dpm set-device-owner`, puis l'écran Politique : « Mode Device Owner : Oui », journaux actifs.
-2. `./scripts/rescue-revert.sh` à vide (réponse « Tout est rétabli (reverted=0…) ») : l'issue de secours
-   fonctionne **avant** d'en avoir besoin.
-3. DNS privé seul (décocher le reste) : application, navigation, puis coupure du serveur pour voir le repli.
-4. Un seul paquet à faible risque (ex. Astuces), « Rétablir », puis le profil équilibré ; redémarrer ; tester
-   push, Play Store, banque, paiement ; « Tout rétablir » et comparer.
-5. Seulement ensuite, le profil strict, élément par élément.
+1. `dpm set-device-owner`, then the Policy screen: "Device Owner mode: Yes", logs active.
+2. `./scripts/rescue-revert.sh` on an empty state (answer "Everything is restored (reverted=0…)"): the rescue
+   works **before** you need it.
+3. Private DNS alone (uncheck the rest): application, browsing, then cut the server to see the fallback.
+4. A single low-risk package (e.g. Tips), "Restore", then the balanced profile; reboot; test
+   push, Play Store, bank, payment; "Restore everything" and compare.
+5. Only then the strict profile, item by item.
 
-## Gardes de capacités (contrat §11.1)
+## Capability guards (contract §11.1)
 
-Écran **Politique › Gardes**. Une garde verrouille une capacité dont un logiciel malveillant a besoin, **quel que
-soit le vecteur** par lequel il est arrivé (le cas vécu par le propriétaire : une appli qui envoyait 2 000 SMS de
-hameçonnage par jour sans que l'appli SMS ne montre rien). Toutes sont **éteintes par défaut**, activées une par
-une après un **aperçu** qui dit exactement quelle application perd quoi, et défaites par « Rétablir » (bouton
-« Aperçu et désactivation »), « Tout rétablir », le retrait du Device Owner et l'issue de secours ADB. Chaque
-action émet `security.policy` (`profile = "guard:<clé>"`, `action` ∈ `guard_enabled`, `guard_disabled`,
-`permission_denied`, `permission_restored`/`permission_granted`, `quarantined`, `released` ; `target` = paquet
-ou clé de la garde ; `permission` pour une permission).
+**Policy › Guards** screen. A guard locks down a capability that malware needs, **whatever the vector** it came
+through (for instance an app mass-sending phishing SMS without the SMS app showing anything). All of them are
+**off by default**, enabled one by one after a **preview** that says exactly which application loses what, and undone by
+"Restore" ("Preview and disable" button), "Restore everything", the Device Owner removal and the ADB rescue. Each
+action emits `security.policy` (`profile = "guard:<key>"`, `action` ∈ `guard_enabled`, `guard_disabled`,
+`permission_denied`, `permission_restored`/`permission_granted`, `quarantined`, `released`; `target` = package
+or key of the guard; `permission` for a permission).
 
-| Clé | Ce qu'elle fait (API) | Option | Liste |
+| Key | What it does (API) | Option | List |
 |---|---|---|---|
-| `sms` | `setPermissionGrantState(DENIED)` sur `SEND_SMS` pour toute appli qui la demande | + `READ_SMS`, `RECEIVE_SMS`, `RECEIVE_MMS`, `RECEIVE_WAP_PUSH` | applis autorisées (pré-remplie : appli SMS par défaut) |
-| `calls` | idem sur `CALL_PHONE` | + `ANSWER_PHONE_CALLS`, `READ_CALL_LOG`, `WRITE_CALL_LOG` | applis autorisées (pré-remplie : composeur par défaut) |
-| `accessibility` | `setPermittedAccessibilityServices(liste)` | — | services approuvés |
-| `input_methods` | `setPermittedInputMethods(liste)` | — | claviers approuvés |
-| `quarantine` | `setPermissionGrantState(DENIED)` sur SMS, appels, journal d'appels, contacts (`READ/WRITE_CONTACTS`, `GET_ACCOUNTS`), micro, caméra, position en arrière-plan, appareils à proximité (`BLUETOOTH_SCAN/CONNECT/ADVERTISE`, `NEARBY_WIFI_DEVICES`, `UWB_RANGING`, `RANGING`) pour chaque appli **non système installée après l'activation** | — | — (« Libérer » appli par appli) |
+| `sms` | `setPermissionGrantState(DENIED)` on `SEND_SMS` for every app that requests it | + `READ_SMS`, `RECEIVE_SMS`, `RECEIVE_MMS`, `RECEIVE_WAP_PUSH` | allowed apps (pre-filled: default SMS app) |
+| `calls` | same on `CALL_PHONE` | + `ANSWER_PHONE_CALLS`, `READ_CALL_LOG`, `WRITE_CALL_LOG` | allowed apps (pre-filled: default dialer) |
+| `accessibility` | `setPermittedAccessibilityServices(list)` | — | approved services |
+| `input_methods` | `setPermittedInputMethods(list)` | — | approved keyboards |
+| `quarantine` | `setPermissionGrantState(DENIED)` on SMS, calls, call log, contacts (`READ/WRITE_CONTACTS`, `GET_ACCOUNTS`), microphone, camera, background location, nearby devices (`BLUETOOTH_SCAN/CONNECT/ADVERTISE`, `NEARBY_WIFI_DEVICES`, `UWB_RANGING`, `RANGING`) for each **non-system app installed after activation** | — | — ("Release" app by app) |
 
-### Sémantique réelle des API (sources : javadoc et code AOSP de `DevicePolicyManager`/`DevicePolicyManagerService`, branche principale, lus le 16/11/2026 ; SDK android-37 pour les signatures)
+### Real semantics of the APIs (sources: javadoc and AOSP code of `DevicePolicyManager`/`DevicePolicyManagerService`, main branch; SDK android-37 for the signatures)
 
-- **`setPermissionGrantState`** : `DENIED` refuse la permission et la **verrouille** dans les Paramètres (« contrôlé
-  par l'administrateur ») ; une permission déjà accordée est **retirée** (Android arrête alors l'appli) ; la
-  demande de l'appli échoue sans boîte de dialogue. La javadoc précise que l'utilisateur ne peut plus gérer
-  **les autres permissions du même groupe** non plus (leur état actuel est conservé) : refuser `SEND_SMS`
-  grise aussi le groupe SMS de l'appli. `DEFAULT` rend la main sans révoquer. Le système relit l'état et
-  renvoie `false` s'il n'est pas atteint (Vigie relit aussi). Un Device Owner ciblant Q+ peut agir sur toutes les
-  applis, système et privilégiées comprises (recherche §3.7) ; Vigie **s'interdit** les applis système. Les
-  permissions marquées `SYSTEM_FIXED` sont probablement refusées (non vérifié, sans objet ici).
-- **`setPermittedAccessibilityServices` / `setPermittedInputMethods`** : liste de **noms de paquets** ; `null` =
-  aucune restriction ; liste vide = services du système seulement ; les services/claviers du système
-  (`ApplicationInfo.isSystemApp()`) restent **toujours** permis et ne peuvent pas être restreints. Un service
-  non système **déjà activé** doit figurer dans la liste, sinon l'appel renvoie `false` et **rien ne change**
-  (`checkPackagesInPermittedListOrSystem`) : ces gardes **ne désactivent jamais** un service déjà actif, elles
-  empêchent d'en activer un nouveau. Vigie ajoute donc d'office les services déjà activés à la liste et
-  l'aperçu les nomme (« gardés, Android l'exige ») : pour en exclure un, le désactiver d'abord dans les
-  Paramètres, puis réappliquer. Le clavier Samsung (`honeyboard`) et les services d'accessibilité Samsung
-  préinstallés sont des applis système : toujours permis.
-- **Où ces deux listes sont-elles appliquées ?** (revue v1.2, AOSP `android16-release`) Dans l'**écran des
-  Paramètres**, pas dans les services du système : la politique `PERMITTED_INPUT_METHODS` a pour exécuteur
-  `PolicyEnforcerCallbacks::noOp` (`PolicyDefinition.java`), `InputMethodManagerService` ne la lit jamais, et
-  `AccessibilityManagerService` ne la consulte que pour les raccourcis (`isAccessibilityTargetAllowed`) ; c'est
-  `RestrictedLockUtilsInternal.checkIfInputMethodDisallowed` / `checkIfAccessibilityServiceDisallowed` qui grise
-  l'interrupteur. Conséquences : (1) **aucun risque de se retrouver sans clavier** — un clavier déjà activé
-  continue de fonctionner quoi que dise la liste, le clavier du système reste toujours proposé, y compris pour le
-  code de déverrouillage après un redémarrage, et si le clavier approuvé est désinstallé Android rebascule
-  lui-même sur un clavier du système ; (2) la garde n'arrête que l'activation **par les Paramètres** (la seule
-  voie d'une appli sans `WRITE_SECURE_SETTINGS`), pas `adb shell ime enable` ; (3) l'écran Paramètres de One UI
-  est celui de Samsung : qu'il respecte ces listes est **à vérifier sur l'appareil**.
-- **Rôle et permission refusée** (`Permissions.grantSingleAsUser` du module Permission) : quand une appli devient
-  appli SMS ou composeur par défaut, Android lui accorde les permissions du rôle **sauf celles qu'une politique
-  a fixées à « refusé »**. Une appli que la garde refusait et qui devient l'appli SMS par défaut resterait donc
-  sans `SEND_SMS` (et, avec l'option, sans `RECEIVE_SMS` : les SMS entrants seraient perdus). Vigie accorde donc
-  elle-même ces permissions en levant son refus (voir « Rôle qui change »).
-- **Perte du rôle de Device Owner** (`clearUserPoliciesLocked`) : Android retire alors le drapeau « fixé par la
-  politique » de **toutes** les permissions et les deux listes disparaissent avec l'administrateur. Rien ne reste
-  verrouillé ; les permissions refusées restent non accordées mais l'utilisateur les gère de nouveau. Les
-  enregistrements de Vigie, eux, restent : si le rôle est rendu plus tard, les gardes encore notées actives se
-  **réappliquent** au premier passage (chaque refus qui n'est plus en place est refait, voir « Persistance »).
-- **Autres utilisateurs** : tout ceci ne vaut que pour l'utilisateur principal. Une appli installée dans le
-  Dossier sécurisé, un profil cloné (Dual Messenger) ou un second utilisateur n'est ni refusée ni mise en
-  quarantaine (un Device Owner empêche en principe de créer ces espaces : à vérifier).
+- **`setPermissionGrantState`**: `DENIED` denies the permission and **locks** it in Settings ("controlled
+  by the administrator"); an already granted permission is **removed** (Android then stops the app); the
+  app's request fails without a dialog. The javadoc specifies that the user can no longer manage
+  **the other permissions of the same group** either (their current state is kept): denying `SEND_SMS`
+  also greys out the app's SMS group. `DEFAULT` hands control back without revoking. The system reads the state back and
+  returns `false` if it is not reached (Watchpost reads it back too). A Device Owner targeting Q+ can act on all
+  apps, system and privileged ones included (research §3.7); Watchpost **forbids itself** system apps. Permissions
+  marked `SYSTEM_FIXED` are probably refused (not verified, irrelevant here).
+- **`setPermittedAccessibilityServices` / `setPermittedInputMethods`**: list of **package names**; `null` =
+  no restriction; empty list = system services only; system services/keyboards
+  (`ApplicationInfo.isSystemApp()`) stay **always** permitted and cannot be restricted. A non-system service
+  **already enabled** must be in the list, otherwise the call returns `false` and **nothing changes**
+  (`checkPackagesInPermittedListOrSystem`): these guards **never disable** an already active service, they
+  prevent enabling a new one. Watchpost therefore adds the already enabled services to the list as a matter of course
+  and the preview names them ("kept, Android requires it"): to exclude one, disable it first in
+  Settings, then re-apply. The Samsung keyboard (`honeyboard`) and the preinstalled Samsung accessibility services
+  are system apps: always permitted.
+- **Where are these two lists enforced?** (AOSP `android16-release`) In the **Settings screen**,
+  not in the system services: the `PERMITTED_INPUT_METHODS` policy has `PolicyEnforcerCallbacks::noOp` as its
+  enforcer (`PolicyDefinition.java`), `InputMethodManagerService` never reads it, and
+  `AccessibilityManagerService` only consults it for shortcuts (`isAccessibilityTargetAllowed`); it is
+  `RestrictedLockUtilsInternal.checkIfInputMethodDisallowed` / `checkIfAccessibilityServiceDisallowed` that greys out
+  the switch. Consequences: (1) **no risk of ending up without a keyboard** — an already enabled keyboard
+  keeps working whatever the list says, the system keyboard is always offered, including for the
+  unlock passcode after a reboot, and if the approved keyboard is uninstalled Android switches back
+  by itself to a system keyboard; (2) the guard only stops enabling **through Settings** (the only
+  route for an app without `WRITE_SECURE_SETTINGS`), not `adb shell ime enable`; (3) One UI's Settings screen
+  is Samsung's: whether it respects these lists is **to be verified on the device**.
+- **Role and denied permission** (`Permissions.grantSingleAsUser` of the Permission module): when an app becomes the
+  default SMS app or dialer, Android grants it the role's permissions **except those a policy
+  has set to "denied"**. An app the guard was denying and that becomes the default SMS app would therefore stay
+  without `SEND_SMS` (and, with the option, without `RECEIVE_SMS`: incoming SMS would be lost). Watchpost therefore grants
+  these permissions itself by lifting its denial (see "Role that changes").
+- **Loss of the Device Owner role** (`clearUserPoliciesLocked`): Android then removes the "set by
+  policy" flag from **all** permissions and the two lists disappear with the administrator. Nothing stays
+  locked; denied permissions stay ungranted but the user manages them again. Watchpost's
+  records, however, stay: if the role is given back later, the guards still noted as active are
+  **re-applied** at the first pass (each denial no longer in place is redone, see "Persistence").
+- **Other users**: all this only applies to the primary user. An app installed in
+  Secure Folder, a cloned profile (Dual Messenger) or a second user is neither denied nor put in
+  quarantine (a Device Owner in principle prevents creating these spaces: to be verified).
 
-### Garde-fous (codés en dur)
+### Safeguards (hard-coded)
 
-- Jamais touchés, quelle que soit la liste : Vigie et son compagnon, **toute appli système** (`FLAG_SYSTEM` :
-  SOS d'urgence, opérateur, Samsung) et la liste de refus de la politique. En plus, **seulement le détenteur du
-  rôle correspondant** (contrat §11.4) : l'appli SMS par défaut pour la garde `sms`, le composeur (par défaut et
-  système) pour `calls`. Un **clavier ou un écran d'accueil** choisi par l'utilisateur n'est épargné par
-  **aucune** garde (`sms`, `calls`, `quarantine`) : « choisir une appli d'accueil » est un appui qu'un logiciel
-  malveillant peut demander, et aucun de ces rôles n'a besoin des SMS ni des appels. Ni les administrateurs
-  actifs, ni toute appli capable d'être un lanceur.
-- **Rôle qui change** (contrôlé à chaque diffusion de paquet, au changement de composeur, à l'ouverture de
-  l'écran, toutes les 15 min, et — depuis la revue v1.2 — par une relecture des détenteurs **toutes les 10 s**
-  tant qu'une garde par paquet est active et que le téléphone est éveillé : aucune diffusion n'annonce à une
-  appli tierce le changement d'appli SMS, de clavier ou d'accueil). Le nouveau détenteur voit ses refus levés.
-  S'il est l'appli SMS (garde SMS) ou le composeur (garde Appels), il **entre dans la liste** (« la liste suit »,
-  `agent.config_changed`) et les permissions SMS et d'appel que son rôle lui aurait données lui sont
-  **accordées** (`permission_granted`) ; micro, caméra et contacts restent à la demande habituelle. La liste
-  d'une garde ne suit que son propre rôle. Une **notification prioritaire** (canal « Gardes : appli SMS ou
-  composeur changé », affichée en haut de l'écran et sur l'écran verrouillé) le dit, avec le nom du paquet.
-- **Quarantaine et rôle** (choix tranché) : une appli en quarantaine désignée appli SMS par défaut ou composeur
-  **reste en quarantaine** ; seules les permissions de ce rôle lui sont rendues et accordées (sans elles, les SMS
-  ou appels entrants seraient perdus sans bruit), contacts, micro, caméra, position et appareils à proximité
-  restent refusés, et la notification prioritaire le dit. Raison : se faire désigner appli SMS par défaut est
-  précisément la voie des chevaux de Troie SMS ; une libération automatique leur ouvrirait aussi le carnet
-  d'adresses (propagation). Si elle perd le rôle, les permissions du rôle sont refusées de nouveau. Le
-  propriétaire la libère quand il lui fait confiance. Un clavier ou un écran d'accueil reste en quarantaine.
-- Un échec sur un paquet donne `permission_denied` `ok=false` et n'arrête pas les autres ; il n'est pas retenté à
-  chaque passage (pas de rafale d'événements), mais à la prochaine « Aperçu et réapplication ».
-- Deux éléments qui refusent la même permission (garde SMS et quarantaine, ou une permission du catalogue) la
-  partagent : celui qui est défait en dernier la rétablit, dans son état d'origine.
-- **Persistance** : le même état que le reste de la politique (`vigie_policy`, `commit()` avant chaque
-  changement). Enregistrements `guard:<clé>` (la garde est active, son option, la liste en vigueur, la liste
-  d'avant Vigie pour accessibilité/claviers, les applis libérées) et `guard:<clé>:<paquet>` (les permissions
-  refusées et leur état d'avant). « Tout rétablir » **éteint d'abord toutes les gardes** (aucune ne peut
-  refuser de nouveau ce qui vient d'être rendu si le processus meurt au milieu), puis défait le reste. État
-  illisible : le balayage rend à l'utilisateur toute permission des gardes refusée sans enregistrement sur une
-  appli non système (`DEFAULT` : elle n'est pas ré-accordée, l'appli la redemandera) et lève les listes
-  d'accessibilité et de claviers.
-- **Remise d'aplomb à chaque passage** (`CapabilityGuards.settle`, revue v1.2) : avant de se servir d'un
-  enregistrement de paquet, Vigie le compare à l'appareil. (1) Enregistrement resté « en cours » après un
-  plantage : une permission refusée sur l'appareil sans avoir été confirmée est confirmée (son état d'avant est
-  noté, elle sera donc rétablie), celle qui n'avait pas été atteinte est refusée maintenant. Avant ce correctif,
-  une garde interrompue restait à moitié appliquée (quarantaine comprise) et une réapplication oubliait le refus
-  non confirmé : la permission restait refusée et verrouillée sans que « Rétablir » ni « Tout rétablir » la
-  rendent. (2) Refus noté mais qui n'est plus en place (appli désinstallée puis réinstallée entre deux passages,
-  rôle de Device Owner perdu puis rendu) : il est refait, avec l'état d'avant du moment. Avant, l'appli
-  réinstallée gardait la permission demandable alors que l'écran la disait refusée ou en quarantaine.
-- L'écran de Vigie masque les fenêtres superposées des autres applis (`setHideOverlayWindows`, permission normale
-  `HIDE_OVERLAY_WINDOWS`) : une superposition ne peut pas détourner un appui sur « Libérer » ou « Désactiver ».
-  Les noms d'applis (choisis par elles) sont affichés sur une ligne bornée, sans caractères de contrôle ni de
-  sens d'écriture, toujours avec le nom du paquet.
-- La liste choisie dans l'écran n'entre en vigueur qu'à « Aperçu et (ré)application » (l'écran signale une
-  liste modifiée). Les listes sont des réglages « liste de paquets » (`policy.guard.<clé>.allowed`) : chaque
-  modification émet `agent.config_changed`.
+- Never touched, whatever the list: Watchpost and its companion, **any system app** (`FLAG_SYSTEM`:
+  emergency SOS, carrier, Samsung) and the policy's deny list. In addition, **only the holder of the
+  corresponding role** (contract §11.4): the default SMS app for the `sms` guard, the dialer (default and
+  system) for `calls`. A **keyboard or home screen** chosen by the user is spared by
+  **no** guard (`sms`, `calls`, `quarantine`): "choose a home app" is a tap that malware
+  can ask for, and none of these roles needs SMS or calls. Neither are active administrators,
+  nor any app able to be a launcher.
+- **Role that changes** (checked at each package broadcast, at a dialer change, when the screen opens,
+  every 15 min, and by re-reading the holders **every 10 s**
+  while a per-package guard is active and the phone is awake: no broadcast tells a
+  third-party app about a change of SMS app, keyboard or home). The new holder has its denials lifted.
+  If it is the SMS app (SMS guard) or the dialer (Calls guard), it **enters the list** ("the list follows",
+  `agent.config_changed`) and the SMS and call permissions that its role would have given it are
+  **granted** (`permission_granted`); microphone, camera and contacts stay on the usual request.
+  A guard's list only follows its own role. A **priority notification** (channel "Guards: SMS app or
+  dialer changed", shown at the top of the screen and on the lock screen) says so, with the package name.
+- **Quarantine and role** (a decided choice): a quarantined app designated default SMS app or dialer
+  **stays in quarantine**; only the permissions of that role are given back and granted (without them, incoming SMS
+  or calls would be lost silently), contacts, microphone, camera, location and nearby devices
+  stay denied, and the priority notification says so. Reason: getting designated default SMS app is
+  precisely the route of SMS trojans; an automatic release would also open the address book to them
+  (propagation). If it loses the role, the role's permissions are denied again. The
+  user releases it when they trust it. A keyboard or a home screen stays in quarantine.
+- A failure on a package gives `permission_denied` `ok=false` and does not stop the others; it is not retried at
+  each pass (no burst of events), but at the next "Preview and re-apply".
+- Two items that deny the same permission (SMS guard and quarantine, or a catalogue permission) share
+  it: the one that is undone last restores it, to its original state.
+- **Persistence**: the same state as the rest of the policy (`watchpost_policy`, `commit()` before each
+  change). `guard:<key>` records (the guard is active, its option, the list in force, the list
+  from before Watchpost for accessibility/keyboards, the released apps) and `guard:<key>:<package>` (the
+  denied permissions and their previous state). "Restore everything" **first turns off all the guards** (none can
+  deny again what has just been given back if the process dies in the middle), then undoes the rest. Unreadable
+  state: the sweep gives back to the user any guard permission denied without a record on a
+  non-system app (`DEFAULT`: it is not re-granted, the app will ask again) and lifts the accessibility and
+  keyboard lists.
+- **Reconciliation on each pass** (`CapabilityGuards.settle`): before using a package record,
+  Watchpost compares it with the device. (1) A record left "in progress" after a crash: a permission
+  denied on the device without having been confirmed is confirmed (its previous state is noted, so it will be
+  restored), one that had not been reached is denied now. Without this, an interrupted guard would stay half applied
+  (quarantine included) and a re-application would forget the unconfirmed denial: the permission would stay
+  denied and locked with neither "Restore" nor "Restore everything" giving it back. (2) A noted denial that is no longer
+  in place (app uninstalled then reinstalled between two passes, Device Owner role lost then given back): it is
+  redone, with the state from that moment. Without this, the reinstalled app would keep the permission requestable
+  while the screen said it was denied or in quarantine.
+- Watchpost's screen hides other apps' overlay windows (`setHideOverlayWindows`, normal permission
+  `HIDE_OVERLAY_WINDOWS`): an overlay cannot hijack a tap on "Release" or "Disable".
+  App names (chosen by the apps) are shown on a bounded line, without control or
+  writing-direction characters, always with the package name.
+- The list chosen in the screen only takes effect at "Preview and (re-)apply" (the screen flags a
+  modified list). The lists are "package list" settings (`policy.guard.<key>.allowed`): each
+  modification emits `agent.config_changed`.
 
-### Quand s'appliquent-elles
+### When they apply
 
-À l'activation (applis présentes, sauf quarantaine), puis à chaque `PACKAGE_ADDED`/`REPLACED`/`REMOVED` reçu par
-un récepteur dynamique de `:policy` (indépendant du collecteur `apps`), au démarrage de l'agent, à l'ouverture de
-l'écran et au passage de maintenance (15 min). Une mise à jour qui ajoute une permission gardée est donc refusée
-dans la foulée. Quarantaine : une appli est « nouvelle » si son `firstInstallTime` (conservé par les mises à
-jour, remis à zéro par une réinstallation) est postérieur à l'activation ; une appli libérée le reste tant
-qu'elle n'est pas désinstallée.
+At activation (apps present, except quarantine), then at each `PACKAGE_ADDED`/`REPLACED`/`REMOVED` received by
+a dynamic receiver of `:policy` (independent of the `apps` collector), at agent start, when the
+screen opens and at the maintenance pass (15 min). An update that adds a guarded permission is therefore denied
+right away. Quarantine: an app is "new" if its `firstInstallTime` (kept by updates, reset by
+a reinstallation) is after the activation; a released app stays so until
+it is uninstalled.
 
-### Ce que les gardes ne peuvent pas empêcher (franchement)
+### What the guards cannot prevent (frankly)
 
-- **Fenêtre de course** : entre l'installation et le refus, quelques secondes si Vigie tourne, **jusqu'à 15 min**
-  si son processus était arrêté. Une appli fraîchement installée ne peut pas s'exécuter avant d'être lancée
-  (état « arrêté » d'Android), mais une appli qui en installe et lance une autre le peut.
-- **Applis système** et **appli SMS / composeur par défaut** : jamais touchées. Un logiciel malveillant qui se
-  fait choisir comme appli SMS par défaut (boîte de dialogue système, **un seul appui**) envoie des SMS : Vigie le
-  **signale** (notification, `app.role` côté collecteurs) mais ne le bloque pas, et l'ajoute à la liste. C'est la
-  voie classique des chevaux de Troie SMS : **la garde SMS ne ferme que la voie « demande de permission »** ; pour
-  la voie « appli par défaut », Vigie **signale** (notification prioritaire), ne bloque pas. Un clavier ou un écran
-  d'accueil n'est plus épargné (contrat §11.4).
-- **Service d'accessibilité déjà activé** : il appuie à la place de l'utilisateur, y compris dans Vigie (éteindre
-  une garde, libérer une quarantaine, « Tout rétablir ») et dans l'appli SMS. L'écran de Vigie ne demande pas le
-  code de déverrouillage avant ces actions (piste v1.3).
-- **Groupe de permissions gelé** : refuser `SEND_SMS` ou `CALL_PHONE` à une appli empêche aussi l'utilisateur de
-  lui accorder ou retirer les autres permissions du même groupe (SMS ; Téléphone : état du téléphone, numéros) ;
-  elles gardent leur état du moment. La position en arrière-plan forme un sous-groupe distinct de la position
-  « pendant l'utilisation » dans le contrôleur de permissions d'AOSP (à vérifier sur One UI).
-- **Compter les SMS** : aucune garde ne limite le *nombre* de SMS d'une appli autorisée, et sans `app.ops`
-  (expérimental) rien ne les compte (voir `server/collector/README.md`, « Ce que les détections ne voient pas »).
-- **Autres voies** : SMS préparé par une appli et envoyé par l'appli SMS (il faut appuyer sur Envoyer… ou un
-  service d'accessibilité le fait : d'où la garde Accessibilité) ; appel via le composeur ; VoIP, messageries
-  par Internet ; exfiltration par le réseau (voir les détections du collecteur) ; superposition, écoute des
-  notifications, administrateur de l'appareil (app-ops et accès spéciaux, hors de `setPermissionGrantState`).
-- **Déjà acquis** : un service d'accessibilité ou un clavier déjà activé reste activé ; ce qui a été envoyé
-  avant l'activation est parti. La quarantaine ne touche pas les applis déjà présentes.
-- Une appli de la liste, ou libérée, qui serait compromise ensuite.
-- Depuis Android 13, une appli installée hors magasin ne peut déjà pas activer l'accessibilité sans que
-  l'utilisateur débloque les « paramètres restreints » : la garde Accessibilité couvre aussi les applis du
-  magasin et le cas où l'utilisateur se fait manipuler.
+- **Race window**: between installation and denial, a few seconds if Watchpost is running, **up to 15 min**
+  if its process was stopped. A freshly installed app cannot run before being launched
+  (Android's "stopped" state), but an app that installs and launches another one can.
+- **System apps** and **default SMS app / dialer**: never touched. Malware that gets
+  itself chosen as default SMS app (system dialog, **a single tap**) sends SMS: Watchpost
+  **flags** it (notification, `app.role` on the collectors side) but does not block it, and adds it to the list. This is the
+  classic route of SMS trojans: **the SMS guard only closes the "permission request" route**; for
+  the "default app" route, Watchpost **flags** (priority notification) and does not block. A keyboard or home screen
+  is no longer spared (contract §11.4).
+- **Accessibility service already enabled**: it taps in place of the user, including in Watchpost (turning off
+  a guard, releasing a quarantine, "Restore everything") and in the SMS app. Watchpost's screen does not ask for the
+  unlock passcode before these actions (a possible future improvement).
+- **Frozen permission group**: denying `SEND_SMS` or `CALL_PHONE` to an app also prevents the user from
+  granting or removing the other permissions of the same group (SMS; Phone: phone state, numbers);
+  they keep their current state. Background location forms a subgroup distinct from "while in use"
+  location in AOSP's permission controller (to be verified on One UI).
+- **Counting SMS**: no guard limits the *number* of SMS of an allowed app, and without `app.ops`
+  (experimental) nothing counts them (see `../server/collector/README.md`, "What the detections do not see").
+- **Other routes**: an SMS prepared by an app and sent by the SMS app (you have to tap Send… or an
+  accessibility service does it: hence the Accessibility guard); a call through the dialer; VoIP, Internet
+  messengers; network exfiltration (see the collector's detections); overlay, notification listening,
+  device administrator (app-ops and special access, outside `setPermissionGrantState`).
+- **Already acquired**: an accessibility service or keyboard already enabled stays enabled; what was sent
+  before activation is gone. Quarantine does not touch apps already present.
+- An app on the list, or released, that is compromised afterwards.
+- Since Android 13, an app installed outside a store already cannot enable accessibility unless
+  the user unlocks "restricted settings": the Accessibility guard also covers store apps and the case where
+  the user is being manipulated.
 
-### Ordre d'essai sur le téléphone (du moins au plus risqué) et contrôles
+### Order to try on the phone (from least to most risky) and checks
 
-Rien de ceci n'a été exécuté sur un appareil. Avant tout : `rescue-revert` à vide (voir « Issue de secours »).
+None of this has been run on a device. First of all: `rescue-revert` on an empty state (see "ADB rescue").
 
-1. **Quarantaine** (aucun effet immédiat). Installer une petite appli de test (APK ou magasin) : notification
-   « Nouvelle application en quarantaine », Paramètres › Applications › appli › Autorisations : SMS, contacts,
-   micro… grisés « contrôlé par l'administrateur » ; « Libérer » : l'appli redemande. Mettre à jour l'appli
-   libérée : pas de nouvelle quarantaine. Contrôler `quarantined`/`released` dans la console.
-2. **Claviers** (liste vide) : l'aperçu doit lister le clavier tiers éventuellement activé comme « gardé ».
-   Contrôler : saisie normale, y compris le code PIN après redémarrage (Direct Boot : clavier Samsung) ;
-   Paramètres › Gestion globale › Clavier : un clavier non approuvé apparaît non activable.
-3. **Accessibilité** (liste vide) : services déjà activés gardés ; TalkBack/Voice Assistant Samsung toujours
-   activables ; un service tiers non activé ne l'est plus (« désactivé par l'administrateur »).
-4. **Appels** sans option : aperçu (**rarement vide** : `CALL_PHONE` est demandée par beaucoup d'applis —
-   messageries, banques, cartes, montre, voiture ; chaque appli qui l'avait obtenue est arrêtée au moment du
-   refus) ; appeler depuis le composeur et depuis le carnet d'adresses
-   Samsung ; appel d'urgence (ne pas composer réellement : vérifier seulement que le composeur s'ouvre).
-5. **SMS** sans option : aperçu (applis tierces qui demandent `SEND_SMS`) ; envoyer un SMS depuis Samsung
-   Messages ; SOS d'urgence intact (appli système) ; changer d'appli SMS par défaut et vérifier la notification
-   « Appli par défaut changée » et la liste.
-6. Seulement ensuite les **options** (lecture des SMS : la saisie automatique des codes reçus par SMS dans les
-   applis tierces cesse ; journal d'appels).
-   Avec une garde SMS ou Appels active : **changer d'appli SMS par défaut** pour une appli que la garde
-   refusait, vérifier dans les 10 à 20 s la notification, que l'appli envoie et reçoit sans rien redemander,
-   puis revenir à l'appli d'origine. Garde Quarantaine : appairer une montre ou des écouteurs dont l'appli vient
-   d'être installée échoue tant qu'elle n'est pas libérée.
-7. Après chaque étape : « Tout rétablir », vérifier que l'état d'avant revient (Autorisations de l'appli,
-   claviers, accessibilité) ; puis `rescue-revert` avec une garde active, et `remove-device-owner` en dernier.
+1. **Quarantine** (no immediate effect). Install a small test app (APK or store): notification
+   "New app in quarantine", Settings › Apps › app › Permissions: SMS, contacts,
+   microphone… greyed out "controlled by the administrator"; "Release": the app asks again. Update the
+   released app: no new quarantine. Check `quarantined`/`released` in the console.
+2. **Keyboards** (empty list): the preview must list the third-party keyboard that may be enabled as "kept".
+   Check: normal typing, including the PIN after a reboot (Direct Boot: Samsung keyboard);
+   Settings › General management › Keyboard: an unapproved keyboard appears as not enableable.
+3. **Accessibility** (empty list): services already enabled kept; Samsung TalkBack/Voice Assistant still
+   enableable; a non-enabled third-party service no longer is ("disabled by the administrator").
+4. **Calls** without the option: preview (**rarely empty**: `CALL_PHONE` is requested by many apps —
+   messengers, banks, maps, watch, car; each app that had obtained it is stopped when the
+   denial happens); call from the dialer and from the Samsung address book;
+   emergency call (do not actually dial: only check that the dialer opens).
+5. **SMS** without the option: preview (third-party apps that request `SEND_SMS`); send an SMS from Samsung
+   Messages; emergency SOS intact (system app); change the default SMS app and check the notification
+   "Default app changed" and the list.
+6. Only then the **options** (SMS reading: autofill of codes received by SMS in third-party
+   apps stops; call log).
+   With an SMS or Calls guard active: **change the default SMS app** to an app the guard was
+   denying, check within 10 to 20 s the notification, that the app sends and receives without asking for anything,
+   then go back to the original app. Quarantine guard: pairing a watch or earbuds whose app
+   has just been installed fails until it is released.
+7. After each step: "Restore everything", check that the previous state comes back (the app's Permissions,
+   keyboards, accessibility); then `rescue-revert` with a guard active, and `remove-device-owner` last.
 
-## Ce qui est vérifié, ce qui ne l'est pas
+## What is verified, what is not
 
-Vérifié dans l'environnement de développement (Linux, sans émulateur ni appareil) :
+Verified with JVM tests and build checks on Linux, without an emulator or a device:
 
-- `./gradlew lint test assembleDebug assembleRelease` réussit (lint : 0 erreur, avertissements de style
-  `UseKtx`/versions seulement).
-- Décompte du 16/11/2026 après la règle des rôles du contrat §11.4 : 392 tests JVM, 0 échec, 5 ignorés ;
-  `:collectors` 146, `:policy` 93 (clavier et accueil non épargnés, quarantaine qui ne rend que les permissions
-  du rôle SMS ou composeur). Décompte précédent, après la **revue indépendante de la v1.2** : 389 tests JVM, 0
-  échec, 5 ignorés (essais croisés) — `:core` 142, `:collectors` 144 (dont la robustesse de l'analyseur d'`appops` : 3 000 entrées
-  mutilées ou aléatoires, nombres hors limites, 100 000 entrées), `:policy` 92 (dont 25 pour les gardes : s'y
-  ajoutent plantage puis réapplication puis désactivation, garde et quarantaine interrompues terminées au
-  passage suivant, refus effectif mais rapporté en échec, désinstallation puis réinstallation entre deux
-  passages, écran d'accueil épargné sans entrer dans la liste, permissions du rôle accordées au nouveau
-  composeur), `:app` 11 (dont les noms d'applis hostiles). Essai croisé `CrossDetectionsTest` (ignoré sans
-  `VIGIE_CROSS_ENROLL` et `VIGIE_CROSS_URL`) : le vrai code de `app_risk`, `app_role`, `app_ops` (analyseur et
-  différences compris), `apps` et `special_access` raconte une fraude au SMS au vrai collecteur, qui accepte
-  tout et produit `detect.new_app_risky` (×2), `detect.sms_abuse` et `detect.sensor_background` (exécuté le
-  16/11/2026). Décompte précédent :
-- Décompte du 16/11/2026 après les gardes de capacités et les collecteurs de risque (v1.2) : 378 tests JVM,
-  0 échec, 4 ignorés (essais croisés) — `:core` 142 (dont listes de paquets et précisions §8 de la revue v1.1),
-  `:collectors` 142, `:policy` 85 (dont 18 pour les gardes : application, exceptions, nouvel arrivant, mise à
-  jour, changement de rôle, échec partiel, garde-fous, « Tout rétablir » après les 32 combinaisons de gardes,
-  plantage à chacun des 8 premiers changements, plantage pendant « Tout rétablir », état illisible, quarantaine
-  puis libération), `:app` 9 ; lint : 0 erreur. Décompte précédent :
-- 299 tests JVM, dont 4 ignorés sans leurs variables d'environnement (les essais croisés contre le vrai
-  collecteur : `CrossServerTest` et les trois de `CrossCommandsTest`, exécutés à part le 16/11/2026) —
-  décompte du 16/11/2026 après la revue de sécurité de la v1.1 : `:core` 131 (dont les commandes à
-  distance), `:collectors` 92, `:policy` 67, `:app` 9. Détail d'origine (v1) :
-  `:core` 97 (tampon Room sur SQLite JVM : séquence après redémarrage, transaction
-  interrompue, purge par sévérité/âge, horodatage d'origine non monotone ; envoi contre MockWebServer : tous
-  les codes du contrat, gzip, lots, 1 Mio, Wi-Fi, reprise ; sérialisation exacte du §1 ; fichiers `.vigie` et
-  mTLS avec épinglage ; isolation des pannes des collecteurs ; annonce du retrait du Device Owner ; banc de
-  test), `:collectors` 59 (logique de chaque collecteur, conformité au contrat), `:policy` 60 (traduction du
-  journal de sécurité, journaux réseau, posture, moteur de politique contre une passerelle factice,
-  catalogue, DNS), `:app` 5 (conformité au contrat de bout en bout des 21 collecteurs, y compris
-  `agent.heartbeat.collectors`).
-- APK release : signé en schéma v3 (`apksigner verify`) ; après R8, classes du manifeste, base Room
-  (`OutboxDatabase_Impl`), workers et sérialiseurs générés de toutes les classes `@Serializable` présents
-  sous leur nom (`apkanalyzer dex packages`) ; catalogue `raw/policy_catalog` et `xml/device_admin` conservés
-  par la réduction des ressources (`aapt2 dump resources`). Le code R8 lui-même n'a pas été exécuté.
-- Manifeste fusionné (`aapt2 dump permissions`) : aucune permission ni service d'écoute des notifications,
-  d'accessibilité, de SMS, de journal d'appels ou de superposition ; chaque permission déclarée est utilisée
-  par un module (les trois accordables seulement par ADB : `PACKAGE_USAGE_STATS`, `WRITE_SECURE_SETTINGS`,
-  `DUMP`). Depuis la revue v1.2 : `HIDE_OVERLAY_WINDOWS` (normale), pour masquer les superpositions des
-  autres applis pendant que l'écran de Vigie est affiché.
-- Scripts bash : syntaxe vérifiée (`bash -n`), relus contre le code (paquet, composants, action de l'issue de
-  secours, option `-t`).
+- `./gradlew lint test assembleDebug assembleRelease` succeeds (lint: 0 errors, style warnings
+  `UseKtx`/versions only).
+- 392 JVM tests, 0 failures, 5 skipped (the cross-checks against the real collector, which need environment
+  variables: `CrossServerTest`, the three of `CrossCommandsTest` and `CrossDetectionsTest`): `:core` 142,
+  `:collectors` 146, `:policy` 93, `:app` 11. What they cover:
+  - `:core`: Room buffer on JVM SQLite (sequence after a restart, interrupted transaction, severity/age purge,
+    non-monotonic origin timestamp); upload against MockWebServer (all the codes of the contract, gzip,
+    batches, 1 MiB, Wi-Fi, resume); exact serialization of §1; `.watchpost` files and mTLS with pinning;
+    isolation of collector failures; announcement of the Device Owner removal; package-list settings; the
+    remote commands (see "Remote commands"); the test bench.
+  - `:collectors`: the logic of each collector and its conformance to the contract, including the robustness of
+    the `appops` parser (3,000 mangled or random entries, out-of-range numbers, 100,000 entries), the risk
+    scoring and the notification masking.
+  - `:policy`: translation of the security log, network logs, posture, the policy engine against a fake
+    gateway, the catalogue, DNS; 26 tests for the guards (application, exceptions, newcomer, update, role
+    change, partial failure, safeguards, "Restore everything" after the 32 combinations of guards, crash at each
+    of the first 8 changes, crash during "Restore everything", unreadable state, quarantine then release, crash
+    then re-application then disabling, interrupted guard and quarantine finished at the next pass, denial that is
+    effective but reported as a failure, uninstall then reinstall between two passes, home screen spared
+    without entering the list, role permissions granted to the new dialer); the remote-command matrix.
+  - `:app`: end-to-end contract conformance of the 25 collectors, including `agent.heartbeat.collectors`; hostile
+    app names; conformance of `command.result`.
+  - Cross-check `CrossDetectionsTest` (skipped without `WATCHPOST_CROSS_ENROLL` and `WATCHPOST_CROSS_URL`): the
+    real code of `app_risk`, `app_role`, `app_ops` (parser and differences included), `apps` and `special_access`
+    tells an SMS-fraud story to the real collector, which accepts everything and produces
+    `detect.new_app_risky` (×2), `detect.sms_abuse` and `detect.sensor_background` (run once against a local
+    collector).
+- Release APK: signed with scheme v3 (`apksigner verify`); after R8, manifest classes, the Room database
+  (`OutboxDatabase_Impl`), workers and generated serializers of all `@Serializable` classes present
+  under their name (`apkanalyzer dex packages`); `raw/policy_catalog` catalogue and `xml/device_admin` kept
+  by resource shrinking (`aapt2 dump resources`). The R8 code itself has not been run.
+- Merged manifest (`aapt2 dump permissions`): no permission or service for notification listening,
+  accessibility, SMS, call log or overlay; each declared permission is used
+  by a module (the three that can only be granted over ADB: `PACKAGE_USAGE_STATS`, `WRITE_SECURE_SETTINGS`,
+  `DUMP`). Also `HIDE_OVERLAY_WINDOWS` (normal), to hide other apps' overlays
+  while Watchpost's screen is displayed.
+- Bash scripts: syntax checked (`bash -n`), compared with the code (package, components, rescue
+  action, `-t` option).
 
-**Non vérifié** (aucun appareil) : tout le comportement sur téléphone — activation Device Owner sur S25+,
-auto-attribution des permissions, `setUserControlDisabledPackages`, retrait du Device Owner et absence de
-fausse alerte, démarrage au boot et survie du service 24 h, import réel dans l'Android Keystore et handshake
-TLS avec une clé Keystore (Conscrypt), réception des diffusions, journaux réseau et sécurité réels, GPS et
-capteur de mouvement significatif, consommation batterie, rendu de l'interface, désactivation de la CT par
-`network_security_config`, politique (profils, DNS privé, repli), issue de secours ADB. Les scripts bash de
-secours, d'installation et de copie ont été exécutés contre un `adb` factice (jamais contre un téléphone) ;
-les scripts PowerShell ont été relus ligne à ligne contre les `.sh` mais ni exécutés ni analysés par
-PowerShell (absent de l'environnement). Robolectric n'a pas pu être utilisé (ses jars Android sont servis par un miroir
-inaccessible depuis l'environnement de développement) : les classes Android sont remplacées par des stubs
-dans les tests ; les types produits uniquement depuis un rappel Android (écran, batterie, localisation…) sont
-vérifiés par relecture, pas par test.
+**Not verified** (no device): all the behavior on a phone — Device Owner activation on One UI,
+permission self-grant, `setUserControlDisabledPackages`, Device Owner removal and absence of
+a false alert, start at boot and 24 h service survival, real import into the Android Keystore and TLS
+handshake with a Keystore key (Conscrypt), broadcast reception, real network and security logs, GPS and
+significant-motion sensor, battery consumption, interface rendering, CT disabled through
+`network_security_config`, policy (profiles, Private DNS, fallback), ADB rescue. The bash rescue,
+installation and copy scripts were run against a fake `adb` (never against a phone);
+the PowerShell scripts were compared line by line with the `.sh` files but were neither run nor parsed by
+PowerShell (not available on the machine used). Robolectric could not be used (its Android jars could not be
+reached from the build machine): Android classes are replaced by stubs
+in the tests; the types produced only from an Android callback (screen, battery, location…) are
+verified by reading, not by test.
