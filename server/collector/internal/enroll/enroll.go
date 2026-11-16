@@ -72,15 +72,17 @@ func Create(ctx context.Context, st *store.Store, ca *pki.CA, p Params, now time
 		return nil, err
 	}
 	idBytes := make([]byte, 8)
-	tokBytes := make([]byte, 32)
 	if _, err := rand.Read(idBytes); err != nil {
 		return nil, err
 	}
-	if _, err := rand.Read(tokBytes); err != nil {
+	deviceID := "dev_" + hex.EncodeToString(idBytes)
+	token, err := newToken()
+	if err != nil {
 		return nil, err
 	}
-	deviceID := "dev_" + hex.EncodeToString(idBytes)
-	token := base64.RawURLEncoding.EncodeToString(tokBytes)
+	if !ValidDeviceID(deviceID) || !ValidToken(token) {
+		return nil, errors.New("identifiants générés hors format (contrat §4)")
+	}
 	cert, err := ca.Issue(deviceID, now)
 	if err != nil {
 		return nil, fmt.Errorf("émission du certificat : %w", err)
@@ -94,6 +96,81 @@ func Create(ctx context.Context, st *store.Store, ca *pki.CA, p Params, now time
 	}
 	return &File{
 		Version: 1, IngestURL: strings.TrimRight(p.IngestURL, "/"), DeviceID: deviceID, DeviceName: p.Name,
+		DeviceToken: token, ClientCertPEM: string(cert.CertPEM), ClientKeyPEM: string(cert.KeyPEM),
+		ServerCAPEM: p.ServerCAPEM, PrivateDNSHost: p.PrivateDNSHost,
+	}, nil
+}
+
+// ValidDeviceID reports whether id matches the contract §4 format: "dev_" followed by [a-z0-9], 64 characters at most.
+func ValidDeviceID(id string) bool {
+	rest, ok := strings.CutPrefix(id, "dev_")
+	if !ok || rest == "" || len(id) > 64 {
+		return false
+	}
+	for i := 0; i < len(rest); i++ {
+		c := rest[i]
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9') {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidToken reports whether t matches the contract §4 format: [A-Za-z0-9._~-], 128 characters at most.
+func ValidToken(t string) bool {
+	if t == "" || len(t) > 128 {
+		return false
+	}
+	for i := 0; i < len(t); i++ {
+		c := t[i]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.IndexByte("._~-", c) >= 0) {
+			return false
+		}
+	}
+	return true
+}
+
+// newToken returns a random device token (256 bits, base64url without padding: within the §4 alphabet).
+func newToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// Renew issues a new token and certificate for an existing device (same device_id, contract §4) and stores
+// them as the pending pair: the current pair stays valid until the first authenticated request with the new
+// one. A second Renew before that replaces the pending pair. Unknown or revoked devices are refused
+// (store.ErrNotFound, store.ErrRevoked). The returned file is not yet written: the caller does it, and a
+// failure leaves the device usable with its current pair.
+func Renew(ctx context.Context, st *store.Store, ca *pki.CA, deviceID string, p Params, now time.Time) (*File, error) {
+	if _, err := CheckIngestURL(p.IngestURL); err != nil {
+		return nil, err
+	}
+	if !ValidDeviceID(deviceID) {
+		return nil, store.ErrNotFound
+	}
+	dev, err := st.GetDevice(ctx, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	if dev.Revoked() {
+		return nil, store.ErrRevoked
+	}
+	token, err := newToken()
+	if err != nil {
+		return nil, err
+	}
+	cert, err := ca.Issue(deviceID, now)
+	if err != nil {
+		return nil, fmt.Errorf("émission du certificat : %w", err)
+	}
+	if err := st.SetPendingCredentials(ctx, deviceID, HashToken(token), cert.SHA256, string(cert.CertPEM), now); err != nil {
+		return nil, err
+	}
+	return &File{
+		Version: 1, IngestURL: strings.TrimRight(p.IngestURL, "/"), DeviceID: deviceID, DeviceName: dev.Name,
 		DeviceToken: token, ClientCertPEM: string(cert.CertPEM), ClientKeyPEM: string(cert.KeyPEM),
 		ServerCAPEM: p.ServerCAPEM, PrivateDNSHost: p.PrivateDNSHost,
 	}, nil

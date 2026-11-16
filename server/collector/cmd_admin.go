@@ -35,6 +35,36 @@ func openStore(ctx context.Context) (*config.Config, *store.Store, error) {
 	return cfg, st, nil
 }
 
+// fileParams resolves what enroll and renew write into the .vigie file (URL, DNS host, server CA).
+func fileParams(cfg *config.Config, ingestURL string) (enroll.Params, error) {
+	u := ingestURL
+	if u == "" {
+		u = cfg.PublicIngestURL
+	}
+	if u == "" {
+		return enroll.Params{}, errors.New("URL d'ingestion inconnue : définissez VIGIE_PUBLIC_INGEST_URL ou --ingest-url")
+	}
+	pu, err := enroll.CheckIngestURL(u)
+	if err != nil {
+		return enroll.Params{}, err
+	}
+	if pu.Scheme != "https" {
+		fmt.Fprintln(os.Stderr, "attention : URL d'ingestion en http, à réserver au développement local")
+	}
+	p := enroll.Params{IngestURL: u, PrivateDNSHost: cfg.PrivateDNSHost}
+	if cfg.ServerCAFile != "" {
+		b, err := os.ReadFile(cfg.ServerCAFile)
+		if err != nil {
+			return enroll.Params{}, fmt.Errorf("VIGIE_SERVER_CA_FILE : %w", err)
+		}
+		if _, err := pki.FingerprintPEM(b); err != nil {
+			return enroll.Params{}, fmt.Errorf("VIGIE_SERVER_CA_FILE : %w", err)
+		}
+		p.ServerCAPEM = string(b)
+	}
+	return p, nil
+}
+
 func cmdEnroll(args []string) error {
 	fl := flag.NewFlagSet("enroll", flag.ContinueOnError)
 	name := fl.String("name", "", "nom de l'appareil (ex. s25)")
@@ -53,31 +83,11 @@ func cmdEnroll(args []string) error {
 		return err
 	}
 	defer st.Close()
-	u := *ingestURL
-	if u == "" {
-		u = cfg.PublicIngestURL
-	}
-	if u == "" {
-		return errors.New("URL d'ingestion inconnue : définissez VIGIE_PUBLIC_INGEST_URL ou --ingest-url")
-	}
-	pu, err := enroll.CheckIngestURL(u)
+	params, err := fileParams(cfg, *ingestURL)
 	if err != nil {
 		return err
 	}
-	if pu.Scheme != "https" {
-		fmt.Fprintln(os.Stderr, "attention : URL d'ingestion en http, à réserver au développement local")
-	}
-	var serverCA string
-	if cfg.ServerCAFile != "" {
-		b, err := os.ReadFile(cfg.ServerCAFile)
-		if err != nil {
-			return fmt.Errorf("VIGIE_SERVER_CA_FILE : %w", err)
-		}
-		if _, err := pki.FingerprintPEM(b); err != nil {
-			return fmt.Errorf("VIGIE_SERVER_CA_FILE : %w", err)
-		}
-		serverCA = string(b)
-	}
+	params.Name = *name
 	ca, _, err := pki.LoadOrCreate(cfg.PKIDir(), time.Now())
 	if err != nil {
 		return fmt.Errorf("PKI : %w", err)
@@ -88,9 +98,7 @@ func cmdEnroll(args []string) error {
 			return fmt.Errorf("%s existe déjà (utilisez --force pour l'écraser)", *out)
 		}
 	}
-	f, err := enroll.Create(ctx, st, ca, enroll.Params{
-		Name: *name, IngestURL: u, PrivateDNSHost: cfg.PrivateDNSHost, ServerCAPEM: serverCA,
-	}, time.Now())
+	f, err := enroll.Create(ctx, st, ca, params, time.Now())
 	if err != nil {
 		return err
 	}
@@ -101,6 +109,70 @@ func cmdEnroll(args []string) error {
 	fmt.Printf("Appareil enrôlé : %s (%s)\n", f.DeviceID, f.DeviceName)
 	fmt.Printf("Empreinte du certificat client (SHA-256) : %s\n", fp)
 	fmt.Printf("Fichier d'enrôlement : %s\n", *out)
+	fmt.Println("Ce fichier contient des secrets : transférez-le par câble (adb push) ou canal chiffré, puis supprimez-le.")
+	return nil
+}
+
+func cmdRenew(args []string) error {
+	// The device_id is positional, before or after the flags.
+	var id string
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		id, args = args[0], args[1:]
+	}
+	fl := flag.NewFlagSet("renew", flag.ContinueOnError)
+	out := fl.String("out", "", "fichier .vigie à écrire")
+	ingestURL := fl.String("ingest-url", "", "URL d'ingestion (défaut : VIGIE_PUBLIC_INGEST_URL)")
+	force := fl.Bool("force", false, "écraser le fichier de sortie s'il existe")
+	if err := fl.Parse(args); err != nil {
+		return err
+	}
+	if id == "" && fl.NArg() == 1 {
+		id = fl.Arg(0)
+	} else if fl.NArg() != 0 {
+		return errors.New("utilisation : vigie-collector renew <device_id> --out <fichier.vigie> [--ingest-url URL] [--force]")
+	}
+	if id == "" || *out == "" {
+		return errors.New("utilisation : vigie-collector renew <device_id> --out <fichier.vigie> [--ingest-url URL] [--force]")
+	}
+	ctx := context.Background()
+	cfg, st, err := openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	params, err := fileParams(cfg, *ingestURL)
+	if err != nil {
+		return err
+	}
+	ca, _, err := pki.LoadOrCreate(cfg.PKIDir(), time.Now())
+	if err != nil {
+		return fmt.Errorf("PKI : %w", err)
+	}
+	if !*force {
+		if _, err := os.Stat(*out); err == nil {
+			return fmt.Errorf("%s existe déjà (utilisez --force pour l'écraser)", *out)
+		}
+	}
+	f, err := enroll.Renew(ctx, st, ca, id, params, time.Now())
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			return fmt.Errorf("appareil inconnu : %s", id)
+		case errors.Is(err, store.ErrRevoked):
+			return fmt.Errorf("appareil %s révoqué : un renouvellement est impossible (utilisez « enroll » pour un nouvel appareil)", id)
+		}
+		return err
+	}
+	if err := f.Write(*out, *force); err != nil {
+		return fmt.Errorf("écriture de %s : %w (le renouvellement en attente est inutilisable, l'appareil garde son jeton et son certificat actuels ; relancez « renew »)", *out, err)
+	}
+	fp, _ := pki.FingerprintPEM([]byte(f.ClientCertPEM))
+	exp, _ := pki.NotAfterPEM([]byte(f.ClientCertPEM))
+	fmt.Printf("Renouvellement de %s (%s) : nouveau jeton et nouveau certificat émis, même identifiant.\n", f.DeviceID, f.DeviceName)
+	fmt.Printf("Empreinte du nouveau certificat (SHA-256) : %s\n", fp)
+	fmt.Printf("Nouveau certificat valable jusqu'au %s\n", exp.Local().Format("2006-01-02"))
+	fmt.Printf("Fichier d'enrôlement : %s\n", *out)
+	fmt.Println("L'ancien jeton et l'ancien certificat restent acceptés jusqu'au premier envoi avec le nouveau fichier, puis sont refusés.")
 	fmt.Println("Ce fichier contient des secrets : transférez-le par câble (adb push) ou canal chiffré, puis supprimez-le.")
 	return nil
 }
@@ -130,6 +202,12 @@ func cmdDevices(args []string) error {
 			RevokedAt    *string `json:"revoked_at"`
 			AgentVersion string  `json:"agent_version"`
 			CertSHA256   string  `json:"cert_sha256"`
+			// CertNotAfter is the expiry of the current certificate (null if unreadable).
+			CertNotAfter *string `json:"cert_not_after"`
+			// RenewalPending: a renewed pair waits for its first use; PendingCertNotAfter is its expiry.
+			RenewalPending      bool    `json:"renewal_pending"`
+			PendingSince        *string `json:"renewal_issued_at"`
+			PendingCertNotAfter *string `json:"pending_cert_not_after"`
 		}
 		rows := []row{}
 		for _, d := range devs {
@@ -142,6 +220,21 @@ func cmdDevices(args []string) error {
 				s := model.FormatTS(*d.RevokedAt)
 				r.RevokedAt = &s
 			}
+			if t, err := pki.NotAfterPEM([]byte(d.CertPEM)); err == nil {
+				s := model.FormatTS(t)
+				r.CertNotAfter = &s
+			}
+			if d.HasPending() {
+				r.RenewalPending = true
+				if d.NextIssuedAt != nil {
+					s := model.FormatTS(*d.NextIssuedAt)
+					r.PendingSince = &s
+				}
+				if t, err := pki.NotAfterPEM([]byte(d.NextCertPEM)); err == nil {
+					s := model.FormatTS(t)
+					r.PendingCertNotAfter = &s
+				}
+			}
 			rows = append(rows, r)
 		}
 		enc := json.NewEncoder(os.Stdout)
@@ -153,7 +246,7 @@ func cmdDevices(args []string) error {
 		return nil
 	}
 	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "IDENTIFIANT\tNOM\tENRÔLÉ LE\tDERNIER CONTACT\tVERSION\tÉTAT\tCERTIFICAT")
+	fmt.Fprintln(tw, "IDENTIFIANT\tNOM\tENRÔLÉ LE\tDERNIER CONTACT\tVERSION\tÉTAT\tCERTIFICAT\tEXPIRE LE")
 	for _, d := range devs {
 		seen := "jamais"
 		if d.LastSeen != nil {
@@ -167,8 +260,11 @@ func cmdDevices(args []string) error {
 		if ver == "" {
 			ver = "-"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s…\n", d.DeviceID, d.Name, d.EnrolledAt.Local().Format("2006-01-02 15:04"),
-			seen, ver, state, d.CertSHA256[:16])
+		if d.HasPending() {
+			state += ", renouvellement en attente"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s…\t%s\n", d.DeviceID, d.Name, d.EnrolledAt.Local().Format("2006-01-02 15:04"),
+			seen, ver, state, d.CertSHA256[:16], expiryLabel(d.CertPEM, time.Now()))
 	}
 	return tw.Flush()
 }
@@ -189,7 +285,7 @@ func cmdRevoke(args []string) error {
 		}
 		return err
 	}
-	fmt.Printf("Appareil %s révoqué : son jeton et son certificat sont refusés dès maintenant.\n", args[0])
+	fmt.Printf("Appareil %s révoqué : son jeton et son certificat sont refusés dès maintenant (renouvellement en attente compris).\n", args[0])
 	fmt.Println("Ses données restent consultables dans la console. Pour le réenrôler, utilisez « enroll ».")
 	return nil
 }
@@ -257,4 +353,20 @@ func readPassword(in *os.File) (string, error) {
 		return "", err
 	}
 	return strings.TrimRight(line, "\r\n"), nil
+}
+
+// expiryLabel formats a certificate expiry for the devices table: date, then days left or "EXPIRÉ".
+func expiryLabel(certPEM string, now time.Time) string {
+	t, err := pki.NotAfterPEM([]byte(certPEM))
+	if err != nil {
+		return "inconnue"
+	}
+	days := int(t.Sub(now).Hours() / 24)
+	switch {
+	case !t.After(now):
+		return t.Local().Format("2006-01-02") + " (EXPIRÉ)"
+	case days < 30:
+		return fmt.Sprintf("%s (dans %d j, à renouveler)", t.Local().Format("2006-01-02"), days)
+	}
+	return fmt.Sprintf("%s (dans %d j)", t.Local().Format("2006-01-02"), days)
 }

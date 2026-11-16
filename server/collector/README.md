@@ -42,7 +42,8 @@ lui-même l'en-tête `X-Vigie-Client-Cert-Sha256` (accepté car 127.0.0.1 est un
 |---|---|
 | `serve` | Serveur HTTP ; crée la base, applique les migrations et crée l'AC si absentes. |
 | `enroll --name N --out F.vigie [--ingest-url URL] [--force]` | Nouvel appareil + fichier d'enrôlement (mode 0600). |
-| `devices [--json]`, `revoke <device_id>` | Liste, révocation (effective à la requête suivante, même serveur lancé). |
+| `renew <device_id> --out F.vigie [--ingest-url URL] [--force]` | Nouveau jeton et nouveau certificat pour le **même** appareil (contrat §4), fichier 0600. Refusé pour un appareil inconnu ou révoqué ; un second `renew` avant bascule remplace le couple en attente. |
+| `devices [--json]`, `revoke <device_id>` | Liste (avec la date d'expiration du certificat courant, « à renouveler » sous 30 jours, et « renouvellement en attente »), révocation (effective à la requête suivante, même serveur lancé ; invalide aussi le couple en attente). En JSON : `cert_not_after`, `renewal_pending`, `renewal_issued_at`, `pending_cert_not_after`. |
 | `user set-password <nom>` | Compte console ; mot de passe ≥ 12 caractères, lu sans écho sur un terminal ou sur une ligne de stdin. |
 | `sim --enroll F [--url U] [--backfill 24h] [--follow] [--rate 1] [--interval 15s] [--seed N]` | Simulateur (voir plus bas). |
 | `healthcheck [--url U]`, `version` | Sonde `/healthz` (Compose), version. |
@@ -88,6 +89,17 @@ Variables : celles du contrat §7, plus `VIGIE_TILE_URL` (§6, défaut OpenStree
   de passe (des tentatives simultanées ne contournent pas la limite) et rendu en cas de succès. `X-Requested-With: vigie` exigé sur toute requête
   modifiante. CSP exacte du contrat, `nosniff`, `DENY`, etc. SSE : abonné trop lent déconnecté (le
   navigateur se reconnecte), flux fermé à l'expiration de la session.
+- **Renouvellement** : `renew` range un second couple (jeton haché + empreinte et PEM du certificat) dans les colonnes
+  `next_*` de `devices` (migration 4). Les deux couples sont acceptés ; le **premier** `ingest` (une fois `device_id`
+  du corps vérifié) ou `ping` authentifié avec le nouveau déclenche, en un seul `UPDATE` atomique, la bascule : le
+  nouveau couple devient courant, l'ancien est refusé (`401`). Un jeton n'est valable qu'avec le certificat de
+  **son** couple (pas de mélange ancien jeton + nouveau certificat, ni l'inverse). Jetons hachés, comparés en
+  temps constant, jamais journalisés ; la bascule est journalisée sans secret. Un renouvellement jamais utilisé
+  reste en attente sans limite de durée (l'ancien couple continue de servir jusqu'à son expiration).
+- **Réponses `400`** : uniquement enveloppe de lot illisible ou invalide (gzip, JSON, champs de l'enveloppe du
+  mauvais type, `events` absent/nul/non tableau, données après l'objet). L'enveloppe est lue sans limite de
+  profondeur (`encoding/json` refuse au-delà de 10 000 niveaux, ce qui rendait tout le lot illisible pour un
+  seul événement pathologique) : un défaut propre à un événement (type, `ts`, taille, imbrication…) va dans `rejected`.
 - **Flux à sens unique** : `/api/v1` n'a que `ingest` et `ping` ; aucune réponse ne transporte d'ordre.
 - **Fichiers** : base, WAL et `-shm` en 0600 (la base est créée 0600 avant que SQLite n'en dérive les
   autres), `.vigie` en 0600 même avec `--force`. La purge de rétention s'applique aussi aux dernières

@@ -18,7 +18,9 @@ const usage = `vigie-collector : collecteur de télémétrie Vigie
 Utilisation :
   vigie-collector serve                                   démarre le serveur HTTP
   vigie-collector enroll --name <nom> --out <fichier.vigie> [--ingest-url URL] [--force]
-  vigie-collector devices [--json]                        liste les appareils
+  vigie-collector devices [--json]                        liste les appareils (expiration des certificats)
+  vigie-collector renew <device_id> --out <fichier.vigie> [--ingest-url URL] [--force]
+                                                          nouveau jeton et certificat, même appareil
   vigie-collector revoke <device_id>                      révoque un appareil
   vigie-collector user set-password <nom>                 crée ou modifie un compte console
                                                           (mot de passe lu sur l'entrée standard)
@@ -43,6 +45,8 @@ func main() {
 		err = cmdEnroll(args)
 	case "devices":
 		err = cmdDevices(args)
+	case "renew":
+		err = cmdRenew(args)
 	case "revoke":
 		err = cmdRevoke(args)
 	case "user":

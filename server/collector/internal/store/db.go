@@ -318,6 +318,16 @@ SELECT 'connect_dest', h, device_id, pkg, k, SUM(w), 0 FROM (
 	FROM events WHERE type = 'net.connect' AND json_type(data, '$.ip') = 'text' AND json_extract(data, '$.ip') <> '')
 GROUP BY h, device_id, pkg, k;
 `,
+	// 4: certificate/token renewal (contract §4). A renewed device keeps its device_id and carries a second,
+	// pending credential pair; the first authenticated request with the pending pair makes it current.
+	// The pair is always used as a whole: token and certificate fingerprint of the same generation.
+	`
+ALTER TABLE devices ADD COLUMN next_token_hash BLOB;
+ALTER TABLE devices ADD COLUMN next_cert_sha256 TEXT;
+ALTER TABLE devices ADD COLUMN next_cert_pem TEXT;
+ALTER TABLE devices ADD COLUMN next_issued_ms INTEGER;
+CREATE UNIQUE INDEX devices_next_token ON devices(next_token_hash) WHERE next_token_hash IS NOT NULL;
+`,
 }
 
 // SchemaVersion is the schema version this binary expects.

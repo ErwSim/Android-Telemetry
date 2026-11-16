@@ -213,6 +213,19 @@ func FingerprintPEM(certPEM []byte) (string, error) {
 	return Fingerprint(b.Bytes), nil
 }
 
+// NotAfterPEM returns the expiry date of a PEM certificate.
+func NotAfterPEM(certPEM []byte) (time.Time, error) {
+	b, _ := pem.Decode(certPEM)
+	if b == nil || b.Type != "CERTIFICATE" {
+		return time.Time{}, errors.New("certificat PEM invalide")
+	}
+	c, err := x509.ParseCertificate(b.Bytes)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return c.NotAfter.UTC(), nil
+}
+
 // NormalizeFingerprint lowercases a hex fingerprint and removes ':' separators,
 // returning "" when the value is not 64 hex characters.
 func NormalizeFingerprint(s string) string {

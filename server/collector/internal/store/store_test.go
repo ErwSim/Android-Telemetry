@@ -94,7 +94,7 @@ func TestMigration2RebuildMatchesIngest(t *testing.T) {
 		t.Fatalf("too few aggregates: %v", before)
 	}
 	// Migration 2 rebuilds with weight 1, migration 3 applies data.count.
-	for _, m := range migrations[1:] {
+	for _, m := range migrations[1:3] {
 		if _, err := st.w.Exec(m); err != nil {
 			t.Fatal(err)
 		}

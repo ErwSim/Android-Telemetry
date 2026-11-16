@@ -99,7 +99,8 @@ func ParseEvent(raw json.RawMessage, now time.Time) (*Event, error) {
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
-		return fail("", ReasonInvalidJSON, "event is not a JSON object")
+		// peekID reads the id even when the value is too deeply nested for encoding/json.
+		return fail(peekID(raw), ReasonInvalidJSON, "event is not a JSON object")
 	}
 	var ev Event
 
@@ -264,12 +265,38 @@ func peekID(raw json.RawMessage) string {
 			}
 			return ""
 		}
-		var skip json.RawMessage
-		if dec.Decode(&skip) != nil {
+		if SkipValue(dec) != nil {
 			return ""
 		}
 	}
 	return ""
+}
+
+// SkipValue consumes one JSON value from dec with no nesting limit (Decoder.Decode refuses beyond 10000
+// levels, Token does not), so that a pathological value stays confined to the event that carries it.
+func SkipValue(dec *json.Decoder) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	d, ok := tok.(json.Delim)
+	if !ok || d == '}' || d == ']' {
+		return nil
+	}
+	for depth := 1; depth > 0; {
+		tok, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		if d, ok := tok.(json.Delim); ok {
+			if d == '{' || d == '[' {
+				depth++
+			} else {
+				depth--
+			}
+		}
+	}
+	return nil
 }
 
 func truncate(s string, n int) string {

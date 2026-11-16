@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/subtle"
@@ -48,8 +49,14 @@ func (s *Server) authenticateDevice(r *http.Request) (*store.Device, error) {
 		}
 		return nil, err
 	}
-	if subtle.ConstantTimeCompare(h, dev.TokenHash) != 1 || dev.Revoked() {
+	if dev.Revoked() {
 		return nil, errUnauthorized
+	}
+	// The token and the certificate must belong to the same credential pair: the old token goes with the
+	// old certificate, the pending token with the pending certificate, never a mix.
+	wantFP := dev.CertSHA256
+	if dev.ViaPending {
+		wantFP = dev.NextCertSHA256
 	}
 	// The fingerprint header is only believed when it comes from a trusted proxy.
 	fp := ""
@@ -65,7 +72,7 @@ func (s *Server) authenticateDevice(r *http.Request) (*store.Device, error) {
 		}
 		return dev, nil
 	}
-	if subtle.ConstantTimeCompare([]byte(fp), []byte(dev.CertSHA256)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(fp), []byte(wantFP)) != 1 {
 		return nil, errUnauthorized
 	}
 	return dev, nil
@@ -97,6 +104,24 @@ func (s *Server) deviceAuth(w http.ResponseWriter, r *http.Request) (*store.Devi
 	return dev, true
 }
 
+// commitRenewal makes the pending credential pair current once a request authenticated with it is fully
+// validated (contract §4): from then on the previous token and certificate are refused. A failure only
+// delays the switch, the request itself is valid.
+func (s *Server) commitRenewal(ctx context.Context, dev *store.Device) {
+	if !dev.ViaPending {
+		return
+	}
+	ctx = context.WithoutCancel(ctx)
+	switched, err := s.st.PromotePending(ctx, dev.DeviceID, dev.NextTokenHash)
+	if err != nil {
+		s.log.Warn("renouvellement : bascule impossible, réessayée au prochain envoi", "device_id", dev.DeviceID, "err", err)
+		return
+	}
+	if switched {
+		s.log.Info("renouvellement : nouveau jeton et nouveau certificat en service, anciens refusés", "device_id", dev.DeviceID)
+	}
+}
+
 type ingestRequest struct {
 	DeviceID     string            `json:"device_id"`
 	AgentVersion string            `json:"agent_version"`
@@ -114,6 +139,74 @@ type ingestResponse struct {
 	Duplicates int         `json:"duplicates"`
 	Rejected   []rejection `json:"rejected"`
 	ServerTime string      `json:"server_time"`
+}
+
+// parseBatch reads the batch envelope. Events stay raw and are not nested-depth checked here: with
+// json.Unmarshal, one event nested beyond encoding/json's limit (10000 levels) would make the whole batch
+// unreadable, a 400 for a defect of a single event (contract §3: that event belongs in "rejected").
+// Only a real envelope defect (invalid JSON, wrong field types, trailing data, "events" not an array) fails.
+func parseBatch(raw []byte) (*ingestRequest, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return nil, errors.New("lot : objet JSON attendu")
+	}
+	var req ingestRequest
+	for dec.More() {
+		k, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		switch k {
+		case "device_id":
+			err = dec.Decode(&req.DeviceID)
+		case "agent_version":
+			err = dec.Decode(&req.AgentVersion)
+		case "sent_at":
+			err = dec.Decode(&req.SentAt)
+		case "events":
+			req.Events, err = parseEvents(dec, raw)
+		default:
+			err = model.SkipValue(dec)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('}') {
+		return nil, errors.New("lot : objet JSON mal terminé")
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, errors.New("lot : données après l'objet JSON")
+	}
+	return &req, nil
+}
+
+// parseEvents reads the "events" value: null gives nil (missing), an array gives its raw elements.
+func parseEvents(dec *json.Decoder, raw []byte) ([]json.RawMessage, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	if tok == nil {
+		return nil, nil
+	}
+	if tok != json.Delim('[') {
+		return nil, errors.New("lot : events doit être un tableau")
+	}
+	evs := []json.RawMessage{}
+	for dec.More() {
+		start := dec.InputOffset()
+		if err := model.SkipValue(dec); err != nil {
+			return nil, err
+		}
+		el := bytes.TrimSpace(raw[start:dec.InputOffset()])
+		el = bytes.TrimSpace(bytes.TrimPrefix(el, []byte(",")))
+		evs = append(evs, json.RawMessage(el))
+	}
+	if tok, err := dec.Token(); err != nil || tok != json.Delim(']') {
+		return nil, errors.New("lot : tableau events mal terminé")
+	}
+	return evs, nil
 }
 
 func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
@@ -169,8 +262,8 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req ingestRequest
-	if err := json.Unmarshal(raw, &req); err != nil {
+	req, err := parseBatch(raw)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_json", "lot JSON invalide")
 		return
 	}
@@ -179,6 +272,7 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized", "device_id ne correspond pas au jeton")
 		return
 	}
+	s.commitRenewal(r.Context(), dev)
 	if req.Events == nil {
 		writeError(w, http.StatusBadRequest, "invalid_batch", "champ events manquant")
 		return
@@ -239,6 +333,7 @@ func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	s.commitRenewal(r.Context(), dev)
 	if err := s.st.TouchDevice(r.Context(), dev.DeviceID, "", s.now()); err != nil {
 		s.log.Warn("ping : mise à jour de last_seen impossible", "err", err)
 	}
