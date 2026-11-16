@@ -91,8 +91,8 @@ d'un domaine, le `409` d'un domaine indispensable et un changement de niveau ; s
 `scripts/verify-real-v12.cjs` rejoue la version 1.2 contre un vrai collecteur alimenté par `sim --scenario tout` (ou `sain`) : détections
 par type (phrases construites à partir des vraies preuves), filtre par type, fiche d'application ouverte depuis une détection puis rechargée,
 profil de risque (tri, combinaisons, aucune raison non traduite), opérations sensibles, rôles, dans les quatre configurations
-(`REAL_URL`, `REAL_PASSWORD`, `SCENARIO`, `OUT`). Dernier passage : le collecteur a produit sept des huit types (`upload_spike` n'est pas
-sorti du simulateur dans l'essai : voir le rapport) ; tout ce qui est sorti s'affiche, sans erreur console, violation CSP ni requête tierce.
+(`REAL_URL`, `REAL_PASSWORD`, `SCENARIO`, `OUT`). Derniers passages (collecteur et simulateur du dépôt, `--scenario tout` puis `sain`) : les huit types de détection produits par le vrai
+collecteur s'affichent ; le parc sain donne « Rien à signaler » ; aucune erreur console, violation CSP ni requête tierce.
 
 ## Déploiement
 
