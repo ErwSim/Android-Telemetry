@@ -6,15 +6,14 @@ import (
 	"time"
 )
 
-// importance of a notification channel (NotificationManager.IMPORTANCE_*).
-func importance(category string) int {
+// importance of a notification channel, as the companion APK reports it (contract §10): the name of
+// NotificationManager.IMPORTANCE_* among none/min/low/default/high/max, never the number.
+func importance(category string) string {
 	switch category {
 	case "msg", "email":
-		return 4
-	case "recommendation", "social":
-		return 3
+		return "high"
 	}
-	return 3
+	return "default"
 }
 
 // contentExcluded lists the apps whose notification content is never collected (setting of the

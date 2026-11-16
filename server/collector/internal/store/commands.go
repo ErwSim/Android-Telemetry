@@ -435,6 +435,44 @@ func insertServerEvent(ctx context.Context, tx *sql.Tx, deviceID, typ string, se
 		Type: typ, Sev: sev, Data: raw, Source: "server"}, nil
 }
 
+// AddServerEvents stores one event produced by the collector (source "server") for every device that is
+// not revoked, in one transaction: an action that concerns the whole installation rather than one device
+// (a change made in AdGuard Home from the console) appears in the timeline of each device and is exported
+// once per device. It returns nothing when no device is enrolled.
+func (s *Store) AddServerEvents(ctx context.Context, typ string, sev int, data map[string]any, now time.Time) ([]StoredEvent, error) {
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `SELECT device_id FROM devices WHERE revoked_ms IS NULL ORDER BY device_id`)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil || len(ids) == 0 {
+		return nil, err
+	}
+	out := make([]StoredEvent, 0, len(ids))
+	for _, id := range ids {
+		ev, err := insertServerEvent(ctx, tx, id, typ, sev, data, now)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ev)
+	}
+	return out, tx.Commit()
+}
+
 // CommandChannelState is the stored command channel state of a device.
 type CommandChannelState struct {
 	Mode      string

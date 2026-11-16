@@ -826,6 +826,10 @@ func (s *Server) handleTrackingOverride(w http.ResponseWriter, r *http.Request) 
 		s.adguardFailed(w, "lecture des règles", err)
 		return
 	}
+	previous := ""
+	if ov, perr := tracking.ParseOverrides(st.UserRules); perr == nil {
+		previous = ov[domain]
+	}
 	rules, changed, err := tracking.ApplyOverride(st.UserRules, domain, action)
 	if errors.Is(err, tracking.ErrCorruptBlock) {
 		writeError(w, http.StatusConflict, "corrupt_rules", err.Error()+" : corrigez-le dans AdGuard Home")
@@ -841,11 +845,47 @@ func (s *Server) handleTrackingOverride(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		st.UserRules = rules
+		// Allowing a domain weakens the blocking; forcing the blocking of an essential domain can cut the
+		// phone off (push, updates, Vigie itself): both are what someone holding the console session
+		// would do, and are worth an alert.
+		sev := 1
+		if action == tracking.ActionAllow || (action == tracking.ActionDefault && previous == tracking.ActionBlock) ||
+			(action == tracking.ActionBlock && len(t.essentials.BrokenBy(domain)) > 0) {
+			sev = 2
+		}
+		data := map[string]any{"domain": domain, "action": action, "forced": force, "user": user}
+		if previous != "" {
+			data["previous"] = previous
+		}
+		s.trackingEvent(ctx, "tracking.override", sev, data)
 	}
 	t.setStatus(st)
 	s.log.Info("vue pistage : règle modifiée", "domain", domain, "action", action, "force", force, "changed", changed, "user", user)
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// levelRank orders the blocking levels from the weakest to the strongest (-1: unknown).
+func levelRank(key string) int {
+	for i, k := range tracking.LevelKeys {
+		if k == key {
+			return i
+		}
+	}
+	return -1
+}
+
+// trackingEvent records a change made in AdGuard Home from the console as events produced by the collector
+// (source "server", one per device), exported to Wazuh like the command events: weakening the blocking is
+// what someone who got hold of the console session would do. The change itself is already applied: a
+// failure here is logged, not returned.
+func (s *Server) trackingEvent(ctx context.Context, typ string, sev int, data map[string]any) {
+	evs, err := s.st.AddServerEvents(ctx, typ, sev, data, s.now())
+	if err != nil {
+		s.log.Error("vue pistage : événement non enregistré", "type", typ, "err", err)
+		return
+	}
+	s.published(evs)
 }
 
 func (s *Server) handleTrackingLevelGet(w http.ResponseWriter, r *http.Request) {
@@ -893,6 +933,7 @@ func (s *Server) handleTrackingLevelPut(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "invalid_level", err.Error())
 		return
 	}
+	oldLevel := t.levels.Current(filters)
 	for _, a := range plan {
 		var err error
 		if a.Add {
@@ -911,7 +952,18 @@ func (s *Server) handleTrackingLevelPut(w http.ResponseWriter, r *http.Request) 
 	if st, err := t.client.FilteringStatus(ctx); err == nil {
 		t.setStatus(st)
 	}
-	s.log.Info("vue pistage : niveau de blocage changé", "level", level, "changes", len(plan), "user", user)
+	if len(plan) > 0 {
+		data := map[string]any{"new": level, "changes": len(plan), "user": user}
+		if oldLevel != "" { // absent when the lists had been changed by hand and matched no level
+			data["old"] = oldLevel
+		}
+		sev := 1
+		if levelRank(level) < levelRank(oldLevel) || oldLevel == "" {
+			sev = 2 // blocking weakened (or from an unknown state)
+		}
+		s.trackingEvent(ctx, "tracking.level_changed", sev, data)
+	}
+	s.log.Info("vue pistage : niveau de blocage changé", "level", level, "old", oldLevel, "changes", len(plan), "user", user)
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNoContent)
 }

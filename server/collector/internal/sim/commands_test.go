@@ -3,6 +3,7 @@ package sim
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -106,8 +107,9 @@ func TestNotificationContentAndInject(t *testing.T) {
 			if e.Data["event"] != "posted" {
 				continue
 			}
-			if _, ok := e.Data["importance"]; !ok {
-				t.Fatalf("no importance: %v", e.Data)
+			// Contract §10: a string among none/min/low/default/high/max (the companion never sends a number).
+			if imp, ok := e.Data["importance"].(string); !ok || !slices.Contains([]string{"none", "min", "low", "default", "high", "max"}, imp) {
+				t.Fatalf("importance: %v", e.Data)
 			}
 			if title, ok := e.Data["title"].(string); ok {
 				withContent++

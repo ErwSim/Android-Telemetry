@@ -398,7 +398,7 @@ export function generate(now: number, seed = 20261115): Generated {
       category: pick(rng, ['msg', 'email', 'social', 'transport']),
       channel: 'default',
       ongoing: false,
-      importance: pick(rng, [2, 3, 3, 4]),
+      importance: pick(rng, ['low', 'default', 'default', 'high']),
     };
     if (withContent && data['event'] === 'posted') {
       if (app.package === 'com.boursorama.android.clients') {
@@ -414,8 +414,8 @@ export function generate(now: number, seed = 20261115): Generated {
     push(t, 'app.notification', 0, data);
   }
   // Cas limites : texte hostile (balisage, caractère de réordonnancement bidirectionnel) et texte très long.
-  push(horizon - 3 * HOUR, 'app.notification', 0, { package: 'com.facebook.katana', event: 'posted', category: 'social', channel: 'default', ongoing: false, importance: 3, title: '<img src=x onerror=alert(1)> Gagnez un iPhone', text: 'Cliquez ici \u202Egpj.exe — **gras** [lien](javascript:alert(1))' });
-  push(horizon - 3 * HOUR + 5 * MIN, 'app.notification', 0, { package: 'com.whatsapp', event: 'posted', category: 'msg', channel: 'default', ongoing: false, importance: 4, title: 'Message très long', text: 'Lorem ipsum dolor sit amet, '.repeat(30) });
+  push(horizon - 3 * HOUR, 'app.notification', 0, { package: 'com.facebook.katana', event: 'posted', category: 'social', channel: 'default', ongoing: false, importance: 'default', title: '<img src=x onerror=alert(1)> Gagnez un iPhone', text: 'Cliquez ici \u202Egpj.exe — **gras** [lien](javascript:alert(1))' });
+  push(horizon - 3 * HOUR + 5 * MIN, 'app.notification', 0, { package: 'com.whatsapp', event: 'posted', category: 'msg', channel: 'default', ongoing: false, importance: 'high', title: 'Message très long', text: 'Lorem ipsum dolor sit amet, '.repeat(30) });
 
   // ---------- Capteurs ----------
   const sensorSession = (t: number, kind: 'camera' | 'mic', pkg: string, durMs: number, sev = 0) => {

@@ -211,15 +211,36 @@ l'infrastructure doit vérifier celles qu'elle retient).
   visibles dans `/events` et la chronologie, et exportés avec `vigie.source = "server"` (les événements
   d'appareil n'ont pas de `source`). L'événement `command.result` de l'agent arrive, lui, par l'ingestion.
   Le message de verrouillage reste dans la base (console) : ni dans les journaux du processus, ni dans
-  l'export. Ni `payload`, ni `sig`, ni jeton ne sont journalisés.
-- **Vue « pistage » (§9)** : le journal d'AdGuard Home (`GET /control/querylog?limit=500&older_than=…`, du
-  plus récent au plus ancien) est relevé toutes les `VIGIE_ADGUARD_POLL_S`, avec 60 s de retard (AdGuard
-  inscrit une requête à la fin de son traitement), 40 pages au plus par relevé. Chaque page est agrégée par
+  l'export. Ni `payload`, ni `sig`, ni jeton ne sont journalisés. `tracking.level_changed` et
+  `tracking.override` (voir « Vue pistage ») sont produits de la même façon.
+- **Vue « pistage » (§9)** : le journal d'AdGuard Home (`GET /control/querylog`, du plus récent au plus
+  ancien, 500 entrées par page) est relevé toutes les `VIGIE_ADGUARD_POLL_S`, 40 pages au plus par relevé.
+  **Lecture** (`readLog`, `internal/server/tracking.go`) : AdGuard Home v0.107.80 traite `older_than=T` en
+  cherchant dans ses fichiers une entrée dont l'horodatage est **exactement** `T` (`internal/querylog` :
+  `seekTS`, `seekRecord` ; vérifié sur une instance réelle) : si `T` tombe entre deux entrées, il ne renvoie
+  rien des fichiers ; si `T` est postérieur à la dernière, il saute cette dernière entrée. Le collecteur ne
+  passe donc jamais un instant arbitraire : la première page est demandée **sans** `older_than`, les suivantes
+  avec l'horodatage exact de la plus ancienne entrée de la page précédente, et la fenêtre de temps est
+  appliquée ici. Une entrée est comptée par le relevé dont la fenêtre `(repère précédent, maintenant − 60 s]`
+  contient son horodatage : exactement une fois, quel que soit l'instant des relevés. Si un curseur reçoit une
+  réponse courte avant la limite basse (fin réelle du journal, ou entrée du curseur absente des fichiers :
+  restée en mémoire, ou supprimée par une rotation), les horodatages des trois entrées lues juste avant sont
+  essayés avant de conclure. Chaque page est agrégée par
   heure, client (ClientID, sinon IP) et domaine (`tracking_counts` : requêtes, bloquées, motif lisible : nom
   de la liste, « Règle personnalisée : … », « Blocage manuel (Vigie) », service bloqué…) et validée **avec** la
-  position de lecture (`kv.adguard_querylog`) dans la même transaction : un redémarrage reprend sans double
-  compte. Ce qui n'a pas pu être lu (premier relevé : 24 h d'historique ; longue panne) est gardé comme
+  position de lecture (`kv.adguard_querylog` : repère, plages restantes avec leur curseur et ses remplaçants)
+  dans la même transaction : un redémarrage reprend sans perte ni double compte. Ce qui n'a pas pu être lu
+  dans le budget de pages (premier relevé : 24 h d'historique ; longue panne) est gardé comme
   « trou » à combler aux relevés suivants (16 au plus). Bloquée = motif `Filtered*` sauf `FilteredSafeSearch`.
+  Le faux AdGuard Home du simulateur et des tests reproduit ce traitement réel d'`older_than` (deux fichiers,
+  rotation, tampon mémoire : `adguard.Fake.search`, `fake_test.go`).
+  **Changements faits depuis la console** : `PUT /tracking/level` et `PUT /tracking/override` qui modifient
+  réellement AdGuard Home produisent un événement du collecteur (`source = 'server'`, un par appareil non
+  révoqué, exporté vers Wazuh avec `vigie.source = "server"`) : `tracking.level_changed` (`old` — absent si
+  l'état ne correspondait à aucun niveau —, `new`, `changes`, `user` ; sév. 2 si le blocage est affaibli ou
+  part d'un état inconnu, 1 sinon) et `tracking.override` (`domain`, `action`, `forced`, `previous` s'il y
+  avait une règle, `user` ; sév. 2 pour une autorisation, le retrait d'un blocage ou le blocage forcé d'un
+  domaine indispensable, 1 sinon). Une demande qui ne change rien ne produit rien.
   Croisements par agrégats horaires : `top_counts` (`dns_hostname` par paquet, pondéré par `count`) et
   `usage_counts` (octets reçus/émis par application, migration 5, reconstruite depuis `net.usage`). Rien ne
   balaie la table `events`. Purge avec la rétention. AdGuard injoignable : `adguard: false`, `PUT` → `503`,
@@ -269,9 +290,13 @@ l'infrastructure doit vérifier celles qu'elle retient).
 ## Limites connues
 
 - Pistage : `older_than` d'AdGuard est strict : deux requêtes de la même nanoseconde à la frontière de deux
-  pages pourraient être sautées (négligeable). Une requête dont le traitement a duré plus de 60 s n'est pas
-  comptée. Les `apps` d'un domaine et les `blocked`/`allowed` d'une application sont des estimations (AdGuard
-  ne voit pas l'application ; `net.dns` ne voit pas le blocage).
+  pages pourraient être sautées (négligeable). Une entrée n'est comptée qu'une fois vieille de 60 s (les plus
+  récentes attendent le relevé suivant). **`querylog.size_memory` doit rester à 1** dans AdGuard Home (réglage
+  de l'infrastructure Vigie) : avec un tampon mémoire plus grand (1000 par défaut), un relevé de plus d'une
+  page dont le curseur désigne une entrée encore en mémoire fait sauter par AdGuard Home la dernière entrée
+  de son fichier (même défaut que ci-dessus : une entrée perdue par relevé de ce genre), et les entrées
+  n'atteignent le fichier lu par Wazuh que par paquets. Les `apps` d'un domaine et les `blocked`/`allowed`
+  d'une application sont des estimations (AdGuard ne voit pas l'application ; `net.dns` ne voit pas le blocage).
 - Commandes : le collecteur ne vérifie pas `sig` (il n'a pas le code). Sans le code, un serveur compromis
   peut faire sonner, vibrer ou localiser le téléphone autant qu'il veut, retenir, retarder ou rejouer dans
   leur période de validité les commandes signées qu'il a reçues, et afficher n'importe quel état dans la

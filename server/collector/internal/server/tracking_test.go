@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/erwsim/android-telemetry/server/collector/internal/adguard"
+	"github.com/erwsim/android-telemetry/server/collector/internal/enroll"
 	"github.com/erwsim/android-telemetry/server/collector/internal/model"
 	"github.com/erwsim/android-telemetry/server/collector/internal/tracking"
 )
@@ -374,4 +377,305 @@ func TestNotificationContentCounted(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), `"redacted":true`) {
 		t.Fatalf("events: %s", rec.Body)
 	}
+}
+
+// counted returns the number of queries of the tracking aggregates.
+func (e *env) counted(ctx context.Context) int64 {
+	e.t.Helper()
+	counts, err := e.st.TrackingCounts(ctx, nil, time.Now().Add(-72*time.Hour).UnixMilli(), time.Now().Add(72*time.Hour).UnixMilli())
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	var n int64
+	for _, c := range counts {
+		n += c.Queries
+	}
+	return n
+}
+
+// The query log is read like a real AdGuard Home serves it (the fake reproduces its handling of older_than,
+// see adguard.Fake.search): whatever the moment of the polls, every entry is counted exactly once — never
+// one missing because the poll time fell between two records or after the newest one, never one twice.
+// After each complete poll the aggregates hold exactly the entries older than the reading lag.
+func TestTrackingCountsEveryEntryExactlyOnce(t *testing.T) {
+	e, fake, _ := newTrackingEnv(t)
+	ctx := context.Background()
+	tr := e.srv.tracking
+	if err := tr.refreshStatus(ctx); err != nil {
+		t.Fatal(err)
+	}
+	clock := time.Now().Add(-6 * time.Hour)
+	e.srv.now = func() time.Time { return clock }
+	var times []time.Time
+	add := func(n int, step time.Duration) {
+		for range n {
+			clock = clock.Add(step)
+			fake.AddQuery(clock, "192.0.2.10", "s25", "app-measurement.com")
+			times = append(times, clock)
+		}
+	}
+	eligible := func() int64 {
+		var n int64
+		for _, ts := range times {
+			if !ts.After(clock.Add(-agLag)) {
+				n++
+			}
+		}
+		return n
+	}
+	poll := func(what string) {
+		t.Helper()
+		if err := tr.readLog(ctx, agPagesPerPoll); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := e.counted(ctx), eligible(); got != want {
+			t.Fatalf("%s: %d entries counted, %d are older than the lag", what, got, want)
+		}
+	}
+	poll("empty log")
+	// A phone's ordinary traffic: a few queries, a poll every 20 s falling anywhere between them.
+	for round := range 40 {
+		add(1+round%5, 1700*time.Millisecond)
+		clock = clock.Add(20 * time.Second)
+		poll("steady traffic")
+		clock = clock.Add(time.Duration(round) * 333 * time.Millisecond)
+		poll("poll without anything new")
+	}
+	// A poll at the very nanosecond of a record, and one a nanosecond later.
+	add(3, time.Second)
+	clock = clock.Add(agLag)
+	poll("poll at the time of the newest record")
+	clock = clock.Add(time.Nanosecond)
+	poll("one nanosecond later")
+	// A burst of more than two pages between two polls, then the log file is rotated, twice.
+	add(1234, 15*time.Millisecond)
+	clock = clock.Add(2 * time.Minute)
+	poll("burst of 1234")
+	fake.Rotate()
+	add(40, time.Second)
+	clock = clock.Add(90 * time.Second)
+	poll("after a rotation")
+	add(700, 10*time.Millisecond)
+	fake.Rotate()
+	add(30, time.Second)
+	clock = clock.Add(3 * time.Minute)
+	poll("after a second rotation, 730 entries across the two files")
+	// Records still in AdGuard Home's memory buffer (querylog.size_memory > 1).
+	fake.SetMemory(50)
+	add(120, 500*time.Millisecond)
+	clock = clock.Add(2 * time.Minute)
+	poll("with a memory buffer")
+	if got := e.counted(ctx); got != int64(len(times)) {
+		t.Fatalf("%d entries counted, %d made", got, len(times))
+	}
+	if st, _ := tr.loadState(ctx); len(st.Gaps) != 0 {
+		t.Fatalf("gaps left: %+v", st.Gaps)
+	}
+}
+
+// A long backlog read a page at a time, with the collector restarted between the polls, the log rotated
+// meanwhile and new traffic arriving: nothing is lost, nothing is counted twice.
+func TestTrackingBacklogSurvivesRestartsAndRotation(t *testing.T) {
+	e, fake, _ := newTrackingEnv(t)
+	ctx := context.Background()
+	clock := time.Now().Add(-6 * time.Hour)
+	now := func() time.Time { return clock }
+	var made int64
+	add := func(n int, step time.Duration, domain string) {
+		for range n {
+			clock = clock.Add(step)
+			fake.AddQuery(clock, "192.0.2.10", "s25", domain)
+			made++
+		}
+	}
+	restart := func() *trackingService {
+		t.Helper()
+		srv, err := New(e.cfg, e.st, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		srv.now = now
+		if err := srv.tracking.refreshStatus(ctx); err != nil {
+			t.Fatal(err)
+		}
+		return srv.tracking
+	}
+	add(3210, 200*time.Millisecond, "app-measurement.com") // seven pages
+	clock = clock.Add(5 * time.Minute)
+	prev := int64(0)
+	for i := range 60 {
+		tr := restart()
+		if err := tr.readLog(ctx, 2); err != nil { // one page for what is new, one for the backlog
+			t.Fatal(err)
+		}
+		got := e.counted(ctx)
+		if got < prev || got > made {
+			t.Fatalf("poll %d: %d entries counted after %d, %d made", i, got, prev, made)
+		}
+		prev = got
+		switch i {
+		case 2:
+			fake.Rotate() // everything made so far is now in the rotated file
+		case 3, 5, 7:
+			add(150, 100*time.Millisecond, "www.google.com")
+			clock = clock.Add(2 * time.Minute)
+		}
+		clock = clock.Add(7 * time.Second)
+	}
+	clock = clock.Add(2 * time.Minute)
+	if err := restart().readLog(ctx, agPagesPerPoll); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.counted(ctx); got != made {
+		t.Fatalf("%d entries counted, %d made", got, made)
+	}
+	if st, _ := restart().loadState(ctx); len(st.Gaps) != 0 {
+		t.Fatalf("gaps left: %+v", st.Gaps)
+	}
+}
+
+// The record used as a cursor is no longer in AdGuard Home's files when the reading resumes (it was only
+// in memory, or the file was rewritten): AdGuard Home then finds nothing at all for that cursor. The
+// records read just before it are tried, and the rest of the range is read. When the rest of the log is
+// really gone (rotated away), the range ends without looping.
+func TestTrackingCursorNoLongerInTheLog(t *testing.T) {
+	e, fake, _ := newTrackingEnv(t)
+	ctx := context.Background()
+	tr := e.srv.tracking
+	if err := tr.refreshStatus(ctx); err != nil {
+		t.Fatal(err)
+	}
+	clock := time.Now().Add(-6 * time.Hour)
+	e.srv.now = func() time.Time { return clock }
+	for range 1700 {
+		clock = clock.Add(100 * time.Millisecond)
+		fake.AddQuery(clock, "192.0.2.10", "s25", "app-measurement.com")
+	}
+	clock = clock.Add(5 * time.Minute)
+	if err := tr.readLog(ctx, 1); err != nil { // the newest page only
+		t.Fatal(err)
+	}
+	st, _ := tr.loadState(ctx)
+	if len(st.Gaps) != 1 || st.Gaps[0].Hi == "" || len(st.Gaps[0].Alt) != agAltCursors {
+		t.Fatalf("state after one page: %+v", st)
+	}
+	cursor, _ := time.Parse(time.RFC3339Nano, st.Gaps[0].Hi)
+	if !fake.Forget(cursor) {
+		t.Fatal("cursor record not in the fake")
+	}
+	for range 4 {
+		if err := tr.readLog(ctx, 2); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := e.counted(ctx); got != 1700 { // the forgotten record had been counted with the first page
+		t.Fatalf("%d entries counted, want 1700", got)
+	}
+	if st, _ := tr.loadState(ctx); len(st.Gaps) != 0 {
+		t.Fatalf("gaps left: %+v", st.Gaps)
+	}
+
+	// Same start on a new log, but this time the rest of the log is deleted by two rotations.
+	e2, fake2, _ := newTrackingEnv(t)
+	tr2 := e2.srv.tracking
+	if err := tr2.refreshStatus(ctx); err != nil {
+		t.Fatal(err)
+	}
+	e2.srv.now = func() time.Time { return clock }
+	at := clock.Add(-30 * time.Minute)
+	for range 1700 {
+		at = at.Add(100 * time.Millisecond)
+		fake2.AddQuery(at, "192.0.2.10", "s25", "app-measurement.com")
+	}
+	if err := tr2.readLog(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	fake2.Rotate()
+	fake2.Rotate()
+	before := fake2.Requests("/control/querylog")
+	if err := tr2.readLog(ctx, agPagesPerPoll); err != nil {
+		t.Fatal(err)
+	}
+	if got := e2.counted(ctx); got != 500 {
+		t.Fatalf("%d entries counted, want the 500 read before the rotations", got)
+	}
+	if st, _ := tr2.loadState(ctx); len(st.Gaps) != 0 {
+		t.Fatalf("gaps left: %+v", st.Gaps)
+	}
+	if n := fake2.Requests("/control/querylog") - before; n > 2+agAltCursors+1 {
+		t.Fatalf("%d requests to conclude that the log ends", n)
+	}
+}
+
+// Changes made in AdGuard Home from the console are events produced by the collector (source "server"),
+// so that Wazuh can alert when the blocking is weakened — what someone holding the console session would do.
+func TestTrackingChangesAreServerEvents(t *testing.T) {
+	e, _, _ := newTrackingEnv(t)
+	c := e.session()
+	ctx := context.Background()
+	if err := e.srv.tracking.pollOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	other, err := enroll.Create(ctx, e.st, e.ca, enroll.Params{Name: "révoqué", IngestURL: "https://ingest.vigie.example"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.st.RevokeDevice(ctx, other.DeviceID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	put := func(path string, body map[string]any, want int) {
+		t.Helper()
+		if rec := e.put(c, path, body, true); rec.Code != want {
+			t.Fatalf("%s %v: %d %s", path, body, rec.Code, rec.Body)
+		}
+	}
+	put("override", map[string]any{"domain": "tracker.example.net", "action": "block"}, http.StatusNoContent)
+	put("override", map[string]any{"domain": "tracker.example.net", "action": "block"}, http.StatusNoContent) // nothing changes: no event
+	put("override", map[string]any{"domain": "app-measurement.com", "action": "allow"}, http.StatusNoContent)
+	put("override", map[string]any{"domain": "google.com", "action": "block"}, http.StatusConflict) // refused: no event
+	put("override", map[string]any{"domain": "google.com", "action": "block", "force": true}, http.StatusNoContent)
+	put("override", map[string]any{"domain": "tracker.example.net", "action": "default"}, http.StatusNoContent)
+	put("level", map[string]any{"level": "permissif"}, http.StatusNoContent) // already the level: no event
+	put("level", map[string]any{"level": "strict"}, http.StatusNoContent)
+	put("level", map[string]any{"level": "equilibre"}, http.StatusNoContent)
+
+	type want struct {
+		sev  float64
+		data map[string]any
+	}
+	check := func(typ string, wants []want) {
+		t.Helper()
+		evs := e.serverEvents(c, typ) // newest first
+		if len(evs) != len(wants) {
+			t.Fatalf("%s: %d events, want %d: %v", typ, len(evs), len(wants), evs)
+		}
+		for i, w := range wants {
+			ev := evs[len(evs)-1-i]
+			if ev["source"] != "server" || ev["device_id"] != e.dev.DeviceID || ev["sev"] != w.sev {
+				t.Fatalf("%s #%d: %v", typ, i, ev)
+			}
+			d := ev["data"].(map[string]any)
+			if d["user"] != "admin" {
+				t.Fatalf("%s #%d: user %v", typ, i, d)
+			}
+			for k, v := range w.data {
+				if d[k] != v {
+					t.Fatalf("%s #%d: %s = %v, want %v (%v)", typ, i, k, d[k], v, d)
+				}
+			}
+			if _, has := d["previous"]; has != (w.data["previous"] != nil) {
+				t.Fatalf("%s #%d: previous in %v", typ, i, d)
+			}
+		}
+	}
+	check("tracking.override", []want{
+		{1, map[string]any{"domain": "tracker.example.net", "action": "block", "forced": false}},
+		{2, map[string]any{"domain": "app-measurement.com", "action": "allow", "forced": false}}, // blocking weakened
+		{2, map[string]any{"domain": "google.com", "action": "block", "forced": true}},           // essential domain blocked
+		{2, map[string]any{"domain": "tracker.example.net", "action": "default", "forced": false, "previous": "block"}},
+	})
+	check("tracking.level_changed", []want{
+		{1, map[string]any{"old": "permissif", "new": "strict"}},
+		{2, map[string]any{"old": "strict", "new": "equilibre"}}, // blocking weakened
+	})
 }
