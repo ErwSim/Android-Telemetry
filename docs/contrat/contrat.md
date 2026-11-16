@@ -603,6 +603,20 @@ ni un composant du système ; une garde qui échoue sur un paquet le signale san
 Événements : `security.policy` avec `action` ∈ `permission_denied`/`permission_restored`/`guard_enabled`/
 `guard_disabled`/`quarantined`/`released`, `target` (paquet ou composant), et `permission` le cas échéant.
 
+Précisions (issues du développement) :
+
+- `security.policy` porte `permission` pour les actions des gardes ; `target` est le paquet, ou la clé de la
+  garde pour `guard_enabled`/`guard_disabled`. Sévérité 1 pour `guard_*`, `quarantined` et `released`.
+- Permissions couvertes en plus de celles citées : `RECEIVE_MMS`, `RECEIVE_WAP_PUSH`, `WRITE_CALL_LOG`,
+  `GET_ACCOUNTS`, `UWB_RANGING`/`RANGING`.
+- Une garde ne touche jamais une application du système ni le détenteur actuel d'un rôle (SMS, composeur,
+  clavier, accueil) : une application malveillante **choisie comme appli SMS par défaut** est signalée, pas
+  bloquée. Les gardes `accessibility` et `input_methods` n'éteignent jamais un service déjà activé (la
+  plateforme refuse la liste sinon) : il est ajouté d'office et l'aperçu le dit.
+- Délai entre l'installation d'une application et l'application de la garde : quelques secondes, jusqu'à
+  15 min si le processus de l'agent était arrêté.
+- « Libérer » rend l'état d'avant la quarantaine (« à demander » pour une installation neuve).
+
 ### 11.2 Profil de risque et usage (agent, module `:collectors`)
 
 | Type | Quand | `data` |
