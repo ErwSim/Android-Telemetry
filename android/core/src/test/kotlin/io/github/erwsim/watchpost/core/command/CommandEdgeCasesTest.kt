@@ -14,7 +14,7 @@ import org.junit.Test
  * validity of `wipe` (24 h at most), consumption of sensitive commands refused `disabled` or
  * `no_code_configured`, separators U+2028/U+2029 in the lock message, floor of the command passphrase.
  */
-class CommandReviewPrecisionsTest {
+class CommandEdgeCasesTest {
     private fun Verification.reason(): String = (this as? Verification.Refused)?.reason ?: "accepted"
 
     @Test
@@ -32,7 +32,7 @@ class CommandReviewPrecisionsTest {
         // The 7-day default of the other sensitive commands is still accepted for lock.
         val (id3, p3) = kit.payload("lock", issuedAtMs = issued, expiresAtMs = issued + 7 * 86_400_000L)
         assertEquals("accepted", kit.verifier.verify(kit.sign(id3, p3), kit.env()).reason())
-        // A 7-day wipe (the v1.1 default) refused while the switch is off is not consumed either: it would be
+        // A 7-day wipe (above the 24 h wipe cap) refused while the switch is off is not consumed either: it would be
         // expired anyway once the switch is on.
         val (id4, p4) = kit.payload("wipe", issuedAtMs = issued, expiresAtMs = issued + 7 * 86_400_000L)
         assertEquals(Refusal.DISABLED, kit.verifier.verify(kit.sign(id4, p4), kit.env(wipeAllowed = false)).reason())
@@ -101,7 +101,7 @@ class CommandReviewPrecisionsTest {
     }
 
     @Test
-    fun `the code floor of the review is enforced`() {
+    fun `the passphrase floor is enforced`() {
         assertTrue(CommandCrypto.isTooWeak("aaaaabbbbbcc")) // 3 distinct characters
         assertTrue(CommandCrypto.isTooWeak("1234567890123")) // digits only, fewer than 20
         assertFalse(CommandCrypto.isTooWeak("12345678901234567890"))

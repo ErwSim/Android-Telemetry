@@ -13,7 +13,7 @@ import io.github.erwsim.watchpost.core.event.Severity
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** Thrown only to carry the French reason into `agent.collector_error` (reported once, see [AppOpsCollector]). */
+/** Thrown only to carry the English reason into `agent.collector_error` (reported once, see [AppOpsCollector]). */
 class AppOpsUnavailableException(message: String) : Exception(message)
 
 /**

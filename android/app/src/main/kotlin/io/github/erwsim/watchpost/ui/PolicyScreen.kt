@@ -56,7 +56,7 @@ import io.github.erwsim.watchpost.policy.ui.PolicyController
 import io.github.erwsim.watchpost.policy.ui.PolicyUiState
 
 /**
- * "Politique" screen of the `:policy` module: Device Owner state, profile with preview, per-item
+ * "Policy" screen of the `:policy` module: Device Owner state, profile with preview, per-item
  * switches and undo, private DNS, VPN, action log, "Restore everything" and "Remove Device
  * Owner". Nothing is applied before the user confirms the preview.
  */

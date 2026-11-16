@@ -10,7 +10,7 @@ import io.github.erwsim.watchpost.notifier.protocol.PackageLists
 
 /**
  * The notification settings kept by the agent. The two switches are ordinary collector settings
- * (Collecteurs › Notifications); the two package lists have no generic editor in the agent's UI
+ * (Collectors › Notifications); the two package lists have no generic editor in the agent's UI
  * (the settings framework has integer, boolean and choice settings only): they are stored in the
  * agent's settings file under [KEY_CONTENT_EXCLUDED] / [KEY_IGNORED] (absent = default list),
  * edited on the companion's screen through the channel, and every change emits

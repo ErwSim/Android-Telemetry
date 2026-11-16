@@ -4,7 +4,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 
-/** Why a reading of `dumpsys appops` is unusable (each one has a French reason in the resources). */
+/** Why a reading of `dumpsys appops` is unusable (each one has an English reason in the resources). */
 enum class OpsFailure(val code: String) {
     /** `Permission Denial: can't dump appops … missing android.permission.DUMP / PACKAGE_USAGE_STATS`. */
     PERMISSION_DENIED("permission_denied"),

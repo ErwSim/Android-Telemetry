@@ -31,7 +31,7 @@ import kotlinx.serialization.json.booleanOrNull
  *
  * Choices where the contract is silent (documented in `ARCHITECTURE-CODE.md`): an unknown top-level key
  * of the payload or an `expires_at` before `issued_at` is `malformed`; a validity above 30 days (24 h for
- * `wipe`, contract review of v1.1) or an `issued_at` more than 5 min in the future is `expired`.
+ * `wipe`, contract §8) or an `issued_at` more than 5 min in the future is `expired`.
  * A sensitive command refused `disabled` or `no_code_configured` is consumed (unverified window).
  */
 class CommandVerifier(
@@ -162,7 +162,7 @@ class CommandVerifier(
     }
 
     /**
-     * Contract §8 (review of v1.1): a sensitive command refused `disabled` (channel off) or
+     * Contract §8: a sensitive command refused `disabled` (channel off) or
      * `no_code_configured` is consumed, so that it never runs once the channel is switched on or a code
      * is set. Its signature cannot be checked here, so it goes to the separate unverified window
      * ([CommandStateStore.consumeUnverified]), and only when its routing fields are this device's and
@@ -182,7 +182,7 @@ class CommandVerifier(
         const val CLOCK_TOLERANCE_MS = 5 * 60_000L
         const val MAX_VALIDITY_MS = 30 * 86_400_000L
 
-        /** `wipe`: 24 h at most (contract §8, review of v1.1), whatever the server and the console allowed. */
+        /** `wipe`: 24 h at most (contract §8), whatever the server and the console allowed. */
         const val MAX_WIPE_VALIDITY_MS = 86_400_000L
 
         /** Not expired (5 min clock tolerance), not issued in the future, validity within the type's maximum. */
@@ -237,7 +237,7 @@ class CommandVerifier(
                         // "200 characters" = 200 UTF-16 units; no control character except the line feed (contract §8,
                         // checked here too: the server is not trusted).
                         if (prim.content.length > LOCK_MESSAGE_MAX) return null
-                        // U+2028/U+2029 (line/paragraph separators) are refused like control characters (review of v1.1).
+                        // U+2028/U+2029 (line/paragraph separators) are refused like control characters.
                         if (prim.content.any { (it.isISOControl() && it != '\n') || it == '\u2028' || it == '\u2029' }) return null
                         prim.content.trim().ifEmpty { null }
                     }

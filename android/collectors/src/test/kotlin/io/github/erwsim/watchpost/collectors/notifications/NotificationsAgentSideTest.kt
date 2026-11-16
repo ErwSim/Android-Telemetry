@@ -134,7 +134,7 @@ class NotificationsAgentSideTest {
             assertEquals("Code $MASK", r.emitted.last().text)
             assertEquals(true, r.emitted.last().redacted)
             // Excluded apps (default list: SMS) never get content.
-            r.call(P.METHOD_POST, mapOf(P.KEY_PACKAGE to "com.samsung.android.messaging", P.KEY_EVENT to P.EVENT_POSTED, P.KEY_TEXT to "Salut"))
+            r.call(P.METHOD_POST, mapOf(P.KEY_PACKAGE to "com.samsung.android.messaging", P.KEY_EVENT to P.EVENT_POSTED, P.KEY_TEXT to "Hello"))
             assertNull(r.emitted.last().text)
             // Collector disabled, or agent stopped: nothing recorded.
             val before = r.emitted.size

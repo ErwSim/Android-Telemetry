@@ -53,7 +53,7 @@ object Contract {
         "network_logging", "security_logging",
         "permission_granted", "force_stop_protection", "always_on_vpn", "backup_service", "policy_reverted", "device_owner_cleared",
         "permission_restored", "setting_changed", "setting_restored",
-        // §11.1 (guards, v1.2).
+        // §11.1 (guards).
         "guard_enabled", "guard_disabled", "quarantined", "released",
     )
 
@@ -169,7 +169,7 @@ object Contract {
             "importance" to oneOf("none", "min", "low", "default", "high", "max"), "title" to S, "text" to S, "redacted" to B,
         ),
         // app.risk / app.role / app.ops (contract §11.2). `role` stays an open string ("sms", "dialer", … and, for
-        // the agent, "keyboard" and "autofill": see the report on the gaps of §11.2).
+        // the agent, "keyboard" and "autofill": see the gaps listed in §11.2).
         "app.risk" to mapOf(
             "package" to S, "label" to S, "version_code" to I, "installer" to S, "from_store" to B, "score" to I,
             "level" to oneOf("low", "medium", "high"), "reasons" to Field(Kind.STRINGS, RISK_REASONS),

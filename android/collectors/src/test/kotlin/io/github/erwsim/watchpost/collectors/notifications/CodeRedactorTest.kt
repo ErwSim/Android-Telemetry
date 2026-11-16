@@ -80,6 +80,6 @@ class CodeRedactorTest {
         assertEquals("Code A1B2C3", r("Code A1B2C3")) // alphanumeric
         assertEquals("Code 482", r("Code 482")) // 3 digits
         assertEquals("Code 123 456 $MASK", r("Code 123 456 2026")) // glued to another number: 10 digits
-        assertEquals("Code quatre huit deux neuf", r("Code quatre huit deux neuf"))
-    }
         assertEquals("Code four eight two nine", r("Code four eight two nine"))
+    }
+}

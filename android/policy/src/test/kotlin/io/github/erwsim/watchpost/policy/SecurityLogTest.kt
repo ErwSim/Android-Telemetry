@@ -64,9 +64,9 @@ class SecurityLogTest {
             Triple(SecurityLog.TAG_WIFI_DISCONNECTION, arrayOf<Any>("AA:BB:CC:DD:EE:FF", "local"), mapOf("bssid" to "aa:bb:cc:dd:ee:ff", "reason" to "local")),
             Triple(SecurityLog.TAG_BLUETOOTH_CONNECTION, arrayOf<Any>("8C:79:F5:1E:42:A7", 1, ""), mapOf("address" to "8c:79:f5:1e:42:a7", "success" to "true", "reason" to "")),
             Triple(SecurityLog.TAG_BLUETOOTH_DISCONNECTION, arrayOf<Any>("8C:79:F5:1E:42:A7", "remote"), mapOf("address" to "8c:79:f5:1e:42:a7", "reason" to "remote")),
-            Triple(SecurityLog.TAG_PACKAGE_INSTALLED, arrayOf<Any>("fr.vinted", 254400L, 0), mapOf("package" to "fr.vinted", "version_code" to "254400", "user_id" to "0")),
-            Triple(SecurityLog.TAG_PACKAGE_UPDATED, arrayOf<Any>("fr.vinted", 254401L, 0), mapOf("package" to "fr.vinted", "version_code" to "254401", "user_id" to "0")),
-            Triple(SecurityLog.TAG_PACKAGE_UNINSTALLED, arrayOf<Any>("fr.vinted", 254401L, 0), mapOf("package" to "fr.vinted", "version_code" to "254401", "user_id" to "0")),
+            Triple(SecurityLog.TAG_PACKAGE_INSTALLED, arrayOf<Any>("com.example.shop", 254400L, 0), mapOf("package" to "com.example.shop", "version_code" to "254400", "user_id" to "0")),
+            Triple(SecurityLog.TAG_PACKAGE_UPDATED, arrayOf<Any>("com.example.shop", 254401L, 0), mapOf("package" to "com.example.shop", "version_code" to "254401", "user_id" to "0")),
+            Triple(SecurityLog.TAG_PACKAGE_UNINSTALLED, arrayOf<Any>("com.example.shop", 254401L, 0), mapOf("package" to "com.example.shop", "version_code" to "254401", "user_id" to "0")),
             // Tags without names in the contract: argN.
             Triple(SecurityLog.TAG_WIPE_FAILURE, null, emptyMap()),
             Triple(SecurityLog.TAG_REMOTE_LOCK, arrayOf<Any>("com.admin", 0, 0), mapOf("arg0" to "com.admin", "arg1" to "0", "arg2" to "0")),

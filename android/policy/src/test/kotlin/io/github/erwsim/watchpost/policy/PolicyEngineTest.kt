@@ -309,7 +309,7 @@ class PolicyEngineTest {
         assertEquals(2, fallbackEvent.first)
         assertEquals("opportunistic", fallbackEvent.second.str("target"))
         // Second fallback call: nothing.
-        assertTrue(e.dnsFallback("encore").succeeded.isEmpty())
+        assertTrue(e.dnsFallback("still").succeeded.isEmpty())
         assertTrue(e.dnsReapply().allOk)
         assertEquals("dns.example.org", gw.dnsHost)
         assertFalse(e.dnsRecord()!!.dnsFallback)

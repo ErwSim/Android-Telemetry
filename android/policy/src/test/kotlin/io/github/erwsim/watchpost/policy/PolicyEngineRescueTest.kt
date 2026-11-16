@@ -29,7 +29,7 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * "Can the phone be left in a state nobody can undo?" Regressions found by the pre-install review:
+ * "Can the phone be left in a state nobody can undo?" Regression tests for:
  * crash in the middle of a permission denial, unreadable persisted state, settings and restrictions
  * outside the reviewed list, items that a newer deny list forbids while they are applied.
  */
@@ -108,7 +108,7 @@ class PolicyEngineRescueTest {
         gw.granted -= google to fine
 
         assertTrue(engine().revertAll().allOk)
-        assertEquals("the user gets the permission back, under his own control", Dpm.GRANT_DEFAULT, gw.permissionGrantState(google, fine))
+        assertEquals("the user gets the permission back, under their own control", Dpm.GRANT_DEFAULT, gw.permissionGrantState(google, fine))
         assertTrue(gw.isPermissionGranted(google, fine))
         // The permission the crash never reached is left alone.
         assertFalse(gw.calls.any { it.startsWith("perm $google $camera") })

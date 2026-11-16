@@ -23,11 +23,11 @@ interface Collector {
     /** Stable id, `[a-z0-9_]+`: used in settings keys and in `agent.heartbeat.collectors`. */
     val id: String
 
-    /** Short French title (string resource of the collector's module). */
+    /** Short English title (string resource of the collector's module). */
     @get:StringRes
     val titleRes: Int
 
-    /** French description of what is collected, shown in the app (transparency). */
+    /** English description of what is collected, shown in the app (transparency). */
     @get:StringRes
     val descriptionRes: Int
 
@@ -78,7 +78,7 @@ sealed class Requirement {
 sealed class Availability {
     data object Available : Availability()
 
-    /** [reason] is a French sentence shown to the user. */
+    /** [reason] is an English sentence shown to the user. */
     data class Unavailable(val reason: String) : Availability()
 }
 
@@ -91,7 +91,7 @@ enum class CollectorRunState(val wire: String) {
 
 data class CollectorStatus(
     val state: CollectorRunState,
-    /** French reason when unavailable, or the last error. */
+    /** English reason when unavailable, or the last error. */
     val reason: String? = null,
     val lastError: String? = null,
     val missingPermissions: List<String> = emptyList(),

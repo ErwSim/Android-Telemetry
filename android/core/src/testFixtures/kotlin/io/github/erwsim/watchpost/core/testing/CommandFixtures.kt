@@ -11,12 +11,12 @@ import io.github.erwsim.watchpost.core.event.UlidGenerator
 import io.github.erwsim.watchpost.core.sink.EventSink
 import kotlinx.serialization.json.JsonObject
 import java.util.concurrent.CopyOnWriteArrayList
+
 /** Contract §8 test vector, to the byte (UTF-8, em dash U+2014). */
-/** Contract §8 test vector, to the byte (UTF-8, accented characters). */
 object CommandVector {
     const val CODE = "correct horse battery staple"
+    const val DEVICE_ID = "dev_0123456789abcdef"
     const val KEY_HEX = "05fd656216f9ae34c3be8e6afcfa857c535e9e0ef438ab6c2de7130891abdb8b"
-    const val KEY_HEX = "072a4a8b76845668eff857e6412bd6bde57cf158cf89b2fb9c844a7d66037492"
     const val ID = "01JCQ8Z3K4M5N6P7Q8R9S0T1V2"
     const val PAYLOAD =
         """{"v":1,"id":"01JCQ8Z3K4M5N6P7Q8R9S0T1V2","device_id":"dev_0123456789abcdef","type":"lock","params":{"message":"Lost phone — please call +1 555 0100"},"issued_at":"2026-11-16T10:00:00.000Z","expires_at":"2026-11-23T10:00:00.000Z"}"""

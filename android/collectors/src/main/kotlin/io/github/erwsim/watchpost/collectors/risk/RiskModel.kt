@@ -33,7 +33,7 @@ enum class RiskLevel(val wire: String) {
  * adds its own points on top of those of the reasons it combines: that is what makes a trojan stand out
  * from an app that merely holds one of the powers.
  *
- * Every code has a French label and explanation (`risk_reason_<code>` and `risk_reason_<code>_desc`).
+ * Every code has an English label and explanation (`risk_reason_<code>` and `risk_reason_<code>_desc`).
  */
 enum class RiskReason(
     val code: String,

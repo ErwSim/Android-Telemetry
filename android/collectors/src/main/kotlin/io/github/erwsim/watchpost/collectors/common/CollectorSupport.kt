@@ -24,7 +24,7 @@ class RateLimiter(private val maxEvents: Int, private val windowMs: Long) {
     fun reset() = times.clear()
 }
 
-/** French string of this module, never null (JVM stubs return null). */
+/** English string of this module, never null (JVM stubs return null). */
 fun CollectorContext.str(id: Int, vararg args: Any): String =
     (
         try {
@@ -32,7 +32,7 @@ fun CollectorContext.str(id: Int, vararg args: Any): String =
         } catch (_: Exception) {
             null
         }
-        ) ?: "indisponible"
+        ) ?: "unavailable"
 
 /** Lowercase SHA-256 hex digest. */
 fun sha256Hex(bytes: ByteArray): String =

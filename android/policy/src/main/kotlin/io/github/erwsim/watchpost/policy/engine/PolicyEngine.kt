@@ -214,7 +214,7 @@ class PolicyEngine(
      * list re-checked), never trusted from the screen.
      */
     fun apply(selection: PolicySelection): EngineReport = synchronized(lock) {
-        if (!isDeviceOwner()) return EngineReport(failed = listOf("Watchpost n'est pas Device Owner"))
+        if (!isDeviceOwner()) return EngineReport(failed = listOf("Watchpost is not Device Owner"))
         store.saveSelection(selection)
         val profile = selection.profile.wire
         var report = EngineReport()
@@ -469,7 +469,7 @@ class PolicyEngine(
 
     /** Always-on VPN for an installed VPN app ([pkg] null removes Watchpost's setting). */
     fun setAlwaysOnVpn(pkg: String?, lockdown: Boolean): EngineReport = synchronized(lock) {
-        if (!isDeviceOwner()) return EngineReport(failed = listOf("Watchpost n'est pas Device Owner"))
+        if (!isDeviceOwner()) return EngineReport(failed = listOf("Watchpost is not Device Owner"))
         if (pkg == null) return revertLocked(PolicySelection.ID_VPN)
         val protected = safe { gateway.protectedPackages() } ?: emptySet()
         if (PackageDenyList.isDenied(pkg, protected)) return refused("always_on_vpn", pkg, null)
@@ -515,7 +515,7 @@ class PolicyEngine(
     fun sweepCatalog(): EngineReport = synchronized(lock) { sweepLocked() }
 
     private fun sweepLocked(): EngineReport {
-        if (!isDeviceOwner()) return EngineReport(failed = listOf("Watchpost n'est pas Device Owner"))
+        if (!isDeviceOwner()) return EngineReport(failed = listOf("Watchpost is not Device Owner"))
         var report = EngineReport()
         for (e in catalog.packages) {
             if (safe { gateway.isInstalled(e.pkg) } != true) continue
@@ -745,7 +745,7 @@ class PolicyEngine(
      * undone, unless [force] (the remaining items are listed in the report).
      */
     fun removeDeviceOwner(force: Boolean): EngineReport = synchronized(lock) {
-        if (!isDeviceOwner()) return EngineReport(failed = listOf("Watchpost n'est pas Device Owner"))
+        if (!isDeviceOwner()) return EngineReport(failed = listOf("Watchpost is not Device Owner"))
         val undo = revertAllLockedForRemoval()
         if (!undo.allOk && !force) return undo
         var report = undo
@@ -765,7 +765,7 @@ class PolicyEngine(
         val error = attempt { gateway.clearDeviceOwner(); null }
         val cleared = !isDeviceOwner()
         safe { afterClearOwner(cleared) }
-        if (!cleared) report += outcome("device_owner_cleared", OWNER_TARGET, null, false, error ?: "toujours Device Owner")
+        if (!cleared) report += outcome("device_owner_cleared", OWNER_TARGET, null, false, error ?: "still Device Owner")
         report
     }
 

@@ -82,7 +82,7 @@ object GuardPermissions {
 }
 
 /**
- * Packages a guard never touches, whatever its list says (contract §11.1 "Garde-fous", §11.4): Watchpost and
+ * Packages a guard never touches, whatever its list says (contract §11.1 "Safeguards", §11.4): Watchpost and
  * its companion, every system app (`FLAG_SYSTEM`: SOS, carrier and Samsung services that send SMS or
  * call), the hard-coded [PackageDenyList], and the **current** holder of the role that matches the guard:
  * the default SMS app for `sms`, the default dialer for `calls`. A keyboard or a home screen chosen by the
@@ -563,7 +563,7 @@ class CapabilityGuards internal constructor(
             // Becoming the default SMS app or dialer is exactly the path of SMS trojans (one system dialog): the
             // app stays in quarantine. Only the permissions of its role are given back (granted, as Android
             // would have done: otherwise incoming SMS or calls would be lost silently), contacts, microphone,
-            // camera, location and nearby devices stay denied, and the user is told loudly. He releases it,
+            // camera, location and nearby devices stay denied, and the user is told loudly. The user releases it,
             // or changes the default app back (the role permissions are then denied again).
             val role = GuardSafety.smsOrDialerRole(app.pkg, roles)
             val roleGrants = if (role != null) GuardSafety.roleGrants(role) else emptySet()
@@ -743,7 +743,7 @@ class CapabilityGuards internal constructor(
             if (e.safe { if (acc) gw.permittedAccessibilityServices() else gw.permittedInputMethods() } == null) continue
             val error = e.attempt { if (!(if (acc) gw.setPermittedAccessibilityServices(null) else gw.setPermittedInputMethods(null))) "refused by the system" else null }
             val lifted = e.safe { if (acc) gw.permittedAccessibilityServices() else gw.permittedInputMethods() } == null
-            report += e.outcome("guard_disabled", key.wire, key.profile, lifted, if (lifted) "balayage" else error ?: "no observed effect")
+            report += e.outcome("guard_disabled", key.wire, key.profile, lifted, if (lifted) "sweep" else error ?: "no observed effect")
         }
         return report
     }

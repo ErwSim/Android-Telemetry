@@ -62,7 +62,7 @@ class CapabilityGuardsTest {
     {
       "version": 1, "updated": "2026-11-16", "source": "test",
       "permissions": [
-        { "package": "$bank", "label": "Banque", "permissions": ["$camera"], "risk": "low", "effect": "e", "profile": "balanced" }
+        { "package": "$bank", "label": "Bank", "permissions": ["$camera"], "risk": "low", "effect": "e", "profile": "balanced" }
       ]
     }
     """.trimIndent()
@@ -204,7 +204,7 @@ class CapabilityGuardsTest {
         val notice = notices.single() as GuardNotice.RoleHolder
         assertEquals(listOf(sendSms), notice.lifted)
         assertTrue(notice.joined)
-        // The role moves back: Signal stays in the list (the user removes it if he wants).
+        // The role moves back: Signal stays in the list (the user removes it if they want).
         gw.roles = gw.roles.copy(sms = samsungMessages)
         e.guards.reconcile()
         assertEquals(Dpm.GRANT_DEFAULT, state(signal, sendSms))
@@ -398,7 +398,7 @@ class CapabilityGuardsTest {
     // ---------------------------------------------------------------- undo everything
 
     @Test
-    fun `Tout retablir restores the exact initial state after every combination of guards`() {
+    fun `Restore everything restores the exact initial state after every combination of guards`() {
         for (mask in 0 until (1 shl GuardKey.entries.size)) {
             setUp()
             events.clear()
@@ -444,7 +444,7 @@ class CapabilityGuardsTest {
     }
 
     @Test
-    fun `a crash between persistence and application leaves nothing that Tout retablir cannot undo`() {
+    fun `a crash between persistence and application leaves nothing that Restore everything cannot undo`() {
         for (dieAfter in 1..8) {
             setUp()
             gw.install("com.second.sender", sendSms)
@@ -467,7 +467,7 @@ class CapabilityGuardsTest {
     }
 
     @Test
-    fun `a crash in the middle of Tout retablir does not let a guard deny again what was restored`() {
+    fun `a crash in the middle of Restore everything does not let a guard deny again what was restored`() {
         val e = engine()
         e.guards.set(GuardKey.SMS, true)
         e.guards.set(GuardKey.QUARANTINE, true)
@@ -492,7 +492,7 @@ class CapabilityGuardsTest {
     }
 
     @Test
-    fun `with an unreadable state, Tout retablir still lifts every guard`() {
+    fun `with an unreadable state, Restore everything still lifts every guard`() {
         val e = engine()
         e.guards.set(GuardKey.SMS, true, extended = true)
         e.guards.set(GuardKey.ACCESSIBILITY, true)
@@ -538,7 +538,7 @@ class CapabilityGuardsTest {
         assertTrue(GuardPermissions.ALL.containsAll(GuardPermissions.of(GuardKey.SMS, true) + GuardPermissions.of(GuardKey.CALLS, true)))
     }
 
-    // ---------------------------------------------------------------- review v1.2: crash, then life goes on
+    // ---------------------------------------------------------------- crash, then life goes on
 
     @Test
     fun `a crash while denying, then a re-application, leaves nothing that switching the guard off cannot undo`() {

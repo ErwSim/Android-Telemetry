@@ -23,7 +23,7 @@ import io.github.erwsim.watchpost.notifier.protocol.PackageLists
 import java.util.Date
 
 /**
- * The companion's only screen (French): what it does, its state, the package lists (stored by the
+ * The companion's only screen: what it does, its state, the package lists (stored by the
  * agent), how to withdraw the access. Framework views only (no AndroidX). Calls to the agent run
  * on a background thread.
  */

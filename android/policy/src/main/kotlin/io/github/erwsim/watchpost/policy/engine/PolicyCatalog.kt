@@ -26,7 +26,7 @@ enum class Risk {
     @SerialName("critical") CRITICAL,
 }
 
-/** How a package is disabled (docs/research/android-plateforme.md §3.6). */
+/** How a package is disabled (docs/research/android-platform.md §3.6). */
 @Serializable
 enum class PackageMethod {
     /** `setApplicationHidden`: the app disappears, its processes and components stop. */

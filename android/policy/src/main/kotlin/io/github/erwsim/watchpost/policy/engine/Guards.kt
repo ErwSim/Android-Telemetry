@@ -2,7 +2,7 @@ package io.github.erwsim.watchpost.policy.engine
 
 /**
  * Packages Watchpost must never hide, suspend or restrict, whatever the catalog says
- * (docs/research/android-plateforme.md §3.6 and §7.3). `setApplicationHidden` has no platform
+ * (docs/research/android-platform.md §3.6 and §7.3). `setApplicationHidden` has no platform
  * guard rail: hiding one of these can lock the phone (kgclient), stop OTA updates, break
  * attestation (Play Integrity), or leave no launcher, dialer, keyboard or ADB shell.
  *
@@ -96,7 +96,7 @@ object PackageDenyList {
  * - [FORBIDDEN]: restrictions that would cut the ADB rescue path, the location the agent relies on,
  *   or a vital function of the phone. Listed explicitly so that the reason stays written down;
  * - [ALLOWED]: the only keys ever passed to `addUserRestriction`, each reviewed against the
- *   `UserManager` documentation (docs/research/android-plateforme.md §3.8). A catalog (or a future
+ *   `UserManager` documentation (docs/research/android-platform.md §3.8). A catalog (or a future
  *   edit of it) naming any other key is refused: an unreviewed restriction such as
  *   `no_unmute_microphone` or `no_create_windows` can make the phone unusable just as well.
  * USB data signaling is never disabled either (no code path calls `setUsbDataSignalingEnabled(false)`).

@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 object AppOpsDump {
     private const val MAX_BYTES = 2 * 1024 * 1024
 
-    /** Carries the French reason into `agent.collector_error`. */
+    /** Carries the English reason into `agent.collector_error`. */
     class UnavailableException(message: String) : Exception(message)
 
     private val deniedReported = AtomicBoolean(false)
@@ -38,7 +38,7 @@ object AppOpsDump {
 
     fun available(ctx: CollectorContext): Boolean = missingPermission(ctx) == null
 
-    /** French reason why the attribution cannot work, null if it can. */
+    /** English reason why the attribution cannot work, null if it can. */
     fun unavailableReason(ctx: CollectorContext): String? = when (missingPermission(ctx)) {
         null -> null
         Manifest.permission.DUMP -> ctx.str(R.string.sensor_attribution_reason_dump)

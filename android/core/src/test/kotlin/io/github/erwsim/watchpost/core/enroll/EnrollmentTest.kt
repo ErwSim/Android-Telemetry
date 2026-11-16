@@ -103,7 +103,7 @@ class EnrollmentTest {
         assertEquals("dev_other", manager.target()!!.second.deviceId)
 
         // Another server: what was collected for the first one never goes to the second.
-        val elsewhere = manager.parse(file(url = "https://ingest.autre.example", deviceId = "dev_other", certPem = otherCert.certificatePem(), keyPem = otherCert.privateKeyPkcs8Pem()))
+        val elsewhere = manager.parse(file(url = "https://ingest.other.example", deviceId = "dev_other", certPem = otherCert.certificatePem(), keyPem = otherCert.privateKeyPkcs8Pem()))
         assertEquals(EnrollmentChange.NEW_SERVER, manager.changeFor(elsewhere))
         assertEquals(EnrollmentChange.NEW_SERVER, manager.import(elsewhere) { cleared++ })
         assertEquals(1, cleared)

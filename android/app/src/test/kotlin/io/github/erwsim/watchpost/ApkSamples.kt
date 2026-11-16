@@ -138,7 +138,7 @@ class ApkSamples(private val all: List<Collector>, private val t0: Long = 1_763_
         )
         // Risk profile, default-app change and per-app usage (contract §11.2): same public builders as the collectors.
         val risky = AppFacts(
-            "org.fake.pdf", label = "Lecteur PDF", versionCode = 3, installer = null,
+            "org.fake.pdf", label = "PDF Reader", versionCode = 3, installer = null,
             requested = setOf("android.permission.SYSTEM_ALERT_WINDOW"), accessibilityService = true, notificationListener = true,
         )
         val riskyScore = RiskScorer.score(risky)

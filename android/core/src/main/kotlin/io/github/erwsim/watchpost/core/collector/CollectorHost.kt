@@ -69,7 +69,7 @@ class CollectorHost(
     private val statusSource: () -> AgentStatusSource,
     private val periodicScheduler: PeriodicScheduler,
     private val threading: CollectorThreading = CollectorThreading.android(),
-    /** French texts of the availability reasons (resources in production). */
+    /** English texts of the availability reasons (resources in production). */
     private val text: (Int, Array<out Any>) -> String = { id, args -> appContext.getString(id, *args) },
 ) {
     private val dispatcher = threading.dispatcher
@@ -165,7 +165,7 @@ class CollectorHost(
         }
     }
 
-    /** Requirement check, in French, without starting anything. Never throws. */
+    /** Requirement check, in English, without starting anything. Never throws. */
     fun availability(c: Collector): Availability = try {
         checkRequirements(c)
     } catch (e: Exception) {

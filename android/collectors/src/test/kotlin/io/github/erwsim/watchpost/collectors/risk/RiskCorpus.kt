@@ -12,7 +12,7 @@ object RiskCorpus {
 
     /**
      * [ideal]: the level a human reviewer would want. [expected]: the level the scorer gives today (the test
-     * fails when they drift, which forces the README table and the report to be updated knowingly).
+     * fails when they drift, which forces the README table to be updated knowingly).
      */
     data class Profile(val id: String, val kind: Kind, val ideal: RiskLevel, val expected: RiskLevel, val note: String, val facts: AppFacts)
 

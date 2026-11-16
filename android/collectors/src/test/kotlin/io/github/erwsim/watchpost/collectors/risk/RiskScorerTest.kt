@@ -224,7 +224,7 @@ class RiskScorerTest {
     fun corpusIsScoredAsRecorded() {
         val wrong = RiskCorpus.ALL.filter { RiskScorer.score(it.facts).level != it.expected }
         assertTrue(
-            "the scorer no longer gives the recorded level (update the corpus, the README and the report): " +
+            "the scorer no longer gives the recorded level (update the corpus and the README): " +
                 wrong.joinToString { "${it.id}: ${RiskScorer.score(it.facts).level}/${RiskScorer.score(it.facts).score} (recorded ${it.expected})" },
             wrong.isEmpty(),
         )
@@ -264,7 +264,7 @@ class RiskScorerTest {
     private fun moduleFile(path: String): File = File(path).also { check(it.exists()) { "${it.absolutePath} not found" } }
 
     @Test
-    fun everyCodeHasAFrenchLabelAndExplanationInTheResources() {
+    fun everyCodeHasAnEnglishLabelAndExplanationInTheResources() {
         val xml = moduleFile("src/main/res/values/strings_risk.xml").readText()
         for (r in RiskReason.entries) {
             val label = Regex("<string name=\"risk_reason_${r.code}\">([^<]+)</string>").find(xml)?.groupValues?.get(1)

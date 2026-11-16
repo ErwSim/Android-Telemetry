@@ -27,7 +27,7 @@ import io.github.erwsim.watchpost.core.event.AgentClock
  * - reboot (`boot_id` changes, no monotonic reference between the two boots): the horizon may move
  *   forward by at most [REBOOT_ALLOWANCE_MS] over the last stored value, whatever the wall clock says.
  *
- * Not covered, by design: see ARCHITECTURE-CODE.md §10 ("Limites connues").
+ * Not covered, by design: see the "Known limits" of the age horizon in ARCHITECTURE-CODE.md.
  */
 class AgeHorizon(
     private val prefs: SharedPreferences,

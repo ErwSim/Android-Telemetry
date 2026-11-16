@@ -63,7 +63,7 @@ object PolicyModule {
     val DNS_FALLBACK_MIN = SettingKey.IntKey("policy.dns_fallback_min", 15, 5, 240)
     val DNS_AUTO_RESTORE = SettingKey.BoolKey("policy.dns_auto_restore", true)
 
-    /** Exception lists of the guards (contract §11.1): edited in the "Gardes" section, applied after a preview. */
+    /** Exception lists of the guards (contract §11.1): edited in the "Guards" section, applied after a preview. */
     val GUARD_LISTS: Map<GuardKey, SettingKey.PackageListKey> = listOf(GuardKey.SMS, GuardKey.CALLS, GuardKey.ACCESSIBILITY, GuardKey.INPUT_METHODS)
         .associateWith { SettingKey.PackageListKey("policy.guard.${it.wire}.allowed") }
 

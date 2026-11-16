@@ -136,7 +136,7 @@ class PostureAndDnsTest {
             listOf("android.permission.ACCESS_FINE_LOCATION", "android.permission.BLUETOOTH_SCAN", "android.permission.ACCESS_BACKGROUND_LOCATION"),
             DeviceOwnerManager.pendingSelfGrants(declared, { false }, emptySet()),
         )
-        // Revoked by the user after the first automatic grant: not granted again behind his back.
+        // Revoked by the user after the first automatic grant: not granted again behind their back.
         assertEquals(
             listOf("android.permission.BLUETOOTH_SCAN"),
             DeviceOwnerManager.pendingSelfGrants(declared, { false }, setOf("android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_BACKGROUND_LOCATION")),

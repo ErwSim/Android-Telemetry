@@ -111,7 +111,7 @@ interface ChannelPlatform {
  * - no reconnection loop: without network nothing is attempted until the network callback says it is
  *   back; failures back off exponentially with jitter ([BACKOFF_BASE_MS] → [BACKOFF_MAX_MS]); a stream
  *   that dies right after opening counts as a failure; 401/403 stops everything and is shown
- *   ([ChannelPhase.REFUSED]) until re-enrollment, a settings change or "Reconnecter";
+ *   ([ChannelPhase.REFUSED]) until re-enrollment, a settings change or "Reconnect";
  * - polling at each upload ([onUploadCycle]) when the stream is not open, at most once a minute.
  */
 class CommandChannel(

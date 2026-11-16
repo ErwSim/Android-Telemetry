@@ -330,7 +330,7 @@ class AppOpsCollectorTest {
     }
 
     @Test
-    fun everyFailureHasAFrenchReasonInTheResources() {
+    fun everyFailureHasAnEnglishReasonInTheResources() {
         val xml = java.io.File("src/main/res/values/strings_risk.xml").readText()
         for (f in OpsFailure.entries) {
             assertTrue(f.code, Regex("name=\"collector_app_ops_reason_${f.code}\"").containsMatchIn(xml))

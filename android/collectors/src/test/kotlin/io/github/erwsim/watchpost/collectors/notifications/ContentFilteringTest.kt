@@ -21,23 +21,23 @@ class ContentFilteringTest {
 
     @Test
     fun contentOffByDefaultMeansNoTitleNorText() {
-        assertSame(ContentPolicy.NONE, ContentPolicy.apply("com.chat", "Alice", "Salut", on.copy(contentEnabled = false)))
-        assertSame(ContentPolicy.NONE, ContentPolicy.apply("com.chat", "Alice", "Salut", NotifierConfig.CLOSED))
+        assertSame(ContentPolicy.NONE, ContentPolicy.apply("com.chat", "Alice", "Hello", on.copy(contentEnabled = false)))
+        assertSame(ContentPolicy.NONE, ContentPolicy.apply("com.chat", "Alice", "Hello", NotifierConfig.CLOSED))
         assertTrue(!NotifierConfig.CLOSED.contentEnabled && NotifierConfig.CLOSED.redactCodes && !NotifierConfig.CLOSED.accepting)
     }
 
     @Test
     fun excludedAppsNeverGetContent() {
-        assertSame(ContentPolicy.NONE, ContentPolicy.apply("com.bank.app", "Virement", "Code 482913", on))
-        val c = ContentPolicy.apply("com.chat", "Alice", "Ton code : 482913", on)
+        assertSame(ContentPolicy.NONE, ContentPolicy.apply("com.bank.app", "Transfer", "Code 482913", on))
+        val c = ContentPolicy.apply("com.chat", "Alice", "Your code: 482913", on)
         assertEquals("Alice", c.title)
-        assertEquals("Ton code : $MASK", c.text)
+        assertEquals("Your code: $MASK", c.text)
         assertEquals(true, c.redacted)
     }
 
     @Test
     fun redactedFlag() {
-        assertEquals(false, ContentPolicy.apply("com.chat", "Alice", "Salut", on).redacted)
+        assertEquals(false, ContentPolicy.apply("com.chat", "Alice", "Hello", on).redacted)
         // Masking disabled: no flag at all (nothing was checked).
         val off = ContentPolicy.apply("com.chat", "Alice", "Code 482913", on.copy(redactCodes = false))
         assertEquals("Code 482913", off.text)
