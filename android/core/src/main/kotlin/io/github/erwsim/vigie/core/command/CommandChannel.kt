@@ -193,6 +193,7 @@ class CommandChannel(
 
     /** Called after each upload run: poll if the stream is not open (contract: "interroge à chaque envoi de lot"). */
     fun onUploadCycle() {
+        flushSoon()
         if (_state.value.phase == ChannelPhase.CONNECTED) return
         if (lastCause == Cause.NETWORK) nextAttemptElapsed = 0
         pollRequested = true
@@ -201,72 +202,104 @@ class CommandChannel(
 
     /** Wake-up from [ChannelPlatform.scheduleWakeup] or the maintenance worker: re-check deadlines and staleness. */
     fun tick() {
-        if (_state.value.phase == ChannelPhase.CONNECTED &&
-            clock.elapsedRealtime() - lastByteElapsed > STALE_AFTER_MS
-        ) {
-            currentCall?.cancel()
+        if (_state.value.phase == ChannelPhase.CONNECTED) {
+            if (clock.elapsedRealtime() - lastByteElapsed > STALE_AFTER_MS) {
+                currentCall?.cancel()
+            } else {
+                // Next watchdog check of the open stream (one pending alarm at a time).
+                platform.scheduleWakeup(clock.elapsedRealtime() + WATCHDOG_INTERVAL_MS)
+            }
         }
+        flushSoon()
         kicks.trySend(Kick.TICK)
+    }
+
+    /** Results waiting while the loop is busy with an open stream: sent from here (backoff respected). */
+    private fun flushSoon() {
+        if (loopJob?.isActive != true || state.pendingResults().isEmpty()) return
+        scope.launch {
+            try {
+                target()?.let { flushResults(it) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Next opportunity.
+            }
+        }
     }
 
     // ---------------------------------------------------------------------------------------- loop
 
     private suspend fun loop() {
         while (scope.isActive) {
-            val cfg = config()
-            setState { it.copy(mode = cfg.mode) }
-            if (!cfg.enabled) {
-                platform.cancelWakeup()
-                setState { it.copy(phase = ChannelPhase.OFF, nextAttemptAtMs = 0, lastError = null) }
-                awaitKick(null)
-                continue
-            }
-            val t = try {
-                target()
+            try {
+                turn()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                fail(Cause.SERVER, "credentials: ${e.javaClass.simpleName}", null)
-                continue
-            }
-            if (t == null) {
-                setState { it.copy(phase = ChannelPhase.NOT_ENROLLED, nextAttemptAtMs = 0) }
-                awaitKick(null)
-                continue
-            }
-            if (refused) {
-                platform.cancelWakeup()
-                setState { it.copy(phase = ChannelPhase.REFUSED, nextAttemptAtMs = 0) }
-                awaitKick(null)
-                continue
-            }
-            if (!platform.isNetworkAvailable()) {
-                platform.cancelWakeup()
-                lastCause = Cause.NETWORK
-                setState { it.copy(phase = ChannelPhase.WAITING_NETWORK, nextAttemptAtMs = 0) }
-                awaitKick(null)
-                continue
-            }
-            val now = clock.elapsedRealtime()
-            val pollDue = cfg.mode == ChannelMode.POLL && pollRequested && now - lastPollElapsed >= MIN_POLL_SPACING_MS
-            if (now < nextAttemptElapsed && !pollDue) {
-                platform.scheduleWakeup(nextAttemptElapsed)
-                val phase = when {
-                    cfg.mode == ChannelMode.POLL && lastCause == null -> ChannelPhase.POLL_IDLE
-                    lastCause == Cause.UNSUPPORTED -> ChannelPhase.UNSUPPORTED
-                    else -> ChannelPhase.BACKOFF
-                }
-                setState { it.copy(phase = phase, nextAttemptAtMs = clock.nowMillis() + (nextAttemptElapsed - now)) }
+                // Never let an unexpected error end the channel: back off and go on.
+                fail(Cause.SERVER, "internal: ${e.javaClass.simpleName}", null)
                 awaitKick(nextAttemptElapsed)
-                continue
             }
-            pollRequested = false
-            flushResults(t)
-            if (refused) continue
-            when (cfg.mode) {
-                ChannelMode.STREAM -> runStream(t)
-                ChannelMode.POLL -> runPoll(t, cfg.pollIntervalMin)
+        }
+    }
+
+    /** One turn of the loop: decide, then connect, poll or wait. */
+    private suspend fun turn() {
+        val cfg = config()
+        setState { it.copy(mode = cfg.mode) }
+        if (!cfg.enabled) {
+            platform.cancelWakeup()
+            setState { it.copy(phase = ChannelPhase.OFF, nextAttemptAtMs = 0, lastError = null) }
+            awaitKick(null)
+            return
+        }
+        val t = try {
+            target()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            fail(Cause.SERVER, "credentials: ${e.javaClass.simpleName}", null)
+            awaitKick(nextAttemptElapsed)
+            return
+        }
+        if (t == null) {
+            setState { it.copy(phase = ChannelPhase.NOT_ENROLLED, nextAttemptAtMs = 0) }
+            awaitKick(null)
+            return
+        }
+        if (refused) {
+            platform.cancelWakeup()
+            setState { it.copy(phase = ChannelPhase.REFUSED, nextAttemptAtMs = 0) }
+            awaitKick(null)
+            return
+        }
+        if (!platform.isNetworkAvailable()) {
+            platform.cancelWakeup()
+            lastCause = Cause.NETWORK
+            setState { it.copy(phase = ChannelPhase.WAITING_NETWORK, nextAttemptAtMs = 0) }
+            awaitKick(null)
+            return
+        }
+        val now = clock.elapsedRealtime()
+        val pollDue = cfg.mode == ChannelMode.POLL && pollRequested && now - lastPollElapsed >= MIN_POLL_SPACING_MS
+        if (now < nextAttemptElapsed && !pollDue) {
+            platform.scheduleWakeup(nextAttemptElapsed)
+            val phase = when {
+                cfg.mode == ChannelMode.POLL && lastCause == null -> ChannelPhase.POLL_IDLE
+                lastCause == Cause.UNSUPPORTED -> ChannelPhase.UNSUPPORTED
+                else -> ChannelPhase.BACKOFF
             }
+            setState { it.copy(phase = phase, nextAttemptAtMs = clock.nowMillis() + (nextAttemptElapsed - now)) }
+            awaitKick(nextAttemptElapsed)
+            return
+        }
+        pollRequested = false
+        flushResults(t)
+        if (refused) return
+        when (cfg.mode) {
+            ChannelMode.STREAM -> runStream(t)
+            ChannelMode.POLL -> runPoll(t, cfg.pollIntervalMin)
         }
     }
 

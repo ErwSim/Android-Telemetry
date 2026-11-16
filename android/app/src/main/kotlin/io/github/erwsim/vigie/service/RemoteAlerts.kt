@@ -1,5 +1,6 @@
 package io.github.erwsim.vigie.service
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -219,6 +220,7 @@ class RingStopReceiver : BroadcastReceiver() {
 
 /** Executors registered by the app for the commands that need no Device Owner. */
 object RemoteAlerts {
+    @SuppressLint("StaticFieldLeak") // application context only
     @Volatile
     private var instance: RingController? = null
 
