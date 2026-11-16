@@ -37,12 +37,12 @@
   },
   {
     "name": "lock: Arabic, Hebrew, bidirectional mark, composed emoji, diacritics; space-padded passphrase",
-    "code": "  espaces autour & \"guillemets\" \\ ' <> %  ",
+    "code": "  spaces around & \"quotes\" \\ ' <> %  ",
     "device_id": "dev_0123456789abcdef",
     "type": "lock",
     "now_ms": 1794823200000,
     "payload": "{\"v\":1,\"id\":\"01M7HWS780GJHFEGRSSB9BMMXM\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{\"message\":\"مرحبا بالعالم — שלום עולם — ‮override‬ — 👨‍👩‍👧‍👦 — z̶a̶l̶g̶o̶\"},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
-    "sig": "1+MbYRryh5qgBRTd0+JWArPCO+tehsmiSIneCZG6bNY=",
+    "sig": "+aaGdS3yeNxFYsfnR16Q5fQzGsRvgDR/xgfVPKX2r+E=",
     "expect": {
       "message": "مرحبا بالعالم — שלום עולם — ‮override‬ — 👨‍👩‍👧‍👦 — z̶a̶l̶g̶o̶"
     }
@@ -95,12 +95,12 @@
   },
   {
     "name": "wipe: space-padded passphrase",
-    "code": "  espaces autour & \"guillemets\" \\ ' <> %  ",
+    "code": "  spaces around & \"quotes\" \\ ' <> %  ",
     "device_id": "dev_0123456789abcdef",
     "type": "wipe",
     "now_ms": 1794823200000,
     "payload": "{\"v\":1,\"id\":\"01M7HWS78086PQB2TK3BDP9NH4\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"wipe\",\"params\":{},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-17T10:00:00.000Z\"}",
-    "sig": "+f+v4cir9VuD7O+5P5F7Ter0OoeGG1XU8mFfKUW2Zco=",
+    "sig": "+PM2a5AFublWJGhfafcprHfhojXrYnYXNuZqlQGi1iI=",
     "expect": {}
   },
   {

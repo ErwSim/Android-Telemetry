@@ -1,9 +1,9 @@
-// Commandes à distance factices (contrat §8) : le collecteur (validation, file, annulation, limites) et un agent
-// simulé qui récupère les commandes, vérifie la signature comme le vrai agent, puis « exécute » avec des délais.
+// Mock remote commands (contract §8): the collector (validation, queue, cancellation, limits) and a simulated
+// agent that fetches the commands, verifies the signature like the real agent, then "executes" with delays.
 //
-// Le code de commande du mock (MOCK_COMMAND_CODE, défaut « correct horse battery staple ») joue le rôle du code
-// choisi dans l'app Android : seul le mock en dérive la clé K ; le « serveur » du mock ne vérifie jamais la
-// signature (comme le vrai collecteur) : seul l'agent simulé la contrôle.
+// The mock's command passphrase (MOCK_COMMAND_CODE, default "correct horse battery staple") plays the role of the
+// passphrase chosen in the Android app: only the mock derives the key K from it; the mock "server" never verifies
+// the signature (like the real collector): only the simulated agent checks it.
 import { createHmac, pbkdf2Sync, timingSafeEqual } from 'node:crypto';
 import { makeRng, ulid } from './rng.ts';
 
@@ -28,20 +28,20 @@ export interface Command {
   delivered_at?: string;
   result_at?: string;
   detail?: string;
-  /** interne : payload et signature tels que reçus */
+  /** internal: payload and signature as received */
   payload: string;
   sig?: string;
 }
 
 export interface AgentSim {
-  /** `stream` : connecté en permanence ; `poll` : passe toutes les 6 s ; `offline` : injoignable */
+  /** `stream`: permanently connected; `poll`: visits every 6 s; `offline`: unreachable */
   channel: 'stream' | 'poll' | 'offline';
-  /** canal de commandes désactivé dans l'app */
+  /** command channel disabled in the app */
   disabled: boolean;
   wipe_allowed: boolean;
   code_configured: boolean;
   device_owner: boolean;
-  /** `locate` échoue (pas de fix) */
+  /** `locate` fails (no fix) */
   locate_fail: boolean;
   deliver_ms: number;
   exec_ms: number;
@@ -58,13 +58,13 @@ export const agent: AgentSim = {
   exec_ms: 1400,
 };
 
-/** Décalage simulé de l'horloge du serveur (ms), pour tester le refus d'`issued_at` (contrat §8, précisions). */
+/** Simulated offset of the server's clock (ms), to test the refusal of `issued_at` (contract §8, clarifications). */
 export const clock = { skew_ms: 0 };
 export const serverNow = (): number => Date.now() + clock.skew_ms;
 
 export const commands: Command[] = [];
 let lastContact = Date.now();
-const seen: string[] = []; // identifiants déjà exécutés (500 derniers)
+const seen: string[] = []; // identifiers already executed (last 500)
 let badSig: number[] = [];
 
 let keyCache: { deviceId: string; k: Buffer } | undefined;
@@ -74,10 +74,10 @@ function keyFor(deviceId: string): Buffer {
 }
 
 export interface Hooks {
-  /** ajoute un événement venant de l'agent (command.result, location.fix…) au journal et au flux SSE */
+  /** adds an event coming from the agent (command.result, location.fix...) to the log and the SSE stream */
   emit: (type: string, sev: number, data: Record<string, unknown>) => void;
   deviceKnown: (id: string) => 'ok' | 'unknown' | 'revoked';
-  /** l'agent a obtenu un fix : une nouvelle position arrive */
+  /** the agent got a fix: a new location arrives */
   liveFix: () => void;
 }
 let hooks: Hooks | undefined;
@@ -89,11 +89,11 @@ export function init(h: Hooks, now: number): void {
 
 export function channel(): { connected: boolean; mode: string; last_contact: string } {
   if (agent.channel === 'offline') return { connected: false, mode: 'stream', last_contact: new Date(lastContact).toISOString() };
-  // Comme le vrai collecteur : en interrogation il n'y a pas de connexion ouverte, `connected` reste faux.
+  // Like the real collector: when polling there is no open connection, `connected` stays false.
   return { connected: agent.channel === 'stream', mode: agent.channel, last_contact: new Date(agent.channel === 'stream' ? Date.now() - 800 : lastContact).toISOString() };
 }
 
-// -------------------------------------------------------------------------------------- API collecteur
+// -------------------------------------------------------------------------------------- collector API
 export interface Failure {
   status: number;
   error: string;
@@ -119,47 +119,47 @@ export function list(deviceId: string | null, limit: number) {
 
 export function create(body: unknown, user: string): { id: string } | Failure {
   const bad = (error: string, message: string, status = 400): Failure => ({ status, error, message });
-  if (!body || typeof body !== 'object') return bad('bad_request', 'Corps invalide');
+  if (!body || typeof body !== 'object') return bad('bad_request', 'Invalid body');
   const b = body as { device_id?: unknown; payload?: unknown; sig?: unknown };
-  if (typeof b.device_id !== 'string' || typeof b.payload !== 'string') return bad('bad_request', 'device_id et payload (chaîne) sont requis');
+  if (typeof b.device_id !== 'string' || typeof b.payload !== 'string') return bad('bad_request', 'device_id and payload (string) are required');
   let p: Record<string, unknown>;
   try {
     p = JSON.parse(b.payload) as Record<string, unknown>;
   } catch {
-    return bad('invalid_payload', 'payload n’est pas du JSON');
+    return bad('invalid_payload', 'payload is not JSON');
   }
-  if (!p || typeof p !== 'object' || p['v'] !== 1) return bad('invalid_payload', 'payload : v doit valoir 1');
+  if (!p || typeof p !== 'object' || p['v'] !== 1) return bad('invalid_payload', 'payload: v must be 1');
   const id = p['id'];
-  if (typeof id !== 'string' || !ULID_RE.test(id)) return bad('invalid_payload', 'payload : id doit être un ULID');
-  if (p['device_id'] !== b.device_id) return bad('invalid_payload', 'payload : device_id incohérent');
+  if (typeof id !== 'string' || !ULID_RE.test(id)) return bad('invalid_payload', 'payload: id must be a ULID');
+  if (p['device_id'] !== b.device_id) return bad('invalid_payload', 'payload: inconsistent device_id');
   const known = hooks?.deviceKnown(b.device_id);
-  if (known === 'unknown') return bad('device_not_found', 'Appareil inconnu', 404);
-  if (known === 'revoked') return bad('device_revoked', 'Appareil révoqué', 409);
+  if (known === 'unknown') return bad('device_not_found', 'Unknown device', 404);
+  if (known === 'revoked') return bad('device_revoked', 'Device revoked', 409);
   const type = p['type'];
-  if (typeof type !== 'string' || !(TYPES as readonly string[]).includes(type)) return bad('unknown_type', `Type de commande inconnu : ${String(type)}`);
+  if (typeof type !== 'string' || !(TYPES as readonly string[]).includes(type)) return bad('unknown_type', `Unknown command type: ${String(type)}`);
   const params = (p['params'] ?? {}) as Record<string, unknown>;
-  if (typeof params !== 'object' || Array.isArray(params)) return bad('bad_params', 'params doit être un objet');
+  if (typeof params !== 'object' || Array.isArray(params)) return bad('bad_params', 'params must be an object');
   const dur = (max: number, dflt: number) => {
     const d = params['duration_s'] ?? dflt;
     return typeof d === 'number' && Number.isInteger(d) && d >= 1 && d <= max;
   };
-  if (type === 'ring' && (!dur(300, 60) || (params['vibrate'] !== undefined && typeof params['vibrate'] !== 'boolean'))) return bad('bad_params', 'ring : duration_s entre 1 et 300');
-  if (type === 'vibrate' && !dur(60, 10)) return bad('bad_params', 'vibrate : duration_s entre 1 et 60');
-  if (type === 'lock' && params['message'] !== undefined && (typeof params['message'] !== 'string' || Array.from(params['message']).length > 200)) return bad('bad_params', 'lock : message de 200 caractères au plus');
+  if (type === 'ring' && (!dur(300, 60) || (params['vibrate'] !== undefined && typeof params['vibrate'] !== 'boolean'))) return bad('bad_params', 'ring: duration_s between 1 and 300');
+  if (type === 'vibrate' && !dur(60, 10)) return bad('bad_params', 'vibrate: duration_s between 1 and 60');
+  if (type === 'lock' && params['message'] !== undefined && (typeof params['message'] !== 'string' || Array.from(params['message']).length > 200)) return bad('bad_params', 'lock: message of 200 characters at most');
   const issued = Date.parse(String(p['issued_at']));
   const expires = Date.parse(String(p['expires_at']));
-  if (Number.isNaN(issued) || Number.isNaN(expires)) return bad('invalid_payload', 'issued_at / expires_at invalides');
-  if (Math.abs(issued - serverNow()) > 10 * 60_000) return bad('invalid_validity', "issued_at doit être à moins de 10 minutes de l'heure du serveur");
-  if (expires <= issued || expires - issued > 30 * DAY) return bad('bad_validity', 'Validité : 30 jours au plus');
-  if (expires <= Date.now()) return bad('bad_validity', 'La commande est déjà expirée');
+  if (Number.isNaN(issued) || Number.isNaN(expires)) return bad('invalid_payload', 'invalid issued_at / expires_at');
+  if (Math.abs(issued - serverNow()) > 10 * 60_000) return bad('invalid_validity', 'issued_at must be within 10 minutes of the server time');
+  if (expires <= issued || expires - issued > 30 * DAY) return bad('bad_validity', 'Validity: 30 days at most');
+  if (expires <= Date.now()) return bad('bad_validity', 'The command has already expired');
   const sensitive = SENSITIVE.has(type);
   const hasSig = typeof b.sig === 'string' && b.sig !== '';
-  if (sensitive && !hasSig) return bad('signature_required', 'Une commande sensible exige une signature');
-  if (!sensitive && b.sig !== undefined && b.sig !== '') return bad('signature_unexpected', 'Une commande simple ne porte pas de signature');
-  if (commands.some((c) => c.id === id)) return bad('duplicate_id', 'Identifiant déjà utilisé', 409);
+  if (sensitive && !hasSig) return bad('signature_required', 'A sensitive command requires a signature');
+  if (!sensitive && b.sig !== undefined && b.sig !== '') return bad('signature_unexpected', 'A simple command carries no signature');
+  if (commands.some((c) => c.id === id)) return bad('duplicate_id', 'Identifier already used', 409);
   const recent = commands.filter((c) => c.device_id === b.device_id && Date.parse(c.created_at) > Date.now() - 3_600_000).length;
-  if (recent >= 20) return bad('rate_limited', 'Limite de 20 commandes par heure atteinte', 429);
-  if (commands.filter((c) => c.device_id === b.device_id && c.status === 'pending').length >= 10) return bad('rate_limited', 'Déjà 10 commandes en attente pour cet appareil', 429);
+  if (recent >= 20) return bad('rate_limited', 'Limit of 20 commands per hour reached', 429);
+  if (commands.filter((c) => c.device_id === b.device_id && c.status === 'pending').length >= 10) return bad('rate_limited', 'Already 10 commands pending for this device', 429);
   commands.push({
     id,
     device_id: b.device_id,
@@ -185,7 +185,7 @@ export function cancel(id: string): 'ok' | 'notfound' | 'conflict' {
   return 'ok';
 }
 
-// -------------------------------------------------------------------------------------- agent simulé
+// -------------------------------------------------------------------------------------- simulated agent
 const scheduled = new Set<string>();
 let lastPoll = 0;
 
@@ -223,7 +223,7 @@ function result(c: Command, status: 'executed' | 'failed' | 'refused', detail?: 
   hooks?.emit('command.result', sev, { command_id: c.id, type: c.type, status, ...(detail ? { detail } : {}), signed: c.signed });
 }
 
-/** Les vérifications de l'agent, dans l'ordre du contrat §8. */
+/** The agent's checks, in the order of contract §8. */
 function execute(c: Command): void {
   if (c.status !== 'delivered') return;
   const refuse = (d: string) => result(c, 'refused', d);
@@ -249,7 +249,7 @@ function execute(c: Command): void {
     try {
       got = Buffer.from(c.sig ?? '', 'base64');
     } catch {
-      /* signature illisible : comparée comme invalide */
+      /* unreadable signature: compared as invalid */
     }
     if (got.length !== expected.length || !timingSafeEqual(got, expected)) {
       badSig.push(now);
@@ -265,7 +265,7 @@ function execute(c: Command): void {
   if (type === 'locate') {
     if (agent.locate_fail) return result(c, 'failed', 'no_fix');
     result(c, 'executed');
-    // La position arrive après l'acquisition : le mock la pousse dans le flux SSE.
+    // The location arrives after acquisition: the mock pushes it into the SSE stream.
     setTimeout(() => hooks?.liveFix(), 2500);
     return;
   }
@@ -296,7 +296,7 @@ function seedHistory(now: number): void {
   commands.push(
     mk(2 * DAY + 3_600_000, 'ring', { duration_s: 30, vibrate: true }, false, 'executed'),
     mk(DAY + 7_200_000, 'locate', {}, false, 'executed'),
-    mk(DAY + 3_600_000, 'lock', { message: 'Téléphone perdu, appelez le 01 23 45 67 89' }, true, 'refused', 'bad_signature', 7 * DAY),
+    mk(DAY + 3_600_000, 'lock', { message: 'Lost phone — please call +1 555 0100' }, true, 'refused', 'bad_signature', 7 * DAY),
     mk(DAY, 'vibrate', { duration_s: 10 }, false, 'expired'),
   );
   const exp = commands[commands.length - 1] as Command;

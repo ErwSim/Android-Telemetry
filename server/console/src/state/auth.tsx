@@ -66,6 +66,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth(): AuthValue {
   const v = useContext(Ctx);
-  if (!v) throw new Error('AuthProvider manquant');
+  if (!v) throw new Error('AuthProvider missing');
   return v;
 }

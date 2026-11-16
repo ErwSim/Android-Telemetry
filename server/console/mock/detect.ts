@@ -1,5 +1,5 @@
-// Réponses factices de GET /detections, /apps/risk et /apps/ops (contrat §11.2 et §11.3), calculées à partir des
-// événements du scénario comme le ferait le collecteur (événements `detect.*`, `app.risk`, `app.ops`).
+// Mock responses of GET /detections, /apps/risk and /apps/ops (contract §11.2 and §11.3), computed from the
+// scenario events as the collector would (`detect.*`, `app.risk`, `app.ops` events).
 import type { MockEvent } from './gen.ts';
 
 function parseTime(v: string | null, dflt: number): number {
@@ -9,8 +9,8 @@ function parseTime(v: string | null, dflt: number): number {
 }
 
 /**
- * `GET /detections?device_id&from&to&type&limit&cursor` : du plus récent au plus ancien, curseur opaque.
- * Le paramètre `package` n'existe pas dans le contrat : il est volontairement ignoré (la console filtre côté client).
+ * `GET /detections?device_id&from&to&type&limit&cursor`: newest first, opaque cursor.
+ * The `package` parameter does not exist in the contract: it is deliberately ignored (the console filters client-side).
  */
 export function detections(events: MockEvent[], u: URL): { detections: Record<string, unknown>[]; next_cursor?: string } {
   const sp = u.searchParams;
@@ -54,7 +54,7 @@ export function detections(events: MockEvent[], u: URL): { detections: Record<st
   return next ? { detections: out, next_cursor: next } : { detections: out };
 }
 
-/** `GET /apps/risk?device_id` : dernier `app.risk` par application, score décroissant. */
+/** `GET /apps/risk?device_id`: latest `app.risk` per application, decreasing score. */
 export function risk(events: MockEvent[]): { ts?: string; apps: Record<string, unknown>[] } {
   const latest = new Map<string, MockEvent>();
   for (const e of events) if (e.type === 'app.risk' && typeof e.data['package'] === 'string') latest.set(e.data['package'], e);
@@ -65,7 +65,7 @@ export function risk(events: MockEvent[]): { ts?: string; apps: Record<string, u
   return last ? { ts: last.ts, apps } : { apps };
 }
 
-/** `GET /apps/ops?device_id&from&to` : agrégat par application, avec le détail par opération (format du collecteur). */
+/** `GET /apps/ops?device_id&from&to`: aggregate per application, with the per-operation detail (collector format). */
 export function ops(events: MockEvent[], u: URL, labels: Map<string, string>): { apps: Record<string, unknown>[] } {
   const from = parseTime(u.searchParams.get('from'), Date.now() - 7 * 86_400_000);
   const to = parseTime(u.searchParams.get('to'), Date.now());

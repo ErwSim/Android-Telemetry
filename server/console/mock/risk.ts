@@ -1,4 +1,4 @@
-// Profil de risque factice (contrat §11.2, `app.risk`) : codes de raison de la liste fermée, score et niveau.
+// Mock risk profile (contract §11.2, `app.risk`): reason codes of the closed list, score and level.
 import type { MockApp } from './catalog.ts';
 
 export type Level = 'low' | 'medium' | 'high';
@@ -7,7 +7,7 @@ export interface RiskProfile {
   score: number;
   level: Level;
   reasons: string[];
-  /** capacités accordées parmi les raisons (contrat §11.4) : le reste est déclaré mais non accordé */
+  /** capabilities granted among the reasons (contract §11.4): the rest is declared but not granted */
   granted: string[];
   from_store: boolean;
   installer?: string;
@@ -36,19 +36,19 @@ const WEIGHT: Record<string, number> = {
   combo_stalkerware: 25,
 };
 
-/** Profils choisis à la main pour les applications qui racontent une histoire. */
+/** Hand-picked profiles for the applications that tell a story. */
 const EXPLICIT: Record<string, { score: number; reasons: string[]; granted?: string[] }> = {
   'com.fastcleaner.pro': {
     score: 96,
     reasons: ['combo_banking_trojan', 'accessibility_service', 'overlay', 'notification_listener', 'sms_read', 'install_packages', 'sideloaded', 'unknown_installer', 'boot_receiver', 'mic_camera_background'],
-    // Le micro et la caméra en arrière-plan sont demandés mais pas accordés (refus de la garde) : le score reste élevé.
+    // Background microphone and camera are requested but not granted (guard refusal): the score stays high.
     granted: ['accessibility_service', 'overlay', 'notification_listener', 'sms_read', 'install_packages', 'boot_receiver'],
   },
   'com.wallpapers.superhd': { score: 88, reasons: ['combo_sms_fraud', 'sms_send', 'boot_receiver', 'sideloaded', 'unknown_installer'], granted: ['sms_send', 'boot_receiver'] },
   'com.sync.helper.svc': {
     score: 79,
     reasons: ['combo_stalkerware', 'no_launcher_icon', 'background_location', 'mic_camera_background', 'boot_receiver', 'sideloaded', 'old_target_sdk'],
-    // Quarantaine : rien n'est accordé de ce qui touche à la position, au micro ou à la caméra.
+    // Quarantine: nothing is granted that touches location, microphone or camera.
     granted: ['boot_receiver'],
   },
   'org.fdroid.fdroid': { score: 41, reasons: ['sideloaded', 'install_packages', 'boot_receiver'] },
@@ -65,7 +65,7 @@ const EXPLICIT: Record<string, { score: number; reasons: string[]; granted?: str
 
 const levelOf = (score: number): Level => (score >= 65 ? 'high' : score >= 35 ? 'medium' : 'low');
 
-/** Raisons déduites des permissions et de l'installateur, pour les applications sans profil choisi. */
+/** Reasons deduced from the permissions and the installer, for applications without a hand-picked profile. */
 function derive(a: MockApp): string[] {
   const r: string[] = [];
   const has = (p: string) => a.perms.some((x) => x.endsWith(`.${p}`));

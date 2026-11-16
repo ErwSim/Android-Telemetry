@@ -1,12 +1,12 @@
-// Serveur factice de l'API console (contrat §6). Lancé par `npm run mock`.
-//   --port 8787        port d'écoute (défaut 8787, ou MOCK_PORT)
-//   --static dist      sert aussi la console construite, avec une CSP stricte et le repli SPA
-// Identifiants : admin / watchpost (MOCK_USER, MOCK_PASSWORD).
-//   --scenario mixed|healthy|fraud  (défaut mixed, ou MOCK_SCENARIO) : détections, profils de risque, app.ops, rôles (voir scenario.ts)
-// Contrôle de test : POST /__mock/control { ops_mode?: "normal"|"empty"|"404", more_detections? (nombre à ajouter), emit_detection? (détection en direct),  wazuh?, expire?, fail?, latency_ms?,
-//   clock_skew_ms? (horloge du serveur décalée), adguard?, stored? (adguard=false mais agrégats stockés servis), channel?: "stream"|"poll"|"offline", agent?: { disabled, wipe_allowed, code_configured, device_owner,
-//   locate_fail, deliver_ms, exec_ms }, quiet? (plus d'événements aléatoires en direct) } ; GET /__mock/requests : corps des requêtes modifiantes reçues.
-// Code de commande du mock (celui de l'« app » simulée) : MOCK_COMMAND_CODE, défaut « correct horse battery staple ».
+// Mock server of the console API (contract §6). Started by `npm run mock`.
+//   --port 8787        listening port (default 8787, or MOCK_PORT)
+//   --static dist      also serves the built console, with a strict CSP and the SPA fallback
+// Credentials: admin / watchpost (MOCK_USER, MOCK_PASSWORD).
+//   --scenario mixed|healthy|sms-fraud  (default mixed, or MOCK_SCENARIO): detections, risk profiles, app.ops, roles (see scenario.ts)
+// Test control: POST /__mock/control { ops_mode?: "normal"|"empty"|"404", more_detections? (number to add), emit_detection? (live detection),  wazuh?, expire?, fail?, latency_ms?,
+//   clock_skew_ms? (skewed server clock), adguard?, stored? (adguard=false but stored aggregates served), channel?: "stream"|"poll"|"offline", agent?: { disabled, wipe_allowed, code_configured, device_owner,
+//   locate_fail, deliver_ms, exec_ms }, quiet? (no more random live events) } ; GET /__mock/requests: bodies of the modifying requests received.
+// Command passphrase of the mock (that of the simulated "app"): MOCK_COMMAND_CODE, default "correct horse battery staple".
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -29,7 +29,7 @@ const STATIC_DIR = argVal('--static') ?? process.env['MOCK_STATIC'];
 const USER = process.env['MOCK_USER'] ?? 'admin';
 const PASSWORD = process.env['MOCK_PASSWORD'] ?? 'watchpost';
 const COOKIE = 'watchpost_session';
-// CSP imposée par le vrai serveur : à ajuster ici si le build change (voir README).
+// CSP imposed by the real server: to be adjusted here if the build changes (see README).
 const CSP =
   process.env['MOCK_CSP'] ??
   [
@@ -52,11 +52,11 @@ const gen = generate(NOW);
 const events: MockEvent[] = gen.events;
 ALL_APPS.push(...applyScenario(events, SCENARIO, NOW, DEVICE_MAIN.device_id, gen.silent));
 const byId = new Map(events.map((e) => [e.id, e]));
-/** Sourdines de détections (contrat §11.4) ; en `mixed`, le propriétaire a déjà masqué le DNS sécurisé de Chrome. */
+/** Detection mutes (contract §11.4); in `mixed`, the user has already muted Chrome's secure DNS. */
 const mutes: { device_id: string; type: string; package: string; label?: string; reason?: string; created_at: string; created_by: string }[] =
-  SCENARIO === 'mixed' ? [{ device_id: DEVICE_MAIN.device_id, type: 'detect.dns_bypass', package: 'com.android.chrome', label: 'Chrome', reason: 'Chrome utilise le DNS sécurisé, voulu', created_at: new Date(NOW - 20 * 3_600_000).toISOString(), created_by: 'admin' }] : [];
+  SCENARIO === 'mixed' ? [{ device_id: DEVICE_MAIN.device_id, type: 'detect.dns_bypass', package: 'com.android.chrome', label: 'Chrome', reason: 'Chrome uses secure DNS, intended', created_at: new Date(NOW - 20 * 3_600_000).toISOString(), created_by: 'admin' }] : [];
 const NOT_MUTABLE = new Set(['detect.sms_abuse', 'detect.default_app_changed', 'detect.flood', 'detect.inventory_mismatch']);
-/** `app.ops` : « normal » (selon le scénario), « empty » (collecteur actif, rien d'utilisé) ou « 404 » (route absente). */
+/** `app.ops`: "normal" (according to the scenario), "empty" (collector active, nothing used) or "404" (route absent). */
 let opsMode: 'normal' | 'empty' | '404' = 'normal';
 const sessions = new Map<string, string>();
 const control: { wazuh: boolean; fail: string[]; latency_ms: number; quiet: boolean } = {
@@ -74,10 +74,10 @@ const lastLoc = (() => {
 })();
 
 const track = trk.initialTrackState(NOW);
-/** Journal des requêtes modifiantes reçues (vérifier côté serveur ce qui a, ou non, été envoyé). */
+/** Log of the modifying requests received (to check on the server side what was, or was not, sent). */
 const requestLog: { method: string; path: string; headers: Record<string, string | string[] | undefined>; body: string }[] = [];
 
-// ---------------------------------------------------------------- utilitaires
+// ---------------------------------------------------------------- utilities
 type Res = http.ServerResponse;
 function sendJson(res: Res, status: number, body: unknown): void {
   const s = JSON.stringify(body);
@@ -127,7 +127,7 @@ function matchQ(e: MockEvent, q: string): boolean {
   return e.type.includes(q) || JSON.stringify(e.data).toLowerCase().includes(q);
 }
 
-// ---------------------------------------------------------------- statistiques
+// ---------------------------------------------------------------- statistics
 const BUCKET_MS = { minute: 60_000, hour: 3_600_000, day: 86_400_000 } as const;
 
 function timeline(u: URL) {
@@ -214,7 +214,7 @@ function apps(deviceId: string | null) {
   const inv = deviceEvents(deviceId).filter((e) => e.type === 'app.inventory');
   if (inv.length === 0) return { apps: [] };
   const latestTs = (inv[inv.length - 1] as MockEvent).ts;
-  // Le dernier lot complet : les parties partageant l'horodatage (à 2 s près) de la dernière partie 1.
+  // The latest complete batch: the parts sharing the timestamp (within 2 s) of the last part 1.
   const lastFirst = [...inv].reverse().find((e) => e.data['part'] === 1) as MockEvent;
   const parts = inv.filter((e) => e.t >= lastFirst.t && e.t < lastFirst.t + 60_000);
   const list = parts.flatMap((e) => (Array.isArray(e.data['apps']) ? (e.data['apps'] as unknown[]) : []));
@@ -229,14 +229,14 @@ function alerts(u: URL) {
   const limit = Math.min(1000, Number(u.searchParams.get('limit') ?? 100) || 100);
   const rule = (e: MockEvent): { id: string; level: number; desc: string } | undefined => {
     switch (e.type) {
-      case 'agent.tamper': return { id: '100110', level: 12, desc: "Vigie : altération de l'agent détectée" };
-      case 'security.ca_cert': return { id: '100140', level: 10, desc: "Vigie : certificat d'AC utilisateur ajouté ou retiré" };
-      case 'net.cell_security': return { id: '100150', level: 9, desc: 'Vigie : indice d’attaque sur le réseau cellulaire (IMSI catcher possible)' };
-      case 'net.ble_tracker': return { id: '100160', level: 8, desc: 'Vigie : traceur Bluetooth inconnu à proximité durablement' };
-      case 'security.keyguard': return e.data['event'] === 'unlock_failed' && e.sev >= 3 ? { id: '100120', level: 10, desc: 'Vigie : plusieurs échecs de déverrouillage consécutifs' } : undefined;
-      case 'sensor.microphone': return e.sev >= 2 ? { id: '100170', level: 11, desc: 'Vigie : microphone utilisé par une application sans interaction' } : undefined;
-      case 'app.permission_changed': return e.sev >= 2 ? { id: '100130', level: 8, desc: 'Vigie : permission sensible accordée à une application récente' } : undefined;
-      case 'security.log': return e.sev >= 2 ? { id: '100180', level: 7, desc: 'Vigie : activité de sécurité système notable' } : undefined;
+      case 'agent.tamper': return { id: '100110', level: 12, desc: 'Watchpost: agent tampering detected' };
+      case 'security.ca_cert': return { id: '100140', level: 10, desc: 'Watchpost: user CA certificate added or removed' };
+      case 'net.cell_security': return { id: '100150', level: 9, desc: 'Watchpost: cellular network attack indicator (possible IMSI catcher)' };
+      case 'net.ble_tracker': return { id: '100160', level: 8, desc: 'Watchpost: unknown Bluetooth tracker nearby over time' };
+      case 'security.keyguard': return e.data['event'] === 'unlock_failed' && e.sev >= 3 ? { id: '100120', level: 10, desc: 'Watchpost: several consecutive unlock failures' } : undefined;
+      case 'sensor.microphone': return e.sev >= 2 ? { id: '100170', level: 11, desc: 'Watchpost: microphone used by an application without interaction' } : undefined;
+      case 'app.permission_changed': return e.sev >= 2 ? { id: '100130', level: 8, desc: 'Watchpost: sensitive permission granted to a recent application' } : undefined;
+      case 'security.log': return e.sev >= 2 ? { id: '100180', level: 7, desc: 'Watchpost: notable system security activity' } : undefined;
       default: return undefined;
     }
   };
@@ -320,7 +320,7 @@ function devices() {
 }
 
 // ---------------------------------------------------------------- SSE
-/** Événement produit par l'agent simulé (résultat de commande, position) : journal + flux SSE. */
+/** Event produced by the simulated agent (command result, location): log + SSE stream. */
 function emitAgentEvent(type: string, sev: number, data: Record<string, unknown>): void {
   const t = Date.now();
   const e: MockEvent = { id: ulid(liveRng, t), ts: new Date(t).toISOString(), seq: seqCounter++, boot_id: liveBoot, elapsed_ms: 123456789, type, sev, data, received_at: new Date(t + 250).toISOString(), device_id: DEVICE_MAIN.device_id, t };
@@ -368,7 +368,7 @@ setInterval(() => {
   for (const s of streams) s.res.write(': ping\n\n');
 }, 15_000).unref();
 
-// ---------------------------------------------------------------- statique
+// ---------------------------------------------------------------- static files
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.map': 'application/json', '.woff2': 'font/woff2',
@@ -386,7 +386,7 @@ function serveStatic(req: http.IncomingMessage, res: Res, pathname: string): boo
       res.end('not found');
       return true;
     }
-    file = path.join(root, 'index.html'); // repli SPA
+    file = path.join(root, 'index.html'); // SPA fallback
   }
   const body = fs.readFileSync(file);
   res.writeHead(200, {
@@ -400,7 +400,7 @@ function serveStatic(req: http.IncomingMessage, res: Res, pathname: string): boo
   return true;
 }
 
-// ---------------------------------------------------------------- routeur
+// ---------------------------------------------------------------- router
 const server = http.createServer((req, res) => {
   void (async () => {
     const u = new URL(req.url ?? '/', 'http://x');
@@ -441,7 +441,7 @@ const server = http.createServer((req, res) => {
       if (b.emit_detection) {
         const d = b.emit_detection;
         const now = Date.now();
-        emitAgentEvent(d.type, d.severity ?? 3, { ...detectionData({ ...(d.package ? { package: d.package } : {}), ...(d.label ? { label: d.label } : {}) }, now - 60_000, 3_600_000, d.evidence ?? {}, d.summary ?? 'Détection simulée'), ...(d.update ? { update: true, detection_id: d.detection_id } : {}), ...(d.recurring ? { recurring: true } : {}) });
+        emitAgentEvent(d.type, d.severity ?? 3, { ...detectionData({ ...(d.package ? { package: d.package } : {}), ...(d.label ? { label: d.label } : {}) }, now - 60_000, 3_600_000, d.evidence ?? {}, d.summary ?? 'Simulated detection'), ...(d.update ? { update: true, detection_id: d.detection_id } : {}), ...(d.recurring ? { recurring: true } : {}) });
       }
       if (typeof b.clock_skew_ms === 'number') cmd.clock.skew_ms = b.clock_skew_ms;
       if (typeof b.quiet === 'boolean') control.quiet = b.quiet;
@@ -469,7 +469,7 @@ const server = http.createServer((req, res) => {
     if (control.latency_ms) await new Promise((r) => setTimeout(r, control.latency_ms));
 
     if (method !== 'GET' && method !== 'HEAD' && req.headers['x-requested-with'] !== 'watchpost') {
-      err(res, 403, 'csrf', 'En-tête X-Requested-With manquant');
+      err(res, 403, 'csrf', 'Missing X-Requested-With header');
       return;
     }
     if (method !== 'GET' && method !== 'HEAD' && route !== '/login') {
@@ -480,7 +480,7 @@ const server = http.createServer((req, res) => {
       try {
         b = JSON.parse((await readBody(req)) || '{}') as typeof b;
       } catch {
-        err(res, 400, 'bad_request', 'JSON invalide');
+        err(res, 400, 'bad_request', 'Invalid JSON');
         return;
       }
       if (b.username === USER && b.password === PASSWORD) {
@@ -488,7 +488,7 @@ const server = http.createServer((req, res) => {
         sessions.set(tok, USER);
         res.writeHead(204, { 'Set-Cookie': `${COOKIE}=${tok}; Path=/; HttpOnly; SameSite=Strict` });
         res.end();
-      } else err(res, 401, 'invalid_credentials', 'Identifiants invalides');
+      } else err(res, 401, 'invalid_credentials', 'Invalid credentials');
       return;
     }
     const user = sessionUser(req);
@@ -503,11 +503,11 @@ const server = http.createServer((req, res) => {
       return;
     }
     if (!user) {
-      err(res, 401, 'unauthorized', 'Session absente ou expirée');
+      err(res, 401, 'unauthorized', 'Session missing or expired');
       return;
     }
     if (control.fail.some((f) => route.startsWith(f))) {
-      err(res, 500, 'internal', 'Erreur simulée par le serveur factice');
+      err(res, 500, 'internal', 'Error simulated by the mock server');
       return;
     }
     if (route === '/me') return sendJson(res, 200, { username: user });
@@ -515,7 +515,7 @@ const server = http.createServer((req, res) => {
     if (route === '/events') return sendJson(res, 200, eventsQuery(u));
     if (route.startsWith('/events/')) {
       const e = byId.get(decodeURIComponent(route.slice('/events/'.length)));
-      return e ? sendJson(res, 200, toEvent(e)) : err(res, 404, 'not_found', 'Événement introuvable');
+      return e ? sendJson(res, 200, toEvent(e)) : err(res, 404, 'not_found', 'Event not found');
     }
     if (route === '/locations') return sendJson(res, 200, locations(u));
     if (route === '/stats/timeline') return sendJson(res, 200, timeline(u));
@@ -523,7 +523,7 @@ const server = http.createServer((req, res) => {
     if (route === '/apps') return sendJson(res, 200, apps(u.searchParams.get('device_id')));
     if (route === '/apps/risk') return sendJson(res, 200, det.risk(deviceEvents(u.searchParams.get('device_id'))));
     if (route === '/apps/ops') {
-      if (opsMode === '404') return err(res, 404, 'not_found', 'Route inconnue : /apps/ops');
+      if (opsMode === '404') return err(res, 404, 'not_found', 'Unknown route: /apps/ops');
       const labels = new Map(ALL_APPS.map((a) => [a.package, a.label]));
       const r = det.ops(opsMode === 'empty' ? [] : deviceEvents(u.searchParams.get('device_id')), u, labels);
       return sendJson(res, 200, r);
@@ -534,11 +534,11 @@ const server = http.createServer((req, res) => {
       try {
         b = JSON.parse((await readBody(req)) || '{}') as typeof b;
       } catch {
-        return err(res, 400, 'bad_request', 'JSON invalide');
+        return err(res, 400, 'bad_request', 'Invalid JSON');
       }
-      if (typeof b.device_id !== 'string' || typeof b.type !== 'string' || typeof b.package !== 'string' || !b.type.startsWith('detect.') || !b.package) return err(res, 400, 'bad_request', 'device_id, type et package sont requis');
-      if (NOT_MUTABLE.has(b.type)) return err(res, 400, 'not_mutable', `« ${b.type} » ne peut pas être mis en sourdine`);
-      if (typeof b.reason === 'string' && Array.from(b.reason).length > 200) return err(res, 400, 'bad_request', 'motif : 200 caractères au plus');
+      if (typeof b.device_id !== 'string' || typeof b.type !== 'string' || typeof b.package !== 'string' || !b.type.startsWith('detect.') || !b.package) return err(res, 400, 'bad_request', 'device_id, type and package are required');
+      if (NOT_MUTABLE.has(b.type)) return err(res, 400, 'not_mutable', `"${b.type}" cannot be muted`);
+      if (typeof b.reason === 'string' && Array.from(b.reason).length > 200) return err(res, 400, 'bad_request', 'reason: 200 characters at most');
       const i = mutes.findIndex((m) => m.device_id === b.device_id && m.type === b.type && m.package === b.package);
       if (method === 'POST') {
         const label = ALL_APPS.find((a) => a.package === b.package)?.label;
@@ -568,7 +568,7 @@ const server = http.createServer((req, res) => {
       try {
         body = JSON.parse(raw);
       } catch {
-        return err(res, 400, 'bad_request', 'JSON invalide');
+        return err(res, 400, 'bad_request', 'Invalid JSON');
       }
       const r = cmd.create(body, user);
       if ('error' in r) return err(res, r.status, r.error, r.message);
@@ -577,8 +577,8 @@ const server = http.createServer((req, res) => {
     const cancelM = /^\/commands\/([^/]+)\/cancel$/.exec(route);
     if (cancelM && method === 'POST') {
       const r = cmd.cancel(decodeURIComponent(cancelM[1] as string));
-      if (r === 'notfound') return err(res, 404, 'not_found', 'Commande introuvable');
-      if (r === 'conflict') return err(res, 409, 'not_pending', 'La commande n’est plus en attente : elle ne peut pas être annulée');
+      if (r === 'notfound') return err(res, 404, 'not_found', 'Command not found');
+      if (r === 'conflict') return err(res, 409, 'not_pending', 'The command is no longer pending: it cannot be cancelled');
       res.writeHead(204);
       res.end();
       return;
@@ -597,21 +597,21 @@ const server = http.createServer((req, res) => {
       if (route === '/tracking/apps') return sendJson(res, 200, trk.appsView(evs, track, range, sp.get('publisher')));
       if (route === '/tracking/level' && method === 'GET') return sendJson(res, 200, { level: trk.currentLevel(track) });
       if (method === 'PUT') {
-        if (!track.adguard) return err(res, 503, 'adguard_unavailable', 'AdGuard Home n’est pas configuré ou pas joignable');
+        if (!track.adguard) return err(res, 503, 'adguard_unavailable', 'AdGuard Home is not configured or not reachable');
         let b: { domain?: unknown; action?: unknown; force?: unknown; level?: unknown } = {};
         try {
           b = JSON.parse((await readBody(req)) || '{}') as typeof b;
         } catch {
-          return err(res, 400, 'bad_request', 'JSON invalide');
+          return err(res, 400, 'bad_request', 'Invalid JSON');
         }
         if (route === '/tracking/level') {
-          if (typeof b.level !== 'string' || !trk.LEVELS.some((l) => l.key === b.level)) return err(res, 400, 'bad_level', 'Niveau inconnu');
+          if (typeof b.level !== 'string' || !trk.LEVELS.some((l) => l.key === b.level)) return err(res, 400, 'bad_level', 'Unknown level');
           const oldLevel = trk.currentLevel(track);
           track.levelChanges.push({ t: Date.now(), level: b.level as trk.Level });
-          // Le collecteur journalise le changement (contrat §9) : `old`, `new`, `changes`, `user` ; sév. 2 si le blocage est affaibli.
+          // The collector logs the change (contract §9): `old`, `new`, `changes`, `user`; sev. 2 if blocking is weakened.
           if (oldLevel !== b.level) {
-            const rank = (l: string) => ['permissif', 'equilibre', 'strict'].indexOf(l);
-            emitAgentEvent('tracking.level_changed', rank(b.level) < rank(oldLevel) ? 2 : 1, { old: oldLevel, new: b.level, changes: [`liste ${b.level}`], user });
+            const rank = (l: string) => ['permissive', 'balanced', 'strict'].indexOf(l);
+            emitAgentEvent('tracking.level_changed', rank(b.level) < rank(oldLevel) ? 2 : 1, { old: oldLevel, new: b.level, changes: [`list ${b.level}`], user });
           }
           res.writeHead(204);
           res.end();
@@ -619,11 +619,11 @@ const server = http.createServer((req, res) => {
         }
         if (route === '/tracking/override') {
           const domain = typeof b.domain === 'string' ? b.domain.trim().toLowerCase() : '';
-          if (!/^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/.test(domain)) return err(res, 400, 'bad_domain', 'Nom de domaine invalide');
-          if (b.action !== 'block' && b.action !== 'allow' && b.action !== 'default') return err(res, 400, 'bad_action', 'action : block, allow ou default');
+          if (!/^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/.test(domain)) return err(res, 400, 'bad_domain', 'Invalid domain name');
+          if (b.action !== 'block' && b.action !== 'allow' && b.action !== 'default') return err(res, 400, 'bad_action', 'action: block, allow or default');
           const essential = trk.ESSENTIAL[domain];
           if (b.action === 'block' && essential && b.force !== true) {
-            return sendJson(res, 409, { error: 'essential_domain', message: `« ${domain} » est un domaine indispensable au téléphone : le bloquer le casserait.`, breaks: essential.map((breaks) => ({ domain, breaks })) });
+            return sendJson(res, 409, { error: 'essential_domain', message: `"${domain}" is a domain essential to the phone: blocking it would break it.`, breaks: essential.map((breaks) => ({ domain, breaks })) });
           }
           track.overrides.push({ t: Date.now(), domain, action: b.action });
           emitAgentEvent('tracking.override', b.action === 'block' && b.force !== true ? 1 : 2, { domain, action: b.action, forced: b.force === true, user });
@@ -641,16 +641,16 @@ const server = http.createServer((req, res) => {
       req.on('close', () => streams.delete(s));
       return;
     }
-    err(res, 404, 'not_found', `Route inconnue : ${route}`);
+    err(res, 404, 'not_found', `Unknown route: ${route}`);
   })().catch((e: unknown) => {
     console.error(e);
-    if (!res.headersSent) err(res, 500, 'internal', 'Erreur interne du serveur factice');
+    if (!res.headersSent) err(res, 500, 'internal', 'Internal error of the mock server');
     else res.end();
   });
 });
 
 server.listen(PORT, '127.0.0.1', () => {
   const n = events.length;
-  console.log(`[mock] API console sur http://127.0.0.1:${PORT}/api/console (${n} événements, ${ALL_APPS.length} apps, scénario ${SCENARIO})`);
-  console.log(`[mock] connexion : ${USER} / ${PASSWORD}${STATIC_DIR ? ` — console statique : ${STATIC_DIR}` : ''}`);
+  console.log(`[mock] console API at http://127.0.0.1:${PORT}/api/console (${n} events, ${ALL_APPS.length} apps, scenario ${SCENARIO})`);
+  console.log(`[mock] sign-in: ${USER} / ${PASSWORD}${STATIC_DIR ? ` — static console: ${STATIC_DIR}` : ''}`);
 });

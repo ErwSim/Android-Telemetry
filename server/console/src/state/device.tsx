@@ -47,6 +47,6 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
 
 export function useDevice(): DeviceValue {
   const v = useContext(Ctx);
-  if (!v) throw new Error('DeviceProvider manquant');
+  if (!v) throw new Error('DeviceProvider missing');
   return v;
 }

@@ -53,7 +53,7 @@ export function buildQuery(q?: Query): string {
 
 async function parseError(res: Response): Promise<ApiError> {
   let code = `http_${res.status}`;
-  let message = res.statusText || `Erreur ${res.status}`;
+  let message = res.statusText || `Error ${res.status}`;
   let extra: Record<string, unknown> | undefined;
   try {
     const body: unknown = await res.json();

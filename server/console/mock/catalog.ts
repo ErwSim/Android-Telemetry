@@ -1,4 +1,4 @@
-// Applications fictives mais plausibles (Galaxy S25+, One UI) pour le serveur factice.
+// Fictional but plausible applications (Samsung One UI phone) for the mock server.
 
 export interface MockApp {
   package: string;
@@ -10,11 +10,11 @@ export interface MockApp {
   suspended?: boolean;
   hidden?: boolean;
   perms: string[];
-  /** noms DNS contactés, avec poids */
+  /** DNS names contacted, with weights */
   hosts: [string, number][];
-  /** poids dans le trafic DNS global (0 = n'émet pas de requêtes) */
+  /** weight in the overall DNS traffic (0 = makes no queries) */
   dnsWeight: number;
-  /** volume horaire moyen en Mio quand le téléphone est actif */
+  /** average hourly volume in MiB when the phone is active */
   mibPerHour: number;
   firstInstallDaysAgo: number;
   lastUpdateDaysAgo: number;
@@ -26,7 +26,7 @@ const GALAXY = 'com.sec.android.app.samsungapps';
 
 export const APPS: MockApp[] = [
   {
-    package: 'com.google.android.gms', label: 'Services Google Play', system: true, version_name: '25.44.31', perms: P('ACCESS_FINE_LOCATION', 'ACCESS_BACKGROUND_LOCATION', 'READ_CONTACTS', 'READ_PHONE_STATE', 'CAMERA', 'RECORD_AUDIO', 'POST_NOTIFICATIONS', 'BODY_SENSORS'),
+    package: 'com.google.android.gms', label: 'Google Play services', system: true, version_name: '25.44.31', perms: P('ACCESS_FINE_LOCATION', 'ACCESS_BACKGROUND_LOCATION', 'READ_CONTACTS', 'READ_PHONE_STATE', 'CAMERA', 'RECORD_AUDIO', 'POST_NOTIFICATIONS', 'BODY_SENSORS'),
     hosts: [['android.clients.google.com', 5], ['play.googleapis.com', 4], ['app-measurement.com', 5], ['firebaseinstallations.googleapis.com', 3], ['www.googleapis.com', 3], ['mtalk.google.com', 4], ['connectivitycheck.gstatic.com', 6], ['clients4.google.com', 3], ['ogs.google.com', 0.5], ['fcm.googleapis.com', 3], ['update.googleapis.com', 1], ['digitalassetlinks.googleapis.com', 1]],
     dnsWeight: 26, mibPerHour: 7, firstInstallDaysAgo: 400, lastUpdateDaysAgo: 6,
   },
@@ -37,7 +37,7 @@ export const APPS: MockApp[] = [
   },
   {
     package: 'com.android.chrome', label: 'Chrome', system: false, installer: PLAY, version_name: '142.0.7444.102', perms: P('CAMERA', 'RECORD_AUDIO', 'ACCESS_FINE_LOCATION', 'POST_NOTIFICATIONS', 'READ_MEDIA_IMAGES'),
-    hosts: [['www.lemonde.fr', 3], ['fr.wikipedia.org', 3], ['github.com', 3], ['www.google.com', 5], ['news.ycombinator.com', 2], ['www.leboncoin.fr', 2], ['i.ytimg.com', 2], ['fonts.gstatic.com', 3], ['www.googletagmanager.com', 3], ['pagead2.googlesyndication.com', 2], ['stats.g.doubleclick.net', 2], ['cdn.jsdelivr.net', 2], ['www.service-public.fr', 1], ['www.ameli.fr', 1]],
+    hosts: [['news.example.org', 3], ['en.wikipedia.org', 3], ['github.com', 3], ['www.google.com', 5], ['news.ycombinator.com', 2], ['classifieds.example.org', 2], ['i.ytimg.com', 2], ['fonts.gstatic.com', 3], ['www.googletagmanager.com', 3], ['pagead2.googlesyndication.com', 2], ['stats.g.doubleclick.net', 2], ['cdn.jsdelivr.net', 2], ['services.example.org', 1], ['health.example.org', 1]],
     dnsWeight: 14, mibPerHour: 28, firstInstallDaysAgo: 380, lastUpdateDaysAgo: 4,
   },
   {
@@ -91,7 +91,7 @@ export const APPS: MockApp[] = [
     dnsWeight: 1.5, mibPerHour: 1.5, firstInstallDaysAgo: 400, lastUpdateDaysAgo: 20,
   },
   {
-    package: 'com.osp.app.signin', label: 'Compte Samsung', system: true, version_name: '15.5.00.4', perms: P('READ_CONTACTS'),
+    package: 'com.osp.app.signin', label: 'Samsung Account', system: true, version_name: '15.5.00.4', perms: P('READ_CONTACTS'),
     hosts: [['eu-auth.samsungosp.com', 3], ['account.samsung.com', 2]],
     dnsWeight: 1, mibPerHour: 0.1, firstInstallDaysAgo: 400, lastUpdateDaysAgo: 18,
   },
@@ -121,8 +121,8 @@ export const APPS: MockApp[] = [
     dnsWeight: 4, mibPerHour: 30, firstInstallDaysAgo: 300, lastUpdateDaysAgo: 5,
   },
   {
-    package: 'com.boursorama.android.clients', label: 'Boursobank', system: false, installer: PLAY, version_name: '6.8.2', perms: P('CAMERA', 'POST_NOTIFICATIONS'),
-    hosts: [['api.boursobank.com', 4], ['clients.boursobank.com', 2], ['static.boursobank.com', 1]],
+    package: 'com.example.bank', label: 'Example Bank', system: false, installer: PLAY, version_name: '6.8.2', perms: P('CAMERA', 'POST_NOTIFICATIONS'),
+    hosts: [['api.examplebank.example', 4], ['clients.examplebank.example', 2], ['static.examplebank.example', 1]],
     dnsWeight: 1, mibPerHour: 1, firstInstallDaysAgo: 250, lastUpdateDaysAgo: 15,
   },
   {
@@ -141,13 +141,13 @@ export const APPS: MockApp[] = [
     dnsWeight: 1.6, mibPerHour: 2, firstInstallDaysAgo: 5, lastUpdateDaysAgo: 5,
   },
   {
-    package: 'io.github.erwsim.watchpost', label: 'Vigie Agent', system: false, installer: 'com.android.shell', version_name: '1.0.0', perms: P('ACCESS_FINE_LOCATION', 'ACCESS_BACKGROUND_LOCATION', 'POST_NOTIFICATIONS', 'READ_PHONE_STATE', 'BLUETOOTH_SCAN'),
-    hosts: [['ingest.exemple.fr', 6]],
+    package: 'io.github.erwsim.watchpost', label: 'Watchpost Agent', system: false, installer: 'com.android.shell', version_name: '1.0.0', perms: P('ACCESS_FINE_LOCATION', 'ACCESS_BACKGROUND_LOCATION', 'POST_NOTIFICATIONS', 'READ_PHONE_STATE', 'BLUETOOTH_SCAN'),
+    hosts: [['ingest.watchpost.example', 6]],
     dnsWeight: 1.2, mibPerHour: 1.2, firstInstallDaysAgo: 9, lastUpdateDaysAgo: 2,
   },
   {
-    package: 'fr.sncf.connect', label: 'SNCF Connect', system: false, installer: PLAY, version_name: '4.31.0', perms: P('ACCESS_FINE_LOCATION', 'POST_NOTIFICATIONS', 'CAMERA'),
-    hosts: [['api.sncf-connect.com', 3], ['www.sncf-connect.com', 2]],
+    package: 'com.example.rail', label: 'Rail Tickets', system: false, installer: PLAY, version_name: '4.31.0', perms: P('ACCESS_FINE_LOCATION', 'POST_NOTIFICATIONS', 'CAMERA'),
+    hosts: [['api.rail.example', 3], ['www.rail.example', 2]],
     dnsWeight: 0.8, mibPerHour: 2, firstInstallDaysAgo: 200, lastUpdateDaysAgo: 18,
   },
   {
@@ -157,33 +157,33 @@ export const APPS: MockApp[] = [
   },
 ];
 
-// Applications sans trafic notable (inventaire seulement).
+// Applications without notable traffic (inventory only).
 const quiet = (pkg: string, label: string, extra: Partial<MockApp> = {}): MockApp => ({
   package: pkg, label, system: true, version_name: '1.0.0', perms: [], hosts: [], dnsWeight: 0, mibPerHour: 0,
   firstInstallDaysAgo: 400, lastUpdateDaysAgo: 60, ...extra,
 });
 
 export const QUIET_APPS: MockApp[] = [
-  quiet('android', 'Système Android', { version_name: '16' }),
-  quiet('com.android.settings', 'Paramètres', { version_name: '16' }),
-  quiet('com.android.systemui', 'Interface système', { version_name: '16' }),
-  quiet('com.android.phone', 'Services de téléphonie', { perms: P('READ_PHONE_STATE', 'CALL_PHONE') }),
+  quiet('android', 'Android System', { version_name: '16' }),
+  quiet('com.android.settings', 'Settings', { version_name: '16' }),
+  quiet('com.android.systemui', 'System UI', { version_name: '16' }),
+  quiet('com.android.phone', 'Telephony services', { perms: P('READ_PHONE_STATE', 'CALL_PHONE') }),
   quiet('com.android.bluetooth', 'Bluetooth', { perms: P('BLUETOOTH_CONNECT') }),
-  quiet('com.android.providers.contacts', 'Stockage des contacts', { perms: P('READ_CONTACTS') }),
-  quiet('com.android.providers.media.module', 'Stockage multimédia', { perms: P('READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO', 'READ_MEDIA_AUDIO') }),
+  quiet('com.android.providers.contacts', 'Contacts storage', { perms: P('READ_CONTACTS') }),
+  quiet('com.android.providers.media.module', 'Media storage', { perms: P('READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO', 'READ_MEDIA_AUDIO') }),
   quiet('com.android.nfc', 'NFC'),
-  quiet('com.samsung.android.dialer', 'Téléphone', { perms: P('CALL_PHONE', 'READ_CALL_LOG', 'READ_CONTACTS', 'READ_PHONE_STATE') }),
+  quiet('com.samsung.android.dialer', 'Phone', { perms: P('CALL_PHONE', 'READ_CALL_LOG', 'READ_CONTACTS', 'READ_PHONE_STATE') }),
   quiet('com.samsung.android.messaging', 'Messages', { perms: P('SEND_SMS', 'READ_SMS', 'RECEIVE_SMS', 'READ_CONTACTS') }),
   quiet('com.samsung.android.contacts', 'Contacts', { perms: P('READ_CONTACTS', 'WRITE_CONTACTS') }),
-  quiet('com.sec.android.app.camera', 'Appareil photo', { perms: P('CAMERA', 'RECORD_AUDIO', 'ACCESS_FINE_LOCATION') }),
-  quiet('com.sec.android.gallery3d', 'Galerie', { perms: P('READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO') }),
+  quiet('com.sec.android.app.camera', 'Camera', { perms: P('CAMERA', 'RECORD_AUDIO', 'ACCESS_FINE_LOCATION') }),
+  quiet('com.sec.android.gallery3d', 'Gallery', { perms: P('READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO') }),
   quiet('com.sec.android.app.launcher', 'One UI Home'),
   quiet('com.samsung.android.app.galaxyfinder', 'Finder'),
   quiet('com.samsung.android.bixby.agent', 'Bixby', { enabled: false, perms: P('RECORD_AUDIO') }),
   quiet('com.samsung.android.bixby.service', 'Bixby Voice Service', { enabled: false }),
   quiet('com.samsung.android.app.watchmanager', 'Galaxy Wearable', { perms: P('BLUETOOTH_SCAN') }),
-  quiet('com.samsung.android.calendar', 'Calendrier Samsung', { perms: P('READ_CALENDAR', 'WRITE_CALENDAR') }),
-  quiet('com.sec.android.app.clockpackage', 'Horloge'),
+  quiet('com.samsung.android.calendar', 'Samsung Calendar', { perms: P('READ_CALENDAR', 'WRITE_CALENDAR') }),
+  quiet('com.sec.android.app.clockpackage', 'Clock'),
   quiet('com.samsung.android.app.notes', 'Samsung Notes'),
   quiet('com.samsung.android.spay', 'Samsung Wallet', { perms: P('ACCESS_FINE_LOCATION') }),
   quiet('com.samsung.android.game.gamehome', 'Game Launcher', { suspended: true }),
@@ -191,7 +191,7 @@ export const QUIET_APPS: MockApp[] = [
   quiet('com.samsung.android.aremoji', 'AR Emoji', { enabled: false }),
   quiet('com.sec.android.easyMover', 'Smart Switch', { perms: P('READ_CONTACTS') }),
   quiet('com.samsung.android.scloud', 'Samsung Cloud', { enabled: false }),
-  quiet('com.samsung.android.forest', 'Bien-être numérique'),
+  quiet('com.samsung.android.forest', 'Digital Wellbeing'),
   quiet('com.samsung.android.app.sharelive', 'Quick Share', { perms: P('BLUETOOTH_SCAN', 'NEARBY_WIFI_DEVICES') }),
   quiet('com.facebook.appmanager', 'Facebook App Manager', { enabled: false }),
   quiet('com.facebook.services', 'Facebook Services', { enabled: false }),
@@ -199,12 +199,12 @@ export const QUIET_APPS: MockApp[] = [
   quiet('com.microsoft.skydrive', 'OneDrive', { system: false, installer: GALAXY, version_name: '7.3', perms: P('READ_MEDIA_IMAGES') }),
   quiet('com.amazon.mShop.android.shopping', 'Amazon', { system: false, installer: PLAY, version_name: '29.20', perms: P('CAMERA', 'POST_NOTIFICATIONS') }),
   quiet('com.google.android.apps.docs', 'Drive', { system: false, installer: PLAY, version_name: '2.25.390', perms: P('READ_MEDIA_IMAGES') }),
-  quiet('com.google.android.calendar', 'Agenda Google', { system: false, installer: PLAY, version_name: '2025.40', perms: P('READ_CALENDAR', 'READ_CONTACTS') }),
-  quiet('com.google.android.apps.messaging', 'Messages Google', { system: false, installer: PLAY, version_name: '20251013', perms: P('READ_SMS', 'SEND_SMS', 'READ_CONTACTS') }),
-  quiet('com.google.android.marvin.talkback', 'Accessibilité Android', { version_name: '15.1' }),
-  quiet('com.google.android.packageinstaller', 'Installateur de paquets'),
+  quiet('com.google.android.calendar', 'Google Calendar', { system: false, installer: PLAY, version_name: '2025.40', perms: P('READ_CALENDAR', 'READ_CONTACTS') }),
+  quiet('com.google.android.apps.messaging', 'Google Messages', { system: false, installer: PLAY, version_name: '20251013', perms: P('READ_SMS', 'SEND_SMS', 'READ_CONTACTS') }),
+  quiet('com.google.android.marvin.talkback', 'Android Accessibility', { version_name: '15.1' }),
+  quiet('com.google.android.packageinstaller', 'Package installer'),
   quiet('com.google.android.webview', 'Android System WebView', { system: false, installer: PLAY, version_name: '142.0.7444.102' }),
-  quiet('com.google.android.tts', 'Synthèse vocale', { system: true, version_name: '15.1' }),
+  quiet('com.google.android.tts', 'Text-to-speech', { system: true, version_name: '15.1' }),
   quiet('com.zhiliaoapp.musically', 'TikTok', { system: false, installer: PLAY, version_name: '37.1', enabled: false, perms: P('CAMERA', 'RECORD_AUDIO') }),
 ];
 
@@ -212,14 +212,14 @@ export const ALL_APPS: MockApp[] = [...APPS, ...QUIET_APPS];
 
 export const ROUTE_PLACES = {
   home: { lat: 48.8603, lon: 2.379 },
-  bastille: { lat: 48.8531, lon: 2.3691 },
-  chatelet: { lat: 48.8584, lon: 2.347 },
-  concorde: { lat: 48.8656, lon: 2.3212 },
-  etoile: { lat: 48.8738, lon: 2.295 },
-  ladefense: { lat: 48.8918, lon: 2.2362 },
+  stop1: { lat: 48.8531, lon: 2.3691 },
+  stop2: { lat: 48.8584, lon: 2.347 },
+  stop3: { lat: 48.8656, lon: 2.3212 },
+  stop4: { lat: 48.8738, lon: 2.295 },
+  work: { lat: 48.8918, lon: 2.2362 },
   lunch: { lat: 48.8935, lon: 2.243 },
   bar: { lat: 48.853, lon: 2.3699 },
-  versailles: { lat: 48.8049, lon: 2.1204 },
-  rerStop: { lat: 48.8295, lon: 2.2864 },
+  town: { lat: 48.8049, lon: 2.1204 },
+  trainStop: { lat: 48.8295, lon: 2.2864 },
   park: { lat: 48.8809, lon: 2.3828 },
 } as const;

@@ -26,7 +26,7 @@ export const VECTOR_CODES = {
   contract: 'correct horse battery staple',
   nonAscii: 'pässwörd-código-密码-🔑🔑',
   decomposed: 'nin\u0303o ju\u0308ngling 2026 !', // decomposed (NFD): n + U+0303, u + U+0308
-  spaced: '  espaces autour & "guillemets" \\ \' <> %  ',
+  spaced: '  spaces around & "quotes" \\ \' <> %  ',
 } as const;
 
 const MESSAGES = {

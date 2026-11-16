@@ -338,7 +338,7 @@ export interface Detection {
   updated_at?: string;
   /** §11.4: already reported within 30 days (severity capped at 1) */
   recurring?: boolean;
-  /** §11.4 : couverte par une sourdine : calculée et stockée, mais ni exportée ni notifiée */
+  /** §11.4: covered by a mute: computed and stored, but neither exported nor notified */
   muted?: boolean;
 }
 

@@ -1,4 +1,4 @@
-// Générateur pseudo-aléatoire déterministe (mulberry32) et utilitaires.
+// Deterministic pseudo-random generator (mulberry32) and utilities.
 
 export type Rng = () => number;
 

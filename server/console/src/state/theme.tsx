@@ -55,7 +55,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
 export function useTheme(): ThemeValue {
   const v = useContext(Ctx);
-  if (!v) throw new Error('ThemeProvider manquant');
+  if (!v) throw new Error('ThemeProvider missing');
   return v;
 }
 

@@ -61,7 +61,7 @@ describe('classifyGap', () => {
   });
   it('discards the edge buckets for a long gap (events just before the cut)', () => {
     const long = { fromIdx: 0, toIdx: 1, start: 30 * MIN, end: 450 * MIN, durationMs: 420 * MIN };
-    // tranches 0..7 d'une heure : 0 et 7 actives (bords), 1..6 vides
+    // buckets 0..7 of one hour: 0 and 7 active (edges), 1..6 empty
     expect(classifyGap(long, buckets([9, 0, 0, 0, 0, 0, 0, 9]))).toBe('silent');
   });
   it('unknown: no timeline or gap shorter than a bucket', () => {

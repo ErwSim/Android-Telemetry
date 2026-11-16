@@ -1,4 +1,4 @@
-// Génération déterministe de sept jours de télémétrie réaliste pour le serveur factice.
+// Deterministic generation of seven days of realistic telemetry for the mock server.
 import { ALL_APPS, APPS, ROUTE_PLACES, type MockApp } from './catalog.ts';
 import { between, gauss, hex, makeRng, pick, ulid, weighted, type Rng } from './rng.ts';
 
@@ -13,7 +13,7 @@ export interface MockEvent {
   data: Record<string, unknown>;
   received_at: string;
   device_id: string;
-  /** epoch ms, interne */
+  /** epoch ms, internal */
   t: number;
 }
 
@@ -31,14 +31,14 @@ const DAY = 86_400_000;
 
 export const DEVICE_MAIN: MockDevice = {
   device_id: 'dev_8f3a1c2e9b7d',
-  name: 's25',
+  name: 'phone',
   enrolled_at: '',
   agent_version: '1.0.0',
   revoked: false,
 };
 export const DEVICE_OLD: MockDevice = {
   device_id: 'dev_41d0aa7c5e22',
-  name: 'ancien-s23',
+  name: 'old-phone',
   enrolled_at: '',
   agent_version: '0.9.2',
   revoked: true,
@@ -76,7 +76,7 @@ export function generate(now: number, seed = 20261115): Generated {
   const rng = makeRng(seed);
   const dev = DEVICE_MAIN.device_id;
   const todayStart = Math.floor(now / DAY) * DAY;
-  const t0 = todayStart - 6 * DAY; // sept jours : J-6 00:00 UTC jusqu'à maintenant
+  const t0 = todayStart - 6 * DAY; // seven days: D-6 00:00 UTC until now
   const events: MockEvent[] = [];
   let bootId = hex(rng, 8);
   let bootStart = t0 - 3 * HOUR;
@@ -84,7 +84,7 @@ export function generate(now: number, seed = 20261115): Generated {
   DEVICE_MAIN.enrolled_at = new Date(t0 - 2 * DAY).toISOString();
   DEVICE_OLD.enrolled_at = new Date(now - 120 * DAY).toISOString();
 
-  // Fenêtres sans aucun événement (téléphone éteint / agent arrêté) et sans position seulement.
+  // Windows without any event (phone off / agent stopped) and without location only.
   const silent: Window[] = [
     { start: todayStart - 3 * DAY + 3 * HOUR + 10 * MIN, end: todayStart - 3 * DAY + 7 * HOUR + 40 * MIN },
     { start: todayStart - 1 * DAY + 14 * HOUR, end: todayStart - 1 * DAY + 16 * HOUR + 10 * MIN },
@@ -113,50 +113,50 @@ export function generate(now: number, seed = 20261115): Generated {
     });
   };
 
-  // ---------- Plan de journée : lieux et trajets ----------
+  // ---------- Daily plan: places and journeys ----------
   const P = ROUTE_PLACES;
   type Leg = { from: number; to: number; kind: 'stay' | 'travel'; place?: LatLon; path?: LatLon[]; underground?: boolean; label: string };
   const legs: Leg[] = [];
   for (let d = 0; d < 7; d++) {
     const ds = t0 + d * DAY;
-    const dow = new Date(ds).getUTCDay(); // 0 dimanche
+    const dow = new Date(ds).getUTCDay(); // 0 is Sunday
     const weekend = dow === 0 || dow === 6;
     const at = (h: number, m = 0) => ds + h * HOUR + m * MIN;
-    const metro = [P.home, P.bastille, P.chatelet, P.concorde, P.etoile, P.ladefense];
+    const metro = [P.home, P.stop1, P.stop2, P.stop3, P.stop4, P.work];
     const underground = d % 2 === 0;
     if (!weekend) {
-      legs.push({ from: at(0), to: at(6, 50), kind: 'stay', place: P.home, label: 'domicile' });
-      legs.push({ from: at(6, 50), to: at(7, 40), kind: 'travel', path: metro, underground, label: 'trajet aller' });
-      legs.push({ from: at(7, 40), to: at(11, 45), kind: 'stay', place: P.ladefense, label: 'travail' });
-      legs.push({ from: at(11, 45), to: at(11, 55), kind: 'travel', path: [P.ladefense, P.lunch], label: 'déjeuner' });
-      legs.push({ from: at(11, 55), to: at(12, 45), kind: 'stay', place: P.lunch, label: 'déjeuner' });
-      legs.push({ from: at(12, 45), to: at(12, 55), kind: 'travel', path: [P.lunch, P.ladefense], label: 'retour' });
-      legs.push({ from: at(12, 55), to: at(17, 0), kind: 'stay', place: P.ladefense, label: 'travail' });
-      legs.push({ from: at(17, 0), to: at(17, 50), kind: 'travel', path: [...metro].reverse(), underground, label: 'trajet retour' });
+      legs.push({ from: at(0), to: at(6, 50), kind: 'stay', place: P.home, label: 'home' });
+      legs.push({ from: at(6, 50), to: at(7, 40), kind: 'travel', path: metro, underground, label: 'commute out' });
+      legs.push({ from: at(7, 40), to: at(11, 45), kind: 'stay', place: P.work, label: 'work' });
+      legs.push({ from: at(11, 45), to: at(11, 55), kind: 'travel', path: [P.work, P.lunch], label: 'lunch' });
+      legs.push({ from: at(11, 55), to: at(12, 45), kind: 'stay', place: P.lunch, label: 'lunch' });
+      legs.push({ from: at(12, 45), to: at(12, 55), kind: 'travel', path: [P.lunch, P.work], label: 'return' });
+      legs.push({ from: at(12, 55), to: at(17, 0), kind: 'stay', place: P.work, label: 'work' });
+      legs.push({ from: at(17, 0), to: at(17, 50), kind: 'travel', path: [...metro].reverse(), underground, label: 'commute back' });
       if (dow === 5) {
-        legs.push({ from: at(17, 50), to: at(19, 30), kind: 'stay', place: P.home, label: 'domicile' });
-        legs.push({ from: at(19, 30), to: at(19, 42), kind: 'travel', path: [P.home, P.bar], label: 'sortie' });
+        legs.push({ from: at(17, 50), to: at(19, 30), kind: 'stay', place: P.home, label: 'home' });
+        legs.push({ from: at(19, 30), to: at(19, 42), kind: 'travel', path: [P.home, P.bar], label: 'outing' });
         legs.push({ from: at(19, 42), to: at(23, 0), kind: 'stay', place: P.bar, label: 'bar' });
-        legs.push({ from: at(23, 0), to: at(23, 12), kind: 'travel', path: [P.bar, P.home], label: 'retour' });
-        legs.push({ from: at(23, 12), to: at(24), kind: 'stay', place: P.home, label: 'domicile' });
-      } else legs.push({ from: at(17, 50), to: at(24), kind: 'stay', place: P.home, label: 'domicile' });
+        legs.push({ from: at(23, 0), to: at(23, 12), kind: 'travel', path: [P.bar, P.home], label: 'return' });
+        legs.push({ from: at(23, 12), to: at(24), kind: 'stay', place: P.home, label: 'home' });
+      } else legs.push({ from: at(17, 50), to: at(24), kind: 'stay', place: P.home, label: 'home' });
     } else if (dow === 6) {
-      legs.push({ from: at(0), to: at(9, 30), kind: 'stay', place: P.home, label: 'domicile' });
-      legs.push({ from: at(9, 30), to: at(10, 25), kind: 'travel', path: [P.home, P.chatelet, P.rerStop, P.versailles], label: 'vers Versailles' });
-      legs.push({ from: at(10, 25), to: at(14, 30), kind: 'stay', place: P.versailles, label: 'Versailles' });
-      legs.push({ from: at(14, 30), to: at(15, 25), kind: 'travel', path: [P.versailles, P.rerStop, P.chatelet, P.home], label: 'retour' });
-      legs.push({ from: at(15, 25), to: at(24), kind: 'stay', place: P.home, label: 'domicile' });
+      legs.push({ from: at(0), to: at(9, 30), kind: 'stay', place: P.home, label: 'home' });
+      legs.push({ from: at(9, 30), to: at(10, 25), kind: 'travel', path: [P.home, P.stop2, P.trainStop, P.town], label: 'to the town' });
+      legs.push({ from: at(10, 25), to: at(14, 30), kind: 'stay', place: P.town, label: 'town' });
+      legs.push({ from: at(14, 30), to: at(15, 25), kind: 'travel', path: [P.town, P.trainStop, P.stop2, P.home], label: 'return' });
+      legs.push({ from: at(15, 25), to: at(24), kind: 'stay', place: P.home, label: 'home' });
     } else {
-      legs.push({ from: at(0), to: at(10, 20), kind: 'stay', place: P.home, label: 'domicile' });
-      legs.push({ from: at(10, 20), to: at(10, 50), kind: 'travel', path: [P.home, P.park], label: 'vers le parc' });
-      legs.push({ from: at(10, 50), to: at(13, 30), kind: 'stay', place: P.park, label: 'parc' });
-      legs.push({ from: at(13, 30), to: at(14, 0), kind: 'travel', path: [P.park, P.home], label: 'retour' });
-      legs.push({ from: at(14, 0), to: at(24), kind: 'stay', place: P.home, label: 'domicile' });
+      legs.push({ from: at(0), to: at(10, 20), kind: 'stay', place: P.home, label: 'home' });
+      legs.push({ from: at(10, 20), to: at(10, 50), kind: 'travel', path: [P.home, P.park], label: 'to the park' });
+      legs.push({ from: at(10, 50), to: at(13, 30), kind: 'stay', place: P.park, label: 'park' });
+      legs.push({ from: at(13, 30), to: at(14, 0), kind: 'travel', path: [P.park, P.home], label: 'return' });
+      legs.push({ from: at(14, 0), to: at(24), kind: 'stay', place: P.home, label: 'home' });
     }
   }
   const legAt = (t: number) => legs.find((l) => t >= l.from && t < l.to);
 
-  // ---------- Positions ----------
+  // ---------- Locations ----------
   const placeOf = (t: number): { pos: LatLon; moving: boolean; indoors: boolean; speed: number } | undefined => {
     const l = legAt(t);
     if (!l) return undefined;
@@ -164,14 +164,14 @@ export function generate(now: number, seed = 20261115): Generated {
       return {
         pos: { lat: l.place.lat + gauss(rng) * 0.00006, lon: l.place.lon + gauss(rng) * 0.00009 },
         moving: false,
-        indoors: l.label !== 'parc',
+        indoors: l.label !== 'park',
         speed: 0,
       };
     }
     if (l.path) {
       const f = (t - l.from) / (l.to - l.from);
       const p = along(l.path, f);
-      if (l.underground && f > 0.12 && f < 0.78) return undefined; // pas de fix sous terre
+      if (l.underground && f > 0.12 && f < 0.78) return undefined; // no fix underground
       return { pos: { lat: p.lat + gauss(rng) * 0.00003, lon: p.lon + gauss(rng) * 0.00004 }, moving: true, indoors: false, speed: between(rng, 3, 14) };
     }
     return undefined;
@@ -179,7 +179,7 @@ export function generate(now: number, seed = 20261115): Generated {
 
   for (let t = t0; t <= horizon; ) {
     const l = legAt(t);
-    const step = l?.kind === 'travel' ? 30_000 : l?.label === 'domicile' && new Date(t).getUTCHours() < 6 ? 30 * MIN : 10 * MIN;
+    const step = l?.kind === 'travel' ? 30_000 : l?.label === 'home' && new Date(t).getUTCHours() < 6 ? 30 * MIN : 10 * MIN;
     if (!inWin(t, nofix)) {
       const s = placeOf(t);
       if (s) {
@@ -204,7 +204,7 @@ export function generate(now: number, seed = 20261115): Generated {
   push(nofix[0]!.start, 'location.provider', 1, { provider: 'gps', enabled: false });
   push(nofix[0]!.end, 'location.provider', 1, { provider: 'gps', enabled: true });
 
-  // ---------- Heartbeats, batterie, écran ----------
+  // ---------- Heartbeats, battery, screen ----------
   const collectors = COLLECTORS;
   let battery = 78;
   for (let t = t0; t <= horizon; t += 15 * MIN) {
@@ -239,46 +239,46 @@ export function generate(now: number, seed = 20261115): Generated {
     push(t, 'device.screen', 0, { state: weighted(rng, [['on', 3], ['unlocked', 3], ['off', 4]] as const) });
   }
 
-  // ---------- Réseau : connectivité, Wi-Fi, cellulaire ----------
-  const wifiHome = { ssid: 'Freebox-A1B2C3', bssid: '24:a4:3c:11:22:33', security: 'WPA3' };
+  // ---------- Network: connectivity, Wi-Fi, cellular ----------
+  const wifiHome = { ssid: 'HomeNet-A1B2C3', bssid: '24:a4:3c:11:22:33', security: 'WPA3' };
   const wifiWork = { ssid: 'CORP-WIFI', bssid: '00:1a:2b:3c:4d:5e', security: 'WPA2-Enterprise' };
   let lastNet = '';
   for (let t = t0; t <= horizon; t += 5 * MIN) {
     const l = legAt(t);
-    const where = l?.kind === 'travel' ? 'cell' : l?.place === P.home ? 'home' : l?.place === P.ladefense ? 'work' : 'cell';
+    const where = l?.kind === 'travel' ? 'cell' : l?.place === P.home ? 'home' : l?.place === P.work ? 'work' : 'cell';
     if (where !== lastNet) {
       lastNet = where;
       const wifi = where === 'home' ? wifiHome : where === 'work' ? wifiWork : undefined;
       if (wifi) {
         push(t, 'net.wifi', 0, { event: 'connected', ...wifi, rssi: -Math.round(between(rng, 42, 64)), freq_mhz: pick(rng, [2437, 5180, 5500]), standard: 'wifi6' });
       } else {
-        push(t, 'net.wifi', 0, { event: 'disconnected', ssid: 'Freebox-A1B2C3' });
+        push(t, 'net.wifi', 0, { event: 'disconnected', ssid: 'HomeNet-A1B2C3' });
       }
       push(t + 2_000, 'net.connectivity', 0, {
         transports: wifi ? ['wifi'] : ['cellular'], validated: true, metered: !wifi, vpn: false, private_dns_active: true,
-        private_dns_server: 'dns.exemple.fr', dns_servers: wifi ? ['192.168.1.1'] : ['10.1.2.3'], interface: wifi ? 'wlan0' : 'rmnet_data1',
+        private_dns_server: 'dns.example.org', dns_servers: wifi ? ['192.168.1.1'] : ['10.1.2.3'], interface: wifi ? 'wlan0' : 'rmnet_data1',
       });
     }
     if (where === 'cell' && t % (15 * MIN) < 5 * MIN) {
-      push(t, 'net.cell', 0, { tech: pick(rng, ['5G NSA', 'LTE', 'LTE']), mcc: '208', mnc: '15', tac: 24123, ci: Math.round(between(rng, 1e6, 9e6)), pci: Math.round(between(rng, 1, 500)), band: pick(rng, ['n78', 'B3', 'B7', 'B20']), signal_dbm: -Math.round(between(rng, 72, 108)), roaming: false, operator: 'Free' });
+      push(t, 'net.cell', 0, { tech: pick(rng, ['5G NSA', 'LTE', 'LTE']), mcc: '001', mnc: '01', tac: 24123, ci: Math.round(between(rng, 1e6, 9e6)), pci: Math.round(between(rng, 1, 500)), band: pick(rng, ['n78', 'B3', 'B7', 'B20']), signal_dbm: -Math.round(between(rng, 72, 108)), roaming: false, operator: 'Example Mobile' });
     }
   }
-  push(todayStart - 2 * DAY + 18 * HOUR + 52 * MIN, 'net.cell_security', 2, { kind: 'downgrade_2g', detail: 'Rétrogradation LTE → GSM sans perte de couverture LTE (cellule 208-15-31337)' });
+  push(todayStart - 2 * DAY + 18 * HOUR + 52 * MIN, 'net.cell_security', 2, { kind: 'downgrade_2g', detail: 'LTE → GSM downgrade without loss of LTE coverage (cell 001-01-31337)' });
   push(todayStart - 1 * DAY + 9 * HOUR + 20 * MIN, 'net.ble_tracker', 2, { address: 'c4:11:22:5f:9a:0e', kind: 'unknown', rssi: -61, first_seen: new Date(todayStart - DAY + 8 * HOUR + 35 * MIN).toISOString(), sightings: 14 });
   push(todayStart - 1 * DAY + 11 * HOUR, 'net.ble_tracker', 2, { address: 'c4:11:22:5f:9a:0e', kind: 'unknown', rssi: -58, first_seen: new Date(todayStart - DAY + 8 * HOUR + 35 * MIN).toISOString(), sightings: 31 });
   for (let d = 0; d < 7; d++) {
-    push(t0 + d * DAY + 8 * HOUR, 'net.bluetooth', 0, { event: 'connected', name: 'Galaxy Buds3 Pro', address: '88:ee:d6:44:55:66', type: 'headset' });
-    push(t0 + d * DAY + 9 * HOUR + 10 * MIN, 'net.bluetooth', 0, { event: 'disconnected', name: 'Galaxy Buds3 Pro', address: '88:ee:d6:44:55:66', type: 'headset' });
+    push(t0 + d * DAY + 8 * HOUR, 'net.bluetooth', 0, { event: 'connected', name: 'Wireless earbuds', address: '88:ee:d6:44:55:66', type: 'headset' });
+    push(t0 + d * DAY + 9 * HOUR + 10 * MIN, 'net.bluetooth', 0, { event: 'disconnected', name: 'Wireless earbuds', address: '88:ee:d6:44:55:66', type: 'headset' });
   }
   push(todayStart - 4 * DAY + 13 * HOUR, 'net.wifi_scan', 0, {
     aps: [
       { ssid: 'CORP-WIFI', bssid: '00:1a:2b:3c:4d:5e', rssi: -52, freq_mhz: 5180, security: 'WPA2-Enterprise' },
       { ssid: 'eduroam', bssid: '00:1a:2b:3c:4d:5f', rssi: -66, freq_mhz: 2437, security: 'WPA2-Enterprise' },
-      { ssid: 'FreeWifi_secure', bssid: 'de:ad:be:ef:00:01', rssi: -78, freq_mhz: 2412, security: 'WPA2' },
+      { ssid: 'OpenWifi_secure', bssid: 'de:ad:be:ef:00:01', rssi: -78, freq_mhz: 2412, security: 'WPA2' },
     ],
   });
 
-  // ---------- DNS, connexions, volumes ----------
+  // ---------- DNS, connections, volumes ----------
   const dnsApps = APPS.filter((a) => a.dnsWeight > 0).map((a) => [a, a.dnsWeight] as const);
   const hostFor = (a: MockApp) => weighted(rng, a.hosts.map(([h, w]) => [h, w] as const));
   const addrOf = (host: string) => {
@@ -292,7 +292,7 @@ export function generate(now: number, seed = 20261115): Generated {
     const level = hod < 6 ? 0.12 : hod < 8 ? 0.6 : hod < 23 ? 1 : 0.3;
     const n = Math.round(between(rng, 45, 120) * level);
     const where = legAt(hStart + 30 * MIN);
-    const transport = where?.kind === 'travel' || where?.label === 'Versailles' || where?.label === 'parc' ? 'cellular' : 'wifi';
+    const transport = where?.kind === 'travel' || where?.label === 'town' || where?.label === 'park' ? 'cellular' : 'wifi';
     for (let i = 0; i < n; i++) {
       const t = hStart + Math.floor(rng() * HOUR);
       const app = weighted(rng, dnsApps);
@@ -305,7 +305,7 @@ export function generate(now: number, seed = 20261115): Generated {
         push(t + Math.round(between(rng, 50, 900)), 'net.connect', 0, { package: app.package, uid: 10000 + (app.package.length * 37) % 400, ip: addrs[0], port: weighted(rng, [[443, 9], [80, 1], [5228, 1.5], [853, 0.3]] as const) });
       }
     }
-    // Volumes horaires (net.usage)
+    // Hourly volumes (net.usage)
     const m = new Map<string, { rx: number; tx: number; transport: string }>();
     for (const a of APPS) {
       if (a.mibPerHour <= 0) continue;
@@ -378,14 +378,14 @@ export function generate(now: number, seed = 20261115): Generated {
     const app = pick(rng, APPS);
     push(t, 'app.foreground', 0, { package: app.package, class: `${app.package}.MainActivity`, event: pick(rng, ['resumed', 'paused']) });
   }
-  // Notifications (APK compagnon) : le contenu n'est collecté que depuis J-3 (option activée par le propriétaire).
-  const NOTIF_APPS = ['com.whatsapp', 'org.thoughtcrime.securesms', 'com.google.android.gm', 'com.facebook.katana', 'com.spotify.music', 'com.boursorama.android.clients'];
+  // Notifications (companion APK): the content is only collected since D-3 (option enabled by the user).
+  const NOTIF_APPS = ['com.whatsapp', 'org.thoughtcrime.securesms', 'com.google.android.gm', 'com.facebook.katana', 'com.spotify.music', 'com.example.bank'];
   const NOTIF_TEXTS: Record<string, [string, string][]> = {
-    'com.whatsapp': [['Alice', 'On se retrouve à 19 h ?'], ['Groupe famille', 'Maman : photos de dimanche'], ['Julien', '👍']],
-    'org.thoughtcrime.securesms': [['Camille', 'Message chiffré reçu'], ['Thomas', 'Je t’appelle dans 5 min']],
-    'com.google.android.gm': [['Impots.gouv', 'Votre avis est disponible'], ['SNCF Connect', 'Votre train de 7 h 12 est à l’heure']],
-    'com.facebook.katana': [['Quelqu’un a commenté votre publication', '<b>Marc</b> : Bravo !']],
-    'com.spotify.music': [['Nouveautés', 'Découvrez les nouveautés de la semaine']],
+    'com.whatsapp': [['Alice', 'See you at 7 pm?'], ['Family group', 'Mum: photos from Sunday'], ['Julian', '👍']],
+    'org.thoughtcrime.securesms': [['Camille', 'Encrypted message received'], ['Thomas', 'I will call you in 5 min']],
+    'com.google.android.gm': [['Tax Office', 'Your notice is available'], ['Rail Tickets', 'Your 7:12 am train is on time']],
+    'com.facebook.katana': [['Someone commented on your post', '<b>Marc</b>: Well done!']],
+    'com.spotify.music': [['New releases', 'Discover this week\'s new releases']],
   };
   const notifApps = NOTIF_APPS.map((pkg) => APPS.find((a) => a.package === pkg)).filter((a): a is MockApp => !!a);
   for (let i = 0; i < 130; i++) {
@@ -401,9 +401,9 @@ export function generate(now: number, seed = 20261115): Generated {
       importance: pick(rng, ['low', 'default', 'default', 'high']),
     };
     if (withContent && data['event'] === 'posted') {
-      if (app.package === 'com.boursorama.android.clients') {
-        data['title'] = 'Code de validation';
-        data['text'] = 'Votre code de connexion est ●●●●●● (ne le communiquez jamais)';
+      if (app.package === 'com.example.bank') {
+        data['title'] = 'Verification code';
+        data['text'] = 'Your sign-in code is ●●●●●● (never share it)';
         data['redacted'] = true;
       } else {
         const [title, text] = pick(rng, NOTIF_TEXTS[app.package] ?? [['Notification', '']]);
@@ -413,11 +413,11 @@ export function generate(now: number, seed = 20261115): Generated {
     }
     push(t, 'app.notification', 0, data);
   }
-  // Cas limites : texte hostile (balisage, caractère de réordonnancement bidirectionnel) et texte très long.
-  push(horizon - 3 * HOUR, 'app.notification', 0, { package: 'com.facebook.katana', event: 'posted', category: 'social', channel: 'default', ongoing: false, importance: 'default', title: '<img src=x onerror=alert(1)> Gagnez un iPhone', text: 'Cliquez ici \u202Egpj.exe — **gras** [lien](javascript:alert(1))' });
-  push(horizon - 3 * HOUR + 5 * MIN, 'app.notification', 0, { package: 'com.whatsapp', event: 'posted', category: 'msg', channel: 'default', ongoing: false, importance: 'high', title: 'Message très long', text: 'Lorem ipsum dolor sit amet, '.repeat(30) });
+  // Edge cases: hostile text (markup, bidirectional reordering character) and very long text.
+  push(horizon - 3 * HOUR, 'app.notification', 0, { package: 'com.facebook.katana', event: 'posted', category: 'social', channel: 'default', ongoing: false, importance: 'default', title: '<img src=x onerror=alert(1)> Win a phone', text: 'Click here \u202Egpj.exe — **bold** [link](javascript:alert(1))' });
+  push(horizon - 3 * HOUR + 5 * MIN, 'app.notification', 0, { package: 'com.whatsapp', event: 'posted', category: 'msg', channel: 'default', ongoing: false, importance: 'high', title: 'Very long message', text: 'Lorem ipsum dolor sit amet, '.repeat(30) });
 
-  // ---------- Capteurs ----------
+  // ---------- Sensors ----------
   const sensorSession = (t: number, kind: 'camera' | 'mic', pkg: string, durMs: number, sev = 0) => {
     if (kind === 'camera') {
       push(t, 'sensor.camera', sev, { camera_id: '0', in_use: true, package: pkg });
@@ -435,10 +435,10 @@ export function generate(now: number, seed = 20261115): Generated {
   sensorSession(todayStart - 4 * DAY + 2 * HOUR + 41 * MIN, 'mic', 'com.fastcleaner.pro', 140_000, 2);
   sensorSession(todayStart - 2 * DAY + 20 * HOUR, 'camera', 'org.thoughtcrime.securesms', 5 * MIN);
 
-  // ---------- Sécurité ----------
+  // ---------- Security ----------
   const base = {
     security_patch: '2026-09-01', encrypted: true, lock_secure: true, adb_enabled: false, adb_wifi_enabled: false, dev_options: false,
-    unknown_sources: true, private_dns_mode: 'hostname', private_dns_host: 'dns.exemple.fr', always_on_vpn: false, device_owner: true,
+    unknown_sources: true, private_dns_mode: 'hostname', private_dns_host: 'dns.example.org', always_on_vpn: false, device_owner: true,
     verified_boot_state: 'green', user_ca_certs: [] as string[], play_protect: true, usb_data_signaling: false,
   };
   const caFp = hex(makeRng(77), 32);
@@ -482,7 +482,7 @@ export function generate(now: number, seed = 20261115): Generated {
   push(todayStart - 5 * DAY + 11 * HOUR + 4 * MIN, 'security.log', 2, { tag: 'cert_authority_installed', level: 4, log_id: 2210, fields: { success: 1, subject: 'CN=Free Proxy Root CA' } });
   const policy = (t: number, data: Record<string, unknown>, sev = 0) => push(t, 'security.policy', sev, { ok: true, ...data });
   const polStart = t0 + 5 * HOUR;
-  policy(polStart, { action: 'private_dns_set', target: 'dns.exemple.fr', profile: 'balanced' });
+  policy(polStart, { action: 'private_dns_set', target: 'dns.example.org', profile: 'balanced' });
   policy(polStart + 1_000, { action: 'network_logging', target: 'on' });
   policy(polStart + 2_000, { action: 'security_logging', target: 'on' });
   policy(polStart + 3_000, { action: 'restriction_set', target: 'no_install_unknown_sources_globally', profile: 'balanced' });
@@ -492,7 +492,7 @@ export function generate(now: number, seed = 20261115): Generated {
   policy(todayStart - 1 * DAY + 10 * HOUR, { action: 'package_enabled', target: 'com.samsung.android.arzone', profile: 'balanced' });
   policy(todayStart - 1 * DAY + 10 * HOUR + 4 * MIN, { action: 'package_disabled', target: 'com.samsung.android.arzone', profile: 'balanced' });
 
-  // ---------- Agent et appareil ----------
+  // ---------- Agent and device ----------
   push(t0 + 5 * HOUR - 30_000, 'agent.started', 0, { reason: 'boot', agent_version: '1.0.0' });
   const [sd, sd2] = silent as [Window, Window];
   push(sd.start - 3_000, 'agent.stopped', 1, { reason: 'shutdown', agent_version: '1.0.0' }, { force: true });
@@ -501,8 +501,8 @@ export function generate(now: number, seed = 20261115): Generated {
   bootStart = sd.end - 40_000;
   push(sd.end + 5_000, 'device.boot', 0, { reason: 'cold' }, { force: true });
   push(sd.end + 20_000, 'agent.started', 0, { reason: 'boot', agent_version: '1.0.0' }, { force: true });
-  push(sd.end + 25_000, 'device.inventory', 0, { manufacturer: 'samsung', model: 'SM-S936B', android_release: '16', sdk_int: 36, security_patch: '2026-09-01', build_fingerprint: 'samsung/e2sxeea/e2s:16/BP2A.250605.031.A3/S936BXXS3AYI2:user/release-keys', one_ui: '8.0', kernel: '6.6.77-android15-8-abS936BXXS3AYI2', bootloader: 'S936BXXS3AYI2', verified_boot_state: 'green', total_storage_bytes: 256_000_000_000, total_ram_bytes: 12_000_000_000 }, { force: true });
-  push(sd2.end + 8_000, 'agent.tamper', 3, { kind: 'force_stop_detected', detail: "Arrêt forcé de l'agent détecté (aucune pulsation pendant 2 h 10 min)" }, { force: true });
+  push(sd.end + 25_000, 'device.inventory', 0, { manufacturer: 'samsung', model: 'SM-S000B', android_release: '16', sdk_int: 36, security_patch: '2026-09-01', build_fingerprint: 'samsung/mockxeea/mock:16/BP2A.250605.031.A3/S000BXXS3AYI2:user/release-keys', one_ui: '8.0', kernel: '6.6.77-android15-8-abS936BXXS3AYI2', bootloader: 'S936BXXS3AYI2', verified_boot_state: 'green', total_storage_bytes: 256_000_000_000, total_ram_bytes: 12_000_000_000 }, { force: true });
+  push(sd2.end + 8_000, 'agent.tamper', 3, { kind: 'force_stop_detected', detail: 'Agent force stop detected (no heartbeat for 2 h 10 min)' }, { force: true });
   push(sd2.end + 12_000, 'agent.started', 0, { reason: 'restart_after_force_stop', agent_version: '1.0.0' }, { force: true });
   push(sd2.end + 40_000, 'agent.buffer_overflow', 2, { dropped: 41, oldest_ts: new Date(sd2.start - 8 * MIN).toISOString(), newest_ts: new Date(sd2.start - 2 * MIN).toISOString() }, { force: true });
   push(todayStart - 2 * DAY + 12 * HOUR, 'agent.collector_error', 1, { collector: 'ble_tracker', error: 'BLUETOOTH_SCAN permission denied' });
@@ -510,29 +510,29 @@ export function generate(now: number, seed = 20261115): Generated {
   push(todayStart - 1 * DAY + 20 * HOUR, 'agent.config_changed', 0, { key: 'upload.wifi_only_large', old: false, new: true });
   for (let d = 0; d < 7; d++) {
     push(t0 + d * DAY + 4 * HOUR + 12 * MIN, 'device.storage', 0, { free_bytes: 118_000_000_000 - d * 400_000_000, total_bytes: 256_000_000_000 });
-    if (d % 3 === 0) push(t0 + d * DAY + 4 * HOUR + 15 * MIN, 'device.inventory', 0, { manufacturer: 'samsung', model: 'SM-S936B', android_release: '16', sdk_int: 36, security_patch: '2026-09-01', one_ui: '8.0', kernel: '6.6.77-android15-8', verified_boot_state: 'green', total_storage_bytes: 256_000_000_000, total_ram_bytes: 12_000_000_000 });
+    if (d % 3 === 0) push(t0 + d * DAY + 4 * HOUR + 15 * MIN, 'device.inventory', 0, { manufacturer: 'samsung', model: 'SM-S000B', android_release: '16', sdk_int: 36, security_patch: '2026-09-01', one_ui: '8.0', kernel: '6.6.77-android15-8', verified_boot_state: 'green', total_storage_bytes: 256_000_000_000, total_ram_bytes: 12_000_000_000 });
   }
   push(todayStart - 2 * DAY + 15 * HOUR, 'device.thermal', 1, { status: 'moderate' });
   push(todayStart - 6 * DAY + 20 * HOUR, 'device.power_save', 0, { enabled: true });
   push(todayStart - 6 * DAY + 22 * HOUR, 'device.power_save', 0, { enabled: false });
-  push(todayStart - 5 * DAY + 8 * HOUR, 'device.timezone_changed', 0, { tz: 'Europe/Paris' });
+  push(todayStart - 5 * DAY + 8 * HOUR, 'device.timezone_changed', 0, { tz: 'Europe/London' });
   push(todayStart - 3 * DAY + 14 * HOUR, 'device.usb', 0, { connected: true, configured: true, functions: ['adb'] });
   push(todayStart - 3 * DAY + 14 * HOUR + 12 * MIN, 'device.usb', 0, { connected: false, configured: false, functions: [] });
   push(todayStart - 3 * DAY + 8 * HOUR, 'net.hotspot', 0, { enabled: false });
   push(todayStart - 1 * DAY + 13 * HOUR, 'net.nfc', 0, { enabled: true });
-  // Un type inconnu du catalogue : l'interface doit afficher le JSON brut sans planter.
-  push(todayStart - 1 * DAY + 17 * HOUR, 'experimental.future_probe', 1, { weird: { nested: [1, 2, { x: null }] }, note: 'type hors catalogue' });
-  // Un événement dont `data` est partiel.
+  // A type unknown to the catalogue: the interface must display the raw JSON without crashing.
+  push(todayStart - 1 * DAY + 17 * HOUR, 'experimental.future_probe', 1, { weird: { nested: [1, 2, { x: null }] }, note: 'type outside the catalogue' });
+  // An event whose `data` is partial.
   push(todayStart - 1 * DAY + 17 * HOUR + 5 * MIN, 'location.fix', 0, { lat: 48.86 });
   push(todayStart - 1 * DAY + 17 * HOUR + 6 * MIN, 'net.dns', 0, {});
 
-  // Tri chronologique + numéros de séquence.
+  // Chronological sort + sequence numbers.
   events.sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : 1));
   events.forEach((e, i) => (e.seq = 18000 + i));
   return { events, silent, nofix, devices: [DEVICE_MAIN, DEVICE_OLD], appCount: ALL_APPS.length };
 }
 
-/** Génère un événement « en direct » pour le flux SSE. */
+/** Generates a "live" event for the SSE stream. */
 export function liveEvent(rng: Rng, t: number, seq: number, bootId: string, lastPos: LatLon): MockEvent {
   const dev = DEVICE_MAIN.device_id;
   const kind = weighted(rng, [['dns', 9], ['connect', 4], ['loc', 2], ['hb', 0.6], ['sec', 0.5], ['cat', 0.2]] as const);
@@ -561,7 +561,7 @@ export function liveEvent(rng: Rng, t: number, seq: number, bootId: string, last
   } else {
     type = 'net.cell_security';
     sev = 2;
-    data = { kind: 'identifier_disclosure', detail: 'Demande d’identité (IMSI) en clair reçue de la cellule 208-15-4412' };
+    data = { kind: 'identifier_disclosure', detail: 'Identity request (IMSI) in clear received from cell 001-01-4412' };
   }
   return { id: ulid(rng, t), ts: new Date(t).toISOString(), seq, boot_id: bootId, elapsed_ms: 123456789, type, sev, data, received_at: new Date(t + 300).toISOString(), device_id: dev, t };
 }
