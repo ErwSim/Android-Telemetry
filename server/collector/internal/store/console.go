@@ -24,6 +24,14 @@ type DeviceSummary struct {
 	LastLocation    *LastLocation   `json:"last_location,omitempty"`
 	LastPosture     json.RawMessage `json:"last_posture,omitempty"`
 	LastPostureTS   *string         `json:"last_posture_ts,omitempty"`
+	CommandChannel  *CommandChannel `json:"command_channel,omitempty"`
+}
+
+// CommandChannel is the command channel state of a device (contract §8, GET /devices).
+type CommandChannel struct {
+	Connected   bool    `json:"connected"`
+	Mode        string  `json:"mode"` // stream, poll or unknown
+	LastContact *string `json:"last_contact,omitempty"`
 }
 
 // LastLocation is the last known position of a device.

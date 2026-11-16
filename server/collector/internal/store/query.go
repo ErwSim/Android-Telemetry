@@ -28,12 +28,12 @@ type EventQuery struct {
 	CursorPK  int64
 }
 
-const eventCols = `pk, id, device_id, ts_ms, received_ms, seq, boot_id, elapsed_ms, type, sev, data`
+const eventCols = `pk, id, device_id, ts_ms, received_ms, seq, boot_id, elapsed_ms, type, sev, data, COALESCE(source, '')`
 
 func scanEvent(sc interface{ Scan(...any) error }) (StoredEvent, error) {
 	var e StoredEvent
 	var data string
-	err := sc.Scan(&e.PK, &e.ID, &e.DeviceID, &e.TSms, &e.ReceivedMS, &e.Seq, &e.BootID, &e.ElapsedMS, &e.Type, &e.Sev, &data)
+	err := sc.Scan(&e.PK, &e.ID, &e.DeviceID, &e.TSms, &e.ReceivedMS, &e.Seq, &e.BootID, &e.ElapsedMS, &e.Type, &e.Sev, &data, &e.Source)
 	e.Data = json.RawMessage(data)
 	return e, err
 }

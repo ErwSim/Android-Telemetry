@@ -31,7 +31,10 @@ type lineBody struct {
 	Type       string `json:"type"`
 	Domain     string `json:"domain"`
 	Sev        int    `json:"sev"`
-	Data       any    `json:"data"`
+	// Source is "server" for the events produced by the collector itself (commands, contract §8);
+	// absent for the events of a device.
+	Source string `json:"source,omitempty"`
+	Data   any    `json:"data"`
 }
 
 type line struct {
@@ -48,6 +51,7 @@ func Lines(ev store.StoredEvent, deviceName string) [][]byte {
 	base := lineBody{
 		DeviceID: ev.DeviceID, DeviceName: deviceName, ID: ev.ID, TS: model.FormatMS(ev.TSms),
 		ReceivedAt: model.FormatMS(ev.ReceivedMS), Seq: ev.Seq, Type: ev.Type, Domain: model.Domain(ev.Type), Sev: ev.Sev,
+		Source: ev.Source,
 	}
 	var out [][]byte
 

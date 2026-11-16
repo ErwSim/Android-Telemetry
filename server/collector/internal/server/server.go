@@ -24,6 +24,8 @@ type Server struct {
 	log      *slog.Logger
 	exporter *export.Exporter // nil when export is disabled
 	broker   *Broker
+	cmdHub   *cmdHub
+	tracking *trackingService
 	alerts   *AlertsClient
 	static   http.Handler
 	csp      string
@@ -58,7 +60,7 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger, opt Options) (*S
 	// those older than the retention window, which the purge would delete anyway.
 	st.SetRetention(time.Duration(cfg.RetentionDays) * 24 * time.Hour)
 	s := &Server{
-		cfg: cfg, st: st, log: log, exporter: opt.Exporter, broker: NewBroker(64),
+		cfg: cfg, st: st, log: log, exporter: opt.Exporter, broker: NewBroker(64), cmdHub: newCmdHub(cmdMaxStreams),
 		alerts: alerts, csp: buildCSP(cfg.TileOrigin), now: now,
 		ingestAuthFail: ratelimit.New(1.0/30, 10, 100000),
 		ingestDevice:   ratelimit.New(5, 60, 10000),
@@ -66,6 +68,9 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger, opt Options) (*S
 		loginIP:        ratelimit.New(1.0/60, 10, 100000),
 		loginUser:      ratelimit.New(1.0/60, 10, 10000),
 		hashSlots:      make(chan struct{}, 2),
+	}
+	if s.tracking, err = newTrackingService(s); err != nil {
+		return nil, err
 	}
 	if opt.ConsoleFS != nil {
 		s.static = newStaticHandler(opt.ConsoleFS)
@@ -82,10 +87,13 @@ func (s *Server) Broker() *Broker { return s.broker }
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
-	// Ingestion (phone -> server). There is deliberately no endpoint that sends
-	// anything but acknowledgements back to the agent (one-way flow).
+	// Ingestion (phone -> server). The only things sent back to the agent are acknowledgements and the
+	// commands of the closed list of contract §8 (never configuration nor policy).
 	mux.HandleFunc("POST /api/v1/ingest", s.handleIngest)
 	mux.HandleFunc("GET /api/v1/ping", s.handlePing)
+	mux.HandleFunc("GET /api/v1/commands/stream", s.handleCommandStream)
+	mux.HandleFunc("GET /api/v1/commands", s.handleCommandPoll)
+	mux.HandleFunc("POST /api/v1/commands/{id}/result", s.handleCommandResult)
 	mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "point d'API inconnu")
 	})
@@ -104,6 +112,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/console/posture", s.auth(s.handlePosture))
 	mux.HandleFunc("GET /api/console/alerts", s.auth(s.handleAlerts))
 	mux.HandleFunc("GET /api/console/stream", s.auth(s.handleStream))
+	mux.HandleFunc("GET /api/console/commands", s.auth(s.handleListCommands))
+	mux.HandleFunc("POST /api/console/commands", s.auth(s.handleCreateCommand))
+	mux.HandleFunc("POST /api/console/commands/{id}/cancel", s.auth(s.handleCancelCommand))
+	mux.HandleFunc("GET /api/console/tracking/summary", s.auth(s.handleTrackingSummary))
+	mux.HandleFunc("GET /api/console/tracking/domains", s.auth(s.handleTrackingDomains))
+	mux.HandleFunc("GET /api/console/tracking/apps", s.auth(s.handleTrackingApps))
+	mux.HandleFunc("PUT /api/console/tracking/override", s.auth(s.handleTrackingOverride))
+	mux.HandleFunc("GET /api/console/tracking/level", s.auth(s.handleTrackingLevelGet))
+	mux.HandleFunc("PUT /api/console/tracking/level", s.auth(s.handleTrackingLevelPut))
 	mux.HandleFunc("/api/console/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "point d'API inconnu")
 	})

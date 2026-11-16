@@ -328,6 +328,64 @@ ALTER TABLE devices ADD COLUMN next_cert_pem TEXT;
 ALTER TABLE devices ADD COLUMN next_issued_ms INTEGER;
 CREATE UNIQUE INDEX devices_next_token ON devices(next_token_hash) WHERE next_token_hash IS NOT NULL;
 `,
+	// 5: remote commands (contract §8), events produced by the collector itself (source = 'server'),
+	// command channel state of each device, and the aggregates of the tracking view (§9): AdGuard Home
+	// query log per hour and domain, and per-application byte counters (rx and tx kept apart).
+	`
+CREATE TABLE commands (
+	id           TEXT PRIMARY KEY,
+	device_id    TEXT NOT NULL REFERENCES devices(device_id),
+	type         TEXT NOT NULL,
+	params       TEXT NOT NULL,
+	payload      TEXT NOT NULL,
+	sig          TEXT,
+	status       TEXT NOT NULL,
+	created_ms   INTEGER NOT NULL,
+	created_by   TEXT NOT NULL,
+	issued_ms    INTEGER NOT NULL,
+	expires_ms   INTEGER NOT NULL,
+	delivered_ms INTEGER,
+	attempts     INTEGER NOT NULL DEFAULT 0,
+	result_ms    INTEGER,
+	agent_at_ms  INTEGER,
+	detail       TEXT
+);
+CREATE INDEX commands_dev_created ON commands(device_id, created_ms);
+CREATE INDEX commands_open ON commands(device_id, created_ms) WHERE status IN ('pending', 'delivered');
+CREATE INDEX commands_expiry ON commands(expires_ms) WHERE status IN ('pending', 'delivered');
+
+ALTER TABLE events ADD COLUMN source TEXT;
+ALTER TABLE devices ADD COLUMN cmd_mode TEXT;
+ALTER TABLE devices ADD COLUMN cmd_contact_ms INTEGER;
+
+CREATE TABLE tracking_counts (
+	hour_ms INTEGER NOT NULL,
+	client  TEXT NOT NULL,
+	domain  TEXT NOT NULL,
+	queries INTEGER NOT NULL,
+	blocked INTEGER NOT NULL,
+	reason  TEXT NOT NULL,
+	PRIMARY KEY (hour_ms, client, domain)
+) WITHOUT ROWID;
+
+CREATE TABLE usage_counts (
+	hour_ms   INTEGER NOT NULL,
+	device_id TEXT NOT NULL,
+	package   TEXT NOT NULL,
+	rx_bytes  INTEGER NOT NULL,
+	tx_bytes  INTEGER NOT NULL,
+	PRIMARY KEY (hour_ms, device_id, package)
+) WITHOUT ROWID;
+
+INSERT INTO usage_counts
+SELECT h, device_id, pkg, min(SUM(rx), 9007199254740991), min(SUM(tx), 9007199254740991) FROM (
+	SELECT e.ts_ms - e.ts_ms % 3600000 AS h, e.device_id, substr(json_extract(a.value, '$.package'), 1, 255) AS pkg,
+		min(max(COALESCE(CASE WHEN json_type(a.value, '$.rx_bytes') = 'integer' THEN json_extract(a.value, '$.rx_bytes') END, 0), 0), 9007199254740991) AS rx,
+		min(max(COALESCE(CASE WHEN json_type(a.value, '$.tx_bytes') = 'integer' THEN json_extract(a.value, '$.tx_bytes') END, 0), 0), 9007199254740991) AS tx
+	FROM events e, json_each(e.data, '$.apps') a
+	WHERE e.type = 'net.usage' AND a.type = 'object' AND json_type(a.value, '$.package') = 'text' AND json_extract(a.value, '$.package') <> '')
+GROUP BY h, device_id, pkg;
+`,
 }
 
 // SchemaVersion is the schema version this binary expects.

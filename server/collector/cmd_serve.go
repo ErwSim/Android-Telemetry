@@ -90,6 +90,8 @@ func cmdServe(args []string) error {
 		return err
 	}
 	go srv.RunRetention(bg, time.Hour)
+	go srv.RunCommands(bg)
+	srv.StartTracking(bg)
 
 	// Requests keep their own context until Shutdown has drained them.
 	reqCtx, cancelReq := context.WithCancel(ctx)
@@ -114,7 +116,7 @@ func cmdServe(args []string) error {
 			return err
 		}
 	}
-	srv.Broker().Close()
+	srv.CloseStreams()
 	shCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	if err := httpSrv.Shutdown(shCtx); err != nil {

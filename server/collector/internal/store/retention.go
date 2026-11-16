@@ -52,6 +52,10 @@ func (s *Store) Purge(ctx context.Context, cutoff, now time.Time, idle time.Dura
 	for _, q := range []string{
 		`DELETE FROM event_counts WHERE hour_ms < ?`,
 		`DELETE FROM top_counts WHERE hour_ms < ?`,
+		`DELETE FROM usage_counts WHERE hour_ms < ?`,
+		`DELETE FROM tracking_counts WHERE hour_ms < ?`,
+		// A command is kept at least until it expires, so that its id cannot be reused while it is valid.
+		`DELETE FROM commands WHERE expires_ms < ?`,
 	} {
 		if _, err := s.w.ExecContext(ctx, q, hourCut); err != nil {
 			return res, err

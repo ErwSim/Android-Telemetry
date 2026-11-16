@@ -988,10 +988,15 @@ func TestStaticAndHeaders(t *testing.T) {
 	if rec := e.do(http.MethodGet, "/healthz", nil); rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "ok" {
 		t.Fatalf("healthz: %d", rec.Code)
 	}
-	// There is no endpoint that lets the server push anything to the agent.
-	for _, p := range []string{"/api/v1/config", "/api/v1/commands", "/api/v1/policy"} {
+	// Nothing but the closed list of commands (contract §8) goes to the agent: no configuration nor policy.
+	for _, p := range []string{"/api/v1/config", "/api/v1/policy", "/api/v1/settings"} {
 		if rec := e.do(http.MethodGet, p, nil); rec.Code != http.StatusNotFound {
 			t.Fatalf("%s: %d", p, rec.Code)
+		}
+	}
+	for _, p := range []string{"/api/v1/commands", "/api/v1/commands/stream"} {
+		if rec := e.do(http.MethodGet, p, nil); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%s without credentials: %d", p, rec.Code)
 		}
 	}
 }

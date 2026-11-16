@@ -4,10 +4,13 @@ package config
 import (
 	"fmt"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Config is the collector configuration.
@@ -33,6 +36,17 @@ type Config struct {
 	WazuhIndexerPassword string
 	WazuhIndexerCAFile   string
 	WazuhIndexerInsecure bool
+
+	// Remote commands (contract §8).
+	CmdKeepAlive time.Duration // VIGIE_CMD_KEEPALIVE_S
+
+	// Tracking view (contract §9). AdGuardURL empty: the view is built from net.dns alone.
+	AdGuardURL        string
+	AdGuardUser       string
+	AdGuardPassword   string
+	AdGuardLevelsFile string
+	AdGuardPoll       time.Duration       // VIGIE_ADGUARD_POLL_S
+	AdGuardClients    map[string][]string // VIGIE_ADGUARD_CLIENTS: device_id -> AdGuard clients (ClientID or IP)
 }
 
 // DBPath returns the SQLite database path.
@@ -111,6 +125,25 @@ func FromLookup(lookup func(string) (string, bool)) (*Config, error) {
 	} else {
 		c.TileOrigin = o
 	}
+	c.CmdKeepAlive = time.Duration(intVar("VIGIE_CMD_KEEPALIVE_S", 120, 5)) * time.Second
+	if c.CmdKeepAlive > time.Hour {
+		errs = append(errs, "VIGIE_CMD_KEEPALIVE_S : 3600 au plus")
+	}
+	c.AdGuardURL = strings.TrimRight(get("VIGIE_ADGUARD_URL", ""), "/")
+	c.AdGuardUser = get("VIGIE_ADGUARD_USER", "")
+	c.AdGuardPassword = get("VIGIE_ADGUARD_PASSWORD", "")
+	c.AdGuardLevelsFile = get("VIGIE_ADGUARD_LEVELS_FILE", "")
+	c.AdGuardPoll = time.Duration(intVar("VIGIE_ADGUARD_POLL_S", 60, 10)) * time.Second
+	if c.AdGuardURL != "" {
+		if err := CheckAdGuardURL(c.AdGuardURL); err != nil {
+			errs = append(errs, "VIGIE_ADGUARD_URL : "+err.Error())
+		}
+	}
+	if clients, err := parseClients(get("VIGIE_ADGUARD_CLIENTS", "")); err != nil {
+		errs = append(errs, "VIGIE_ADGUARD_CLIENTS : "+err.Error())
+	} else {
+		c.AdGuardClients = clients
+	}
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("configuration invalide : %s", strings.Join(errs, " ; "))
 	}
@@ -179,4 +212,33 @@ func validOrigin(s string) bool {
 		}
 	}
 	return true
+}
+
+// CheckAdGuardURL accepts an absolute http(s) URL without credentials, query or fragment: the address of
+// the AdGuard Home administration API comes from the configuration only, never from a request.
+func CheckAdGuardURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Hostname() == "" {
+		return fmt.Errorf("%q : URL http(s)://hôte[:port] attendue", raw)
+	}
+	if u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
+		return fmt.Errorf("URL sans identifiants, requête ni fragment attendue (identifiants : VIGIE_ADGUARD_USER et VIGIE_ADGUARD_PASSWORD)")
+	}
+	return nil
+}
+
+var clientRe = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
+var deviceRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// parseClients reads "dev_a=client1,dev_a=client2,dev_b=client3".
+func parseClients(v string) (map[string][]string, error) {
+	out := map[string][]string{}
+	for _, part := range strings.FieldsFunc(v, splitList) {
+		dev, cl, ok := strings.Cut(part, "=")
+		if !ok || !deviceRe.MatchString(dev) || !clientRe.MatchString(cl) {
+			return nil, fmt.Errorf("%q : paires device_id=client (ClientID ou IP AdGuard) attendues", part)
+		}
+		out[dev] = append(out[dev], cl)
+	}
+	return out, nil
 }

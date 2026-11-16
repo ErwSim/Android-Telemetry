@@ -28,6 +28,9 @@ type StoredEvent struct {
 	Type       string
 	Sev        int
 	Data       json.RawMessage
+	// Source is "server" for the events produced by the collector itself (commands, contract §8), "" for
+	// the events received from a device.
+	Source string
 }
 
 // eventJSON is the console representation of an event (contract §6).
@@ -42,6 +45,7 @@ type eventJSON struct {
 	Type       string          `json:"type"`
 	Sev        int             `json:"sev"`
 	Data       json.RawMessage `json:"data"`
+	Source     string          `json:"source,omitempty"`
 }
 
 // MarshalJSON renders the event for the console API.
@@ -52,7 +56,7 @@ func (e StoredEvent) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal(eventJSON{
 		ID: e.ID, DeviceID: e.DeviceID, TS: model.FormatMS(e.TSms), ReceivedAt: model.FormatMS(e.ReceivedMS),
-		Seq: e.Seq, BootID: e.BootID, ElapsedMS: e.ElapsedMS, Type: e.Type, Sev: e.Sev, Data: data,
+		Seq: e.Seq, BootID: e.BootID, ElapsedMS: e.ElapsedMS, Type: e.Type, Sev: e.Sev, Data: data, Source: e.Source,
 	})
 }
 
@@ -148,6 +152,7 @@ func (s *Store) Ingest(ctx context.Context, deviceID, agentVersion string, evs [
 	types := map[string]bool{}
 	latest := map[string]StoredEvent{}
 	var locs []locationRow
+	usage := map[usageKey]*usageVal{}
 
 	add := func(k countKey, n, bytes int64) {
 		v := counts[k]
@@ -191,6 +196,9 @@ func (s *Store) Ingest(ctx context.Context, deviceID, agentVersion string, evs [
 		for _, tk := range topKeys(ev) {
 			add(countKey{hour: hour, kind: tk.kind, pkg: tk.pkg, key: tk.key, device: deviceID}, tk.weight, tk.bytes)
 		}
+		if ev.Type == "net.usage" {
+			addUsage(usage, hour, ev.Decoded)
+		}
 		if kind := latestKind(ev.Type); kind != "" {
 			if cur, ok := latest[kind]; !ok || tsMS >= cur.TSms {
 				latest[kind] = se
@@ -205,6 +213,9 @@ func (s *Store) Ingest(ctx context.Context, deviceID, agentVersion string, evs [
 
 	if len(stored) > 0 {
 		if err := writeDerived(ctx, tx, deviceID, counts, types, latest, locs); err != nil {
+			return res, err
+		}
+		if err := writeUsage(ctx, tx, deviceID, usage); err != nil {
 			return res, err
 		}
 	}
@@ -253,6 +264,50 @@ func writeDerived(ctx context.Context, tx *sql.Tx, deviceID string, counts map[c
 	for _, l := range locs {
 		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO locations(event_pk, device_id, ts_ms, lat, lon, acc_m, speed_mps, provider, mock)
 			VALUES(?,?,?,?,?,?,?,?,?)`, l.pk, l.device, l.ts, l.lat, l.lon, l.acc, l.speed, l.provider, l.mock); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type usageKey struct {
+	hour int64
+	pkg  string
+}
+
+type usageVal struct{ rx, tx int64 }
+
+// addUsage accumulates the per-application byte counters of a net.usage event (tracking view, contract
+// §9), clamped like the top_counts bytes.
+func addUsage(acc map[usageKey]*usageVal, hour int64, d map[string]any) {
+	apps, _ := d["apps"].([]any)
+	for _, a := range apps {
+		m, ok := a.(map[string]any)
+		if !ok {
+			continue
+		}
+		p, _ := model.Str(m, "package")
+		if p == "" {
+			continue
+		}
+		rx, _ := model.Int(m, "rx_bytes")
+		tx, _ := model.Int(m, "tx_bytes")
+		k := usageKey{hour: hour, pkg: clip(p, maxKeyLen)}
+		v := acc[k]
+		if v == nil {
+			v = &usageVal{}
+			acc[k] = v
+		}
+		v.rx = min(v.rx+clampBytes(rx), maxCountedBytes)
+		v.tx = min(v.tx+clampBytes(tx), maxCountedBytes)
+	}
+}
+
+func writeUsage(ctx context.Context, tx *sql.Tx, deviceID string, acc map[usageKey]*usageVal) error {
+	for k, v := range acc {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO usage_counts(hour_ms, device_id, package, rx_bytes, tx_bytes) VALUES(?,?,?,?,?)
+			ON CONFLICT(hour_ms, device_id, package) DO UPDATE SET rx_bytes = min(rx_bytes + excluded.rx_bytes, 9007199254740991),
+			tx_bytes = min(tx_bytes + excluded.tx_bytes, 9007199254740991)`, k.hour, deviceID, k.pkg, v.rx, v.tx); err != nil {
 			return err
 		}
 	}

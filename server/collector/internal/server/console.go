@@ -135,6 +135,22 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	channels, err := s.st.CommandChannels(ctx)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	for i := range devs {
+		st := channels[devs[i].DeviceID]
+		cc := &store.CommandChannel{Connected: s.cmdHub.connected(devs[i].DeviceID), Mode: st.Mode, LastContact: fmtPtr(st.ContactMS)}
+		switch {
+		case cc.Connected:
+			cc.Mode = store.ChannelStream
+		case cc.Mode != store.ChannelStream && cc.Mode != store.ChannelPoll:
+			cc.Mode = "unknown"
+		}
+		devs[i].CommandChannel = cc
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"devices": devs})
 }
 
