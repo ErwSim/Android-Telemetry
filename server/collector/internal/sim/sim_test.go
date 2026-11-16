@@ -2,6 +2,7 @@ package sim
 
 import (
 	"encoding/json"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -301,5 +302,134 @@ func TestPrivateDNSHostFromOptions(t *testing.T) {
 	}
 	if n == 0 {
 		t.Fatal("no posture generated")
+	}
+}
+
+// Aggregated net.dns / net.connect / security.log carry count >= 2 and last_event_ts (not before ts);
+// security.log uses the three levels and pre_reboot appears on recovered logs, which predate the reboot.
+func TestAggregatedAndLevels(t *testing.T) {
+	start := time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC) // reboot at 04:10
+	evs := generate(t, start, 24*time.Hour)
+	agg := map[string]int{}
+	levels := map[string]int{}
+	var preReboot int
+	var shutdown time.Time
+	for _, e := range evs {
+		if e.Type == "device.shutdown" {
+			shutdown, _ = time.Parse(time.RFC3339Nano, e.TS)
+		}
+	}
+	for _, e := range evs {
+		ts, _ := time.Parse(time.RFC3339Nano, e.TS)
+		if c, ok := e.Data["count"]; ok {
+			n, isInt := c.(int)
+			if !isInt || n < 2 || n > 1000000 {
+				t.Fatalf("%s: bad count %v", e.Type, c)
+			}
+			if e.Type != "net.dns" && e.Type != "net.connect" && e.Type != "security.log" {
+				t.Fatalf("count on %s", e.Type)
+			}
+			last, err := time.Parse(time.RFC3339Nano, e.Data["last_event_ts"].(string))
+			if err != nil || last.Before(ts) {
+				t.Fatalf("%s: last_event_ts %v before ts %s", e.Type, e.Data["last_event_ts"], e.TS)
+			}
+			agg[e.Type]++
+		}
+		if e.Type != "security.log" {
+			continue
+		}
+		levels[e.Data["level"].(string)]++
+		if e.Data["pre_reboot"] == true {
+			preReboot++
+			if !ts.Before(shutdown) {
+				t.Fatalf("pre_reboot log at %s not before the shutdown %s", ts, shutdown)
+			}
+		}
+	}
+	for _, typ := range []string{"net.dns", "net.connect"} {
+		if agg[typ] < 10 {
+			t.Errorf("only %d aggregated %s", agg[typ], typ)
+		}
+	}
+	for _, l := range []string{"info", "warning", "error"} {
+		if levels[l] == 0 {
+			t.Errorf("no security.log at level %s: %v", l, levels)
+		}
+	}
+	if preReboot == 0 {
+		t.Error("no pre_reboot security.log")
+	}
+}
+
+// With LateBatches, net.dns / net.connect / security.log are delivered every 1h30 to 2h with their
+// original ts; other types stay live; the same seed gives the same stream; Drain empties the rest.
+func TestLateBatches(t *testing.T) {
+	start := time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	run := func(step time.Duration) (live, late [][]Event, drained []Event) {
+		g := New(Options{Start: start, Seed: 42, Rate: 1, SeqBase: 1000, LateBatches: true})
+		g.PlanScenario(start, end)
+		for ts := start; ts.Before(end); ts = ts.Add(step) {
+			out := g.Advance(ts.Add(step))
+			var l, o []Event
+			for _, e := range out {
+				if isLateType(e.Type) {
+					l = append(l, e)
+				} else {
+					o = append(o, e)
+				}
+			}
+			live, late = append(live, o), append(late, l)
+		}
+		return live, late, g.Drain()
+	}
+	live, late, drained := run(time.Hour)
+	_, late2, drained2 := run(time.Hour)
+	if !reflect.DeepEqual(late, late2) || !reflect.DeepEqual(drained, drained2) {
+		t.Fatal("late delivery is not reproducible for a fixed seed")
+	}
+	deliveries, total := 0, 0
+	for i, l := range late {
+		if len(l) == 0 {
+			continue
+		}
+		deliveries++
+		total += len(l)
+		now := start.Add(time.Duration(i+1) * time.Hour)
+		oldest, _ := time.Parse(time.RFC3339Nano, l[0].TS)
+		if now.Sub(oldest) < 30*time.Minute {
+			t.Errorf("batch at %s starts too recently (%s)", now, l[0].TS)
+		}
+		for j := 1; j < len(l); j++ {
+			if l[j].TS < l[j-1].TS {
+				t.Fatalf("late batch not ordered by ts")
+			}
+		}
+	}
+	// 24 h / (1h30..2h) = 12 to 16 deliveries, at most one per hourly Advance here.
+	if deliveries < 8 || deliveries > 16 {
+		t.Errorf("%d late deliveries in 24 h", deliveries)
+	}
+	if total+len(drained) < 8000 {
+		t.Errorf("late events: %d + %d drained", total, len(drained))
+	}
+	// Live types are never held: each hourly Advance returns only ts of its own hour.
+	for i, o := range live {
+		lo, hi := start.Add(time.Duration(i)*time.Hour), start.Add(time.Duration(i+1)*time.Hour)
+		for _, e := range o {
+			ts, _ := time.Parse(time.RFC3339Nano, e.TS)
+			if ts.Before(lo) || !ts.Before(hi) {
+				t.Fatalf("live %s at %s returned for [%s,%s)", e.Type, e.TS, lo, hi)
+			}
+		}
+	}
+	// Same events as without LateBatches (nothing lost or invented), only delivered differently.
+	plain := generate(t, start, 24*time.Hour)
+	n := 0
+	for _, o := range live {
+		n += len(o)
+	}
+	if got, want := n+total+len(drained), len(plain); got != want {
+		t.Errorf("events with late batches %d, without %d", got, want)
 	}
 }

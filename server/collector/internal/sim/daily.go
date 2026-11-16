@@ -403,6 +403,16 @@ func (g *Generator) reboot(t time.Time) {
 	g.emit(t.Add(1500*time.Millisecond), "security.log", 0, map[string]any{"tag": "os_shutdown", "level": "info", "log_id": g.rng.Intn(1 << 20), "fields": map[string]any{}})
 	up := t.Add(85 * time.Second)
 	g.boots = append(g.boots, boot{at: up.Add(-20 * time.Second), id: g.newBootID()})
+	// Logs recovered from before the reboot (the agent reads the log buffer persisted by the system):
+	// their ts predates the shutdown.
+	for i, tag := range []string{"wifi_disconnection", "keyguard_secured"} {
+		fields := map[string]any{}
+		if tag == "wifi_disconnection" {
+			fields = map[string]any{"bssid": wifiHome.bssid, "reason": "leaving"}
+		}
+		g.emitExtra(t.Add(-time.Duration(30*(i+1))*time.Second), "security.log", 0, map[string]any{"tag": tag, "level": "info",
+			"log_id": g.xrng.Intn(1 << 20), "fields": fields, "pre_reboot": true})
+	}
 	g.emit(up, "device.boot", 0, map[string]any{"reason": "reboot"})
 	g.emit(up.Add(200*time.Millisecond), "security.log", 0, map[string]any{"tag": "os_startup", "level": "info", "log_id": g.rng.Intn(1 << 20),
 		"fields": map[string]any{"verified_boot_state": "green", "dm_verity_mode": "enforcing"}})

@@ -273,7 +273,7 @@ func TestExporterResume(t *testing.T) {
 		return out
 	}
 	// Events before the first start are not replayed.
-	if _, _, err := st.Ingest(ctx, "dev_1", "", mk(3), time.Now()); err != nil {
+	if _, err := st.Ingest(ctx, "dev_1", "", mk(3), time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "out", "events.ndjson")
@@ -303,12 +303,12 @@ func TestExporterResume(t *testing.T) {
 	if _, err := os.Stat(path); err == nil && len(readLines(t, path)) != 0 {
 		t.Fatal("history replayed on first start")
 	}
-	if _, _, err := st.Ingest(ctx, "dev_1", "", mk(5), time.Now()); err != nil {
+	if _, err := st.Ingest(ctx, "dev_1", "", mk(5), time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	run()
 	// Stored while the exporter is down, exported after restart.
-	if _, _, err := st.Ingest(ctx, "dev_1", "", mk(4), time.Now()); err != nil {
+	if _, err := st.Ingest(ctx, "dev_1", "", mk(4), time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	run()

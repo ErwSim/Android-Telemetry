@@ -207,15 +207,18 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 30*time.Second)
 	defer cancel()
-	stored, dups, err := s.st.Ingest(ctx, dev.DeviceID, cleanVersion(req.AgentVersion), valid, now)
+	res, err := s.st.Ingest(ctx, dev.DeviceID, cleanVersion(req.AgentVersion), valid, now)
 	if err != nil {
 		s.log.Error("ingestion : écriture en base impossible", "device_id", dev.DeviceID, "err", err)
 		w.Header().Set("Retry-After", "30")
 		writeError(w, http.StatusServiceUnavailable, "storage_error", "stockage momentanément indisponible")
 		return
 	}
-	resp.Accepted = len(stored)
-	resp.Duplicates = dups
+	stored := res.Stored
+	// An event older than the retention window is acknowledged ("accepted": the agent must not resend it)
+	// but not stored: accepted + duplicates + rejected still totals the batch size.
+	resp.Accepted = len(stored) + res.Expired
+	resp.Duplicates = res.Duplicates
 	resp.ServerTime = model.FormatTS(s.now())
 	writeJSON(w, http.StatusOK, resp)
 
@@ -225,7 +228,7 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		}
 		s.broker.Publish(stored)
 	}
-	s.log.Debug("lot reçu", "device_id", dev.DeviceID, "accepted", resp.Accepted, "duplicates", dups, "rejected", len(resp.Rejected))
+	s.log.Debug("lot reçu", "device_id", dev.DeviceID, "accepted", resp.Accepted, "expired", res.Expired, "duplicates", res.Duplicates, "rejected", len(resp.Rejected))
 	if len(resp.Rejected) > 0 {
 		s.log.Warn("événements rejetés", "device_id", dev.DeviceID, "count", len(resp.Rejected), "first_reason", resp.Rejected[0].Reason)
 	}

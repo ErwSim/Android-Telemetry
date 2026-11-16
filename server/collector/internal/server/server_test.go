@@ -1000,6 +1000,9 @@ func TestRetentionPurge(t *testing.T) {
 	e := newEnv(t, nil)
 	now := time.Now().UTC()
 	old := now.Add(-100 * 24 * time.Hour)
+	// Events older than the retention window are acknowledged but not stored (see TestLateEvents):
+	// disable that check here to exercise the purge itself.
+	e.st.SetRetention(0)
 	r := e.ingest([]map[string]any{
 		e.event(old, "location.fix", 0, map[string]any{"lat": 1.0, "lon": 1.0}),
 		e.event(old, "net.dns", 0, map[string]any{"hostname": "x"}),
@@ -1036,5 +1039,73 @@ func TestSessionIdleExpiry(t *testing.T) {
 	e.srv.now = func() time.Time { return start.Add(11*time.Hour + 12*time.Hour + time.Minute) }
 	if rec := e.get(c, "/api/console/me", nil); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("12 h idle: %d", rec.Code)
+	}
+}
+
+// Events relevé after the fact arrive with an old ts: they are accepted down to the retention window,
+// counted by data.count in /stats/top, and an event older than the retention is acknowledged without
+// being stored (accepted + duplicates + rejected still totals the batch).
+func TestLateEvents(t *testing.T) {
+	e := newEnv(t, map[string]string{"VIGIE_RETENTION_DAYS": "30"})
+	e.addUser("admin")
+	c := e.session()
+	now := time.Now().UTC()
+	late := now.Add(-5 * time.Hour).Truncate(time.Minute)
+	days := now.Add(-20 * 24 * time.Hour)
+	tooOld := now.Add(-31 * 24 * time.Hour)
+	r := e.ingest([]map[string]any{
+		e.event(late, "net.dns", 0, map[string]any{"package": "p", "hostname": "a.example", "count": 40, "last_event_ts": model.FormatTS(late.Add(time.Minute))}),
+		e.event(late.Add(time.Second), "net.dns", 0, map[string]any{"package": "p", "hostname": "b.example"}),
+		e.event(days, "net.dns", 0, map[string]any{"package": "p", "hostname": "b.example", "count": 2}),
+		e.event(late, "security.log", 1, map[string]any{"tag": "x", "level": "warning", "pre_reboot": true, "count": 3}),
+		e.event(tooOld, "net.dns", 0, map[string]any{"package": "p", "hostname": "gone.example", "count": 500}),
+		e.event(now.Add(48*time.Hour), "net.dns", 0, map[string]any{}), // rejected: ts too far in the future
+	})
+	if r.Accepted != 5 || r.Duplicates != 0 || len(r.Rejected) != 1 {
+		t.Fatalf("%+v", r)
+	}
+	type top struct {
+		Items []struct {
+			Key   string `json:"key"`
+			Count int64  `json:"count"`
+		} `json:"items"`
+	}
+	from, to := now.Add(-25*24*time.Hour), now
+	q := url.Values{"kind": {"dns_hostname"}, "from": {model.FormatTS(from)}, "to": {model.FormatTS(to)}}
+	tp := decodeJSON[top](t, e.get(c, "/api/console/stats/top", q))
+	if len(tp.Items) != 2 || tp.Items[0].Key != "a.example" || tp.Items[0].Count != 40 || tp.Items[1].Key != "b.example" || tp.Items[1].Count != 3 {
+		t.Fatalf("top: %+v", tp.Items)
+	}
+	// The recent window only holds the late events of the last hours.
+	q.Set("from", model.FormatTS(now.Add(-6*time.Hour)))
+	tp = decodeJSON[top](t, e.get(c, "/api/console/stats/top", q))
+	if len(tp.Items) != 2 || tp.Items[1].Count != 1 {
+		t.Fatalf("recent top: %+v", tp.Items)
+	}
+	// The timeline counts events, not occurrences.
+	tl := decodeJSON[struct {
+		Series []struct {
+			Key    string  `json:"key"`
+			Counts []int64 `json:"counts"`
+		} `json:"series"`
+	}](t, e.get(c, "/api/console/stats/timeline", url.Values{"from": {model.FormatTS(now.Add(-6 * time.Hour))}, "to": {model.FormatTS(now)}, "bucket": {"hour"}, "by": {"type"}}))
+	total := map[string]int64{}
+	for _, s := range tl.Series {
+		for _, n := range s.Counts {
+			total[s.Key] += n
+		}
+	}
+	if total["net.dns"] != 2 || total["security.log"] != 1 {
+		t.Fatalf("timeline: %+v", total)
+	}
+	// Same event resent: duplicate. The expired one is acknowledged again, never stored.
+	r = e.ingest([]map[string]any{e.event(tooOld, "net.dns", 0, map[string]any{"hostname": "gone.example"})})
+	if r.Accepted != 1 {
+		t.Fatalf("%+v", r)
+	}
+	if n := e.get(c, "/api/console/events", url.Values{"from": {model.FormatTS(tooOld.Add(-time.Hour))}, "to": {model.FormatTS(now)}, "type": {"net.dns"}, "limit": {"100"}}); n.Code != http.StatusOK {
+		t.Fatalf("events: %d %s", n.Code, n.Body)
+	} else if strings.Contains(n.Body.String(), "gone.example") {
+		t.Fatal("expired event stored")
 	}
 }

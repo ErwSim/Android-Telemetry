@@ -64,7 +64,7 @@ func cmdSim(args []string) error {
 	stats := &simStats{types: map[string]int{}}
 	start := now.Add(-*backfill)
 	g := sim.New(sim.Options{Start: start, Seed: s, Rate: *rate, AgentVersion: *version, SeqBase: now.UnixMilli(),
-		PrivateDNSHost: f.PrivateDNSHost})
+		PrivateDNSHost: f.PrivateDNSHost, LateBatches: true})
 
 	if *backfill > 0 {
 		g.PlanScenario(start, now)
@@ -81,6 +81,12 @@ func cmdSim(args []string) error {
 			fmt.Fprintf(os.Stderr, "\r  %s : %d événements envoyés", t.Format("2006-01-02 15:04"), stats.sent)
 		}
 		fmt.Fprintln(os.Stderr)
+		if !*follow {
+			// Finite run: the last late batch the real agent would send later goes out now.
+			if err := sendAll(ctx, client, g.Drain(), *batch, stats); err != nil {
+				return err
+			}
+		}
 		stats.print()
 		if !*follow {
 			return nil

@@ -70,6 +70,30 @@ const (
 
 const maxKeyLen = 255
 
+// MaxEventCount bounds data.count, the number of identical occurrences an agent may group in one event.
+const MaxEventCount = 1_000_000
+
+// eventWeight returns the number of occurrences represented by an event of an aggregated type:
+// data.count when it is an integer in [1, MaxEventCount], 1 otherwise (absent, fractional,
+// out of range, or not a number). Migration 3 applies the same rule in SQL.
+func eventWeight(d map[string]any) int64 {
+	switch v := d["count"].(type) {
+	case json.Number:
+		if n, err := strconv.ParseInt(v.String(), 10, 64); err == nil && n >= 1 && n <= MaxEventCount {
+			return n
+		}
+	case int64:
+		if v >= 1 && v <= MaxEventCount {
+			return v
+		}
+	case int:
+		if v >= 1 && v <= MaxEventCount {
+			return int64(v)
+		}
+	}
+	return 1
+}
+
 type countKey struct {
 	hour   int64
 	typ    string
@@ -82,68 +106,90 @@ type countKey struct {
 
 type countVal struct{ count, bytes int64 }
 
+// IngestResult is the outcome of Store.Ingest.
+type IngestResult struct {
+	Stored     []StoredEvent // inserted events, in input order
+	Duplicates int           // events whose id was already stored
+	// Expired counts events acknowledged but not stored because their ts is older than the
+	// retention window (the purge would delete them within the hour anyway).
+	Expired int
+}
+
 // Ingest stores a batch of validated events for a device in one transaction.
-// Each event is either inserted or recognized as a duplicate (same id).
-// It returns the inserted events (in input order) and the number of duplicates.
-func (s *Store) Ingest(ctx context.Context, deviceID, agentVersion string, evs []*model.Event, now time.Time) ([]StoredEvent, int, error) {
+// Each event is either inserted, recognized as a duplicate (same id) or dropped as expired.
+//
+// ts is the origin time of the event: events relevé after the fact (net.dns, net.connect,
+// security.log, app.foreground) arrive hours or days late, so every aggregate is keyed on ts
+// and never on the reception time. An event older than the retention window (see SetRetention)
+// is acknowledged without being stored.
+func (s *Store) Ingest(ctx context.Context, deviceID, agentVersion string, evs []*model.Event, now time.Time) (IngestResult, error) {
+	var res IngestResult
 	tx, err := s.w.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, 0, err
+		return res, err
 	}
 	defer tx.Rollback()
 
 	insEvent, err := tx.PrepareContext(ctx, `INSERT INTO events(id, device_id, ts_ms, received_ms, seq, boot_id, elapsed_ms, type, sev, data)
 		VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`)
 	if err != nil {
-		return nil, 0, err
+		return res, err
 	}
 	defer insEvent.Close()
 
 	nowMS := now.UnixMilli()
 	var stored []StoredEvent
-	dups := 0
+	dups, expired := 0, 0
+	cutoffMS := int64(math.MinInt64)
+	if s.retention > 0 {
+		cutoffMS = now.Add(-s.retention).UnixMilli()
+	}
 	counts := map[countKey]*countVal{}
 	types := map[string]bool{}
 	latest := map[string]StoredEvent{}
 	var locs []locationRow
 
-	add := func(k countKey, bytes int64) {
+	add := func(k countKey, n, bytes int64) {
 		v := counts[k]
 		if v == nil {
 			v = &countVal{}
 			counts[k] = v
 		}
-		v.count++
+		v.count += n
 		v.bytes += bytes
 	}
 
 	for _, ev := range evs {
 		tsMS := ev.TS.UnixMilli()
-		res, err := insEvent.ExecContext(ctx, ev.ID, deviceID, tsMS, nowMS, ev.Seq, ev.BootID, ev.ElapsedMS, ev.Type, ev.Sev, string(ev.Data))
-		if err != nil {
-			return nil, 0, err
+		if tsMS < cutoffMS {
+			expired++
+			continue
 		}
-		n, err := res.RowsAffected()
+		r, err := insEvent.ExecContext(ctx, ev.ID, deviceID, tsMS, nowMS, ev.Seq, ev.BootID, ev.ElapsedMS, ev.Type, ev.Sev, string(ev.Data))
 		if err != nil {
-			return nil, 0, err
+			return res, err
+		}
+		n, err := r.RowsAffected()
+		if err != nil {
+			return res, err
 		}
 		if n == 0 {
 			dups++
 			continue
 		}
-		pk, err := res.LastInsertId()
+		pk, err := r.LastInsertId()
 		if err != nil {
-			return nil, 0, err
+			return res, err
 		}
 		se := StoredEvent{PK: pk, ID: ev.ID, DeviceID: deviceID, TSms: tsMS, ReceivedMS: nowMS, Seq: ev.Seq,
 			BootID: ev.BootID, ElapsedMS: ev.ElapsedMS, Type: ev.Type, Sev: ev.Sev, Data: ev.Data}
 		stored = append(stored, se)
 
 		hour := tsMS - mod(tsMS, hourMS)
-		add(countKey{hour: hour, typ: ev.Type, sev: ev.Sev, device: deviceID}, 0)
+		add(countKey{hour: hour, typ: ev.Type, sev: ev.Sev, device: deviceID}, 1, 0) // timeline: events, not occurrences
 		types[ev.Type] = true
 		for _, tk := range topKeys(ev) {
-			add(countKey{hour: hour, kind: tk.kind, pkg: tk.pkg, key: tk.key, device: deviceID}, tk.bytes)
+			add(countKey{hour: hour, kind: tk.kind, pkg: tk.pkg, key: tk.key, device: deviceID}, tk.weight, tk.bytes)
 		}
 		if kind := latestKind(ev.Type); kind != "" {
 			if cur, ok := latest[kind]; !ok || tsMS >= cur.TSms {
@@ -159,18 +205,18 @@ func (s *Store) Ingest(ctx context.Context, deviceID, agentVersion string, evs [
 
 	if len(stored) > 0 {
 		if err := writeDerived(ctx, tx, deviceID, counts, types, latest, locs); err != nil {
-			return nil, 0, err
+			return res, err
 		}
 	}
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE devices SET last_seen_ms = ?, agent_version = COALESCE(NULLIF(?, ''), agent_version) WHERE device_id = ?`,
 		nowMS, agentVersion, deviceID); err != nil {
-		return nil, 0, err
+		return res, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, 0, err
+		return res, err
 	}
-	return stored, dups, nil
+	return IngestResult{Stored: stored, Duplicates: dups, Expired: expired}, nil
 }
 
 func writeDerived(ctx context.Context, tx *sql.Tx, deviceID string, counts map[countKey]*countVal,
@@ -279,6 +325,8 @@ type topKey struct {
 	pkg   string // data.package of the event ("" if absent), for /stats/top?package=
 	key   string
 	bytes int64
+	// weight is the number of occurrences counted (data.count for grouped events, otherwise 1).
+	weight int64
 }
 
 // topKeys returns the aggregation keys contributed by one event to top_counts.
@@ -288,21 +336,23 @@ func topKeys(ev *model.Event) []topKey {
 	pkg = clip(pkg, maxKeyLen)
 	switch ev.Type {
 	case "net.dns":
+		w := eventWeight(d)
 		var out []topKey
 		if h, ok := model.Str(d, "hostname"); ok && h != "" {
-			out = append(out, topKey{kind: TopDNSHostname, pkg: pkg, key: clip(strings.TrimSuffix(strings.ToLower(h), "."), maxKeyLen)})
+			out = append(out, topKey{kind: TopDNSHostname, pkg: pkg, key: clip(strings.TrimSuffix(strings.ToLower(h), "."), maxKeyLen), weight: w})
 		}
 		if pkg != "" {
-			out = append(out, topKey{kind: TopDNSPackage, pkg: pkg, key: pkg})
+			out = append(out, topKey{kind: TopDNSPackage, pkg: pkg, key: pkg, weight: w})
 		}
 		return out
 	case "net.connect":
+		w := eventWeight(d)
 		var out []topKey
 		if dest := connectDest(d); dest != "" {
-			out = append(out, topKey{kind: TopConnectDest, pkg: pkg, key: dest})
+			out = append(out, topKey{kind: TopConnectDest, pkg: pkg, key: dest, weight: w})
 		}
 		if pkg != "" {
-			out = append(out, topKey{kind: TopConnectPackage, pkg: pkg, key: pkg})
+			out = append(out, topKey{kind: TopConnectPackage, pkg: pkg, key: pkg, weight: w})
 		}
 		return out
 	case "net.usage":
@@ -321,16 +371,16 @@ func topKeys(ev *model.Event) []topKey {
 			tx, _ := model.Int(m, "tx_bytes")
 			// Clamped so that hostile values can neither wrap around nor make the SQL sums overflow.
 			b := clampBytes(rx) + clampBytes(tx)
-			out = append(out, topKey{kind: TopUsagePackage, pkg: clip(p, maxKeyLen), key: clip(p, maxKeyLen), bytes: b})
+			out = append(out, topKey{kind: TopUsagePackage, pkg: clip(p, maxKeyLen), key: clip(p, maxKeyLen), bytes: b, weight: 1})
 		}
 		return out
 	case "app.foreground":
 		if e, _ := model.Str(d, "event"); e == "resumed" && pkg != "" {
-			return []topKey{{kind: TopForegroundPackage, pkg: pkg, key: pkg}}
+			return []topKey{{kind: TopForegroundPackage, pkg: pkg, key: pkg, weight: 1}}
 		}
 	case "app.notification":
 		if e, _ := model.Str(d, "event"); e == "posted" && pkg != "" {
-			return []topKey{{kind: TopNotificationPackge, pkg: pkg, key: pkg}}
+			return []topKey{{kind: TopNotificationPackge, pkg: pkg, key: pkg, weight: 1}}
 		}
 	}
 	return nil

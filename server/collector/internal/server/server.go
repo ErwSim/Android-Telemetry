@@ -54,6 +54,9 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger, opt Options) (*S
 	if err != nil {
 		return nil, err
 	}
+	// Events carry their origin ts (hours or days old for after-the-fact logs): the store drops
+	// those older than the retention window, which the purge would delete anyway.
+	st.SetRetention(time.Duration(cfg.RetentionDays) * 24 * time.Hour)
 	s := &Server{
 		cfg: cfg, st: st, log: log, exporter: opt.Exporter, broker: NewBroker(64),
 		alerts: alerts, csp: buildCSP(cfg.TileOrigin), now: now,

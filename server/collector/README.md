@@ -60,7 +60,11 @@ Variables : celles du contrat §7, plus `VIGIE_TILE_URL` (§6, défaut OpenStree
   appareil × type exact ou × sévérité), lus avec `LIMIT n+1` et fusionnés : un type rare reste rapide au milieu
   de `net.dns`. Curseur opaque `(ts, pk)`. Les statistiques horaires/journalières et les « top » viennent
   d'agrégats horaires tenus à l'ingestion (`event_counts`, `top_counts`) ; le pas `minute` relit les
-  événements (2000 intervalles au plus). Tables dérivées : `locations`, `device_latest` (dernier heartbeat,
+  événements (2000 intervalles au plus). **`/stats/top` compte des occurrences, `/stats/timeline` des
+  événements** : pour `dns_hostname`, `dns_package`, `connect_dest` et `connect_package`, un événement pèse
+  `data.count` (entier entre 1 et 1 000 000 ; absent, fractionnaire, hors bornes ou non numérique : 1), à
+  l'ingestion comme dans la migration 3 qui reconstruit ces agrégats ; les autres genres et `event_type`
+  comptent 1 par événement, et la timeline aussi. Tables dérivées : `locations`, `device_latest` (dernier heartbeat,
   posture, position, inventaire).
 - **Ingestion** : jeton haché (SHA-256, 256 bits d'entropie) comparé en temps constant ; empreinte du
   certificat crue seulement si l'appelant est dans `VIGIE_TRUSTED_PROXIES`. Limites : 1 Mio compressé /
@@ -101,6 +105,12 @@ Variables : celles du contrat §7, plus `VIGIE_TILE_URL` (§6, défaut OpenStree
   ADB et options développeur, sources inconnues et Play Protect, DNS privé non strict, AC utilisateur ;
   `sensor.*` portent `screen_on` et `locked` (dont un micro et une caméra utilisés écran éteint et
   verrouillé par l'appli installée hors Play Store) ; `security.log` suit la table de noms du contrat.
+  Comme le vrai agent : environ 1 `net.dns`/`net.connect` sur 15 est agrégé (`count` 2 à 60,
+  `last_event_ts`), des `security.log` de niveau `info`/`warning`/`error` (parfois agrégés) s'ajoutent, des
+  journaux `pre_reboot: true` précèdent chaque redémarrage, et `net.dns`, `net.connect` et `security.log`
+  sont livrés **par lots tous les 1 h 30 à 2 h** avec leur `ts` d'origine (le reste est livré au fil de l'eau ;
+  sans `--follow`, le dernier lot en attente part à la fin). À graine fixe (`--seed`), le flux est
+  reproductible ; les tirages ajoutés ont leurs propres sources aléatoires, le reste de la simulation n'a pas changé.
 
 ## Limites connues
 
@@ -110,6 +120,13 @@ Variables : celles du contrat §7, plus `VIGIE_TILE_URL` (§6, défaut OpenStree
   pas, repli sur une heuristique (même `parts`, moins d'une heure d'écart).
 - Un événement dont `ts` dépasse l'heure du serveur de plus de 24 h ou précède 2000 est rejeté
   (`invalid_ts`, définitif) ; la purge de rétention se fait sur `ts`.
+- `ts` est l'heure d'origine : `net.dns`, `net.connect`, `security.log` et `app.foreground` arrivent avec des
+  heures, voire des jours de retard. Tous les agrégats sont rangés dans l'heure UTC de `ts` (jamais celle de
+  réception) et un `ts` ancien est accepté dans la limite de `VIGIE_RETENTION_DAYS`. Un événement plus ancien
+  que la rétention est **acquitté sans être stocké** (compté dans `accepted`, pour que l'agent le supprime ;
+  ni agrégat, ni export Wazuh, ni diffusion SSE) : la purge l'aurait supprimé dans l'heure. `last_event_ts` n'est
+  pas utilisé pour le classement. La console doit interroger les statistiques par plage de `ts`, pas « depuis
+  la réception » : un événement tardif modifie les compteurs d'heures déjà passées.
 - Limitation de débit en mémoire (réinitialisée au redémarrage, propre à une instance).
 - Caddy limite le corps des requêtes d'ingestion à 9 Mo (infra) : marge au-dessus des 8 Mio décompressés,
   les limites fines restent celles du collecteur.

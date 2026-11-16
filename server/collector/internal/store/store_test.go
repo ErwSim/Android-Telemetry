@@ -28,7 +28,7 @@ func ingestRaw(t *testing.T, st *Store, evs []map[string]any) {
 		}
 		parsed = append(parsed, e)
 	}
-	if _, _, err := st.Ingest(context.Background(), "dev_1", "", parsed, now); err != nil {
+	if _, err := st.Ingest(context.Background(), "dev_1", "", parsed, now); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -54,7 +54,7 @@ func snapshot(t *testing.T, st *Store) []string {
 }
 
 // TestMigration2RebuildMatchesIngest checks that the SQL rebuild of top_counts
-// (migration 2) gives the same aggregates as the Go code used at ingestion.
+// (migrations 2 and 3) gives the same aggregates as the Go code used at ingestion.
 func TestMigration2RebuildMatchesIngest(t *testing.T) {
 	ctx := context.Background()
 	st, err := Open(ctx, filepath.Join(t.TempDir(), "vigie.db"))
@@ -74,18 +74,167 @@ func TestMigration2RebuildMatchesIngest(t *testing.T) {
 		{"type": "app.foreground", "data": map[string]any{"package": "a", "event": "paused"}},
 		{"type": "app.notification", "data": map[string]any{"package": "a", "event": "posted"}},
 		{"type": "app.notification", "data": map[string]any{"package": "a", "event": "removed"}},
+		// data.count: valid, bounds, and every value that must count 1.
+		{"type": "net.dns", "data": map[string]any{"package": "w", "hostname": "weighted.example", "count": 5}},
+		{"type": "net.dns", "data": map[string]any{"package": "w", "hostname": "weighted.example", "count": 1000000}},
+		{"type": "net.dns", "data": map[string]any{"package": "w", "hostname": "weighted.example", "count": 1000001}},
+		{"type": "net.dns", "data": map[string]any{"package": "w", "hostname": "weighted.example", "count": 0}},
+		{"type": "net.dns", "data": map[string]any{"package": "w", "hostname": "weighted.example", "count": -3}},
+		{"type": "net.dns", "data": map[string]any{"package": "w", "hostname": "weighted.example", "count": 3.5}},
+		{"type": "net.dns", "data": map[string]any{"package": "w", "hostname": "weighted.example", "count": 3.0}},
+		{"type": "net.dns", "data": map[string]any{"package": "w", "hostname": "weighted.example", "count": "7"}},
+		{"type": "net.dns", "data": map[string]any{"package": "w", "hostname": "weighted.example", "count": json.Number("99999999999999999999")}},
+		{"type": "net.connect", "data": map[string]any{"package": "w", "ip": "9.9.9.9", "port": 53, "count": 12, "last_event_ts": "2026-11-15T10:00:00.000Z"}},
+		{"type": "net.connect", "data": map[string]any{"package": "w", "ip": "2001:db8::1", "port": 443, "count": 40}},
+		// Not weighted: foreground and notifications stay one event each.
+		{"type": "app.foreground", "data": map[string]any{"package": "w", "event": "resumed", "count": 9}},
 	})
 	before := snapshot(t, st)
 	if len(before) < 10 {
 		t.Fatalf("too few aggregates: %v", before)
 	}
-	if _, err := st.w.Exec(migrations[1]); err != nil {
-		t.Fatal(err)
+	// Migration 2 rebuilds with weight 1, migration 3 applies data.count.
+	for _, m := range migrations[1:] {
+		if _, err := st.w.Exec(m); err != nil {
+			t.Fatal(err)
+		}
 	}
 	after := snapshot(t, st)
 	if !reflect.DeepEqual(before, after) {
 		t.Fatalf("rebuild differs:\ningest  %v\nrebuild %v", before, after)
 	}
+}
+
+// ingestOne ingests one event with an explicit ts (maybe very old), using the given reception time.
+func ingestOne(t *testing.T, st *Store, now, ts time.Time, typ string, data map[string]any) IngestResult {
+	t.Helper()
+	ingestSeq++
+	raw, _ := json.Marshal(map[string]any{"id": fmt.Sprintf("01JCQ8Z3K4M5N6P7Q8R9V%05d", ingestSeq), "ts": model.FormatTS(ts),
+		"seq": ingestSeq, "boot_id": "b", "elapsed_ms": 1, "sev": 0, "type": typ, "data": data})
+	e, err := model.ParseEvent(raw, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := st.Ingest(context.Background(), "dev_1", "", []*model.Event{e}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res
+}
+
+func topOf(t *testing.T, st *Store, kind string, from, to time.Time) map[string]int64 {
+	t.Helper()
+	items, err := st.StatsTop(context.Background(), "", kind, "", from.UnixMilli(), to.UnixMilli(), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]int64{}
+	for _, it := range items {
+		out[it.Key] = it.Count
+	}
+	return out
+}
+
+// /stats/top weights net.dns and net.connect by data.count; the timeline stays a count of events;
+// late events (old ts) land in the hour of their ts, not in the hour of reception.
+func TestTopWeightedByCountAndOldTS(t *testing.T) {
+	ctx := context.Background()
+	st, err := Open(ctx, filepath.Join(t.TempDir(), "vigie.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	now := time.Date(2026, 11, 15, 22, 30, 0, 0, time.UTC)
+	hourOld := time.Date(2026, 11, 13, 9, 0, 0, 0, time.UTC) // two days before reception
+	old := hourOld.Add(59*time.Minute + 59*time.Second)      // last second of its hour
+	ingestOne(t, st, now, old, "net.dns", map[string]any{"package": "p", "hostname": "Late.Example.", "count": 25, "last_event_ts": model.FormatTS(old.Add(time.Hour))})
+	ingestOne(t, st, now, old.Add(-time.Hour), "net.dns", map[string]any{"package": "p", "hostname": "late.example"})
+	ingestOne(t, st, now, now.Add(-time.Minute), "net.dns", map[string]any{"package": "p", "hostname": "late.example", "count": 3})
+	ingestOne(t, st, now, old, "net.connect", map[string]any{"package": "p", "ip": "1.2.3.4", "port": 443, "count": 8})
+	ingestOne(t, st, now, old, "security.log", map[string]any{"tag": "x", "level": "error", "count": 4})
+
+	// Only the old hour: 25, not the 1 + 3 of the other hours, and nothing in the reception hour.
+	got := topOf(t, st, TopDNSHostname, hourOld, hourOld.Add(time.Hour-time.Millisecond))
+	if len(got) != 1 || got["late.example"] != 25 {
+		t.Fatalf("old hour: %v", got)
+	}
+	if got := topOf(t, st, TopDNSHostname, now.Add(-time.Hour), now); len(got) != 1 || got["late.example"] != 3 {
+		t.Fatalf("reception hours: %v", got)
+	}
+	if got := topOf(t, st, TopDNSHostname, hourOld.Add(-24*time.Hour), now); got["late.example"] != 29 {
+		t.Fatalf("whole range: %v", got)
+	}
+	if got := topOf(t, st, TopDNSPackage, hourOld.Add(-24*time.Hour), now); got["p"] != 29 {
+		t.Fatalf("dns_package: %v", got)
+	}
+	if got := topOf(t, st, TopConnectDest, hourOld, hourOld.Add(time.Hour)); got["1.2.3.4:443"] != 8 {
+		t.Fatalf("connect_dest: %v", got)
+	}
+	if got := topOf(t, st, TopConnectPackage, hourOld, hourOld.Add(time.Hour)); got["p"] != 8 {
+		t.Fatalf("connect_package: %v", got)
+	}
+	// event_type counts events (one per event whatever data.count).
+	types := topOf(t, st, TopEventType, hourOld, hourOld.Add(time.Hour-time.Millisecond))
+	if types["net.dns"] != 1 || types["net.connect"] != 1 || types["security.log"] != 1 {
+		t.Fatalf("event_type: %v", types)
+	}
+	tl, err := st.StatsTimeline(ctx, TimelineQuery{FromMS: hourOld.UnixMilli(), ToMS: hourOld.Add(time.Hour - time.Millisecond).UnixMilli(),
+		BucketMS: hourMS, By: "type"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sr := range tl.Series {
+		for _, c := range sr.Counts {
+			if c > 1 {
+				t.Fatalf("timeline weighted by count: %+v", tl)
+			}
+		}
+	}
+}
+
+// Events older than the retention window are acknowledged without being stored, and nothing is
+// aggregated for them; weighted aggregates follow the purge by hour.
+func TestRetentionWithOldTS(t *testing.T) {
+	ctx := context.Background()
+	st, err := Open(ctx, filepath.Join(t.TempDir(), "vigie.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	now := time.Date(2026, 11, 15, 22, 30, 0, 0, time.UTC)
+	st.SetRetention(90 * 24 * time.Hour)
+	// 89 days old: kept, though far from the reception time. 91 days old: dropped.
+	kept := ingestOne(t, st, now, now.Add(-89*24*time.Hour), "net.dns", map[string]any{"hostname": "kept.example", "count": 7})
+	lost := ingestOne(t, st, now, now.Add(-91*24*time.Hour), "net.dns", map[string]any{"hostname": "lost.example", "count": 9})
+	if len(kept.Stored) != 1 || kept.Expired != 0 || len(lost.Stored) != 0 || lost.Expired != 1 || lost.Duplicates != 0 {
+		t.Fatalf("kept %+v lost %+v", kept, lost)
+	}
+	got := topOf(t, st, TopDNSHostname, now.Add(-200*24*time.Hour), now)
+	if len(got) != 1 || got["kept.example"] != 7 {
+		t.Fatalf("aggregates: %v", got)
+	}
+	if n := countRows(t, st, `SELECT COUNT(*) FROM events WHERE data LIKE '%lost.example%'`); n != 0 {
+		t.Fatalf("expired event stored: %d", n)
+	}
+	// The purge then removes the weighted aggregate of a no-longer-retained hour.
+	st.SetRetention(0)
+	ingestOne(t, st, now, now.Add(-100*24*time.Hour), "net.dns", map[string]any{"hostname": "ancient.example", "count": 50})
+	if _, err := st.Purge(ctx, now.Add(-90*24*time.Hour), now, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	got = topOf(t, st, TopDNSHostname, now.Add(-200*24*time.Hour), now)
+	if len(got) != 1 || got["kept.example"] != 7 {
+		t.Fatalf("after purge: %v", got)
+	}
+}
+
+func countRows(t *testing.T, st *Store, q string) int {
+	t.Helper()
+	var n int
+	if err := st.r.QueryRow(q).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
 }
 
 func TestSchemaVersion(t *testing.T) {
@@ -118,7 +267,7 @@ func ingestAt(t *testing.T, st *Store, ts time.Time, typ string, data map[string
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := st.Ingest(context.Background(), "dev_1", "", []*model.Event{e}, time.Now()); err != nil {
+	if _, err := st.Ingest(context.Background(), "dev_1", "", []*model.Event{e}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 }

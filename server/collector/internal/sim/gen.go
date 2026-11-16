@@ -32,6 +32,9 @@ type pending struct {
 	sev  int
 	data map[string]any
 	ord  int
+	// extra marks events added after the original catalog (their ULID uses xrng, so the main random
+	// stream of a seeded simulation stays what it was).
+	extra bool
 }
 
 type boot struct {
@@ -51,6 +54,11 @@ type Options struct {
 	// PrivateDNSHost is the private DNS host of the enrollment file (posture, policy,
 	// connectivity); "dns.vigie.example" when empty.
 	PrivateDNSHost string
+	// LateBatches mimics the real agent: net.dns, net.connect and security.log are read after the fact,
+	// so they are delivered in batches every 1h30 to 2h, with their original ts (hours old), while
+	// other types are delivered as they occur. Without it every event is returned by the Advance
+	// that covers its ts.
+	LateBatches bool
 }
 
 // Generator produces events chronologically.
@@ -93,6 +101,20 @@ type Generator struct {
 	uploadedAt time.Time
 	laters     []laterFn
 	floor      time.Time
+
+	// xrng draws the aggregation and extra security.log decisions, and lrng the delivery schedule of
+	// late batches: separate streams, so that the main stream (and thus the rest of a seeded
+	// simulation) does not depend on them.
+	xrng        *rand.Rand
+	lrng        *rand.Rand
+	lateBatches bool
+	held        []Event   // late-type events waiting for the next batch delivery
+	nextRelease time.Time // simulated time of the next late batch
+}
+
+// isLateType reports whether events of type t are delivered in late batches (LateBatches).
+func isLateType(t string) bool {
+	return t == "net.dns" || t == "net.connect" || t == "security.log"
 }
 
 // New returns a generator starting at opts.Start.
@@ -116,7 +138,10 @@ func New(opts Options) *Generator {
 		rng: rand.New(rand.NewSource(opts.Seed)), seed: opts.Seed, loc: loc, rate: rate, version: opts.AgentVersion,
 		cur: start, seq: opts.SeqBase, battery: 64, plugged: "none", usage: map[string]*usageAcc{},
 		dnsHost: opts.PrivateDNSHost,
+		xrng:    rand.New(rand.NewSource(opts.Seed ^ 0x5eed0a66)), lrng: rand.New(rand.NewSource(opts.Seed ^ 0x1a7e0b47)),
+		lateBatches: opts.LateBatches,
 	}
+	g.nextRelease = start.Add(g.lateInterval())
 	g.lastBatt = int(g.battery)
 	// The phone has been up for a few days.
 	g.boots = []boot{{at: start.Add(-time.Duration(2+g.rng.Intn(5))*24*time.Hour - time.Duration(g.rng.Intn(3600))*time.Second), id: g.newBootID()}}
@@ -148,6 +173,12 @@ func (g *Generator) emit(ts time.Time, typ string, sev int, data map[string]any)
 	g.pend = append(g.pend, pending{ts: ts.UTC().Truncate(time.Millisecond), typ: typ, sev: sev, data: data, ord: g.ord})
 }
 
+// emitExtra is emit for the events drawn from xrng.
+func (g *Generator) emitExtra(ts time.Time, typ string, sev int, data map[string]any) {
+	g.emit(ts, typ, sev, data)
+	g.pend[len(g.pend)-1].extra = true
+}
+
 // Advance generates events up to `to` and returns those with ts < to, in order.
 func (g *Generator) Advance(to time.Time) []Event {
 	for g.cur.Before(to) {
@@ -176,13 +207,55 @@ func (g *Generator) flush(to time.Time) []Event {
 	for _, p := range g.pend[:n] {
 		g.seq++
 		b := g.bootAt(p.ts)
+		idRng := g.rng
+		if p.extra {
+			idRng = g.xrng
+		}
 		out = append(out, Event{
-			ID: NewULID(p.ts, g.rng), TS: p.ts.Format("2006-01-02T15:04:05.000Z07:00"), Seq: g.seq, BootID: b.id,
+			ID: NewULID(p.ts, idRng), TS: p.ts.Format("2006-01-02T15:04:05.000Z07:00"), Seq: g.seq, BootID: b.id,
 			ElapsedMS: p.ts.Sub(b.at).Milliseconds(), Type: p.typ, Sev: p.sev, Data: p.data,
 		})
 	}
 	g.pend = append(g.pend[:0], g.pend[n:]...)
 	g.floor = to
+	if g.lateBatches {
+		out = g.deliver(out, to)
+	}
+	return out
+}
+
+// lateInterval is the delay between two deliveries of late events: 1h30 to 2h.
+func (g *Generator) lateInterval() time.Duration {
+	return 90*time.Minute + time.Duration(g.lrng.Int63n(int64(30*time.Minute)))
+}
+
+// deliver holds back the late-type events of out and, when a batch delivery is due at `to`, appends
+// everything held to the result (sorted by ts, original ts kept).
+func (g *Generator) deliver(out []Event, to time.Time) []Event {
+	live := out[:0:0]
+	for _, e := range out {
+		if isLateType(e.Type) {
+			g.held = append(g.held, e)
+		} else {
+			live = append(live, e)
+		}
+	}
+	if !to.Before(g.nextRelease) {
+		live = append(live, g.held...)
+		g.held = nil
+		for !to.Before(g.nextRelease) {
+			g.nextRelease = g.nextRelease.Add(g.lateInterval())
+		}
+		sort.SliceStable(live, func(i, j int) bool { return live[i].TS < live[j].TS })
+	}
+	return live
+}
+
+// Drain returns the late events still held (none unless LateBatches), e.g. at the end of a finite
+// simulation, where the real agent would deliver them with its next batch.
+func (g *Generator) Drain() []Event {
+	out := g.held
+	g.held = nil
 	return out
 }
 
@@ -257,6 +330,7 @@ func (g *Generator) step(t0, t1 time.Time) {
 	}
 	g.screen(t0, t1, seg)
 	g.traffic(t0, t1)
+	g.extraLogs(t0, t1)
 	g.notifications(t0, t1)
 	g.batteryStep(t0, t1)
 	if g.screenOn && g.nextScan.Before(t1) {
@@ -563,7 +637,9 @@ func (g *Generator) dns(a *app, t time.Time) {
 	for i, x := range addrs {
 		list[i] = x
 	}
-	g.emit(t, "net.dns", 0, map[string]any{"package": a.pkg, "uid": a.uid, "hostname": host, "addresses": list, "address_count": len(addrs)})
+	dnsData := map[string]any{"package": a.pkg, "uid": a.uid, "hostname": host, "addresses": list, "address_count": len(addrs)}
+	g.aggregate(dnsData, t)
+	g.emit(t, "net.dns", 0, dnsData)
 	if g.rng.Float64() < 0.8 {
 		port := 443
 		switch {
@@ -576,8 +652,10 @@ func (g *Generator) dns(a *app, t time.Time) {
 		case g.rng.Intn(40) == 0:
 			port = 80
 		}
-		g.emit(t.Add(time.Duration(5+g.rng.Intn(400))*time.Millisecond), "net.connect", 0,
-			map[string]any{"package": a.pkg, "uid": a.uid, "ip": addrs[g.rng.Intn(len(addrs))], "port": port})
+		cts := t.Add(time.Duration(5+g.rng.Intn(400)) * time.Millisecond)
+		connData := map[string]any{"package": a.pkg, "uid": a.uid, "ip": addrs[g.rng.Intn(len(addrs))], "port": port}
+		g.aggregate(connData, cts)
+		g.emit(cts, "net.connect", 0, connData)
 		u := g.usage[a.pkg]
 		if u == nil {
 			u = &usageAcc{}
@@ -590,6 +668,48 @@ func (g *Generator) dns(a *app, t time.Time) {
 		u.rx += (2000 + g.rng.Int63n(150000)) * mult
 		u.tx += 500 + g.rng.Int63n(12000)
 	}
+}
+
+// aggregate occasionally turns d into an event grouping identical occurrences, as the agent does
+// (contract, catalog details): count >= 2 and last_event_ts, the time of the last occurrence, while
+// the event ts stays the time of the first.
+func (g *Generator) aggregate(d map[string]any, first time.Time) {
+	if g.xrng.Intn(15) != 0 {
+		return
+	}
+	d["count"] = 2 + g.xrng.Intn(59)
+	d["last_event_ts"] = first.Add(time.Duration(1+g.xrng.Intn(540)) * time.Second).UTC().Format("2006-01-02T15:04:05.000Z07:00")
+}
+
+// extraLogs emits, from time to time, security.log events at the warning and error levels, some of
+// them grouped (count, last_event_ts).
+func (g *Generator) extraLogs(t0, t1 time.Time) {
+	if g.xrng.Intn(240) != 0 {
+		return
+	}
+	at := t0.Add(time.Duration(g.xrng.Int63n(int64(t1.Sub(t0)))))
+	var d map[string]any
+	sev := 0
+	switch g.xrng.Intn(3) {
+	case 0:
+		d = map[string]any{"tag": "cert_validation_failure", "level": "error", "log_id": g.xrng.Intn(1 << 20),
+			"fields": map[string]any{"reason": "chain_validation_failed"}}
+		sev = 1
+	case 1:
+		d = map[string]any{"tag": "bluetooth_connection", "level": "warning", "log_id": g.xrng.Intn(1 << 20),
+			"fields": map[string]any{"address": "8c:79:f5:1e:42:a7", "success": false, "reason": "timeout"}}
+	default:
+		d = map[string]any{"tag": "wifi_disconnection", "level": "info", "log_id": g.xrng.Intn(1 << 20),
+			"fields": map[string]any{"bssid": wifiHome.bssid, "reason": "deauth"}}
+	}
+	if g.xrng.Intn(2) == 0 {
+		g.aggregate(d, at)
+		if _, ok := d["count"]; !ok {
+			d["count"] = 2 + g.xrng.Intn(5)
+			d["last_event_ts"] = at.Add(time.Duration(1+g.xrng.Intn(300)) * time.Second).UTC().Format("2006-01-02T15:04:05.000Z07:00")
+		}
+	}
+	g.emitExtra(at, "security.log", sev, d)
 }
 
 func (g *Generator) netUsage(from, to time.Time) {

@@ -25,7 +25,14 @@ type Store struct {
 	w    *sql.DB // writer, one connection
 	r    *sql.DB // readers
 	path string
+	// retention is the retention window; events whose ts is older are acknowledged but not stored.
+	// Zero disables the check. Set once before serving (SetRetention).
+	retention time.Duration
 }
+
+// SetRetention sets the retention window used by Ingest to drop events older than it.
+// It must be called before the store is shared between goroutines.
+func (s *Store) SetRetention(d time.Duration) { s.retention = d }
 
 // ErrNotFound is returned when a row does not exist.
 var ErrNotFound = errors.New("introuvable")
@@ -271,6 +278,45 @@ SELECT 'usage_package', h, device_id, pkg, pkg, COUNT(*), SUM(b) FROM (
 	FROM events e, json_each(e.data, '$.apps') a
 	WHERE e.type = 'net.usage' AND a.type = 'object' AND json_type(a.value, '$.package') = 'text' AND json_extract(a.value, '$.package') <> '')
 GROUP BY h, device_id, pkg;
+`,
+	// 3: /stats/top weights net.dns and net.connect by data.count (integer in [1, 1000000], else 1), so the
+	// four net.* kinds are rebuilt from events. Same rule as eventWeight in ingest.go. Hours are keyed on ts.
+	`
+DELETE FROM top_counts WHERE kind IN ('dns_hostname', 'dns_package', 'connect_dest', 'connect_package');
+
+INSERT INTO top_counts
+SELECT 'dns_hostname', h, device_id, pkg, k, SUM(w), 0 FROM (
+	SELECT ts_ms - ts_ms % 3600000 AS h, device_id,
+		COALESCE(CASE WHEN json_type(data, '$.package') = 'text' THEN substr(json_extract(data, '$.package'), 1, 255) END, '') AS pkg,
+		substr(lower(rtrim(json_extract(data, '$.hostname'), '.')), 1, 255) AS k,
+		CASE WHEN json_type(data, '$.count') = 'integer' AND json_extract(data, '$.count') BETWEEN 1 AND 1000000
+			THEN json_extract(data, '$.count') ELSE 1 END AS w
+	FROM events WHERE type = 'net.dns' AND json_type(data, '$.hostname') = 'text' AND json_extract(data, '$.hostname') <> '')
+GROUP BY h, device_id, pkg, k;
+
+INSERT INTO top_counts
+SELECT kind, h, device_id, pkg, pkg, SUM(w), 0 FROM (
+	SELECT CASE type WHEN 'net.dns' THEN 'dns_package' ELSE 'connect_package' END AS kind,
+		ts_ms - ts_ms % 3600000 AS h, device_id, substr(json_extract(data, '$.package'), 1, 255) AS pkg,
+		CASE WHEN json_type(data, '$.count') = 'integer' AND json_extract(data, '$.count') BETWEEN 1 AND 1000000
+			THEN json_extract(data, '$.count') ELSE 1 END AS w
+	FROM events
+	WHERE type IN ('net.dns', 'net.connect') AND json_type(data, '$.package') = 'text' AND json_extract(data, '$.package') <> '')
+GROUP BY kind, h, device_id, pkg;
+
+INSERT INTO top_counts
+SELECT 'connect_dest', h, device_id, pkg, k, SUM(w), 0 FROM (
+	SELECT ts_ms - ts_ms % 3600000 AS h, device_id,
+		COALESCE(CASE WHEN json_type(data, '$.package') = 'text' THEN substr(json_extract(data, '$.package'), 1, 255) END, '') AS pkg,
+		CASE WHEN json_type(data, '$.port') = 'integer' THEN
+			CASE WHEN instr(json_extract(data, '$.ip'), ':') > 0
+				THEN '[' || substr(json_extract(data, '$.ip'), 1, 64) || ']:' || json_extract(data, '$.port')
+				ELSE substr(json_extract(data, '$.ip'), 1, 64) || ':' || json_extract(data, '$.port') END
+		ELSE substr(json_extract(data, '$.ip'), 1, 64) END AS k,
+		CASE WHEN json_type(data, '$.count') = 'integer' AND json_extract(data, '$.count') BETWEEN 1 AND 1000000
+			THEN json_extract(data, '$.count') ELSE 1 END AS w
+	FROM events WHERE type = 'net.connect' AND json_type(data, '$.ip') = 'text' AND json_extract(data, '$.ip') <> '')
+GROUP BY h, device_id, pkg, k;
 `,
 }
 
