@@ -135,11 +135,11 @@ Enrôlement › « Importer un nouveau fichier .vigie ». Avant de valider, l'é
 | même adresse, autre `device_id` | conservé, envoyé sous le nouvel identifiant (`agent.config_changed` `enrollment.device_id` le signale) |
 | autre adresse d'ingestion | **effacé** : rien de ce qui a été collecté pour un serveur n'est envoyé à un autre |
 
-Aujourd'hui `enroll` crée toujours un **nouvel** appareil (nouvel identifiant) : un renouvellement tombe donc
-dans le deuxième cas, et l'historique côté serveur est réparti sur deux identifiants (révoquer l'ancien
-ensuite : `sudo ./enroll.sh --revoke dev_…`). Une commande de renouvellement à identifiant constant
-manque au collecteur. Le jeton (512 caractères ASCII visibles au plus) et l'identifiant sont validés à
-l'import.
+Pour renouveler le certificat d'un appareil (valable 2 ans) sans scinder son historique, le serveur émet un
+fichier pour le **même** identifiant : `sudo ./enroll.sh --renew <nom|dev_…>` depuis `infra/` (ou
+`vigie-collector renew <device_id> --out <fichier.vigie>`). L'ancien jeton et l'ancien certificat restent
+acceptés jusqu'au premier envoi avec les nouveaux. `enroll` sans `--renew` crée un nouvel appareil (deuxième
+cas du tableau). Le jeton (512 caractères ASCII visibles au plus) et l'identifiant sont validés à l'import.
 
 ## Mettre à jour
 
@@ -446,13 +446,14 @@ Vérifié dans l'environnement de développement (Linux, sans émulateur ni appa
 
 - `./gradlew lint test assembleDebug assembleRelease` réussit (lint : 0 erreur, avertissements de style
   `UseKtx`/versions seulement).
-- 180 tests JVM : `:core` 73 (tampon Room sur SQLite JVM : séquence après redémarrage, transaction
+- 221 tests JVM, 1 ignoré (l'essai croisé contre le vrai collecteur, à lancer avec `VIGIE_CROSS_ENROLL`) :
+  `:core` 97 (tampon Room sur SQLite JVM : séquence après redémarrage, transaction
   interrompue, purge par sévérité/âge, horodatage d'origine non monotone ; envoi contre MockWebServer : tous
   les codes du contrat, gzip, lots, 1 Mio, Wi-Fi, reprise ; sérialisation exacte du §1 ; fichiers `.vigie` et
   mTLS avec épinglage ; isolation des pannes des collecteurs ; annonce du retrait du Device Owner ; banc de
-  test), `:collectors` 57 (logique de chaque collecteur, conformité au contrat), `:policy` 46 (traduction du
+  test), `:collectors` 59 (logique de chaque collecteur, conformité au contrat), `:policy` 60 (traduction du
   journal de sécurité, journaux réseau, posture, moteur de politique contre une passerelle factice,
-  catalogue, DNS), `:app` 4 (conformité au contrat de bout en bout des 21 collecteurs, y compris
+  catalogue, DNS), `:app` 5 (conformité au contrat de bout en bout des 21 collecteurs, y compris
   `agent.heartbeat.collectors`).
 - APK release : signé en schéma v3 (`apksigner verify`) ; après R8, classes du manifeste, base Room
   (`OutboxDatabase_Impl`), workers et sérialiseurs générés de toutes les classes `@Serializable` présents

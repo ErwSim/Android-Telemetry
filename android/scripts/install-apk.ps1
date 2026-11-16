@@ -10,6 +10,11 @@ param([string]$Apk)
 . "$PSScriptRoot\Common.ps1"
 
 if (-not $Apk) {
+    # An unsigned release APK cannot be installed: say so instead of silently falling back to debug.
+    $releaseDir = Join-Path $PSScriptRoot '..\app\build\outputs\apk\release'
+    if (-not (Test-Path (Join-Path $releaseDir 'app-release.apk')) -and (Test-Path (Join-Path $releaseDir 'app-release-unsigned.apk'))) {
+        Fail 'L''APK release n''est pas signé (app-release-unsigned.apk). Générez le keystore (generate-keystore.ps1), renseignez keystore.properties, puis relancez .\gradlew.bat assembleRelease.'
+    }
     foreach ($candidate in @(
             (Join-Path $PSScriptRoot '..\app\build\outputs\apk\release\app-release.apk'),
             (Join-Path $PSScriptRoot '..\app\build\outputs\apk\debug\app-debug.apk'))) {

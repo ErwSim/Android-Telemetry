@@ -64,7 +64,7 @@ l'a pas été.
 ```
 
 C'est la vérification complète exigée avant de committer (`android/ARCHITECTURE-CODE.md`). Lint : 0 erreur (pas de baseline,
-`abortOnError`). Les tests sont des **tests JVM purs** (221 au dernier build ; `android/README.md` et `docs/ETAT.md` annoncent encore 180) : pas d'émulateur, pas de
+`abortOnError`). Les tests sont des **tests JVM purs** (221 au dernier build) : pas d'émulateur, pas de
 Robolectric (ses jars Android étaient inaccessibles dans l'environnement de développement ; sur votre PC, c'est à réétudier).
 Le banc de test partagé est dans les `testFixtures` de `:core` (`CollectorHarness`, référence `Contract`). Aucun test
 n'est instrumenté : tout comportement sur appareil se vérifie avec le [guide 06](06-verifications-sur-appareil.md).
@@ -166,20 +166,9 @@ Dernière vérification : état du dépôt au 16/11/2026, après la revue de l'a
 écarts relevés lors de la première rédaction des guides et corrigés depuis ne sont plus listés (commande d'enrôlement citée
 dans l'application, écran Politique sans « Tout décocher » et verrou DNS allumé par défaut, mot de passe de la console réécrit
 par `install.sh`, configuration d'AdGuard écrasée, absence de notifications, renouvellement du certificat client et des
-certificats Wazuh, chemins relatifs des scripts bash, politique d'exécution PowerShell).
+certificats Wazuh, chemins relatifs des scripts bash, politique d'exécution PowerShell, passages périmés de
+`android/README.md` et de `docs/ETAT.md`, APK release non signé non reconnu par `install-apk`).
 
-- **`android/README.md`, lignes 138 à 141** : « Aujourd'hui `enroll` crée toujours un nouvel appareil… une commande de
-  renouvellement à identifiant constant manque au collecteur ». C'est périmé : `vigie-collector renew <device_id>` et
-  `sudo ./enroll.sh --renew <nom|dev_…>` existent (renouvellement sans scinder l'historique). Le tableau juste au-dessus
-  (même `device_id` : tampon conservé) est exact.
-- **`android/README.md` ligne 449 et `docs/ETAT.md` ligne 16** : « 180 tests JVM ». Le dernier build en compte 221
-  (`:core` 97, `:collectors` 59, `:policy` 60, `:app` 5, d'après les rapports de test), et le détail par module de la ligne
-  449 n'est plus à jour.
-- **`docs/ETAT.md`** : la ligne « Guides d'installation » et la section « Travaux en cours au 16/11/2026 » décrivent des lots
-  terminés ; à mettre à jour.
-- **`install-apk`** : sans argument, il prend `app-release.apk` puis, à défaut, l'APK de débogage (désormais après
-  confirmation). Un build release non signé (`app-release-unsigned.apk`) n'est pas reconnu et fait retomber sur le débogage : le
-  message d'erreur ne dit pas que la signature manque.
 - **Désenrôler** efface toujours clé, jeton et événements en attente (voulu, annoncé par l'application) : seul « Importer un
   nouveau fichier .vigie » conserve le tampon.
 - **Notifications des alertes** : optionnelles et désactivées par défaut ; SMTP avec TLS et authentification, et un vrai serveur

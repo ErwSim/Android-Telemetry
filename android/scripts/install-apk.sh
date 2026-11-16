@@ -12,6 +12,10 @@ cd "$(dirname "$0")"
 . ./common.sh
 
 if [ -z "$APK" ]; then
+    # An unsigned release APK cannot be installed: say so instead of silently falling back to debug.
+    if [ ! -f ../app/build/outputs/apk/release/app-release.apk ] && [ -f ../app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+        die "L'APK release n'est pas signé (app-release-unsigned.apk). Générez le keystore (./generate-keystore.sh), renseignez keystore.properties, puis relancez ./gradlew assembleRelease."
+    fi
     for candidate in ../app/build/outputs/apk/release/app-release.apk ../app/build/outputs/apk/debug/app-debug.apk; do
         if [ -f "$candidate" ]; then APK="$candidate"; break; fi
     done
