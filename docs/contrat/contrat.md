@@ -658,3 +658,25 @@ API console : `GET /detections?device_id&from&to&type&limit&cursor` →
 `{ "detections": [ { "id","ts","type","package","label","severity","summary","evidence" } ], "next_cursor" }` ;
 `GET /apps/risk?device_id` → dernier `app.risk` par application, trié par score décroissant ;
 `GET /apps/ops?device_id&from&to` → agrégat de `app.ops` par application et par opération.
+
+Précisions du §11.3 (issues du développement) :
+
+- Une détection **par application, par type et par jour UTC** (pour `detect.new_app_risky` : les 24 h qui
+  suivent l'installation) ; une nouvelle occurrence met à jour la détection existante (`evidence` cumule
+  domaines, capacités, compteurs). Vers Wazuh, une mise à jour n'est réexportée (`update: true`,
+  `detection_id`) que si la sévérité augmente ou si un élément nouveau apparaît, une fois par heure au plus.
+- Chaque détection renvoyée porte `device_id`, `window_from`, `window_to`, `updated_at` ; `severity` est un
+  entier de 0 à 3 (même échelle que `sev`). `GET /detections` accepte aussi `package` ; `from`/`to` y sont
+  facultatifs (30 derniers jours).
+- `GET /apps/risk` (`device_id` requis) → `{ "apps": [ { …dernier app.risk…, "ts" } ] }` ;
+  `GET /apps/ops` (`from`/`to` requis) → `{ "apps": [ { "package","label","count","background_count","rejected_count","last_ts","ops": [ … ] } ] }`.
+  Les clés de `evidence` par type sont documentées dans `server/collector/README.md`.
+- Seuils par défaut (variables `VIGIE_DETECT_*`, voir le README) : envoi > 1 Gio/h et > 10 × la médiane
+  (plancher seul pendant les 7 premiers jours) ; 300 adresses distinctes par heure (100 écran éteint) ; une
+  connexion à un port de messagerie ou à un résolveur DoH/DoT public ; un SMS envoyé ou refusé par une
+  application autre que l'appli SMS, ou 200 par jour ; micro 10 et caméra 3 accès en arrière-plan par jour.
+- `detect.dns_bypass` ne porte que sur les résolveurs publics connus (ports 443 et 853) ; l'heuristique des
+  adresses jamais résolues n'est pas fiable avec ces données et n'est pas implémentée.
+- Le fichier de niveaux porte un champ `category` par liste (`threat`, `ads`, `tracking`, `mixed`, `custom`,
+  `allowlist`) ; `detect.threat_domain` ne se fie qu'aux listes `threat`.
+- Scénarios du simulateur : `sim --scenario sain|fraude-sms|cheval-de-troie|proxy|spam|exfiltration|contournement-dns|espion|tout`.
