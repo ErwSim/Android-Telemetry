@@ -363,7 +363,10 @@ func (g *Generator) planAttacks(names []string, start, end time.Time) {
 		case ScenarioExfil:
 			a.pkg, a.label, a.installer = "com.gallery.vault.hide", "Coffre Photos", "com.android.vending"
 			spike := a.start.Add(36 * time.Hour)
-			if !end.IsZero() && spike.After(end.Add(-2*time.Hour)) {
+			switch {
+			case end.IsZero():
+				spike = a.start.Add(time.Hour) // live: an hour after the start
+			case spike.After(end.Add(-2 * time.Hour)):
 				spike = end.Add(-2 * time.Hour)
 			}
 			if spike.Before(a.start.Add(time.Hour)) {

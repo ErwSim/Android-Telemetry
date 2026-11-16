@@ -108,8 +108,8 @@ func cmdSim(args []string) error {
 		if *backfill > 0 {
 			opts.ScenarioStart = now.Add(-min(48*time.Hour, *backfill*4/10))
 		}
-		if !*follow {
-			opts.ScenarioEnd = now
+		if *backfill > 0 {
+			opts.ScenarioEnd = now // events placed within the history (exfiltration spike)
 		}
 		fmt.Fprintf(os.Stderr, "Scénarios : %s, à partir de %s\n", strings.Join(scenarios, ", "), opts.ScenarioStart.Format(time.RFC3339))
 	}

@@ -241,7 +241,7 @@ bloqués par la liste de menaces du faux AdGuard Home (`--fake-adguard`, liste a
 | `cheval-de-troie` | « Mise à jour du système » hors store (`combo_banking_trojan`), réception de SMS, accessibilité + lecture des notifications + superposition (`app.special_access`) 6 min après, balises vers deux serveurs de commande | `new_app_risky` (5 motifs), `threat_domain` (2 domaines par jour) |
 | `proxy` | « Puzzle Relax » du Play Store (risque faible), de 1 h à 6 h (heure de Paris) 320 à 480 adresses par heure, 250 à 550 Mio envoyés par heure, domaine `relay.proxy-earn.example` | `fanout` (chaque heure de nuit), `threat_domain` |
 | `spam` | « Nettoyeur Boost » du Play Store, 20 à 40 serveurs SMTP par heure (ports 587 et 25) | `mail_ports` (sév. 3, chaque jour) |
-| `exfiltration` | « Coffre Photos » du Play Store, quelques Mio par heure puis, 36 h après (ou 2 h avant la fin), 3,1 à 3,9 Gio en une heure | `upload_spike` |
+| `exfiltration` | « Coffre Photos » du Play Store, quelques Mio par heure puis, 36 h après le début (au plus tard 2 h avant la fin de l'historique ; sans historique, 1 h après), 3,1 à 3,9 Gio en une heure | `upload_spike` |
 | `contournement-dns` | « Navigateur Rapide » (service VPN), 3 à 12 connexions par heure à 1.1.1.1:443, 1.0.0.1:443, 8.8.8.8:853, [2606:4700:4700::1111]:443 | `dns_bypass` (chaque jour), `new_app_risky` (VPN, sév. 1) |
 | `espion` | « Battery Service » hors store (`combo_stalkerware`), micro, caméra et position en arrière-plan accordés, administrateur de l'appareil, ~4 enregistrements par heure, une photo toutes les 3 h | `new_app_risky` (risque élevé, administrateur), `sensor_background` (micro et caméra, chaque jour) |
 | `tout` | tous les scénarios d'attaque | tout ce qui précède (`TestScenarioAttacks`) |
