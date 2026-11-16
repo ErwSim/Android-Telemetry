@@ -1,7 +1,8 @@
-# AdGuard Home — configuration Vigie, GÉNÉRÉE par infra/install.sh à partir de
-# infra/adguard/AdGuardHome.yaml.tmpl. AdGuard réécrit ce fichier au démarrage (migrations) ;
-# install.sh le régénère à chaque exécution : les réglages faits dans l'interface web sont
-# écrasés, sauf les règles personnelles (infra/data/adguard/userfilters/regles-perso.txt).
+# AdGuard Home — configuration gérée par Vigie (gabarit infra/adguard/AdGuardHome.yaml.tmpl).
+# Rendu dans data/adguard/vigie-gere.yaml puis FUSIONNÉ par infra/adguard/merge-config.py dans la
+# configuration en service : seuls les réglages gérés par Vigie (compte admin, TLS, amonts,
+# clients autorisés, journal des requêtes, listes Vigie) sont réappliqués à chaque install.sh ;
+# les réglages faits dans l'interface sont conservés. --reset-adguard repart de ce gabarit.
 schema_version: 34
 http:
   # Interface web derrière Caddy (adguard.<domaine>), jamais publiée.

@@ -210,6 +210,18 @@ services:
       VIGIE_PRIVATE_DNS_HOSTS: ${VIGIE_PRIVATE_DNS_HOSTS:-}
       VIGIE_WATCH_SILENCE_MIN: ${VIGIE_WATCH_SILENCE_MIN:-60}
       VIGIE_ARCHIVES_FILE_DAYS: ${VIGIE_ARCHIVES_FILE_DAYS:-14}
+      # Notifications optionnelles (README §8.5) : désactivées si URL et serveur SMTP sont vides.
+      VIGIE_NOTIFY_URL: ${VIGIE_NOTIFY_URL:-}
+      VIGIE_NOTIFY_TOPIC: ${VIGIE_NOTIFY_TOPIC:-}
+      VIGIE_NOTIFY_TOKEN: ${VIGIE_NOTIFY_TOKEN:-}
+      VIGIE_NOTIFY_LEVEL: ${VIGIE_NOTIFY_LEVEL:-10}
+      VIGIE_NOTIFY_SMTP_HOST: ${VIGIE_NOTIFY_SMTP_HOST:-}
+      VIGIE_NOTIFY_SMTP_PORT: ${VIGIE_NOTIFY_SMTP_PORT:-587}
+      VIGIE_NOTIFY_SMTP_TLS: ${VIGIE_NOTIFY_SMTP_TLS:-starttls}
+      VIGIE_NOTIFY_SMTP_USER: ${VIGIE_NOTIFY_SMTP_USER:-}
+      VIGIE_NOTIFY_SMTP_PASSWORD: ${VIGIE_NOTIFY_SMTP_PASSWORD:-}
+      VIGIE_NOTIFY_SMTP_FROM: ${VIGIE_NOTIFY_SMTP_FROM:-}
+      VIGIE_NOTIFY_SMTP_TO: ${VIGIE_NOTIFY_SMTP_TO:-}
     volumes:
       - wazuh_api_configuration:/var/ossec/api/configuration
       - wazuh_etc:/var/ossec/etc
@@ -232,6 +244,7 @@ services:
       - ./wazuh/manager/entrypoint-scripts:/entrypoint-scripts:ro
       - ./wazuh/manager/cont-init/00-vigie-pre:/etc/cont-init.d/00-vigie-pre:ro
       - ./wazuh/watch:/vigie/watch:ro
+      - ./wazuh/notify:/vigie/notify:ro
       - ./wazuh/tests:/vigie/tests:ro
       - vigie_export:/var/vigie:ro
       - adguard_querylog:/var/adguard:ro

@@ -105,3 +105,11 @@ bcrypt_hash() {
   fi
   printf '%s' "$h"
 }
+
+# Requête REST à l'indexeur Wazuh avec le certificat admin (super-administrateur), depuis le
+# conteneur : es_admin <méthode> <chemin> [body] (corps JSON sur l'entrée standard si « body »).
+es_admin() {
+  dc exec -T wazuh.indexer curl -sS --cacert config/certs/root-ca.pem \
+    --cert config/certs/admin.pem --key config/certs/admin-key.pem \
+    -X "$1" -H 'Content-Type: application/json' "https://localhost:9200$2" ${3:+--data-binary @-}
+}

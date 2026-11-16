@@ -65,4 +65,44 @@ chmod 660 /var/ossec/etc/rules/vigie_*.xml 2>/dev/null || true
 find /var/ossec/logs/archives -type f -name '*.gz' -mtime +"${VIGIE_ARCHIVES_FILE_DAYS:-14}" -delete 2>/dev/null || true
 find /var/ossec/logs/alerts -type f -name '*.gz' -mtime +"${VIGIE_ARCHIVES_FILE_DAYS:-14}" -delete 2>/dev/null || true
 
+# 7. Notifications optionnelles (webhook compatible ntfy, e-mail SMTP) : intégration Wazuh
+#    « custom-vigie-notify » pour les alertes de niveau >= VIGIE_NOTIFY_LEVEL et pour le silence de
+#    l'agent (100301) et la remise à zéro de séquence (100305). ossec.conf est recopié à chaque
+#    démarrage : sans configuration, aucune intégration n'existe.
+NOTIFY_CONF=/var/ossec/etc/vigie-notify.json
+if [[ -n "${VIGIE_NOTIFY_URL:-}${VIGIE_NOTIFY_SMTP_HOST:-}" ]]; then
+  LEVEL="${VIGIE_NOTIFY_LEVEL:-10}"
+  [[ "$LEVEL" =~ ^[0-9]+$ ]] || LEVEL=10
+  install -o root -g wazuh -m 750 /vigie/notify/custom-vigie-notify /vigie/notify/custom-vigie-notify.py \
+    /var/ossec/integrations/
+  /var/ossec/framework/python/bin/python3 - "$NOTIFY_CONF" <<'PY'
+import json, os, sys
+e = os.environ.get
+conf = {"url": e("VIGIE_NOTIFY_URL", ""), "topic": e("VIGIE_NOTIFY_TOPIC", ""), "token": e("VIGIE_NOTIFY_TOKEN", ""),
+        "smtp_host": e("VIGIE_NOTIFY_SMTP_HOST", ""), "smtp_port": e("VIGIE_NOTIFY_SMTP_PORT", "587"),
+        "smtp_tls": e("VIGIE_NOTIFY_SMTP_TLS", "starttls"), "smtp_user": e("VIGIE_NOTIFY_SMTP_USER", ""),
+        "smtp_password": e("VIGIE_NOTIFY_SMTP_PASSWORD", ""), "smtp_from": e("VIGIE_NOTIFY_SMTP_FROM", ""),
+        "smtp_to": e("VIGIE_NOTIFY_SMTP_TO", "")}
+with open(sys.argv[1], "w") as f:
+    json.dump(conf, f)
+PY
+  chown root:wazuh "$NOTIFY_CONF"
+  chmod 640 "$NOTIFY_CONF"
+  # Règles de surveillance sous le seuil choisi (silence : 7, séquence remise à zéro : 8).
+  EXTRA=""
+  ((LEVEL > 7)) && EXTRA="100301"
+  ((LEVEL > 8)) && EXTRA="$EXTRA,100305"
+  {
+    echo "<ossec_config>"
+    printf '  <integration>\n    <name>custom-vigie-notify</name>\n    <level>%s</level>\n    <alert_format>json</alert_format>\n  </integration>\n' "$LEVEL"
+    if [[ -n "$EXTRA" ]]; then
+      printf '  <integration>\n    <name>custom-vigie-notify</name>\n    <rule_id>%s</rule_id>\n    <alert_format>json</alert_format>\n  </integration>\n' "${EXTRA#,}"
+    fi
+    echo "</ossec_config>"
+  } >>/var/ossec/etc/ossec.conf
+  echo "vigie-init : notifications actives (niveau >= $LEVEL${EXTRA:+, règles $EXTRA})"
+else
+  rm -f "$NOTIFY_CONF"
+fi
+
 echo "vigie-init : configuration Vigie appliquée"

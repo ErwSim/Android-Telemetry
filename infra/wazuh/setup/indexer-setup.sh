@@ -19,12 +19,7 @@ ALERTS_DAYS="$(env_get WAZUH_ALERTS_RETENTION_DAYS)"; ALERTS_DAYS="${ALERTS_DAYS
 ARCHIVES_DAYS="$(env_get WAZUH_ARCHIVES_RETENTION_DAYS)"; ARCHIVES_DAYS="${ARCHIVES_DAYS:-90}"
 [[ "$ALERTS_DAYS" =~ ^[0-9]+$ && "$ARCHIVES_DAYS" =~ ^[0-9]+$ ]] || die "durées de rétention invalides"
 
-# es <méthode> <chemin> [corps JSON sur l'entrée standard]
-es() {
-  dc exec -T wazuh.indexer curl -sS --cacert config/certs/root-ca.pem \
-    --cert config/certs/admin.pem --key config/certs/admin-key.pem \
-    -X "$1" -H 'Content-Type: application/json' "https://localhost:9200$2" ${3:+--data-binary @-}
-}
+es() { es_admin "$@"; }
 
 num() { printf '"%s":{"type":"%s","ignore_malformed":true}' "$1" "$2"; }
 NUMERIC="$(

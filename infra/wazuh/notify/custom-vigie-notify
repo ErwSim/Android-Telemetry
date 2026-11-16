@@ -1,0 +1,3 @@
+#!/bin/sh
+# Lanceur de l'intégration Wazuh « custom-vigie-notify » (Python embarqué de Wazuh).
+exec /var/ossec/framework/python/bin/python3 /var/ossec/integrations/custom-vigie-notify.py "$@"

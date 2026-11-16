@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # Génère la PKI interne de Wazuh (AC + certificats indexeur, manager/Filebeat, dashboard, admin).
 # Remplace wazuh-certs-generator, qui télécharge son outil depuis Internet au lancement.
-# Usage : gen-certs.sh <répertoire de sortie>   (idempotent : ne régénère rien d'existant)
+# Usage : gen-certs.sh <répertoire de sortie> [--renew | --renew-ca]
+#   sans option : idempotent, ne régénère rien d'existant ;
+#   --renew     : régénère les certificats des nœuds et du compte admin (même AC, mêmes noms) ;
+#   --renew-ca  : régénère aussi l'AC (tous les composants qui lui font confiance redémarrent).
+# L'ancien jeu est conservé dans <sortie>/ancien-<date>/.
 set -Eeuo pipefail
 
 OUT="${1:?répertoire de sortie}"
+MODE="${2:-}"
 DAYS_CA=3650
 DAYS=1825
 SUBJ_BASE="/C=FR/L=Vigie/O=Vigie/OU=Wazuh"
@@ -14,6 +19,21 @@ chmod 700 "$OUT"
 cd "$OUT"
 
 command -v openssl >/dev/null || { echo "openssl est requis" >&2; exit 1; }
+
+if [[ "$MODE" == --renew || "$MODE" == --renew-ca ]]; then
+  OLD="ancien-$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$OLD"
+  for f in admin wazuh.indexer wazuh.manager wazuh.dashboard; do
+    [[ -f "$f.pem" ]] && mv "$f.pem" "$f-key.pem" "$OLD/"
+  done
+  if [[ "$MODE" == --renew-ca ]]; then
+    mv root-ca.pem root-ca-key.pem "$OLD/" 2>/dev/null || true
+  fi
+  chmod 700 "$OLD"
+elif [[ -n "$MODE" ]]; then
+  echo "option inconnue : $MODE" >&2
+  exit 2
+fi
 
 if [[ ! -f root-ca.pem ]]; then
   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out root-ca-key.pem 2>/dev/null

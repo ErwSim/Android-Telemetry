@@ -15,11 +15,17 @@
 #   --admin-allow "CIDR…" adresses autorisées sur siem.D et adguard.D (défaut : toutes)
 #   --yes                 aucune question (valeurs par défaut ou de .env)
 #   --no-start            génère tout sans démarrer la pile
-#   --rotate-passwords    régénère tous les mots de passe (indexeur, API, AdGuard, admin…)
+#   --rotate-passwords    régénère tous les mots de passe (indexeur, API, AdGuard, Caddy, console…)
+#   --reset-console-password  repose le mot de passe console « admin » de .env (sinon : seulement
+#                         à la création du compte ; un changement par set-password est conservé)
+#   --reset-adguard       régénère TOUTE la configuration AdGuard (sinon : seuls les réglages
+#                         gérés par Vigie sont réappliqués, ceux de l'interface sont conservés)
+#   --renew-wazuh-certs   renouvelle les certificats internes de Wazuh (même AC)
+#   --renew-wazuh-ca      renouvelle l'AC interne de Wazuh et tous ses certificats
 #   --build               reconstruit l'image du collecteur (sinon : seulement si absente)
 #
-# Rejouable sans risque : les secrets existants (.env, secrets/) sont conservés ; les fichiers de
-# configuration générés (data/) sont réécrits à partir des gabarits versionnés.
+# Rejouable sans risque : les secrets existants (.env, secrets/) sont conservés ; les réglages
+# faits dans les interfaces (console, AdGuard, utilisateurs créés dans le dashboard Wazuh) aussi.
 set -Eeuo pipefail
 trap 'echo "[erreur] ligne $LINENO : $BASH_COMMAND" >&2' ERR
 
@@ -32,7 +38,7 @@ CADDY_BASE_IMAGE="caddy:2.11.9-alpine"
 CADDY_VERSION="2.11.9"
 
 ARG_DOMAIN="" ARG_EMAIL="" ARG_TLS="" ARG_PROFILE="" ARG_CLIENTID="" ARG_DNS_PROVIDER="" ARG_DNS_TOKEN=""
-ARG_ADMIN_ALLOW="" ASSUME_YES=0 NO_START=0 ROTATE=0 BUILD=0
+ARG_ADMIN_ALLOW="" ASSUME_YES=0 NO_START=0 ROTATE=0 BUILD=0 RESET_CONSOLE=0 RESET_ADGUARD=0 RENEW_CERTS=""
 while (($#)); do
   case "$1" in
     --domain) ARG_DOMAIN="$2"; shift 2 ;;
@@ -48,7 +54,11 @@ while (($#)); do
     --no-start) NO_START=1; shift ;;
     --rotate-passwords) ROTATE=1; shift ;;
     --build) BUILD=1; shift ;;
-    -h | --help) sed -n '2,25p' "$0"; exit 0 ;;
+    --reset-console-password) RESET_CONSOLE=1; shift ;;
+    --reset-adguard) RESET_ADGUARD=1; shift ;;
+    --renew-wazuh-certs) RENEW_CERTS=--renew; shift ;;
+    --renew-wazuh-ca) RENEW_CERTS=--renew-ca; shift ;;
+    -h | --help) sed -n '2,33p' "$0"; exit 0 ;;
     *) die "option inconnue : $1 (voir --help)" ;;
   esac
 done
@@ -166,9 +176,18 @@ for k in WAZUH_INDEXER_HEAP:2g WAZUH_INDEXER_MEM_LIMIT:3g WAZUH_MANAGER_MEM_LIMI
   WAZUH_DASHBOARD_MEM_LIMIT:1g WAZUH_DASHBOARD_NODE_HEAP_MB:640 \
   WAZUH_ALERTS_RETENTION_DAYS:180 WAZUH_ARCHIVES_RETENTION_DAYS:90 VIGIE_RETENTION_DAYS:90 \
   VIGIE_WATCH_SILENCE_MIN:60 VIGIE_ARCHIVES_FILE_DAYS:14 \
-  VIGIE_SUBNET:172.31.250.0/24 VIGIE_CADDY_IP:172.31.250.10 VIGIE_ADGUARD_IP:172.31.250.53 VIGIE_WG_IP:172.31.250.20; do
+  VIGIE_SUBNET:172.31.250.0/24 VIGIE_CADDY_IP:172.31.250.10 VIGIE_ADGUARD_IP:172.31.250.53 VIGIE_WG_IP:172.31.250.20 \
+  VIGIE_NOTIFY_LEVEL:10 VIGIE_NOTIFY_SMTP_PORT:587 VIGIE_NOTIFY_SMTP_TLS:starttls; do
   [[ -n "$(env_get "${k%%:*}")" ]] || env_set "${k%%:*}" "${k#*:}"
 done
+# Notifications (désactivées tant que VIGIE_NOTIFY_URL et VIGIE_NOTIFY_SMTP_HOST sont vides) :
+# les clés sont créées vides pour être visibles dans .env, jamais écrasées ensuite.
+for k in VIGIE_NOTIFY_URL VIGIE_NOTIFY_TOPIC VIGIE_NOTIFY_TOKEN VIGIE_NOTIFY_SMTP_HOST \
+  VIGIE_NOTIFY_SMTP_USER VIGIE_NOTIFY_SMTP_PASSWORD VIGIE_NOTIFY_SMTP_FROM VIGIE_NOTIFY_SMTP_TO; do
+  grep -qE "^$k=" "$ENV_FILE" || env_set "$k" ""
+done
+NOTIFY_LEVEL="$(env_get VIGIE_NOTIFY_LEVEL)"
+[[ "$NOTIFY_LEVEL" =~ ^([1-9]|1[0-6])$ ]] || die "VIGIE_NOTIFY_LEVEL doit être un niveau Wazuh entre 1 et 16"
 
 # Chemins du certificat DNS dans le stockage de Caddy (lus par AdGuard Home)
 if [[ "$TLS_MODE" == internal ]]; then ISSUER_DIR=local; else ISSUER_DIR=acme-v02.api.letsencrypt.org-directory; fi
@@ -192,7 +211,11 @@ info "Secrets et paramètres enregistrés dans $ENV_FILE (droits 600)"
 
 # ============================================================================== 4. PKI Wazuh
 title "4. Certificats internes Wazuh"
-bash "$INFRA_DIR/wazuh/gen-certs.sh" "$SECRETS_DIR/wazuh-certs" >/dev/null
+if [[ -n "$RENEW_CERTS" && ! -f "$SECRETS_DIR/wazuh-certs/root-ca.pem" ]]; then
+  die "$RENEW_CERTS : aucun certificat existant à renouveler"
+fi
+bash "$INFRA_DIR/wazuh/gen-certs.sh" "$SECRETS_DIR/wazuh-certs" $RENEW_CERTS >/dev/null
+[[ -n "$RENEW_CERTS" ]] && info "Certificats Wazuh régénérés ($RENEW_CERTS) ; ancien jeu dans secrets/wazuh-certs/ancien-*"
 cp "$SECRETS_DIR/wazuh-certs/root-ca.pem" "$DATA_DIR/caddy/wazuh-root-ca.pem"
 info "AC et certificats : $SECRETS_DIR/wazuh-certs"
 
@@ -267,7 +290,7 @@ if [[ "$CLIENTID_MODE" == true ]]; then
   # relayée par docker-proxy (IPv6 sans ip6tables, accès local), ce qui ouvrirait le résolveur.
   ADGUARD_ALLOWED_CLIENTS=$'\n'"    - $VIGIE_DNS_CLIENTID"$'\n'"    - $(env_get VIGIE_WG_IP)/32"$'\n'"    - 127.0.0.0/8"
   ADGUARD_CLIENTS="
-    - name: Telephone
+    - name: Telephone (Vigie)
       ids:
         - $VIGIE_DNS_CLIENTID
       use_global_settings: true
@@ -283,8 +306,25 @@ else
   ADGUARD_ALLOWED_CLIENTS=" []"
   ADGUARD_CLIENTS=" []"
 fi
-render "$INFRA_DIR/adguard/AdGuardHome.yaml.tmpl" "$DATA_DIR/adguard/conf/AdGuardHome.yaml"
-chmod 600 "$DATA_DIR/adguard/conf/AdGuardHome.yaml"
+# Configuration gérée par Vigie, fusionnée dans celle en service : les réglages faits dans
+# l'interface d'AdGuard sont conservés (règle détaillée dans adguard/merge-config.py et README §6.2).
+render "$INFRA_DIR/adguard/AdGuardHome.yaml.tmpl" "$DATA_DIR/adguard/vigie-gere.yaml"
+AGH_CONF="$DATA_DIR/adguard/conf/AdGuardHome.yaml"
+AGH_WAS_RUNNING=0
+if [[ -n "$(dc ps -q --status running adguardhome 2>/dev/null)" ]]; then
+  AGH_WAS_RUNNING=1
+  dc stop adguardhome >/dev/null 2>&1 # AdGuard écrit sa configuration à l'arrêt : lire la dernière
+fi
+if [[ -s "$AGH_CONF" && $RESET_ADGUARD -eq 0 ]]; then CUR=/w/conf/AdGuardHome.yaml; else CUR=-; fi
+[[ -s "$AGH_CONF" && $RESET_ADGUARD -eq 1 ]] && cp -p "$AGH_CONF" "$AGH_CONF.avant-reset-$(date +%Y%m%d-%H%M%S)"
+docker run --rm -v "$DATA_DIR/adguard:/w" -v "$INFRA_DIR/adguard/merge-config.py:/merge.py:ro" \
+  --entrypoint /var/ossec/framework/python/bin/python3 wazuh/wazuh-manager:4.14.10 \
+  /merge.py /w/vigie-gere.yaml "$CUR" /w/conf/AdGuardHome.yaml.new ||
+  die "fusion de la configuration AdGuard impossible"
+cat "$AGH_CONF.new" >"$AGH_CONF" # en place (même inode)
+rm -f "$AGH_CONF.new"
+chmod 600 "$AGH_CONF" "$DATA_DIR/adguard/vigie-gere.yaml"
+if [[ "$CUR" == - ]]; then info "Configuration AdGuard générée."; else info "Configuration AdGuard : réglages Vigie réappliqués, réglages de l'interface conservés."; fi
 if [[ ! -f "$DATA_DIR/adguard/userfilters/regles-perso.txt" ]]; then
   cat >"$DATA_DIR/adguard/userfilters/regles-perso.txt" <<'EOF'
 ! Règles AdGuard personnelles (non versionnées, conservées par install.sh et les sauvegardes).
@@ -298,7 +338,7 @@ cat >"$SECRETS_DIR/identifiants.txt" <<EOF
 Vigie — identifiants générés par install.sh ($(date -u +%Y-%m-%dT%H:%M:%SZ))
 Fichier confidentiel (droits 600). Source de vérité : $ENV_FILE
 
-Console Vigie        https://console.$DOMAIN        admin / $VIGIE_CONSOLE_PASSWORD
+Console Vigie        https://console.$DOMAIN        admin / $VIGIE_CONSOLE_PASSWORD  (mot de passe INITIAL : s'il a été changé avec « vigie-collector user set-password », c'est le nouveau qui compte)
 Accès administration siem./adguard. (1re barrière, Caddy)  admin / $VIGIE_ADMIN_PASSWORD
 Dashboard Wazuh      https://siem.$DOMAIN           admin / $WAZUH_ADMIN_PASSWORD
 AdGuard Home         https://adguard.$DOMAIN        admin / $ADGUARD_ADMIN_PASSWORD
@@ -312,6 +352,7 @@ chmod 600 "$SECRETS_DIR/identifiants.txt"
 info "Configurations générées dans $DATA_DIR"
 
 if ((NO_START)); then
+  ((AGH_WAS_RUNNING)) && dc start adguardhome >/dev/null
   info "--no-start : pile non démarrée."
   exit 0
 fi
@@ -329,33 +370,44 @@ if ((BUILD)) || ! docker image inspect "$COLLECTOR_IMAGE" >/dev/null 2>&1; then
   dc build -q collector
 fi
 
+# Certificats renouvelés : les fichiers montés un par un ont changé d'inode, il faut recréer.
+RECREATE=()
+[[ -n "$RENEW_CERTS" ]] && RECREATE=(--force-recreate)
 info "Indexeur Wazuh…"
-dc up -d wazuh.indexer
+dc up -d "${RECREATE[@]}" wazuh.indexer
 wait_healthy wazuh.indexer 420 || die "l'indexeur ne démarre pas : docker compose logs wazuh.indexer"
 
-# Synchronise les comptes de l'indexeur avec internal_users.yml (mots de passe générés).
-# Au premier démarrage l'index de sécurité est créé depuis ce fichier ; ensuite seul
-# securityadmin.sh le met à jour (changement de mot de passe, --rotate-passwords).
-info "Application des comptes de l'indexeur (securityadmin)…"
-dc exec -T wazuh.indexer bash -c '
-  export JAVA_HOME=/usr/share/wazuh-indexer/jdk
-  C=/usr/share/wazuh-indexer/config
-  bash /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh \
-    -f $C/opensearch-security/internal_users.yml -t internalusers -icl -nhnv \
-    -cacert $C/certs/root-ca.pem -cert $C/certs/admin.pem -key $C/certs/admin-key.pem -h localhost' \
-  >"$DATA_DIR/wazuh/securityadmin.log" 2>&1 || {
-  cat "$DATA_DIR/wazuh/securityadmin.log" >&2
-  die "securityadmin a échoué"
+# Comptes de l'indexeur gérés par Vigie (admin, kibanaserver, vigie_reader) : au premier démarrage,
+# l'index de sécurité est créé depuis internal_users.yml. Ensuite, seul un compte dont le mot de
+# passe ne correspond plus à .env est corrigé, un par un, par l'API REST de sécurité (certificat
+# admin) : les utilisateurs créés dans le dashboard sont conservés (securityadmin.sh, lui,
+# remplacerait toute la liste).
+sync_indexer_user() { # <nom> <mot de passe> <hachage> <backend_roles JSON>
+  local name="$1" pw="$2" hash="$3" roles="$4" r
+  if dc exec -T wazuh.indexer curl -sf -o /dev/null --cacert config/certs/root-ca.pem -u "$name:$pw" \
+    https://localhost:9200/_plugins/_security/authinfo; then
+    return 0
+  fi
+  r="$(es_admin PATCH "/_plugins/_security/api/internalusers/$name" body <<<"[{\"op\":\"add\",\"path\":\"/hash\",\"value\":\"$hash\"}]")"
+  if [[ "$r" != *'"status":"OK"'* ]]; then
+    r="$(es_admin PUT "/_plugins/_security/api/internalusers/$name" body <<<"{\"hash\":\"$hash\",\"backend_roles\":$roles}")"
+  fi
+  [[ "$r" == *'"status":"OK"'* || "$r" == *'"status":"CREATED"'* ]] || die "mise à jour du compte $name de l'indexeur impossible : $r"
+  info "Compte $name de l'indexeur aligné sur .env."
 }
-dc exec -T wazuh.indexer curl -sf --cacert config/certs/root-ca.pem -u "admin:$WAZUH_ADMIN_PASSWORD" \
-  https://localhost:9200/_plugins/_security/authinfo >/dev/null || die "le mot de passe admin de l'indexeur ne fonctionne pas"
+info "Comptes de l'indexeur…"
+sync_indexer_user admin "$WAZUH_ADMIN_PASSWORD" "$HASH_ADMIN" '["admin"]'
+sync_indexer_user kibanaserver "$WAZUH_DASHBOARD_PASSWORD" "$HASH_KIBANASERVER" '[]'
+sync_indexer_user vigie_reader "$WAZUH_READER_PASSWORD" "$HASH_READER" '["readall"]'
+dc exec -T wazuh.indexer curl -sf -o /dev/null --cacert config/certs/root-ca.pem -u "admin:$WAZUH_ADMIN_PASSWORD" \
+  https://localhost:9200/_plugins/_security/authinfo || die "le mot de passe admin de l'indexeur ne fonctionne pas"
 info "Mots de passe de l'indexeur actifs (admin vérifié)."
 
 info "Modèles d'index et politique de rétention…"
 bash "$INFRA_DIR/wazuh/setup/indexer-setup.sh"
 
 info "Collecteur…"
-dc up -d collector
+if [[ "$RENEW_CERTS" == --renew-ca ]]; then dc up -d --force-recreate collector; else dc up -d collector; fi
 wait_healthy collector 120 || die "le collecteur ne démarre pas : docker compose logs collector"
 
 # Le fichier d'export doit exister AVANT que le manager ne le surveille (le collecteur le crée dès
@@ -371,7 +423,7 @@ docker run --rm -v vigie_adguard_querylog:/q --entrypoint sh "$CADDY_BASE_IMAGE"
   -c '[ -e /q/querylog.json ] || { touch /q/querylog.json && chmod 600 /q/querylog.json; }'
 
 info "Manager et dashboard Wazuh…"
-dc up -d wazuh.manager wazuh.dashboard
+dc up -d "${RECREATE[@]}" wazuh.manager wazuh.dashboard
 
 # AC des certificats clients (créée par le collecteur au premier démarrage) -> Caddy (mTLS)
 CLIENT_CA="$(volume_cat collector_data pki/ca.crt || true)"
@@ -407,8 +459,7 @@ fi
 
 info "AdGuard Home (DNS-over-TLS)…"
 dc up -d adguardhome
-# AdGuard réécrit sa configuration au démarrage : on la force à nouveau si elle a changé.
-dc restart adguardhome >/dev/null
+dc start adguardhome >/dev/null # arrêté plus haut pour la fusion de sa configuration
 wait_healthy adguardhome 180 || die "AdGuard Home ne démarre pas : docker compose logs adguardhome"
 
 # Rattrape les changements de .env (dc up recrée les conteneurs dont la configuration a changé)
@@ -418,10 +469,19 @@ wait_healthy wazuh.dashboard 420 || warn "le dashboard Wazuh n'est pas encore pr
 
 # ============================================================================== 7. Comptes
 title "7. Compte de la console Vigie"
-if printf '%s\n' "$VIGIE_CONSOLE_PASSWORD" | dc exec -T collector vigie-collector user set-password admin >/dev/null; then
-  info "Compte console « admin » créé/mis à jour."
+# Le mot de passe de .env n'est posé qu'à la création du compte (témoin data/console-admin.cree),
+# avec --reset-console-password ou --rotate-passwords : un mot de passe changé ensuite avec
+# « vigie-collector user set-password admin » n'est jamais écrasé.
+CONSOLE_MARK="$DATA_DIR/console-admin.cree"
+if [[ ! -f "$CONSOLE_MARK" || $RESET_CONSOLE -eq 1 || $ROTATE -eq 1 ]]; then
+  if printf '%s\n' "$VIGIE_CONSOLE_PASSWORD" | dc exec -T collector vigie-collector user set-password admin >/dev/null; then
+    date -u +%Y-%m-%dT%H:%M:%SZ >"$CONSOLE_MARK"
+    info "Compte console « admin » : mot de passe de .env posé."
+  else
+    warn "Impossible de créer le compte console (vigie-collector user set-password)."
+  fi
 else
-  warn "Impossible de créer le compte console (vigie-collector user set-password)."
+  info "Compte console « admin » existant : mot de passe inchangé (--reset-console-password pour reposer celui de .env)."
 fi
 
 if [[ -f "$INFRA_DIR/wazuh/dashboards/vigie-saved-objects.ndjson" ]] && wait_healthy wazuh.dashboard 60; then
@@ -464,6 +524,16 @@ ${C_BLD}Suite${C_RST}
   2. Sur le téléphone, DNS privé : $PRIVATE_DNS_HOST
   3. Sauvegarde : ./backup.sh   —   Mises à jour : ./update.sh
 EOF
+CERT_END="$(openssl x509 -enddate -noout -in "$SECRETS_DIR/wazuh-certs/wazuh.indexer.pem" | cut -d= -f2)"
+echo "  Certificats internes Wazuh valables jusqu'au : $CERT_END (renouvellement : ./install.sh --renew-wazuh-certs)"
+if ! openssl x509 -checkend $((90 * 86400)) -noout -in "$SECRETS_DIR/wazuh-certs/wazuh.indexer.pem" >/dev/null; then
+  warn "Les certificats internes Wazuh expirent dans moins de 90 jours : ./install.sh --renew-wazuh-certs"
+fi
+if [[ -n "$(env_get VIGIE_NOTIFY_URL)$(env_get VIGIE_NOTIFY_SMTP_HOST)" ]]; then
+  echo "  Notifications : actives à partir du niveau $NOTIFY_LEVEL (et silence de l'agent)."
+else
+  echo "  Notifications : désactivées (VIGIE_NOTIFY_URL / VIGIE_NOTIFY_SMTP_HOST dans .env, README §8.5)."
+fi
 if [[ "$TLS_MODE" == internal ]]; then
   echo
   warn "Mode TLS interne : les navigateurs et Android doivent faire confiance à l'AC de Caddy :"
