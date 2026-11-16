@@ -64,7 +64,7 @@ l'a pas été.
 ```
 
 C'est la vérification complète exigée avant de committer (`android/ARCHITECTURE-CODE.md`). Lint : 0 erreur (pas de baseline,
-`abortOnError`). Les tests sont des **tests JVM purs** (180 au dernier décompte de `android/README.md` ; la revue de l'application en a ajouté depuis) : pas d'émulateur, pas de
+`abortOnError`). Les tests sont des **tests JVM purs** (221 au dernier build ; `android/README.md` et `docs/ETAT.md` annoncent encore 180) : pas d'émulateur, pas de
 Robolectric (ses jars Android étaient inaccessibles dans l'environnement de développement ; sur votre PC, c'est à réétudier).
 Le banc de test partagé est dans les `testFixtures` de `:core` (`CollectorHarness`, référence `Contract`). Aucun test
 n'est instrumenté : tout comportement sur appareil se vérifie avec le [guide 06](06-verifications-sur-appareil.md).
@@ -160,28 +160,32 @@ pour y brancher le simulateur à travers Caddy en mTLS ; c'est un travail à fai
 4. Mettez à jour `docs/ETAT.md` (ce qui est désormais vérifié sur appareil) et, pour la documentation utilisateur, le README
    racine (tableau d'état de vérification) et les guides concernés.
 
-## 7. Écarts constatés en rédigeant les guides (à traiter ou à décider)
+## 7. Écarts encore présents entre le code, les scripts et la documentation
 
-- **Commande d'enrôlement.** `android/README.md` (section « Enrôler », étape 1) et le texte de l'écran d'enrôlement de l'application
-  (`enroll_explanation`) citent `vigie-collector enroll --name s25 --out s25.vigie`. Avec l'installation Docker, la commande est
-  `sudo ./enroll.sh s25` (`infra/enroll.sh`). Les deux produisent le même fichier ; le texte devrait citer `enroll.sh`.
-- **Écran Politique** : aucun bouton « tout décocher » (37 interrupteurs à éteindre pour appliquer le DNS seul) ; « Verrouiller le
-  réglage » du DNS est **allumé par défaut**, alors qu'il retire une porte de sortie lors du premier essai.
-- **Réenrôlement** : tant qu'un enrôlement existe, l'écran n'offre que « Désenrôler » (qui **efface les événements en attente**) ; il n'y a
-  pas de renouvellement du certificat client en place.
-- **`install.sh` rejoue le mot de passe de la console** à partir de `.env` : un changement fait seulement par
-  `user set-password` est annulé au passage suivant.
-- **Aucune notification des alertes** (`email_notification` à `no`, aucune intégration) : l'absence de l'agent ou une alerte de niveau 12
-  ne se voit que si vous ouvrez la console.
-- **`install-apk`** prend `app-release.apk` puis, à défaut, l'APK de **débogage** (un build release non signé,
-  `app-release-unsigned.apk`, n'est pas reconnu) ; une version récente du script demande confirmation pour un APK de
-  débogage, mais ne propose pas de repli plus clair. En bash, un chemin relatif en argument est lu depuis
-  `android/scripts/` (le script y change de dossier) : un chemin absolu est plus sûr.
-- **Scripts PowerShell** : la politique d'exécution par défaut de Windows les bloque ; ni les scripts ni le README ne le
-  mentionnent (documenté dans les guides).
-- **`docs/ETAT.md`** : la ligne « Guides d'installation » est encore « en cours ».
-- Le certificat client expire après 2 ans et les certificats internes de Wazuh après 5 ans, sans procédure de renouvellement
-  automatisée.
+Dernière vérification : état du dépôt au 16/11/2026, après la revue de l'application et les correctifs d'infrastructure. Les
+écarts relevés lors de la première rédaction des guides et corrigés depuis ne sont plus listés (commande d'enrôlement citée
+dans l'application, écran Politique sans « Tout décocher » et verrou DNS allumé par défaut, mot de passe de la console réécrit
+par `install.sh`, configuration d'AdGuard écrasée, absence de notifications, renouvellement du certificat client et des
+certificats Wazuh, chemins relatifs des scripts bash, politique d'exécution PowerShell).
+
+- **`android/README.md`, lignes 138 à 141** : « Aujourd'hui `enroll` crée toujours un nouvel appareil… une commande de
+  renouvellement à identifiant constant manque au collecteur ». C'est périmé : `vigie-collector renew <device_id>` et
+  `sudo ./enroll.sh --renew <nom|dev_…>` existent (renouvellement sans scinder l'historique). Le tableau juste au-dessus
+  (même `device_id` : tampon conservé) est exact.
+- **`android/README.md` ligne 449 et `docs/ETAT.md` ligne 16** : « 180 tests JVM ». Le dernier build en compte 221
+  (`:core` 97, `:collectors` 59, `:policy` 60, `:app` 5, d'après les rapports de test), et le détail par module de la ligne
+  449 n'est plus à jour.
+- **`docs/ETAT.md`** : la ligne « Guides d'installation » et la section « Travaux en cours au 16/11/2026 » décrivent des lots
+  terminés ; à mettre à jour.
+- **`install-apk`** : sans argument, il prend `app-release.apk` puis, à défaut, l'APK de débogage (désormais après
+  confirmation). Un build release non signé (`app-release-unsigned.apk`) n'est pas reconnu et fait retomber sur le débogage : le
+  message d'erreur ne dit pas que la signature manque.
+- **Désenrôler** efface toujours clé, jeton et événements en attente (voulu, annoncé par l'application) : seul « Importer un
+  nouveau fichier .vigie » conserve le tampon.
+- **Notifications des alertes** : optionnelles et désactivées par défaut ; SMTP avec TLS et authentification, et un vrai serveur
+  ntfy, ne sont pas testés (`infra/README.md` §8.5). Les échéances des certificats d'appareils ne sont pas notifiées.
+- **Non vérifiés sur appareil, par construction** : `pm unhide`/`pm unsuspend` au shell ADB (probablement refusés), repli du DNS
+  privé avec un utilisateur non affilié, 400 réel contre un serveur (bissection), voir le [guide 06](06-verifications-sur-appareil.md).
 
 ## 8. Pistes v2 déjà identifiées dans les documents
 
@@ -199,5 +203,5 @@ pour y brancher le simulateur à travers Caddy en mTLS ; c'est un travail à fai
 | **Alternative plus légère à Wazuh** (moins de 4 Go de RAM) | `docs/research/serveur-siem-dns.md` §9 |
 | WireGuard (déjà présent comme option, non testé), mode ClientID (déjà présent, joker non testé) | `infra/README.md` §6.3 et §10.1 |
 
-Les écarts du §7 (notifications d'alerte, renouvellement du certificat client, ergonomie de l'écran Politique) sont des
-candidats naturels, ajoutés par ce guide et non issus des documents de conception.
+Une piste qui n'est pas issue des documents de conception, mais ressort de ce travail : tester les notifications d'alerte avec un
+vrai serveur ntfy et un relais SMTP authentifié (§7).

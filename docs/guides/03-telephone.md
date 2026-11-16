@@ -16,6 +16,41 @@ la politique (section 14) s'étale sur plusieurs jours, volontairement.
 > version. Au moindre écart avec ce qui est écrit ici, **arrêtez-vous**, notez ce que vous voyez (message exact,
 > capture d'écran) et reportez-vous au [guide 06](06-verifications-sur-appareil.md). Ne forcez rien.
 
+## Ordre d'essai conseillé (et ce qu'il ne faut pas activer trop tôt)
+
+C'est l'ordre recommandé par la revue indépendante de l'application. Chaque phase se juge avant la suivante ; les numéros de
+section renvoient à ce guide.
+
+| Phase | Quoi | Durée conseillée |
+|---|---|---|
+| 1 | **APK release sans Device Owner** : installation (§3), permissions par ADB (§8, deuxième moitié) et batterie (§9), enrôlement (§10) et vérification des envois (§11), en mode dégradé | 2 à 3 jours |
+| 2 | **Device Owner seul** (§4 à §8), puis `rescue-revert` **à vide** (§12) et un **redémarrage** (l'issue de secours doit encore répondre après le premier déverrouillage) | 1 à 2 jours |
+| 3 | **DNS privé seul** (§14, palier 1) : « Tout décocher », seul le DNS coché, **verrou éteint**, **repli actif** | une semaine |
+| 4 | **Deux ou trois paquets à faible risque** (§14, palier 2), puis « Tout rétablir » et **comparaison** | 1 à 2 jours |
+| 5 | **Profil équilibré**, par lots (§14, palier 3) | une semaine |
+
+**À ne pas activer tant que ce n'est pas vu fonctionner** sur votre téléphone : le **profil strict** ; le **VPN permanent**
+avec « bloquer sans VPN » ; le **verrou du DNS** (« Verrouiller le réglage ») ; l'**interdiction du mode sans échec** (élément du
+profil strict) ; la **désactivation du repli DNS** (Réglages › Device Owner).
+
+### Avertissements à garder en tête pendant tout le guide
+
+1. **L'APK est un build release signé, avec `testOnly` (variante par défaut) et toujours avec la même clé de signature**
+   (guide 02) : c'est ce qui laisse une porte de sortie (`dpm remove-active-admin`) et permet les mises à jour.
+2. **Gardez le débogage USB actif et le PC autorisé** (« Toujours autoriser depuis cet ordinateur ») : l'issue de secours passe
+   par ADB. Vigie ne coupe jamais le débogage ; Auto Blocker peut le faire (§1.2).
+3. **Lancez `rescue-revert` à vide avant toute politique** (§12), et refaites-le après chaque mise à jour de l'APK.
+4. **L'issue de secours ne répond qu'après le premier déverrouillage suivant un redémarrage.**
+5. **Faites toujours « Tout rétablir » (ou `rescue-revert --sweep`) avant de retirer le rôle de Device Owner** : `pm unhide` est
+   probablement refusé au shell ADB, un paquet resté masqué ne se réaffiche alors plus qu'en redonnant le rôle à Vigie.
+6. **Pas d'utilisateur invité, pas de mode maintenance Samsung** tant que le DNS privé est imposé (Android refuse alors les API
+   DNS dédiées ; Vigie se replie par un réglage global, non vérifié sur appareil).
+7. **AdGuard ne doit pas bloquer les domaines de test de connectivité** (`connectivitycheck.gstatic.com`…) : le téléphone
+   afficherait « connecté, sans Internet ». Les exceptions de `vigie-base.txt` les protègent : ne les retirez pas.
+8. **Comptez 15 minutes sans Internet avant le repli du DNS** si le serveur tombe (délai réglable de 5 à 240 minutes).
+9. **Si le serveur est sur un réseau privé** (adresse en 192.168.x, 10.x…), Android 17 exige la permission
+   `ACCESS_LOCAL_NETWORK` : `grant-adb-permissions` l'accorde (avec un VPS public, elle ne sert pas).
+
 ## 0. Ce qui change sur votre téléphone
 
 Le mode **Device Owner** donne à Vigie les pouvoirs d'un administrateur d'entreprise sur le téléphone : journaux réseau
@@ -116,18 +151,16 @@ Attendu : une ligne `<numéro de série>    device`. Si vous voyez :
 Depuis le dossier `android/` du dépôt :
 
 ```bash
-./scripts/install-apk.sh "$PWD/app/build/outputs/apk/release/app-release.apk"
+./scripts/install-apk.sh app/build/outputs/apk/release/app-release.apk
 ```
 
 ```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass     # une fois par fenêtre PowerShell
-.\scripts\install-apk.ps1 -Apk app\build\outputs\apk\release\app-release.apk
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-apk.ps1 -Apk app\build\outputs\apk\release\app-release.apk
 ```
 
 Donnez toujours le chemin de l'APK **release** (voir le piège du guide 02 : sans argument, le script prend le debug
-s'il n'y a pas de release signé ; il vous demande alors confirmation, répondez `non`). Sous bash, donnez un chemin
-**absolu** (comme ci-dessus) : le script change de dossier avant de lire l'argument, donc un chemin relatif serait lu depuis
-`android/scripts/`. Attendu : `Success` d'`adb`, puis `Vigie installée.` et la ligne `versionName=…`.
+s'il n'y a pas de release signé ; il vous demande alors confirmation, répondez `non`). Un chemin relatif est lu depuis le dossier
+d'où vous lancez le script. Attendu : `Success` d'`adb`, puis `Vigie installée.` et la ligne `versionName=…`.
 
 | Échec | Cause et remède |
 |---|---|
@@ -138,7 +171,9 @@ s'il n'y a pas de release signé ; il vous demande alors confirmation, répondez
 | installation bloquée, ou une alerte Play Protect s'affiche | Auto Blocker encore actif ; ou une analyse Play Protect : notez le texte **exact** de l'alerte (guide 06) et ne désactivez pas Play Protect sans décider en connaissance de cause |
 
 Ouvrez l'application **Vigie** sur le téléphone. Elle affiche l'écran d'accueil et, tant qu'elle n'est pas Device
-Owner, un texte « Mode dégradé… » : c'est attendu. Fermez-la.
+Owner, un texte « Mode dégradé… » : c'est attendu. Fermez-la. Si elle affiche à la place **« Vigie n'a pas pu démarrer : … »**
+(et « Rien n'est collecté »), notez le message complet : c'est un défaut de l'application, pas de votre téléphone (guide 06) ;
+l'issue de secours reste utilisable si une politique était appliquée.
 
 ## 4. État de départ (à noter)
 
@@ -188,7 +223,7 @@ Tant que Vigie n'est pas Device Owner, tout se défait en désinstallant l'appli
 ```
 
 ```powershell
-.\scripts\enable-device-owner.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\enable-device-owner.ps1
 ```
 
 Le script vérifie, dans l'ordre : l'absence d'un autre propriétaire, un seul utilisateur, aucun compte, et signale si
@@ -237,7 +272,7 @@ expérimentale caméra/micro) :
 ```
 
 ```powershell
-.\scripts\grant-adb-permissions.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\grant-adb-permissions.ps1
 ```
 
 Attendu : des lignes `✔ … — …` (PowerShell : `[OK]`) pour chaque permission. Une ligne « ignorée : non déclarée par
@@ -251,7 +286,7 @@ cette version de l'APK » est sans gravité. Une ligne « échec » : notez-la (
 ```
 
 ```powershell
-.\scripts\battery-exemptions.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\battery-exemptions.ps1
 ```
 
 Attendu : quatre lignes de succès (exemption Doze, deux autorisations d'arrière-plan, seau de veille « active »). Puis,
@@ -262,17 +297,20 @@ héberge cet écran (c'est un élément du profil strict, décoché par défaut)
 
 ## 10. Enrôler le téléphone
 
+Dans l'ordre d'essai conseillé, cette section et la suivante se font **dès la phase 1**, avant le Device Owner : l'enrôlement
+fonctionne en mode dégradé, et le fichier est le même après.
+
 1. **Sur le serveur** : `sudo ./enroll.sh s25` (dossier `infra`) produit `s25.vigie`. Récupérez-le sur le PC :
    `scp vous@vps:~/vigie/infra/s25.vigie .` depuis le dossier `android/` de votre dépôt (les fichiers `*.vigie` y sont
    ignorés par git).
 2. **Copier sur le téléphone, par câble** :
 
    ```bash
-   ./scripts/push-enrollment.sh "$PWD/s25.vigie"      # chemin absolu : le script change de dossier avant de lire l'argument
+   ./scripts/push-enrollment.sh s25.vigie
    ```
 
    ```powershell
-   .\scripts\push-enrollment.ps1 -File .\s25.vigie
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\push-enrollment.ps1 -File .\s25.vigie
    ```
 
    Attendu : `Copié vers /sdcard/Download/s25.vigie`.
@@ -298,7 +336,7 @@ héberge cet écran (c'est un élément du profil strict, décoché par défaut)
    ```
 
    ```powershell
-   .\scripts\push-enrollment.ps1 -File .\s25.vigie -Remove
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\push-enrollment.ps1 -File .\s25.vigie -Remove
    Remove-Item .\s25.vigie
    ```
 
@@ -334,13 +372,14 @@ Avant toute politique, vérifiez que le téléphone répond à l'ordre « Tout r
 ```
 
 ```powershell
-.\scripts\rescue-revert.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\rescue-revert.ps1
 ```
 
 Attendu : `Tout est rétabli (reverted=0…)`. Code de sortie 0. (Cette issue de secours ne répond qu'**après le premier
 déverrouillage qui suit un redémarrage** du téléphone.) Si vous obtenez « Pas de réponse exploitable de Vigie » (code
 5), l'issue de secours **ne fonctionne pas** sur votre téléphone : n'appliquez aucune politique, notez le message et
-passez au guide 06. Ce test se refait après chaque mise à jour de l'APK.
+passez au guide 06. Ce test se refait après chaque mise à jour de l'APK. **Ensuite, redémarrez le téléphone, déverrouillez-le
+et relancez `rescue-revert`** : il doit répondre de nouveau (avant le premier déverrouillage, il ne répond pas).
 
 Faites aussi, une fois, le tour de l'écran **Réglages › Device Owner › Politique** : « Mode Device Owner : Oui »,
 « Journal réseau » et « Journal de sécurité » actifs, aucune erreur.
@@ -361,10 +400,16 @@ une politique : voir guides 05 et 06.
   restrictions, réglage), puis « Aperçu des changements » (la liste exacte de ce qui va changer) et « Appliquer ».
   Chaque élément appliqué a son bouton « Rétablir » ; « Tout rétablir » défait tout.
 - **Les éléments recommandés du profil choisi sont allumés par défaut** (35 éléments pour l'équilibré, plus le DNS et
-  son verrou, plus la sauvegarde). **Il n'existe pas de bouton « tout décocher »** : pour avancer par paliers, vous
-  éteignez à la main ce qui n'est pas du palier. La sélection est mémorisée ; « Valeurs par défaut du profil » la
-  réinitialise (et rallume tout). **Lisez toujours l'aperçu avant « Appliquer »** : si une ligne n'est pas du palier,
-  fermez-le et corrigez.
+  la sauvegarde ; le verrou du DNS est **éteint** par défaut). Pour avancer par paliers, utilisez les boutons de l'écran :
+  **« Tout décocher »** (carte Profil : éteint absolument tout, DNS, verrou et sauvegarde compris), puis cochez seulement
+  ce que vous voulez essayer ; dans chaque carte (applications, permissions, restrictions), **« Tout décocher ici »** et
+  **« Cocher les choix par défaut »** agissent sur la seule section ; **« Valeurs par défaut du profil »** réinitialise toute
+  la sélection (et rallume donc tout).
+- **Piège : la sélection est l'état voulu, pas une liste d'ajouts.** Ce qui est déjà appliqué et n'est plus coché est
+  **rétabli** à l'application suivante. D'un palier au suivant, la sélection est mémorisée : **n'ajoutez que le nouvel élément**
+  et ne rappuyez pas sur « Tout décocher » sans recocher ce qui est déjà en place (par exemple le DNS). **Lisez toujours
+  l'aperçu avant « Appliquer »** : il liste chaque changement, « appliquer » ou « rétablir ». Une ligne qui n'est pas du palier :
+  « Fermer » et corrigez.
 - Entre deux paliers : **24 heures minimum** (recommandation de ce guide), avec les contrôles ci-dessous. Une seule
   chose à la fois : en cas de problème, vous saurez laquelle.
 - Les « profils » de l'application (Équilibré/Strict, **sur le téléphone**) et celui du filtrage DNS (équilibre/strict,
@@ -398,15 +443,14 @@ Avant : depuis votre PC, `python3 infra/tools/dot-query.py dns.vigie.exemple.fr 
 
 Dans l'écran Politique :
 
-1. **Profil** : Équilibré.
-2. Carte **DNS privé imposé** : « Imposer ce DNS » **allumé** ; **« Verrouiller le réglage » éteint**. Le verrou interdit de
-   changer le DNS privé dans les Paramètres d'Android ; tant que le serveur n'est pas éprouvé, vous voulez garder cette
-   porte (il est allumé par défaut).
-3. Cartes **Applications désactivées**, **Permissions refusées**, **Restrictions de sécurité** : éteignez **tous** les
-   interrupteurs (28 + 1 + 5). Carte **Réglages système** : éteignez « Recherche Bluetooth permanente » et « Réactiver la
-   sauvegarde Android ».
-4. **Aperçu des changements** : une seule ligne doit apparaître, le DNS privé. Sinon « Fermer » et corrigez.
-5. **Appliquer**.
+1. **Profil** : Équilibré. Touchez **« Tout décocher »**.
+2. Carte **DNS privé imposé** : allumez **« Imposer ce DNS »** seul. **« Verrouiller le réglage » reste éteint** (il l'est par
+   défaut) : le verrou interdit de changer le DNS privé dans les Paramètres d'Android et vous ôterait cette porte de sortie
+   tant que le serveur n'est pas éprouvé.
+3. **Aperçu des changements** : une seule ligne doit apparaître, le DNS privé. Sinon « Fermer » et corrigez.
+4. **Appliquer**.
+
+Laissez le **repli** actif (Réglages › Device Owner › « Repli automatique du DNS privé », actif par défaut, 15 minutes).
 
 Avant d'appliquer quoi que ce soit, Vigie teste depuis le téléphone que l'hôte répond (poignée de main TLS sur 853 et une
 requête DNS) ; sinon, rien ne change et le journal indique « vérification préalable ».
@@ -430,13 +474,19 @@ plan, ou passage de maintenance toutes les 15 minutes) : un agent tué par la ge
 > (jamais en silence, c'est une alerte). Sans le repli, la protection prime : plus d'Internet tant que le serveur ne
 > répond pas.
 
-### Palier 2 : un paquet sans risque
+### Palier 2 : deux ou trois paquets à faible risque
 
-Objectif : vérifier le mécanisme « désactiver puis rétablir » sur une application que vous ne regretterez pas.
+Objectif : vérifier le mécanisme « désactiver puis rétablir » sur des applications que vous ne regretterez pas.
 
-1. Allumez **uniquement « Astuces »** (Samsung Tips, « suspendue » : son icône reste, grisée). Tout le reste éteint.
-2. Aperçu : une ligne. Appliquer. L'icône d'Astuces est grisée et ne s'ouvre plus ; le journal d'actions dit « réussi ».
-3. **Rétablir** : l'application redevient normale. Réappliquez si vous le souhaitez.
+1. Gardez le DNS coché (voir le piège ci-dessus) et allumez **« Astuces »** (Samsung Tips, « suspendue » : son icône reste,
+   grisée) et deux paquets « aucun effet visible connu » de risque faible : **Knox Analytics** et **Samsung Attribution**
+   (« masqués »).
+2. Aperçu : trois lignes « appliquer », rien d'autre. Appliquer. L'icône d'Astuces est grisée et ne s'ouvre plus ; le journal
+   d'actions dit « réussi » trois fois.
+3. Redémarrez, faites les contrôles du tableau, vivez un jour ou deux.
+4. **« Tout rétablir »** (bas de l'écran), puis **comparez** : les applications sont redevenues normales, le DNS privé est aussi
+   rétabli (« Tout rétablir » défait *tout* ce que Vigie a appliqué). Réappliquez ensuite le DNS (palier 1) et ce que vous voulez
+   garder. Cette comparaison vous apprend que « Tout rétablir » fait bien ce qu'il dit, avant d'en avoir besoin.
 
 Si cet essai échoue (journal « échec »), n'allez pas plus loin : notez l'erreur (guide 06).
 
@@ -444,9 +494,11 @@ Si cet essai échoue (journal « échec »), n'allez pas plus loin : notez l'err
 
 Le profil équilibré coupe la télémétrie et la publicité Samsung/Google qui ne servent à rien d'autre ; les Services Google
 Play, le Play Store, les notifications push et les applications bancaires **doivent** rester fonctionnels. Vous l'appliquez en
-trois lots, avec les contrôles du tableau entre chacun (24 heures minimum). Pour chaque lot, éteignez tout le reste.
+trois lots, avec les contrôles du tableau entre chacun (24 heures minimum). Restez sur le profil Équilibré et gardez coché
+ce qui est déjà appliqué (DNS compris).
 
-**Lot 3a : applications Samsung et Meta** (19 de Samsung : Customization Service, Knox Analytics, DSMS, Device Quality
+**Lot 3a : applications Samsung et Meta** (carte Applications : « Cocher les choix par défaut », puis **éteignez** les six
+applications Google du lot 3b ; 19 de Samsung : Customization Service, Knox Analytics, DSMS, Device Quality
 Agent, SVC Agent, Carrier Log Collector, CcInfo, Log Writer, Samsung Attribution, Device ID Service, SOH Service,
 Galaxy Widget, Maps Agent, IPS Geofence, Network Diagnostic, Wi-Fi Network Diagnostics, QoS Indicator, Astuces,
 Smart Suggestions ; plus Meta App Manager, Meta Services, Meta App Installer). Effets connus : plus
@@ -454,25 +506,26 @@ d'identifiant publicitaire Samsung, plus de suggestions personnalisées, diagnos
 détaillé. `diagmonagent` n'est volontairement jamais touché (liste de refus de Vigie) : le désactiver provoque une boucle de
 relance qui fait chauffer le téléphone ; coupez plutôt « Envoyer les données de diagnostic » dans les réglages Samsung.
 
-**Lot 3b : applications Google** (Android AdServices, On-Device Personalization, Federated Compute, Market Feedback Agent,
+**Lot 3b : applications Google** (cochez-les une à une ; Android AdServices, On-Device Personalization, Federated Compute, Market Feedback Agent,
 Google Partner Setup, Location History stub). Les trois premières sont des **modules système (Mainline)** : l'effet de leur
 masquage est signalé « à vérifier après application ». Faites ce lot **seul**, puis redémarrez et vérifiez
 **particulièrement** le Play Store et les mises à jour système (Paramètres › Mise à jour logicielle ; Google Play system
 update).
 
-**Lot 3c : restrictions, permission, réglage**
+**Lot 3c : restrictions, permission, réglage** (« Cocher les choix par défaut » dans les cartes Restrictions et Permissions
+refusées, puis le réglage et la sauvegarde)
 
 - Restrictions (5) : interdire l'ajout d'utilisateurs ; **interdire la 2G** (plus de réseau là où seule la 2G existe ; les appels
   d'urgence restent possibles) ; **interdire les sources inconnues** ; couper la capture de contenu ; couper les suggestions de
   contenu.
 - Permission refusée (1) : Appli Google, localisation.
-- Réglage : « Recherche Bluetooth permanente » coupée (exige `WRITE_SECURE_SETTINGS`, accordée à l'étape 8).
+- Réglage : « Recherche Bluetooth permanente » coupée (exige `WRITE_SECURE_SETTINGS`, accordée à l'étape 8 ; `global:ble_scan_always_enabled` est l'un des deux seuls réglages que Vigie accepte d'écrire).
 - Sauvegarde Android : « Réactiver la sauvegarde Android » (que le Device Owner avait coupée).
 
 **Contrôle supplémentaire pour « Interdire les sources inconnues »** : le texte de l'application dit que l'installation par
 ADB (donc les mises à jour de Vigie) n'est « pas concernée d'après la documentation (à vérifier) ». **Vérifiez-le
 maintenant**, pas le jour d'une mise à jour : réinstallez le même APK
-(`./scripts/install-apk.sh "$PWD/app/build/outputs/apk/release/app-release.apk"` ou `.\scripts\install-apk.ps1 -Apk app\build\outputs\apk\release\app-release.apk`) et constatez le succès, puis que
+(`./scripts/install-apk.sh app/build/outputs/apk/release/app-release.apk` ou, sous PowerShell, la forme `powershell … -File .\scripts\install-apk.ps1 -Apk app\build\outputs\apk\release\app-release.apk` de la section 3) et constatez le succès, puis que
 l'agent redémarre et que le Device Owner est toujours là. En cas d'échec, « Rétablir » cette restriction.
 
 **Après les trois lots**, notez ce qui fonctionne. Plus tard, devant un comportement douteux, la comparaison « Tout
@@ -483,8 +536,10 @@ rétablir » puis réapplication du profil vous dit si la politique en est respo
 Le profil strict **casse volontairement** des fonctions : compte Samsung, Galaxy Store, Samsung Cloud, Find My Mobile (par le
 compte), notifications Samsung, Appli Google, Assistant et recherche vocale, mode sans échec, ajout de certificats. Ne le
 choisissez que si vous avez décidé de vous en passer. Passez au profil Strict dans l'écran (les éléments de l'équilibré
-restent), éteignez **tout ce qui n'est pas du palier en cours**, puis avancez **un élément à la fois**, dans cet ordre de risque
-croissant, avec les contrôles du tableau entre chaque :
+restent). **À la bascule, les éléments du strict recommandés par défaut se cochent d'eux-mêmes** (8 applications dont le compte
+Samsung, 2 permissions, 6 restrictions) : éteignez-les un par un, puis n'ajoutez **qu'un élément à la fois** en gardant coché ce
+qui est déjà appliqué ; l'aperçu doit toujours montrer **une seule** ligne. Dans cet ordre de risque croissant, avec les
+contrôles du tableau entre chaque :
 
 1. Restrictions peu risquées : couper l'UWB, couper Thread, interdire le partage Bluetooth, couper le contenu envoyé à
    l'assistant.

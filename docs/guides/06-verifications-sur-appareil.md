@@ -18,7 +18,9 @@ Mode d'emploi :
 
 ## Niveau 1 — Peut coûter le téléphone ou l'accès ADB
 
-- [ ] **V1. Scripts PowerShell** (jamais exécutés, ni même analysés). *Test* : lancer chacun une fois sous Windows (`install-apk`,
+- [ ] **V1. Scripts PowerShell** (relus contre les `.sh`, jamais exécutés ni analysés par PowerShell ; les scripts bash ont été
+  exécutés contre un `adb` factice, jamais contre un téléphone). *Test* : lancer chacun une fois sous Windows, **sous la forme
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\<nom>.ps1`** (`install-apk`,
   `enable-device-owner`, `grant-adb-permissions`, `battery-exemptions`, `push-enrollment`, `rescue-revert`,
   `remove-device-owner`, `generate-keystore`). *Noter* : erreur de syntaxe, de politique d'exécution, d'encodage
   (accents), message inattendu, différence de comportement avec la version bash.
@@ -157,14 +159,47 @@ Mode d'emploi :
   d'alerte est à 5 échecs en 10 minutes ou 10 consécutifs : ne la déclenchez pas exprès sur un téléphone que vous utilisez.)
 - [ ] **V44. Mode hors ligne.** *Test* : mode avion une heure, puis retour : le tampon part-il, sans doublon ni trou de séquence
   (pas d'alerte de séquence) ? *Noter* : délai de reprise.
-- [ ] **V45. Désenrôlement, puis réenrôlement.** *Test* : voir guide 05 §8 ; nombre d'événements effacés, alertes de séquence ou
-  d'absence résultantes.
+- [ ] **V45. Renouvellement du certificat et réenrôlement.** *Test* : `sudo ./enroll.sh --renew s25`, import par « Importer un
+  nouveau fichier .vigie » (guide 05 §8) ; vérifier le message « Renouvellement : même serveur, même appareil », le tampon
+  conservé, la nouvelle échéance, `enroll.sh --list`. Essayer aussi (avec un fichier `enroll` d'un autre appareil) l'annonce
+  « Même serveur, autre identifiant » puis, sans l'importer, « Autre serveur » (le tampon y est **effacé**). *Noter* : nombre
+  d'événements avant et après, alertes de séquence ou d'absence, et si l'ancien couple est bien refusé ensuite. Le désenrôlement
+  (qui efface clé, jeton et tampon) se teste à part.
 - [ ] **V46. Autorité de certificat utilisateur** (facultatif) : installer un certificat de test puis le retirer : `security.ca_cert`
   (sévérité 2) et l'alerte de niveau 10 attendue. *Noter* : délai, doublons entre journal système et posture.
 - [ ] **V47. Certificate Transparency désactivée par `network_security_config`.** Ne concerne que le mode `--tls internal`
   (l'AC privée est alors épinglée). Avec Let's Encrypt, le succès de « Tester la connexion » suffit.
 - [ ] **V48. Traceurs Bluetooth** (AirTag, SmartTag, Tile, Localiser de Google) : seulement si vous avez un traceur à
   disposition, séparé de son propriétaire, déplacé avec vous plus de 30 minutes sur plus de 500 m. Sinon, rien à vérifier.
+
+### Points « plausibles à vérifier sur appareil » issus de la revue de l'application
+
+Ces huit points sont des hypothèses du code que rien n'a confirmées ; plusieurs recoupent des cases ci-dessus, la formulation
+ci-dessous est celle de la revue.
+
+- [ ] **V59. Masquage et suspension réels sur One UI, et ce qu'Android défait au retrait du rôle.** *Test* : appliquer un paquet masqué
+  et un paquet suspendu ; lancer `remove-device-owner` **après** « Tout rétablir » (V7), puis, sur un second essai à vide avec un
+  paquet encore masqué, le retrait par `dpm remove-active-admin` (V8) : le paquet est-il réaffiché par Android ? `adb shell pm unhide
+  <paquet>` est-il refusé (permission `MANAGE_USERS`) ? *Noter* : la sortie de chaque commande et `dumpsys package <paquet>`
+  (ligne `User 0:`, champs `hidden` et `suspended`).
+- [ ] **V60. `am broadcast` du shell vers l'issue de secours.** *Test* : V5, écran allumé, éteint, puis après redémarrage avant et
+  après déverrouillage. *Noter* : la sortie brute d'`am broadcast` (`result=…, data=…`).
+- [ ] **V61. Room sur le SQLite du système.** *Test* : tuer le processus de Vigie (Paramètres › Applications › Vigie ; « Forcer
+  l'arrêt » est normalement grisé en Device Owner), redémarrer le téléphone, couper le réseau une heure. *Noter* : le tampon
+  survit-il (Journal local › « En attente »), la séquence `seq` reste-t-elle continue (aucune alerte de trou de séquence).
+- [ ] **V62. TLS client avec une clé de l'Android Keystore.** *Test* : V32. *Noter* : « Connexion réussie » avant et après
+  redémarrage ; toute erreur de poignée de main.
+- [ ] **V63. Survie du service 24 h** : V29.
+- [ ] **V64. `no_usb_file_transfer` laisse-t-il ADB ? et `no_cellular_2g` coché par défaut en zone 2G seule.** *Test* : appliquer
+  « Interdire le transfert de fichiers USB » (profil strict, décoché par défaut) puis `adb devices`, `adb shell` et
+  `push-enrollment` ; appliquer « Interdire la 2G » (coché par défaut dans l'équilibré) et se rendre, si possible, dans une zone sans
+  4G/5G. *Noter* : ADB reste-t-il utilisable, le téléphone garde-t-il un réseau pour les appels (les urgences restent permises).
+- [ ] **V65. Balayage BLE continu et consommation GNSS.** *Test* : une journée complète avec le collecteur Traceurs actif puis
+  inactif ; le GNSS retombe à la cadence lente après 5 minutes sans position (intérieur). *Noter* : part de batterie de Vigie
+  (Paramètres › Batterie) dans chaque cas.
+- [ ] **V66. Faux `agent.tamper` `force_stop`** si « Entretien de l'appareil » Samsung (optimisation, nettoyage de la mémoire,
+  mise en veille profonde) arrête l'application. *Test* : lancer l'optimisation de l'Entretien de l'appareil, puis consulter
+  Sécurité › Journal / Alertes. *Noter* : alerte reçue ou non, état de l'agent après.
 
 ## Niveau 4 — Serveur et console avec de vraies données
 

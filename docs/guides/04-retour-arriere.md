@@ -4,11 +4,24 @@ Tout ce que Vigie fait est réversible. Ce guide va du geste le plus doux au plu
 qui règle votre problème**. Respirez : vous avez presque toujours une issue sans réinitialisation.
 
 Les commandes se lancent depuis le dossier `android/` du dépôt, téléphone branché en USB, débogage USB actif. Sous
-Windows, dans PowerShell, une fois par fenêtre : `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`.
+Windows, chaque script `.ps1` se lance par `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\<nom>.ps1 [options]`
+(forme donnée plus bas).
 
 > **Statut de vérification.** Aucun de ces gestes n'a jamais été exécuté sur un téléphone ; les scripts PowerShell n'ont
 > jamais été lancés. Les messages cités viennent des scripts. Le [guide 06](06-verifications-sur-appareil.md) vous fait
 > tester les niveaux 3 à 5 **à vide**, avant d'en avoir besoin.
+
+## À avoir fait **avant** d'en avoir besoin
+
+1. L'APK installé est un build **release** avec `testOnly` et la **même clé de signature** que les mises à jour (guide 02).
+2. **Débogage USB actif**, PC autorisé, Auto Blocker désactivé (il peut couper l'USB) : sans ADB, les niveaux 3 à 5 sont
+   inaccessibles.
+3. **`rescue-revert` lancé à vide** avec succès avant toute politique (guide 03, §12).
+4. Rappel : l'issue de secours ne répond **qu'après le premier déverrouillage suivant un redémarrage**.
+5. **Toujours « Tout rétablir » (ou `rescue-revert --sweep`) avant de retirer le rôle de Device Owner.**
+6. Pas d'utilisateur invité ni de mode maintenance Samsung tant que le DNS privé est imposé.
+7. AdGuard ne doit pas bloquer les domaines de test de connectivité (ne retirez pas les exceptions de `vigie-base.txt`).
+8. Sans Internet à cause du DNS, le repli n'agit qu'après **15 minutes** (par défaut).
 
 ## Symptôme, puis geste
 
@@ -20,7 +33,7 @@ Windows, dans PowerShell, une fois par fenêtre : `Set-ExecutionPolicy -Scope Pr
 | Application bancaire ou paiement sans contact en échec | niveau 2 : « Rétablir » le dernier élément appliqué, puis « Tout rétablir » pour comparer | niveau 3 |
 | Plus de réseau mobile dans une zone | « Rétablir » la restriction « Interdire la 2G » | |
 | Impossible d'installer ou de mettre à jour un APK | « Rétablir » la restriction « Interdire les sources inconnues » ; à défaut, niveau 3 | |
-| L'application Vigie ne s'ouvre plus ou plante | niveau 3 (issue de secours) | niveau 4 puis 5 |
+| L'application Vigie ne s'ouvre plus, plante, ou affiche « Vigie n'a pas pu démarrer » | niveau 3 (issue de secours ; elle reste joignable dans ce cas) | niveau 4 puis 5 |
 | Le téléphone chauffe ou se vide | niveau 1 (couper des collecteurs) | niveau 2 |
 | Je veux tout arrêter d'un coup | niveau 4 (retirer le Device Owner) | |
 | Rien ne marche et le téléphone est inutilisable | niveaux 3, 4, 5 dans l'ordre | niveau 6 (dernier recours) |
@@ -33,9 +46,9 @@ réseau où vous êtes), le téléphone n'a plus de DNS. C'est voulu (pas de fui
 1. **Changez de réseau** : Wi-Fi ↔ données mobiles. Certains réseaux filtrent le port 853.
 2. **Dans Vigie** (l'application s'ouvre sans Internet) : Réglages › Device Owner › Politique › carte « DNS privé imposé »
    › **Rétablir**. Le téléphone retrouve son DNS d'avant.
-3. **Si le verrou était actif** (« Verrouiller le réglage » : le réglage Android est grisé), la solution 2 reste valable :
-   « Rétablir » lève aussi le verrou. Si le verrou était *éteint*, vous pouvez aussi passer le DNS privé en
-   « Automatique » dans Paramètres › Connexions › Plus de paramètres de connexion › DNS privé (chemin habituel).
+3. **Si le verrou était actif** (« Verrouiller le réglage » : il est éteint par défaut, et le réglage Android est grisé
+   quand il est actif), la solution 2 reste valable : « Rétablir » lève aussi le verrou. Si le verrou est *éteint*, vous pouvez
+   aussi passer le DNS privé en « Automatique » dans Paramètres › Connexions › Plus de paramètres de connexion › DNS privé (chemin habituel).
 4. **Depuis le PC** : niveau 3 plus bas (`rescue-revert`).
 5. **Attendre** : si le repli est actif (par défaut), Vigie repasse seul en DNS automatique après 15 minutes
    d'injoignabilité (réglable de 5 à 240 minutes ; `security.policy` de sévérité 2). Jamais testé sur appareil.
@@ -56,20 +69,11 @@ Une application « masquée » disparaît ; une application « suspendue » rest
 1. Dans Vigie › Politique : cherchez-la dans « Applications désactivées » (ou lisez le « Journal des actions ») et touchez
    **Rétablir**.
 2. À défaut, niveau 2 « Tout rétablir ».
-3. Depuis le PC, si vous connaissez le nom du paquet (affiché sous chaque application dans l'écran Politique, par exemple
-   `com.samsung.android.app.tips`) :
-
-   ```bash
-   adb shell pm unhide <paquet>
-   adb shell pm unsuspend <paquet>
-   ```
-
-   ```powershell
-   adb shell pm unhide <paquet>
-   adb shell pm unsuspend <paquet>
-   ```
-
-   Préférez les niveaux 2 et 3 quand l'application Vigie répond : elle tient la liste de ce qu'elle a changé, `pm` non.
+3. Depuis le PC : `rescue-revert` puis, si un paquet reste masqué ou suspendu, `rescue-revert --sweep` (rétablit aussi ce dont
+   Vigie a perdu la trace). **Ne comptez pas sur `adb shell pm unhide <paquet>` / `pm unsuspend <paquet>`** : `pm unhide`
+   exige une permission (`MANAGE_USERS`) que le shell ADB n'a probablement pas, et un paquet suspendu par un administrateur ne
+   l'est pas par le shell (signalé par la revue, **à vérifier sur l'appareil**). Tant que Vigie est Device Owner, c'est elle
+   qui peut réafficher ses paquets.
 
 ## Cas C — Plus de notifications
 
@@ -117,8 +121,8 @@ autre application ne le peut. Il ne fait que **défaire**.
 ```
 
 ```powershell
-.\scripts\rescue-revert.ps1
-.\scripts\rescue-revert.ps1 -Sweep
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\rescue-revert.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\rescue-revert.ps1 -Sweep
 ```
 
 **Limite :** l'application n'est pas démarrable avant le premier déverrouillage ; l'issue de secours ne répond donc
@@ -137,7 +141,8 @@ téléphone, désactivez Auto Blocker, rebranchez.
 
 ## Niveau 4 — Retirer le Device Owner
 
-À faire quand vous voulez tout arrêter. Vigie défait sa politique, coupe les journaux, retire la protection contre
+À faire quand vous voulez tout arrêter. **Faites d'abord « Tout rétablir »** (niveau 2, ou `rescue-revert --sweep`) et
+contrôlez le résultat. Vigie défait sa politique, coupe les journaux, retire la protection contre
 l'arrêt forcé, puis abandonne le rôle. Le retrait est annoncé : **pas de fausse alerte `agent.tamper`**.
 
 - **Par l'application** (si elle répond) : Réglages › Device Owner › Politique › **Retirer le Device Owner** ; cochez
@@ -150,7 +155,7 @@ l'arrêt forcé, puis abandonne le rôle. Le retrait est annoncé : **pas de fau
   ```
 
   ```powershell
-  .\scripts\remove-device-owner.ps1             # ajoutez -Uninstall pour aussi désinstaller Vigie
+  powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\remove-device-owner.ps1             # ajoutez -Uninstall pour aussi désinstaller Vigie
   ```
 
   Répondez `oui` à la confirmation. Attendu : `Vigie n'est plus Device Owner`. Équivalent : `rescue-revert.sh --remove-owner`

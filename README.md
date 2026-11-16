@@ -104,13 +104,13 @@ première semaine d'essai.
 
 | Élément | Testé par exécution (environnement de développement) | Jamais testé sur appareil | Non testé du tout |
 |---|---|---|---|
-| Collecteur Go (ingestion, stockage, API, export Wazuh) | `go vet`, `go test -race`, essai réel avec simulateur, image Docker construite et lancée, 6 défauts de sécurité corrigés | — | — |
+| Collecteur Go (ingestion, stockage, API, export Wazuh, renouvellement d'appareil) | `go vet`, `go test -race`, essai réel avec simulateur, image Docker construite et lancée, 6 défauts de sécurité corrigés ; renouvellement `renew` (bascule ancien/nouveau couple) testé, y compris à travers Caddy en mTLS ; `400` réservé à l'enveloppe du lot | — | — |
 | Console web | typage, lint, 43 tests, parcours Chromium contre un serveur factice et contre le vrai collecteur | — | tuiles OpenStreetMap réelles |
-| Pile serveur (Docker Compose, mode TLS interne) | installation complète et rejouée, mTLS, DNS sur TLS, export vers Wazuh sans perte (autant de documents indexés que de lignes exportées), 121 cas de règles Wazuh, rotation des mots de passe, sauvegarde puis restauration après destruction totale | — | Let's Encrypt réel, défi DNS-01 (mode ClientID avec joker), téléchargement des listes HaGeZi, résolution amont par Quad9, WireGuard, consommation mémoire avec les listes chargées, architecture ARM |
-| Agent Android : code | compilation, lint, tests JVM (180 au dernier décompte de `android/README.md`), test de conformité au contrat des 21 collecteurs, APK release signé et inspecté | — | — |
-| Agent Android : comportement | — | tout : activation Device Owner sur S25+, permissions automatiques, démarrage au boot et survie 24 h, Keystore et TLS client, journaux réseau et de sécurité réels, GPS, batterie, interface, politique (profils, DNS privé, repli), retrait du Device Owner | Robolectric (indisponible), tests instrumentés |
-| Scripts ADB bash (`android/scripts/*.sh`) | syntaxe (`bash -n`), relecture contre le code | exécution sur un téléphone | — |
-| Scripts PowerShell (`android/scripts/*.ps1`) | — | — | ni exécutés ni analysés (pas de PowerShell dans l'environnement de développement) |
+| Pile serveur (Docker Compose, mode TLS interne) | installation complète et rejouée, mTLS, DNS sur TLS, export vers Wazuh sans perte (autant de documents indexés que de lignes exportées), 121 cas de règles Wazuh, rotation des mots de passe, sauvegarde puis restauration après destruction totale ; réglages utilisateur (console, AdGuard, dashboard Wazuh) préservés par `install.sh` ; renouvellement des certificats internes de Wazuh (`--renew-wazuh-certs`, `--renew-wazuh-ca`) ; notifications par webhook et e-mail (récepteur local) | — | Let's Encrypt réel, défi DNS-01 (mode ClientID avec joker), téléchargement des listes HaGeZi, résolution amont par Quad9, WireGuard, consommation mémoire avec les listes chargées, architecture ARM, SMTP avec TLS et authentification, serveur ntfy réel |
+| Agent Android : code | compilation, lint, 221 tests JVM (dernier build), test de conformité au contrat des 21 collecteurs, APK release signé et inspecté | — | — |
+| Agent Android : comportement | — | tout : activation Device Owner sur S25+, permissions automatiques, démarrage au boot et survie 24 h, Keystore et TLS client, journaux réseau et de sécurité réels, GPS, batterie, interface, politique (profils, DNS privé, repli), retrait du Device Owner, issue de secours par `am broadcast`, réenrôlement et renouvellement dans l'application, bissection d'un lot refusé en `400` contre un serveur réel | Robolectric (indisponible), tests instrumentés |
+| Scripts ADB bash (`android/scripts/*.sh`) | syntaxe (`bash -n`), relecture contre le code, exécution contre un `adb` factice | exécution sur un téléphone | — |
+| Scripts PowerShell (`android/scripts/*.ps1`) | relus ligne à ligne contre les `.sh` | — | ni exécutés ni analysés par PowerShell (absent de l'environnement de développement) |
 | Ces guides | commandes relues contre les scripts ; `apksigner` et `aapt2` exécutés sur l'APK construit | — | aucun guide n'a été suivi de bout en bout par une personne |
 
 Sources : [`docs/ETAT.md`](docs/ETAT.md), `infra/README.md` §11, `android/README.md` (dernière section).
@@ -139,7 +139,8 @@ Sources : [`docs/ETAT.md`](docs/ETAT.md), `infra/README.md` §11, `android/READM
    Gardez le débogage USB actif, un PC sous la main et le [guide 04](docs/guides/04-retour-arriere.md) ouvert ;
    appliquez la politique par étapes, jamais d'un bloc (guide 03).
 3. **Un DNS privé imposé dont le serveur tombe coupe Internet sur le téléphone.** C'est voulu (pas de fuite en
-   clair), mais testez-le d'abord avec le verrou désactivé, sur Wi-Fi, chez vous (guides 03 et 04).
+   clair), mais testez-le d'abord avec le verrou du DNS éteint (il l'est par défaut), sur Wi-Fi, chez vous, et lancez `rescue-revert` à vide
+   avant toute politique : l'issue de secours ne répond qu'après le premier déverrouillage qui suit un redémarrage (guides 03 et 04).
 
 ## Arborescence du dépôt
 

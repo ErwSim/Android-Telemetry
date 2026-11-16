@@ -66,14 +66,16 @@ léger, suffisant pour compiler). Les deux fonctionnent ; la ligne de commande e
    `sdk.dir=C\:\\Android` (les `\` s'écrivent doublés et le `:` précédé d'un `\`). Android Studio crée ce fichier
    tout seul. Il n'est pas versionné.
 
-4. **Scripts PowerShell** : Windows refuse par défaut d'exécuter des scripts non signés. Dans **chaque** nouvelle
-   fenêtre PowerShell où vous lancez un script du dépôt :
+4. **Scripts PowerShell** : les `.ps1` du dépôt ne sont pas signés et Windows les refuse avec sa politique d'exécution par
+   défaut. Lancez-les toujours ainsi, sans rien changer à la configuration de la machine (la dérogation ne vaut que pour ce
+   processus) :
 
    ```powershell
-   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\<nom>.ps1 [options]
    ```
 
-   (comportement standard de Windows, jamais essayé ici avec ces scripts ; l'effet ne dure que pour la fenêtre).
+   C'est la forme donnée dans tous les guides. Elle est celle que documentent les scripts eux-mêmes ; elle n'a jamais été
+   exécutée sous Windows.
 
 ### 2.2 Linux et macOS
 
@@ -125,7 +127,7 @@ sur le téléphone de tous les jours (sa signature ne serait ni stable, ni repro
 ```
 
 ```powershell
-.\scripts\generate-keystore.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\generate-keystore.ps1
 ```
 
 Le script crée :
@@ -258,7 +260,7 @@ Reconstruisez avec **la même clé** (le même `keystore.properties`) et un `ver
 
 ```powershell
 .\gradlew.bat assembleRelease -Pvigie.versionCode=2 -Pvigie.versionName=0.2.0
-.\scripts\install-apk.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-apk.ps1
 ```
 
 Les données (tampon, enrôlement, réglages) sont conservées. Le détail et les contrôles à faire au premier essai :
