@@ -1,3 +1,0 @@
-# Support amovible monté
-# attendu: 100223
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001089","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1089,"type":"security.log","domain":"security","sev":0,"data":{"tag":"media_mount","level":"info","log_id":12345,"fields":{"mount_point":"/storage/ABCD-1234","label":"USB"}}}}

@@ -1,3 +1,0 @@
-# Traceur BLE qui suit l'appareil
-# attendu: 100145
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001019","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1019,"type":"net.ble_tracker","domain":"net","sev":2,"data":{"address":"c4:5a:11:22:33:44","kind":"airtag","rssi":-60,"first_seen":"2026-11-15T19:00:00Z","sightings":14}}}

@@ -1,3 +1,0 @@
-# Appli non SMS qui détient SEND_SMS (sans app.ops)
-# attendu: 100475
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001188","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":0,"type":"detect.sms_permission","domain":"detect","sev":2,"source":"server","data":{"evidence":{"permission":"android.permission.SEND_SMS","default_sms_app":"com.samsung.android.messaging","installer":"com.google.android.packageinstaller"},"label":"Lampe Torche Pro","package":"com.flashlight.pro.tools","summary":"Lampe Torche Pro : constat de test (sms_permission)","window_from":"2026-11-15T00:00:00.000Z","window_to":"2026-11-16T00:00:00.000Z"}}}

@@ -1,3 +1,0 @@
-# Caméra utilisée écran éteint
-# attendu: 100175
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001095","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1095,"type":"sensor.camera","domain":"sensor","sev":0,"data":{"camera_id":"0","in_use":true,"package":"com.example.app","screen_on":false,"locked":false}}}

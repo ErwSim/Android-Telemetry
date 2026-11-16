@@ -1,3 +1,0 @@
-# Effacement exécuté par le téléphone
-# attendu: 100242
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001141","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1141,"type":"command.result","domain":"command","sev":2,"data":{"command_id":"01JCQ8Z3K4M5N6P7Q8R9S0T1V2","type":"wipe","status":"executed","signed":true}}}

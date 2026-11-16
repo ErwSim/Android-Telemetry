@@ -1,7 +1,0 @@
-# 5 domaines malveillants
-# attendu: 100404
-{"T":"2026-11-15T22:30:36.905394867Z","QH":"c2-0.example","QT":"A","QC":"IN","CP":"dot","Answer":"PjuBgAABAAEAAAAAD2FwcC1tZWFzdXJlbWVudANjb20AAAEAAcAMAAEAAQAAAAoABAAAAAA=","IP":"203.0.113.7","Result":{"Rules":[{"Text":"||c2-0.example^","FilterListID":30}],"Reason":3,"IsFiltered":true},"Elapsed":186617}
-{"T":"2026-11-15T22:30:36.905394867Z","QH":"c2-1.example","QT":"A","QC":"IN","CP":"dot","Answer":"PjuBgAABAAEAAAAAD2FwcC1tZWFzdXJlbWVudANjb20AAAEAAcAMAAEAAQAAAAoABAAAAAA=","IP":"203.0.113.7","Result":{"Rules":[{"Text":"||c2-1.example^","FilterListID":30}],"Reason":3,"IsFiltered":true},"Elapsed":186617}
-{"T":"2026-11-15T22:30:36.905394867Z","QH":"c2-2.example","QT":"A","QC":"IN","CP":"dot","Answer":"PjuBgAABAAEAAAAAD2FwcC1tZWFzdXJlbWVudANjb20AAAEAAcAMAAEAAQAAAAoABAAAAAA=","IP":"203.0.113.7","Result":{"Rules":[{"Text":"||c2-2.example^","FilterListID":30}],"Reason":3,"IsFiltered":true},"Elapsed":186617}
-{"T":"2026-11-15T22:30:36.905394867Z","QH":"c2-3.example","QT":"A","QC":"IN","CP":"dot","Answer":"PjuBgAABAAEAAAAAD2FwcC1tZWFzdXJlbWVudANjb20AAAEAAcAMAAEAAQAAAAoABAAAAAA=","IP":"203.0.113.7","Result":{"Rules":[{"Text":"||c2-3.example^","FilterListID":30}],"Reason":3,"IsFiltered":true},"Elapsed":186617}
-{"T":"2026-11-15T22:30:36.905394867Z","QH":"c2-4.example","QT":"A","QC":"IN","CP":"dot","Answer":"PjuBgAABAAEAAAAAD2FwcC1tZWFzdXJlbWVudANjb20AAAEAAcAMAAEAAQAAAAoABAAAAAA=","IP":"203.0.113.7","Result":{"Rules":[{"Text":"||c2-4.example^","FilterListID":30}],"Reason":3,"IsFiltered":true},"Elapsed":186617}

@@ -1,3 +1,0 @@
-# Micro utilisé appareil verrouillé
-# attendu: 100172
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001091","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1091,"type":"sensor.microphone","domain":"sensor","sev":2,"data":{"recording":true,"source":"mic","package":"com.qrscan.free.reader","silenced":false,"screen_on":false,"locked":true}}}

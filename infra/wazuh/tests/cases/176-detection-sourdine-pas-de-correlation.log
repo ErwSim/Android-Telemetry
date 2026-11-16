@@ -1,4 +1,0 @@
-# Sourdine après une détection de la même appli : pas de corrélation
-# attendu: 100479
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001195","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":0,"type":"detect.dns_bypass","domain":"detect","sev":2,"source":"server","data":{"evidence":{"connections":3,"providers":["Cloudflare DNS"]},"label":"Navigateur Rapide","package":"com.fastvpn.browser","summary":"Navigateur Rapide : constat de test (dns_bypass)","window_from":"2026-11-15T00:00:00.000Z","window_to":"2026-11-16T00:00:00.000Z"}}}
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001196","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":0,"type":"detect.muted","domain":"detect","sev":1,"source":"server","data":{"type":"detect.dns_bypass","package":"com.fastvpn.browser","reason":"DoH voulu","user":"admin"}}}

@@ -1,0 +1,3 @@
+# New default keyboard
+# expected: 100513
+{"watchpost":{"device_id":"dev_7k2m9q","device_name":"phone","id":"01JTEST0000000000000001211","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1211,"type":"app.role","domain":"app","sev":2,"data":{"role":"keyboard","old":"com.samsung.android.honeyboard","new":"com.keyboard.themes.free"}}}

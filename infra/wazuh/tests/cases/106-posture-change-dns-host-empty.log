@@ -1,0 +1,3 @@
+# Private DNS host emptied (marked; the non-strict mode is alerted by 100260)
+# expected: 100264
+{"watchpost":{"device_id":"dev_7k2m9q","device_name":"phone","id":"01JTEST0000000000000001110","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1110,"type":"security.posture_change","domain":"security","sev":0,"data":{"field":"private_dns_host","old":"@@DNS_HOST@@","new":""}}}

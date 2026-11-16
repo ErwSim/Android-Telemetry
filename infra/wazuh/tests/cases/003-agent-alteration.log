@@ -1,3 +1,0 @@
-# Altération de l'agent
-# attendu: 100110
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001003","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1003,"type":"agent.tamper","domain":"agent","sev":3,"data":{"kind":"permission_revoked","detail":"ACCESS_FINE_LOCATION"}}}

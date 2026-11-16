@@ -1,26 +1,26 @@
 <!--
-  Règles Wazuh Watchpost — événements de l'agent Android (export NDJSON du collecteur, contrat §5).
-  Plage d'identifiants : 100100-100299 (événements de l'appareil, et du collecteur pour les
-  commandes à distance : 100230-100249), 100300-100349 (sonde
-  watchpost_watch.py), 100400-100449 (AdGuard Home, fichier watchpost_adguard_rules.xml), v1.2 :
-  100450-100499 (détections du collecteur detect.*), 100500-100549 (profil de risque, rôles,
-  opérations, gardes, vue « pistage »).
+  Watchpost Wazuh rules: events of the Android agent (NDJSON export of the collector, contract §5).
+  Identifier range: 100100-100299 (device events, and collector events for the remote
+  commands: 100230-100249), 100300-100349 (watchpost_watch.py
+  watcher), 100400-100449 (AdGuard Home, file watchpost_adguard_rules.xml), v1.2:
+  100450-100499 (collector detections detect.*), 100500-100549 (risk profile, roles,
+  operations, guards, Tracking page).
 
-  Niveaux : 0 = archivé seulement ; 2 = indicateur pour les tableaux de bord (sous le seuil
-  d'alerte) ; 3-5 = information/notable ; 6-9 = à examiner ; 10-12 = sérieux ; 13 = plusieurs détections
-  du collecteur pour la même application en 24 h (100489) ; 14+ non utilisé.
+  Levels: 0 = archived only; 2 = marker for the dashboards (below the alert threshold);
+  3-5 = information/notable; 6-9 = to examine; 10-12 = serious; 13 = several collector detections
+  for the same application within 24 h (100489); 14+ unused.
 
-  Limite importante de Wazuh : un événement ne déclenche qu'UNE règle (la première règle fille
-  qui correspond, les filles étant essayées par niveau décroissant). Pour security.posture, les constats sont donc ordonnés du plus grave au moins
-  grave ; un défaut moins grave apparaît quand le plus grave est corrigé (et chaque jour, la
-  posture étant réémise quotidiennement).
+  Important Wazuh limit: an event fires only ONE rule (the first child rule that matches, the
+  children being tried by decreasing level). For security.posture, the findings are therefore
+  ordered from the most to the least severe; a less severe defect shows up when the more severe
+  one is fixed (and every day, since the posture is sent again daily).
 
-  Les valeurs JSON sont vues par Wazuh comme des chaînes : booléens « true »/« false »,
-  nombres en décimal. Les correspondances MITRE ATT&CK sont celles de la matrice MOBILE ; la base
-  MITRE embarquée dans Wazuh ne connaît que la matrice Entreprise (une balise <mitre> T1461 y est
-  rejetée : « Mitre Technique ID not found in database » et disparaît de l'alerte). Elles sont donc
-  portées par un groupe « attack_mobile_<ID> » (rule.groups), filtrable dans le dashboard.
-  Tests : infra/wazuh/tests/run-tests.sh (wazuh-logtest dans le conteneur manager).
+  JSON values are seen by Wazuh as strings: booleans "true"/"false", numbers in decimal.
+  The MITRE ATT&CK mappings are those of the MOBILE matrix; the MITRE database embedded in
+  Wazuh only knows the Enterprise matrix (a <mitre> T1461 tag is rejected there: "Mitre
+  Technique ID not found in database" and disappears from the alert). They are therefore carried
+  by an "attack_mobile_<ID>" group (rule.groups), which can be filtered in the dashboard.
+  Tests: infra/wazuh/tests/run-tests.sh (wazuh-logtest in the manager container).
 -->
 
 <group name="watchpost,">
@@ -30,14 +30,14 @@
   <rule id="100100" level="0">
     <decoded_as>json</decoded_as>
     <field name="watchpost.type" type="pcre2">^[a-z0-9_]+\.[a-z0-9_.]+$</field>
-    <description>Watchpost : $(watchpost.type) ($(watchpost.device_name))</description>
+    <description>Watchpost: $(watchpost.type) ($(watchpost.device_name))</description>
   </rule>
 
-  <!-- Lignes dérivées de l'export (un élément d'inventaire, d'usage réseau ou de scan Wi-Fi) -->
+  <!-- Lines derived from the export (an inventory item, a network usage item or a Wi-Fi scan item) -->
   <rule id="100101" level="0">
     <if_sid>100100</if_sid>
     <field name="watchpost.type" type="pcre2">^(app\.inventory\.app|net\.usage\.app|net\.wifi_scan\.ap)$</field>
-    <description>Watchpost : élément d'inventaire $(watchpost.type)</description>
+    <description>Watchpost: inventory item $(watchpost.type)</description>
     <group>watchpost_inventory,</group>
   </rule>
 
@@ -46,35 +46,35 @@
   <rule id="100110" level="12">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^agent.tamper$</field>
-    <description>Watchpost : tentative d'altération de l'agent ($(watchpost.data.kind)) sur $(watchpost.device_name)</description>
+    <description>Watchpost: attempt to tamper with the agent ($(watchpost.data.kind)) on $(watchpost.device_name)</description>
 <group>watchpost_agent,watchpost_tamper,attack_mobile_T1629.003,</group>
   </rule>
 
   <rule id="100111" level="3">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^agent.stopped$</field>
-    <description>Watchpost : agent arrêté ($(watchpost.data.reason)) sur $(watchpost.device_name)</description>
+    <description>Watchpost: agent stopped ($(watchpost.data.reason)) on $(watchpost.device_name)</description>
     <group>watchpost_agent,</group>
   </rule>
 
   <rule id="100112" level="6">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^agent.buffer_overflow$</field>
-    <description>Watchpost : tampon de l'agent saturé, $(watchpost.data.dropped) événements purgés sur $(watchpost.device_name)</description>
+    <description>Watchpost: agent buffer full, $(watchpost.data.dropped) events purged on $(watchpost.device_name)</description>
     <group>watchpost_agent,watchpost_data_loss,</group>
   </rule>
 
   <rule id="100113" level="3">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^agent.collector_error$</field>
-    <description>Watchpost : erreur du collecteur $(watchpost.data.collector) de l'agent</description>
+    <description>Watchpost: error of the agent's $(watchpost.data.collector) collector</description>
     <group>watchpost_agent,</group>
   </rule>
 
   <rule id="100114" level="3">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^agent.config_changed$</field>
-    <description>Watchpost : réglage de l'agent modifié ($(watchpost.data.key) : $(watchpost.data.old) -> $(watchpost.data.new))</description>
+    <description>Watchpost: agent setting changed ($(watchpost.data.key): $(watchpost.data.old) -> $(watchpost.data.new))</description>
     <group>watchpost_agent,watchpost_config,</group>
   </rule>
 
@@ -82,28 +82,28 @@
     <if_sid>100114</if_sid>
     <field name="watchpost.data.key" type="pcre2">(?i)collector|upload|ingest|enabled</field>
     <field name="watchpost.data.new" type="pcre2">^(false|disabled|off)$</field>
-    <description>Watchpost : une collecte ou l'envoi a été désactivé dans l'agent ($(watchpost.data.key))</description>
+    <description>Watchpost: a collection or the upload was disabled in the agent ($(watchpost.data.key))</description>
     <group>watchpost_agent,watchpost_config,</group>
   </rule>
 
-  <!-- Niveau 2 : la perte du Device Owner est alertée une fois par security.posture_change (100255) ;
-       le battement (toutes les 15 min) ne fait que marquer l'état. -->
+  <!-- Level 2: the loss of Device Owner is alerted once through security.posture_change (100255);
+       the heartbeat (every 15 min) only marks the state. -->
   <rule id="100116" level="2">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^agent.heartbeat$</field>
     <field name="watchpost.data.device_owner">^false$</field>
-    <description>Watchpost : l'agent n'est plus Device Owner sur $(watchpost.device_name) (protections locales inactives)</description>
+    <description>Watchpost: the agent is no longer Device Owner on $(watchpost.device_name) (local protections inactive)</description>
 <group>watchpost_agent,watchpost_posture,attack_mobile_T1629,</group>
   </rule>
 
   <!-- ========================= device.* ========================= -->
 
-  <!-- Changement d'heure d'au moins une heure (3 600 000 ms) -->
+  <!-- Clock change of at least one hour (3,600,000 ms) -->
   <rule id="100120" level="5">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^device.time_changed$</field>
     <field name="watchpost.data.delta_ms" type="pcre2">^-?(3[6-9]\d{5}|[4-9]\d{6}|\d{8,})$</field>
-    <description>Watchpost : horloge de l'appareil modifiée de $(watchpost.data.delta_ms) ms</description>
+    <description>Watchpost: device clock changed by $(watchpost.data.delta_ms) ms</description>
     <group>watchpost_device,</group>
   </rule>
 
@@ -111,7 +111,7 @@
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^device.usb$</field>
     <field name="watchpost.data.functions" type="pcre2">\badb\b</field>
-    <description>Watchpost : connexion USB avec la fonction de débogage ADB active</description>
+    <description>Watchpost: USB connection with the ADB debugging function active</description>
     <group>watchpost_device,watchpost_adb,</group>
   </rule>
 
@@ -121,7 +121,7 @@
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^location.fix$</field>
     <field name="watchpost.data.mock">^true$</field>
-    <description>Watchpost : position simulée (mock location) reçue du fournisseur $(watchpost.data.provider)</description>
+    <description>Watchpost: simulated position (mock location) received from provider $(watchpost.data.provider)</description>
     <group>watchpost_location,</group>
   </rule>
 
@@ -130,35 +130,35 @@
   <rule id="100140" level="8">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^net.cell_security$</field>
-    <description>Watchpost : anomalie de sécurité cellulaire ($(watchpost.data.kind))</description>
+    <description>Watchpost: cellular security anomaly ($(watchpost.data.kind))</description>
 <group>watchpost_network,watchpost_cellular,attack_mobile_T1638,</group>
   </rule>
 
   <rule id="100141" level="10">
     <if_sid>100140</if_sid>
     <field name="watchpost.data.kind">^downgrade_2g$</field>
-    <description>Watchpost : rétrogradation forcée en 2G (station de base factice possible)</description>
+    <description>Watchpost: forced downgrade to 2G (possible fake base station)</description>
 <group>watchpost_network,watchpost_cellular,attack_mobile_T1638,</group>
   </rule>
 
   <rule id="100142" level="12">
     <if_sid>100140</if_sid>
     <field name="watchpost.data.kind">^null_cipher$</field>
-    <description>Watchpost : connexion cellulaire sans chiffrement (chiffrement nul)</description>
+    <description>Watchpost: cellular connection without encryption (null cipher)</description>
 <group>watchpost_network,watchpost_cellular,attack_mobile_T1638,</group>
   </rule>
 
   <rule id="100143" level="10">
     <if_sid>100140</if_sid>
     <field name="watchpost.data.kind">^identifier_disclosure$</field>
-    <description>Watchpost : divulgation de l'identifiant d'abonné demandée par le réseau (IMSI-catcher possible)</description>
+    <description>Watchpost: disclosure of the subscriber identifier requested by the network (possible IMSI catcher)</description>
 <group>watchpost_network,watchpost_cellular,attack_mobile_T1638,</group>
   </rule>
 
   <rule id="100145" level="10">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^net.ble_tracker$</field>
-    <description>Watchpost : traceur Bluetooth ($(watchpost.data.kind)) qui suit l'appareil, vu $(watchpost.data.sightings) fois</description>
+    <description>Watchpost: Bluetooth tracker ($(watchpost.data.kind)) following the device, seen $(watchpost.data.sightings) times</description>
     <group>watchpost_network,watchpost_stalking,</group>
   </rule>
 
@@ -167,7 +167,7 @@
     <field name="watchpost.type">^net.wifi$</field>
     <field name="watchpost.data.event">^connected$</field>
     <field name="watchpost.data.security" type="pcre2">(?i)^(open|none|wep|owe_transition)$</field>
-    <description>Watchpost : connexion à un réseau Wi-Fi ouvert ou faible ($(watchpost.data.ssid), $(watchpost.data.security))</description>
+    <description>Watchpost: connection to an open or weak Wi-Fi network ($(watchpost.data.ssid), $(watchpost.data.security))</description>
     <group>watchpost_network,</group>
   </rule>
 
@@ -176,18 +176,18 @@
     <field name="watchpost.type">^net.connectivity$</field>
     <field name="watchpost.data.validated">^true$</field>
     <field name="watchpost.data.private_dns_active">^false$</field>
-    <description>Watchpost : réseau actif sans DNS privé (les requêtes DNS échappent au filtrage)</description>
+    <description>Watchpost: active network without private DNS (DNS queries escape filtering)</description>
 <group>watchpost_network,watchpost_dns,attack_mobile_T1629,</group>
   </rule>
 
-  <!-- Requêtes DNS d'une app vers des domaines de télémétrie/publicité Google ou Samsung.
-       Niveau 2 : pas d'alerte, mais l'événement est marqué (rule.id, groupe watchpost_telemetry) dans
-       wazuh-archives-* pour les tableaux de bord « qui piste quoi ». -->
+  <!-- DNS queries from an app to Google or Samsung telemetry/advertising domains.
+       Level 2: no alert, but the event is marked (rule.id, watchpost_telemetry group) in
+       wazuh-archives-* for the "who tracks what" dashboards. -->
   <rule id="100148" level="2">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^net.dns$</field>
     <field name="watchpost.data.hostname" type="pcre2">(?i)(^|\.)(app-measurement\.com|firebaselogging(-pa)?\.googleapis\.com|firebasecrashlytics\.googleapis\.com|crashlyticsreports-pa\.googleapis\.com|crashlytics\.com|google-analytics\.com|googletagmanager\.com|doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.com|play-services-telemetry\.googleapis\.com|clientmetrics-pa\.googleapis\.com|samsungads\.com|dc\.di\.atlas\.samsung\.com|analytics\.samsungknox\.com|gos-gsp\.io)$</field>
-    <description>Watchpost : $(watchpost.data.package) contacte un domaine de télémétrie ($(watchpost.data.hostname))</description>
+    <description>Watchpost: $(watchpost.data.package) contacts a telemetry domain ($(watchpost.data.hostname))</description>
     <group>watchpost_network,watchpost_telemetry,</group>
   </rule>
 
@@ -196,44 +196,44 @@
   <rule id="100150" level="3">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^app.installed$</field>
-    <description>Watchpost : app installée $(watchpost.data.package) $(watchpost.data.version_name) (installateur $(watchpost.data.installer))</description>
+    <description>Watchpost: app installed $(watchpost.data.package) $(watchpost.data.version_name) (installer $(watchpost.data.installer))</description>
     <group>watchpost_app,watchpost_app_installed,</group>
   </rule>
 
-  <!-- Installée par autre chose que le Play Store ou le Galaxy Store -->
+  <!-- Installed by something other than the Play Store or the Galaxy Store -->
   <rule id="100151" level="8">
     <if_sid>100150</if_sid>
     <field name="watchpost.data.installer" type="pcre2" negate="yes">^(com\.android\.vending|com\.sec\.android\.app\.samsungapps)$</field>
-    <description>Watchpost : app installée hors Play Store : $(watchpost.data.package) (installateur $(watchpost.data.installer))</description>
+    <description>Watchpost: app installed outside the Play Store: $(watchpost.data.package) (installer $(watchpost.data.installer))</description>
     <group>watchpost_app,watchpost_app_installed,watchpost_sideload,</group>
   </rule>
 
-  <!-- Aucun installateur déclaré : typiquement « adb install » -->
+  <!-- No declared installer: typically "adb install" -->
   <rule id="100152" level="8">
     <if_sid>100150</if_sid>
     <match type="pcre2" negate="yes">"installer":</match>
-    <description>Watchpost : app installée sans installateur déclaré (ADB ?) : $(watchpost.data.package)</description>
+    <description>Watchpost: app installed without a declared installer (ADB?): $(watchpost.data.package)</description>
     <group>watchpost_app,watchpost_app_installed,watchpost_sideload,watchpost_adb,</group>
   </rule>
 
   <rule id="100153" level="3">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^app.removed$</field>
-    <description>Watchpost : app désinstallée $(watchpost.data.package)</description>
+    <description>Watchpost: app uninstalled $(watchpost.data.package)</description>
     <group>watchpost_app,</group>
   </rule>
 
-  <!-- Accès spéciaux : l'événement est émis à chaque changement ET une fois par jour. On alerte
-       quand la liste diffère de celle d'un événement précédent du même appareil (fenêtre de 25 h,
-       qui couvre la réémission quotidienne). « ignore » évite de réalerter à chaque réémission
-       pendant 25 h ; contrepartie : un second changement de la même liste dans ces 25 h n'alerte pas
-       (la console Watchpost garde l'historique complet de la posture).
-       Niveau 1 (et non 0) : Wazuh ne mémorise pas les événements de niveau 0 pour les règles de
-       corrélation (if_matched_sid) ; le niveau 1 reste sous le seuil d'alerte. -->
+  <!-- Special access: the event is sent on every change AND once a day. An alert is raised
+       when the list differs from the one of a previous event of the same device (25 h window,
+       which covers the daily resend). "ignore" avoids alerting again on every resend for 25 h;
+       the trade-off: a second change of the same list within these 25 h does not alert
+       (the Watchpost console keeps the full posture history).
+       Level 1 (not 0): Wazuh does not keep level 0 events for the correlation rules
+       (if_matched_sid); level 1 stays below the alert threshold. -->
   <rule id="100155" level="1">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^app.special_access$</field>
-    <description>Watchpost : état des accès spéciaux des apps</description>
+    <description>Watchpost: state of the apps' special access</description>
     <group>watchpost_app,</group>
   </rule>
 
@@ -241,7 +241,7 @@
     <if_matched_sid>100155</if_matched_sid>
     <same_field>watchpost.device_id</same_field>
     <different_field>watchpost.data.accessibility_services</different_field>
-    <description>Watchpost : la liste des services d'accessibilité a changé : $(watchpost.data.accessibility_services)</description>
+    <description>Watchpost: the list of accessibility services changed: $(watchpost.data.accessibility_services)</description>
 <group>watchpost_app,watchpost_special_access,attack_mobile_T1453,</group>
   </rule>
 
@@ -249,7 +249,7 @@
     <if_matched_sid>100155</if_matched_sid>
     <same_field>watchpost.device_id</same_field>
     <different_field>watchpost.data.device_admins</different_field>
-    <description>Watchpost : la liste des administrateurs de l'appareil a changé : $(watchpost.data.device_admins)</description>
+    <description>Watchpost: the list of device administrators changed: $(watchpost.data.device_admins)</description>
 <group>watchpost_app,watchpost_special_access,attack_mobile_T1626.001,</group>
   </rule>
 
@@ -257,7 +257,7 @@
     <if_matched_sid>100155</if_matched_sid>
     <same_field>watchpost.device_id</same_field>
     <different_field>watchpost.data.notification_listeners</different_field>
-    <description>Watchpost : la liste des apps qui lisent les notifications a changé : $(watchpost.data.notification_listeners)</description>
+    <description>Watchpost: the list of apps that read notifications changed: $(watchpost.data.notification_listeners)</description>
 <group>watchpost_app,watchpost_special_access,attack_mobile_T1517,</group>
   </rule>
 
@@ -265,7 +265,7 @@
     <if_matched_sid>100155</if_matched_sid>
     <same_field>watchpost.device_id</same_field>
     <different_field>watchpost.data.vpn_apps</different_field>
-    <description>Watchpost : la liste des apps VPN a changé : $(watchpost.data.vpn_apps)</description>
+    <description>Watchpost: the list of VPN apps changed: $(watchpost.data.vpn_apps)</description>
     <group>watchpost_app,watchpost_special_access,</group>
   </rule>
 
@@ -274,30 +274,30 @@
     <field name="watchpost.type">^app.permission_changed$</field>
     <field name="watchpost.data.granted">^true$</field>
     <field name="watchpost.data.permission" type="pcre2">(ACCESS_BACKGROUND_LOCATION|RECORD_AUDIO|CAMERA|SEND_SMS|READ_SMS|RECEIVE_SMS|RECEIVE_MMS|CALL_PHONE|READ_CALL_LOG|READ_CONTACTS|BODY_SENSORS|MANAGE_EXTERNAL_STORAGE|SYSTEM_ALERT_WINDOW|REQUEST_INSTALL_PACKAGES)$</field>
-    <description>Watchpost : permission sensible accordée à $(watchpost.data.package) ($(watchpost.data.permission))</description>
+    <description>Watchpost: sensitive permission granted to $(watchpost.data.package) ($(watchpost.data.permission))</description>
     <group>watchpost_app,watchpost_permission,</group>
   </rule>
 
-  <!-- Permissions SMS : défense en profondeur, indépendante des détections du collecteur (sans le
-       collecteur expérimental app_ops, l'envoi de SMS lui-même n'est jamais compté). L'appli SMS
-       par défaut les reçoit aussi (changement d'appli SMS) : vérifier le paquet. -->
+  <!-- SMS permissions: defence in depth, independent of the collector detections (without the
+       experimental app_ops collector, the sending of SMS itself is never counted). The default
+       SMS app receives them too (SMS app change): check the package. -->
   <rule id="100161" level="8">
     <if_sid>100160</if_sid>
     <field name="watchpost.data.permission" type="pcre2">\.(SEND_SMS|READ_SMS|RECEIVE_SMS|RECEIVE_MMS)$</field>
-    <description>Watchpost : permission SMS accordée à $(watchpost.data.package) ($(watchpost.data.permission)) : vérifier que c'est l'appli SMS</description>
+    <description>Watchpost: SMS permission granted to $(watchpost.data.package) ($(watchpost.data.permission)): check that it is the SMS app</description>
     <group>watchpost_app,watchpost_permission,watchpost_sms,attack_mobile_T1582,</group>
   </rule>
 
   <!-- ========================= sensor.* ========================= -->
-  <!-- Tout usage est marqué (niveau 2) pour les tableaux de bord. Les événements portent l'état de
-       l'écran (screen_on) et du verrouillage (locked) : un usage appareil verrouillé, ou écran
-       éteint hors appel (le capteur de proximité éteint l'écran pendant un appel), est alerté. -->
+  <!-- Every use is marked (level 2) for the dashboards. The events carry the state of the screen
+       (screen_on) and of the lock (locked): a use while the device is locked, or with the screen
+       off outside a call (the proximity sensor turns the screen off during a call), is alerted. -->
 
   <rule id="100170" level="2">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^sensor.microphone$</field>
     <field name="watchpost.data.recording">^true$</field>
-    <description>Watchpost : micro utilisé par $(watchpost.data.package)</description>
+    <description>Watchpost: microphone used by $(watchpost.data.package)</description>
     <group>watchpost_sensor,</group>
   </rule>
 
@@ -305,14 +305,14 @@
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^sensor.camera$</field>
     <field name="watchpost.data.in_use">^true$</field>
-    <description>Watchpost : caméra $(watchpost.data.camera_id) utilisée par $(watchpost.data.package)</description>
+    <description>Watchpost: camera $(watchpost.data.camera_id) used by $(watchpost.data.package)</description>
     <group>watchpost_sensor,</group>
   </rule>
 
   <rule id="100172" level="10">
     <if_sid>100170</if_sid>
     <field name="watchpost.data.locked">^true$</field>
-    <description>Watchpost : micro utilisé par $(watchpost.data.package) alors que l'appareil est verrouillé</description>
+    <description>Watchpost: microphone used by $(watchpost.data.package) while the device is locked</description>
     <group>watchpost_sensor,watchpost_hidden_capture,attack_mobile_T1429,</group>
   </rule>
 
@@ -320,21 +320,21 @@
     <if_sid>100170</if_sid>
     <field name="watchpost.data.screen_on">^false$</field>
     <field name="watchpost.data.source" type="pcre2" negate="yes">^voice_(communication|call)$</field>
-    <description>Watchpost : micro utilisé écran éteint, hors appel, par $(watchpost.data.package) (source $(watchpost.data.source))</description>
+    <description>Watchpost: microphone used with the screen off, outside a call, by $(watchpost.data.package) (source $(watchpost.data.source))</description>
     <group>watchpost_sensor,watchpost_hidden_capture,attack_mobile_T1429,</group>
   </rule>
 
   <rule id="100174" level="10">
     <if_sid>100171</if_sid>
     <field name="watchpost.data.locked">^true$</field>
-    <description>Watchpost : caméra $(watchpost.data.camera_id) utilisée par $(watchpost.data.package) alors que l'appareil est verrouillé</description>
+    <description>Watchpost: camera $(watchpost.data.camera_id) used by $(watchpost.data.package) while the device is locked</description>
     <group>watchpost_sensor,watchpost_hidden_capture,attack_mobile_T1512,</group>
   </rule>
 
   <rule id="100175" level="8">
     <if_sid>100171</if_sid>
     <field name="watchpost.data.screen_on">^false$</field>
-    <description>Watchpost : caméra $(watchpost.data.camera_id) utilisée écran éteint par $(watchpost.data.package)</description>
+    <description>Watchpost: camera $(watchpost.data.camera_id) used with the screen off by $(watchpost.data.package)</description>
     <group>watchpost_sensor,watchpost_hidden_capture,attack_mobile_T1512,</group>
   </rule>
 
@@ -344,21 +344,21 @@
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^security.keyguard$</field>
     <field name="watchpost.data.event">^unlock_failed$</field>
-    <description>Watchpost : échec de déverrouillage de l'écran ($(watchpost.data.failed_attempts) tentatives)</description>
+    <description>Watchpost: screen unlock failure ($(watchpost.data.failed_attempts) attempts)</description>
     <group>watchpost_security,watchpost_keyguard,authentication_failed,</group>
   </rule>
 
   <rule id="100181" level="10" frequency="5" timeframe="600">
     <if_matched_sid>100180</if_matched_sid>
     <same_field>watchpost.device_id</same_field>
-    <description>Watchpost : déverrouillages échoués répétés (5 en 10 min) sur $(watchpost.device_name)</description>
+    <description>Watchpost: repeated failed unlocks (5 in 10 min) on $(watchpost.device_name)</description>
 <group>watchpost_security,watchpost_keyguard,authentication_failures,attack_mobile_T1461,</group>
   </rule>
 
   <rule id="100182" level="10">
     <if_sid>100180</if_sid>
     <field name="watchpost.data.failed_attempts" type="pcre2">^([1-9]\d+)$</field>
-    <description>Watchpost : $(watchpost.data.failed_attempts) échecs de déverrouillage consécutifs</description>
+    <description>Watchpost: $(watchpost.data.failed_attempts) consecutive unlock failures</description>
 <group>watchpost_security,watchpost_keyguard,authentication_failures,attack_mobile_T1461,</group>
   </rule>
 
@@ -366,7 +366,7 @@
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^security.ca_cert$</field>
     <field name="watchpost.data.event">^added$</field>
-    <description>Watchpost : autorité de certification utilisateur ajoutée ($(watchpost.data.subject))</description>
+    <description>Watchpost: user certificate authority added ($(watchpost.data.subject))</description>
 <group>watchpost_security,watchpost_ca,attack_mobile_T1638,</group>
   </rule>
 
@@ -374,7 +374,7 @@
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^security.ca_cert$</field>
     <field name="watchpost.data.event">^removed$</field>
-    <description>Watchpost : autorité de certification utilisateur retirée ($(watchpost.data.subject))</description>
+    <description>Watchpost: user certificate authority removed ($(watchpost.data.subject))</description>
     <group>watchpost_security,watchpost_ca,</group>
   </rule>
 
@@ -382,132 +382,132 @@
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^security.policy$</field>
     <field name="watchpost.data.ok">^false$</field>
-    <description>Watchpost : échec d'une action de politique Device Owner ($(watchpost.data.action) $(watchpost.data.target))</description>
+    <description>Watchpost: Device Owner policy action failed ($(watchpost.data.action) $(watchpost.data.target))</description>
     <group>watchpost_security,watchpost_policy,</group>
   </rule>
 
-  <!-- ========================= security.posture (état complet) ========================= -->
-  <!-- Chaque CHANGEMENT de posture arrive aussi en security.posture_change (un événement par champ)
-       et y est alerté (règles 100250-100269). Pour ne pas alerter deux fois le même fait, les
-       constats sur l'état complet sont ici de niveau 2 : pas d'alerte, mais l'événement est marqué
-       (groupe watchpost_posture_state) pour les tableaux de bord. Seul l'âge du correctif, qui n'est pas
-       un changement de l'appareil, alerte ici (au plus une fois par semaine).
-       Limite : un défaut DÉJÀ présent à l'enrôlement ne produit pas de changement, donc pas
-       d'alerte : vérifier la posture initiale dans la console après l'enrôlement. -->
+  <!-- ========================= security.posture (full state) ========================= -->
+  <!-- Every posture CHANGE also arrives as security.posture_change (one event per field) and is
+       alerted there (rules 100250-100269). So as not to alert twice on the same fact, the
+       findings on the full state are level 2 here: no alert, but the event is marked
+       (watchpost_posture_state group) for the dashboards. Only the patch age, which is not a
+       change of the device, alerts here (at most once a week).
+       Limit: a defect ALREADY present at enrollment produces no change, hence no alert:
+       check the initial posture in the console after enrollment. -->
 
   <rule id="100190" level="0">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^security.posture$</field>
-    <description>Watchpost : posture de sécurité de $(watchpost.device_name)</description>
+    <description>Watchpost: security posture of $(watchpost.device_name)</description>
     <group>watchpost_posture,watchpost_posture_state,</group>
   </rule>
 
   <rule id="100191" level="2">
     <if_sid>100190</if_sid>
     <field name="watchpost.data.verified_boot_state" type="pcre2">(?i)^(orange|yellow|red)$</field>
-    <description>Watchpost : démarrage vérifié « $(watchpost.data.verified_boot_state) » (chargeur d'amorçage déverrouillé ou système modifié)</description>
+    <description>Watchpost: verified boot "$(watchpost.data.verified_boot_state)" (bootloader unlocked or system modified)</description>
     <group>watchpost_posture,watchpost_posture_state,</group>
   </rule>
 
   <rule id="100192" level="2">
     <if_sid>100190</if_sid>
     <field name="watchpost.data.encrypted">^false$</field>
-    <description>Watchpost : stockage de l'appareil non chiffré</description>
+    <description>Watchpost: device storage not encrypted</description>
     <group>watchpost_posture,watchpost_posture_state,</group>
   </rule>
 
   <rule id="100193" level="2">
     <if_sid>100190</if_sid>
     <field name="watchpost.data.device_owner">^false$</field>
-    <description>Watchpost : l'agent n'est pas (ou plus) Device Owner (protections locales inactives)</description>
+    <description>Watchpost: the agent is not (or no longer) Device Owner (local protections inactive)</description>
 <group>watchpost_posture,watchpost_posture_state,attack_mobile_T1629,</group>
   </rule>
 
   <rule id="100194" level="2">
     <if_sid>100190</if_sid>
     <field name="watchpost.data.private_dns_mode" type="pcre2">^(?!hostname$|provider_hostname$)</field>
-    <description>Watchpost : DNS privé désactivé ou non strict (mode $(watchpost.data.private_dns_mode))</description>
+    <description>Watchpost: private DNS disabled or not strict (mode $(watchpost.data.private_dns_mode))</description>
 <group>watchpost_posture,watchpost_posture_state,watchpost_dns,attack_mobile_T1629,</group>
   </rule>
 
   <rule id="100195" level="2">
     <if_sid>100190</if_sid>
     <list field="watchpost.data.private_dns_host" lookup="not_match_key">etc/lists/watchpost-private-dns-hosts</list>
-    <description>Watchpost : DNS privé pointé vers un hôte inattendu ($(watchpost.data.private_dns_host))</description>
+    <description>Watchpost: private DNS pointed to an unexpected host ($(watchpost.data.private_dns_host))</description>
 <group>watchpost_posture,watchpost_posture_state,watchpost_dns,attack_mobile_T1638,</group>
   </rule>
 
   <rule id="100196" level="2">
     <if_sid>100190</if_sid>
     <field name="watchpost.data.adb_wifi_enabled">^true$</field>
-    <description>Watchpost : débogage ADB sans fil activé</description>
+    <description>Watchpost: wireless ADB debugging enabled</description>
     <group>watchpost_posture,watchpost_posture_state,watchpost_adb,</group>
   </rule>
 
   <rule id="100197" level="2">
     <if_sid>100190</if_sid>
     <field name="watchpost.data.adb_enabled">^true$</field>
-    <description>Watchpost : débogage USB (ADB) activé</description>
+    <description>Watchpost: USB debugging (ADB) enabled</description>
     <group>watchpost_posture,watchpost_posture_state,watchpost_adb,</group>
   </rule>
 
   <rule id="100198" level="2">
     <if_sid>100190</if_sid>
     <field name="watchpost.data.lock_secure">^false$</field>
-    <description>Watchpost : aucun verrouillage d'écran sécurisé</description>
+    <description>Watchpost: no secure screen lock</description>
     <group>watchpost_posture,watchpost_posture_state,</group>
   </rule>
 
   <rule id="100199" level="2">
     <if_sid>100190</if_sid>
     <field name="watchpost.data.user_ca_certs" type="pcre2">[0-9a-f]{64}</field>
-    <description>Watchpost : au moins une autorité de certification utilisateur est installée</description>
+    <description>Watchpost: at least one user certificate authority is installed</description>
 <group>watchpost_posture,watchpost_posture_state,watchpost_ca,attack_mobile_T1638,</group>
   </rule>
 
   <rule id="100200" level="9" ignore="604800">
     <if_sid>100190</if_sid>
     <field name="watchpost.data.patch_age_days" type="pcre2">^(18[1-9]|19\d|[2-9]\d\d|\d{4,})$</field>
-    <description>Watchpost : correctif de sécurité vieux de $(watchpost.data.patch_age_days) jours (plus de 6 mois)</description>
+    <description>Watchpost: security patch $(watchpost.data.patch_age_days) days old (more than 6 months)</description>
     <group>watchpost_posture,watchpost_posture_state,watchpost_patch,</group>
   </rule>
 
   <rule id="100201" level="2">
     <if_sid>100190</if_sid>
     <field name="watchpost.data.unknown_sources">^true$</field>
-    <description>Watchpost : installation depuis des sources inconnues autorisée</description>
+    <description>Watchpost: installation from unknown sources allowed</description>
     <group>watchpost_posture,watchpost_posture_state,watchpost_sideload,</group>
   </rule>
 
   <rule id="100202" level="6" ignore="604800">
     <if_sid>100190</if_sid>
     <field name="watchpost.data.patch_age_days" type="pcre2">^(9[1-9]|1[0-7]\d|180)$</field>
-    <description>Watchpost : correctif de sécurité vieux de $(watchpost.data.patch_age_days) jours (plus de 3 mois)</description>
+    <description>Watchpost: security patch $(watchpost.data.patch_age_days) days old (more than 3 months)</description>
     <group>watchpost_posture,watchpost_posture_state,watchpost_patch,</group>
   </rule>
 
   <rule id="100203" level="2">
     <if_sid>100190</if_sid>
     <field name="watchpost.data.play_protect">^false$</field>
-    <description>Watchpost : Play Protect désactivé</description>
+    <description>Watchpost: Play Protect disabled</description>
     <group>watchpost_posture,watchpost_posture_state,</group>
   </rule>
 
   <rule id="100204" level="2">
     <if_sid>100190</if_sid>
     <field name="watchpost.data.dev_options">^true$</field>
-    <description>Watchpost : options pour les développeurs activées</description>
+    <description>Watchpost: developer options enabled</description>
     <group>watchpost_posture,watchpost_posture_state,watchpost_adb,</group>
   </rule>
 
-  <!-- ========================= security.posture_change (un champ modifié) ========================= -->
-  <!-- Contrat §2 (précisions) : field, old, new, valeurs converties en chaînes. Une alerte par
-       changement. Les retours à la normale tombent dans la règle de base (niveau 3). -->
+  <!-- ========================= security.posture_change (one changed field) ========================= -->
+  <!-- Contract §2 (details): field, old, new, values converted to strings. One alert per
+       change. Returns to normal fall into the base rule (level 3). -->
 
   <rule id="100250" level="3">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^security.posture_change$</field>
-    <description>Watchpost : posture modifiée, $(watchpost.data.field) : « $(watchpost.data.old) » -> « $(watchpost.data.new) »</description>
+    <description>Watchpost: posture changed, $(watchpost.data.field): "$(watchpost.data.old)" -> "$(watchpost.data.new)"</description>
     <group>watchpost_posture,watchpost_posture_change,</group>
   </rule>
 
@@ -515,7 +515,7 @@
     <if_sid>100250</if_sid>
     <field name="watchpost.data.field">^adb_wifi_enabled$</field>
     <field name="watchpost.data.new">^true$</field>
-    <description>Watchpost : débogage ADB sans fil activé</description>
+    <description>Watchpost: wireless ADB debugging enabled</description>
     <group>watchpost_posture,watchpost_posture_change,watchpost_adb,</group>
   </rule>
 
@@ -523,7 +523,7 @@
     <if_sid>100250</if_sid>
     <field name="watchpost.data.field">^adb_enabled$</field>
     <field name="watchpost.data.new">^true$</field>
-    <description>Watchpost : débogage USB (ADB) activé</description>
+    <description>Watchpost: USB debugging (ADB) enabled</description>
     <group>watchpost_posture,watchpost_posture_change,watchpost_adb,</group>
   </rule>
 
@@ -531,7 +531,7 @@
     <if_sid>100250</if_sid>
     <field name="watchpost.data.field">^dev_options$</field>
     <field name="watchpost.data.new">^true$</field>
-    <description>Watchpost : options pour les développeurs activées</description>
+    <description>Watchpost: developer options enabled</description>
     <group>watchpost_posture,watchpost_posture_change,watchpost_adb,</group>
   </rule>
 
@@ -539,7 +539,7 @@
     <if_sid>100250</if_sid>
     <field name="watchpost.data.field">^unknown_sources$</field>
     <field name="watchpost.data.new">^true$</field>
-    <description>Watchpost : installation depuis des sources inconnues autorisée</description>
+    <description>Watchpost: installation from unknown sources allowed</description>
     <group>watchpost_posture,watchpost_posture_change,watchpost_sideload,</group>
   </rule>
 
@@ -547,7 +547,7 @@
     <if_sid>100250</if_sid>
     <field name="watchpost.data.field">^device_owner$</field>
     <field name="watchpost.data.new">^false$</field>
-    <description>Watchpost : l'agent n'est plus Device Owner (protections locales inactives)</description>
+    <description>Watchpost: the agent is no longer Device Owner (local protections inactive)</description>
     <group>watchpost_posture,watchpost_posture_change,attack_mobile_T1629,</group>
   </rule>
 
@@ -555,7 +555,7 @@
     <if_sid>100250</if_sid>
     <field name="watchpost.data.field">^encrypted$</field>
     <field name="watchpost.data.new">^false$</field>
-    <description>Watchpost : le stockage de l'appareil n'est plus chiffré</description>
+    <description>Watchpost: the device storage is no longer encrypted</description>
     <group>watchpost_posture,watchpost_posture_change,</group>
   </rule>
 
@@ -563,7 +563,7 @@
     <if_sid>100250</if_sid>
     <field name="watchpost.data.field">^lock_secure$</field>
     <field name="watchpost.data.new">^false$</field>
-    <description>Watchpost : verrouillage d'écran sécurisé supprimé</description>
+    <description>Watchpost: secure screen lock removed</description>
     <group>watchpost_posture,watchpost_posture_change,</group>
   </rule>
 
@@ -571,7 +571,7 @@
     <if_sid>100250</if_sid>
     <field name="watchpost.data.field">^play_protect$</field>
     <field name="watchpost.data.new">^false$</field>
-    <description>Watchpost : Play Protect désactivé</description>
+    <description>Watchpost: Play Protect disabled</description>
     <group>watchpost_posture,watchpost_posture_change,</group>
   </rule>
 
@@ -579,7 +579,7 @@
     <if_sid>100250</if_sid>
     <field name="watchpost.data.field">^verified_boot_state$</field>
     <field name="watchpost.data.new" type="pcre2">(?i)^(?!green$)</field>
-    <description>Watchpost : démarrage vérifié passé de « $(watchpost.data.old) » à « $(watchpost.data.new) » (chargeur d'amorçage déverrouillé ou système modifié)</description>
+    <description>Watchpost: verified boot went from "$(watchpost.data.old)" to "$(watchpost.data.new)" (bootloader unlocked or system modified)</description>
     <group>watchpost_posture,watchpost_posture_change,</group>
   </rule>
 
@@ -587,84 +587,84 @@
     <if_sid>100250</if_sid>
     <field name="watchpost.data.field">^private_dns_mode$</field>
     <field name="watchpost.data.new" type="pcre2">^(?!hostname$|provider_hostname$)</field>
-    <description>Watchpost : DNS privé désactivé ou non strict (mode « $(watchpost.data.new) », avant « $(watchpost.data.old) »)</description>
+    <description>Watchpost: private DNS disabled or not strict (mode "$(watchpost.data.new)", before "$(watchpost.data.old)")</description>
     <group>watchpost_posture,watchpost_posture_change,watchpost_dns,attack_mobile_T1629,</group>
   </rule>
 
-  <!-- Hôte DNS privé remplacé par un hôte hors de la liste attendue (vide = mode non strict,
-       déjà couvert par 100260). -->
+  <!-- Private DNS host replaced by a host outside the expected list (empty = non-strict mode,
+       already covered by 100260). -->
   <rule id="100261" level="10">
     <if_sid>100250</if_sid>
     <field name="watchpost.data.field">^private_dns_host$</field>
     <field name="watchpost.data.new">\S</field>
     <list field="watchpost.data.new" lookup="not_match_key">etc/lists/watchpost-private-dns-hosts</list>
-    <description>Watchpost : DNS privé pointé vers un hôte inattendu (« $(watchpost.data.new) »)</description>
+    <description>Watchpost: private DNS pointed to an unexpected host ("$(watchpost.data.new)")</description>
     <group>watchpost_posture,watchpost_posture_change,watchpost_dns,attack_mobile_T1638,</group>
   </rule>
 
-  <!-- Liste des AC utilisateur modifiée avec au moins une AC présente. Niveau 2 : l'ajout est
-       alerté une fois par security.ca_cert (100185), qui porte le sujet de l'AC. -->
+  <!-- List of user CAs changed with at least one CA present. Level 2: the addition is alerted
+       once through security.ca_cert (100185), which carries the subject of the CA. -->
   <rule id="100262" level="2">
     <if_sid>100250</if_sid>
     <field name="watchpost.data.field">^user_ca_certs$</field>
     <field name="watchpost.data.new" type="pcre2">[0-9a-f]{64}</field>
-    <description>Watchpost : AC utilisateur ajoutée (liste : $(watchpost.data.new))</description>
+    <description>Watchpost: user CA added (list: $(watchpost.data.new))</description>
     <group>watchpost_posture,watchpost_posture_change,watchpost_ca,attack_mobile_T1638,</group>
   </rule>
 
-  <!-- Hôte DNS privé vidé : accompagne le passage en mode non strict, déjà alerté par 100260. -->
+  <!-- Private DNS host emptied: comes with the switch to non-strict mode, already alerted by 100260. -->
   <rule id="100264" level="2">
     <if_sid>100250</if_sid>
     <field name="watchpost.data.field">^private_dns_host$</field>
     <match>"new":""</match>
-    <description>Watchpost : hôte DNS privé vidé (ancien : $(watchpost.data.old))</description>
+    <description>Watchpost: private DNS host emptied (previous: $(watchpost.data.old))</description>
     <group>watchpost_posture,watchpost_posture_change,watchpost_dns,</group>
   </rule>
 
-  <!-- AC utilisateur retirées : déjà signalé par security.ca_cert (100186). -->
+  <!-- User CAs removed: already reported by security.ca_cert (100186). -->
   <rule id="100265" level="2">
     <if_sid>100250</if_sid>
     <field name="watchpost.data.field">^user_ca_certs$</field>
-    <description>Watchpost : liste des AC utilisateur modifiée (« $(watchpost.data.old) » -> « $(watchpost.data.new) »)</description>
+    <description>Watchpost: list of user CAs changed ("$(watchpost.data.old)" -> "$(watchpost.data.new)")</description>
     <group>watchpost_posture,watchpost_posture_change,watchpost_ca,</group>
   </rule>
 
-  <!-- Mise à jour de sécurité installée (information). -->
+  <!-- Security update installed (information). -->
   <rule id="100263" level="3">
     <if_sid>100250</if_sid>
     <field name="watchpost.data.field">^security_patch$</field>
-    <description>Watchpost : niveau de correctif de sécurité passé de $(watchpost.data.old) à $(watchpost.data.new)</description>
+    <description>Watchpost: security patch level went from $(watchpost.data.old) to $(watchpost.data.new)</description>
     <group>watchpost_posture,watchpost_posture_change,watchpost_patch,</group>
   </rule>
 
-  <!-- ========================= security.log (journal de sécurité Android) ========================= -->
-  <!-- Noms des champs de fields : table du contrat §2 (précisions du catalogue). -->
+  <!-- ========================= security.log (Android security log) ========================= -->
+  <!-- Names of the fields of "fields": table of contract §2 (catalogue details). -->
 
   <rule id="100210" level="0">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^security.log$</field>
-    <description>Watchpost : journal de sécurité Android ($(watchpost.data.tag))</description>
+    <description>Watchpost: Android security log ($(watchpost.data.tag))</description>
     <group>watchpost_securitylog,</group>
   </rule>
 
   <rule id="100211" level="10">
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag">^adb_shell_interactive$</field>
-    <description>Watchpost : shell ADB interactif ouvert sur l'appareil</description>
+    <description>Watchpost: interactive ADB shell opened on the device</description>
     <group>watchpost_securitylog,watchpost_adb,</group>
   </rule>
 
   <rule id="100212" level="8">
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag">^adb_shell_cmd$</field>
-    <description>Watchpost : commande exécutée par ADB : $(watchpost.data.fields.command)</description>
+    <description>Watchpost: command run through ADB: $(watchpost.data.fields.command)</description>
     <group>watchpost_securitylog,watchpost_adb,</group>
   </rule>
 
   <rule id="100213" level="8">
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag" type="pcre2">^sync_(send|recv)_file$</field>
-    <description>Watchpost : transfert de fichier par ADB ($(watchpost.data.tag)) : $(watchpost.data.fields.path)</description>
+    <description>Watchpost: file transfer through ADB ($(watchpost.data.tag)): $(watchpost.data.fields.path)</description>
     <group>watchpost_securitylog,watchpost_adb,</group>
   </rule>
 
@@ -672,43 +672,43 @@
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag">^keyguard_dismiss_auth_attempt$</field>
     <field name="watchpost.data.fields.success" type="pcre2">^(false|0)$</field>
-    <description>Watchpost : échec d'authentification à l'écran de verrouillage (journal de sécurité)</description>
+    <description>Watchpost: authentication failure on the lock screen (security log)</description>
     <group>watchpost_securitylog,watchpost_keyguard,authentication_failed,</group>
   </rule>
 
   <rule id="100215" level="10" frequency="5" timeframe="600">
     <if_matched_sid>100214</if_matched_sid>
     <same_field>watchpost.device_id</same_field>
-    <description>Watchpost : échecs répétés d'authentification à l'écran de verrouillage (journal de sécurité)</description>
+    <description>Watchpost: repeated authentication failures on the lock screen (security log)</description>
 <group>watchpost_securitylog,watchpost_keyguard,authentication_failures,attack_mobile_T1461,</group>
   </rule>
 
-  <!-- Niveau 2 : l'ajout d'une AC est alerté une fois par security.ca_cert (100185). -->
+  <!-- Level 2: the addition of a CA is alerted once through security.ca_cert (100185). -->
   <rule id="100216" level="2">
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag">^cert_authority_installed$</field>
-    <description>Watchpost : autorité de certification installée (journal de sécurité) : $(watchpost.data.fields.subject)</description>
+    <description>Watchpost: certificate authority installed (security log): $(watchpost.data.fields.subject)</description>
 <group>watchpost_securitylog,watchpost_ca,attack_mobile_T1638,</group>
   </rule>
 
   <rule id="100217" level="12">
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag">^logging_stopped$</field>
-    <description>Watchpost : journalisation de sécurité Android arrêtée</description>
+    <description>Watchpost: Android security logging stopped</description>
 <group>watchpost_securitylog,watchpost_tamper,attack_mobile_T1629.003,</group>
   </rule>
 
   <rule id="100218" level="7">
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag">^log_buffer_size_critical$</field>
-    <description>Watchpost : tampon du journal de sécurité presque plein (risque de perte d'événements)</description>
+    <description>Watchpost: security log buffer almost full (risk of losing events)</description>
     <group>watchpost_securitylog,watchpost_data_loss,</group>
   </rule>
 
   <rule id="100219" level="12">
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag">^key_integrity_violation$</field>
-    <description>Watchpost : violation d'intégrité de la clé « $(watchpost.data.fields.alias) » (uid $(watchpost.data.fields.uid))</description>
+    <description>Watchpost: integrity violation of key "$(watchpost.data.fields.alias)" (uid $(watchpost.data.fields.uid))</description>
     <group>watchpost_securitylog,</group>
   </rule>
 
@@ -716,45 +716,45 @@
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag">^crypto_self_test_completed$</field>
     <field name="watchpost.data.fields.success" type="pcre2">^(false|0)$</field>
-    <description>Watchpost : échec de l'autotest cryptographique du système</description>
+    <description>Watchpost: failure of the system cryptographic self-test</description>
     <group>watchpost_securitylog,</group>
   </rule>
 
   <rule id="100221" level="8">
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag">^wipe_failure$</field>
-    <description>Watchpost : échec d'un effacement de l'appareil</description>
+    <description>Watchpost: device wipe failure</description>
     <group>watchpost_securitylog,</group>
   </rule>
 
   <rule id="100222" level="5">
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag">^user_restriction_removed$</field>
-    <description>Watchpost : restriction utilisateur retirée ($(watchpost.data.fields.restriction)) par $(watchpost.data.fields.admin_package)</description>
+    <description>Watchpost: user restriction removed ($(watchpost.data.fields.restriction)) by $(watchpost.data.fields.admin_package)</description>
     <group>watchpost_securitylog,watchpost_policy,</group>
   </rule>
 
   <rule id="100223" level="3">
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag">^media_mount$</field>
-    <description>Watchpost : support amovible monté ($(watchpost.data.fields.label), $(watchpost.data.fields.mount_point))</description>
+    <description>Watchpost: removable media mounted ($(watchpost.data.fields.label), $(watchpost.data.fields.mount_point))</description>
     <group>watchpost_securitylog,</group>
   </rule>
 
   <rule id="100224" level="7">
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag">^cert_validation_failure$</field>
-    <description>Watchpost : échec de validation de certificat signalé par le système ($(watchpost.data.fields.reason))</description>
+    <description>Watchpost: certificate validation failure reported by the system ($(watchpost.data.fields.reason))</description>
     <group>watchpost_securitylog,</group>
   </rule>
 
-  <!-- Démarrage avec un état de démarrage vérifié dégradé. Niveau 2 : le passage à cet état est
-       alerté une fois par security.posture_change (100259) ; chaque démarrage est ici marqué. -->
+  <!-- Boot with a degraded verified boot state. Level 2: the switch to this state is alerted
+       once through security.posture_change (100259); every boot is marked here. -->
   <rule id="100225" level="2">
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag">^os_startup$</field>
     <field name="watchpost.data.fields.verified_boot_state" type="pcre2">(?i)^(orange|yellow|red)$</field>
-    <description>Watchpost : démarrage avec l'état « $(watchpost.data.fields.verified_boot_state) » (dm-verity $(watchpost.data.fields.dm_verity_mode))</description>
+    <description>Watchpost: boot with state "$(watchpost.data.fields.verified_boot_state)" (dm-verity $(watchpost.data.fields.dm_verity_mode))</description>
     <group>watchpost_securitylog,watchpost_posture_state,</group>
   </rule>
 
@@ -762,14 +762,14 @@
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag">^os_startup$</field>
     <field name="watchpost.data.fields.dm_verity_mode" type="pcre2">(?i)^(?!enforcing$)</field>
-    <description>Watchpost : dm-verity non appliqué au démarrage (mode $(watchpost.data.fields.dm_verity_mode))</description>
+    <description>Watchpost: dm-verity not enforced at boot (mode $(watchpost.data.fields.dm_verity_mode))</description>
     <group>watchpost_securitylog,</group>
   </rule>
 
   <rule id="100227" level="3">
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag">^password_changed$</field>
-    <description>Watchpost : code de verrouillage modifié (complexité $(watchpost.data.fields.complexity))</description>
+    <description>Watchpost: lock screen credential changed (complexity $(watchpost.data.fields.complexity))</description>
     <group>watchpost_securitylog,watchpost_keyguard,</group>
   </rule>
 
@@ -777,66 +777,65 @@
     <if_sid>100210</if_sid>
     <field name="watchpost.data.tag" type="pcre2">^key_(generated|import|destruction)$</field>
     <field name="watchpost.data.fields.success" type="pcre2">^(false|0)$</field>
-    <description>Watchpost : échec d'opération sur la clé « $(watchpost.data.fields.alias) » ($(watchpost.data.tag))</description>
+    <description>Watchpost: operation failed on key "$(watchpost.data.fields.alias)" ($(watchpost.data.tag))</description>
     <group>watchpost_securitylog,</group>
   </rule>
 
-  <!-- ========================= command.* (commandes à distance, contrat §8) ========================= -->
-  <!-- Émis par le collecteur (watchpost.source = « server ») : command.issued, command.cancelled,
-       command.reported, command.expired. Émis par l'appareil : command.result. Les règles des
-       événements serveur exigent watchpost.source = server : un appareil ne peut pas les imiter.
-       Le message de verrouillage n'est jamais exporté (seul message_set l'est) et aucune
-       description ne reprend un texte libre de la console.
-       Le résultat d'une commande arrive deux fois : command.result (ce que dit le téléphone) et
-       command.reported (le même résultat reçu par l'API). Les alertes portent sur command.result ;
-       command.reported est seulement marqué (niveau 2), pour ne pas alerter deux fois. -->
+  <!-- ========================= command.* (remote commands, contract §8) ========================= -->
+  <!-- Emitted by the collector (watchpost.source = "server"): command.issued, command.cancelled,
+       command.reported, command.expired. Emitted by the device: command.result. The rules of the
+       server events require watchpost.source = server: a device cannot imitate them.
+       The lock message is never exported (only message_set is) and no description repeats
+       a free text from the console.
+       The result of a command arrives twice: command.result (what the phone says) and
+       command.reported (the same result received by the API). The alerts are raised on
+       command.result; command.reported is only marked (level 2), so as not to alert twice. -->
 
   <rule id="100230" level="3">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^command.issued$</field>
     <field name="watchpost.source">^server$</field>
-    <description>Watchpost : commande à distance « $(watchpost.data.type) » émise par $(watchpost.data.created_by) vers $(watchpost.device_name)</description>
+    <description>Watchpost: remote command "$(watchpost.data.type)" issued by $(watchpost.data.created_by) to $(watchpost.device_name)</description>
     <group>watchpost_command,watchpost_command_issued,</group>
   </rule>
 
   <rule id="100231" level="5">
     <if_sid>100230</if_sid>
     <field name="watchpost.data.type">^locate$</field>
-    <description>Watchpost : localisation à distance de $(watchpost.device_name) demandée par $(watchpost.data.created_by)</description>
+    <description>Watchpost: remote location of $(watchpost.device_name) requested by $(watchpost.data.created_by)</description>
     <group>watchpost_command,watchpost_command_issued,</group>
   </rule>
 
   <rule id="100232" level="10">
     <if_sid>100230</if_sid>
     <field name="watchpost.data.type">^lock$</field>
-    <description>Watchpost : verrouillage à distance de $(watchpost.device_name) demandé par $(watchpost.data.created_by) (signature à vérifier par le téléphone ; message : $(watchpost.data.message_set))</description>
+    <description>Watchpost: remote lock of $(watchpost.device_name) requested by $(watchpost.data.created_by) (signature to be checked by the phone; message: $(watchpost.data.message_set))</description>
     <group>watchpost_command,watchpost_command_issued,watchpost_command_sensitive,</group>
   </rule>
 
   <rule id="100233" level="12">
     <if_sid>100230</if_sid>
     <field name="watchpost.data.type">^wipe$</field>
-    <description>Watchpost : EFFACEMENT à distance de $(watchpost.device_name) demandé par $(watchpost.data.created_by) (signature à vérifier par le téléphone)</description>
+    <description>Watchpost: remote ERASE of $(watchpost.device_name) requested by $(watchpost.data.created_by) (signature to be checked by the phone)</description>
     <group>watchpost_command,watchpost_command_issued,watchpost_command_sensitive,</group>
   </rule>
 
   <rule id="100234" level="5">
     <if_sid>100230</if_sid>
     <field name="watchpost.data.type">^clear_lock_message$</field>
-    <description>Watchpost : retrait du message de verrouillage de $(watchpost.device_name) demandé par $(watchpost.data.created_by)</description>
+    <description>Watchpost: removal of the lock message of $(watchpost.device_name) requested by $(watchpost.data.created_by)</description>
     <group>watchpost_command,watchpost_command_issued,watchpost_command_sensitive,</group>
   </rule>
 
-  <!-- Rafale : le collecteur accepte 20 commandes par heure et par appareil ; 8 en 10 min ne
-       correspondent pas à un usage normal (session console volée, script). Toutes les commandes
-       émises comptent, mais seule une commande SIMPLE déclenche l'alerte de rafale : sinon elle
-       remplacerait (un événement = une règle) l'alerte de niveau 10-12 d'un verrouillage ou d'un
-       effacement (constaté lors de l'essai). -->
+  <!-- Burst: the collector accepts 20 commands per hour and per device; 8 in 10 min do not
+       match normal use (stolen console session, script). Every issued command counts, but
+       only a SIMPLE command fires the burst alert: otherwise it would replace (one event = one
+       rule) the level 10-12 alert of a lock or of an erase (seen during testing). -->
   <rule id="100235" level="8" frequency="8" timeframe="600" ignore="600">
     <if_matched_group>watchpost_command_issued</if_matched_group>
     <same_field>watchpost.device_id</same_field>
     <field name="watchpost.data.type" type="pcre2">^(ring|vibrate|stop_ring|locate)$</field>
-    <description>Watchpost : rafale de commandes à distance vers $(watchpost.device_name) (8 en 10 min, dernière : « $(watchpost.data.type) »)</description>
+    <description>Watchpost: burst of remote commands to $(watchpost.device_name) (8 in 10 min, last one: "$(watchpost.data.type)")</description>
     <group>watchpost_command,watchpost_command_burst,</group>
   </rule>
 
@@ -844,7 +843,7 @@
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^command.cancelled$</field>
     <field name="watchpost.source">^server$</field>
-    <description>Watchpost : commande « $(watchpost.data.type) » vers $(watchpost.device_name) annulée par $(watchpost.data.cancelled_by)</description>
+    <description>Watchpost: command "$(watchpost.data.type)" to $(watchpost.device_name) cancelled by $(watchpost.data.cancelled_by)</description>
     <group>watchpost_command,</group>
   </rule>
 
@@ -852,14 +851,14 @@
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^command.expired$</field>
     <field name="watchpost.source">^server$</field>
-    <description>Watchpost : commande « $(watchpost.data.type) » vers $(watchpost.device_name) expirée sans résultat (livrée : $(watchpost.data.delivered))</description>
+    <description>Watchpost: command "$(watchpost.data.type)" to $(watchpost.device_name) expired without a result (delivered: $(watchpost.data.delivered))</description>
     <group>watchpost_command,</group>
   </rule>
 
   <rule id="100238" level="6">
     <if_sid>100237</if_sid>
     <field name="watchpost.data.type" type="pcre2">^(lock|wipe|clear_lock_message)$</field>
-    <description>Watchpost : commande sensible « $(watchpost.data.type) » jamais exécutée par $(watchpost.device_name) (téléphone injoignable ou canal de commandes coupé ?)</description>
+    <description>Watchpost: sensitive command "$(watchpost.data.type)" never executed by $(watchpost.device_name) (phone unreachable or command channel turned off?)</description>
     <group>watchpost_command,watchpost_command_sensitive,</group>
   </rule>
 
@@ -867,14 +866,14 @@
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^command.reported$</field>
     <field name="watchpost.source">^server$</field>
-    <description>Watchpost : résultat reçu pour la commande « $(watchpost.data.type) » : $(watchpost.data.status)</description>
+    <description>Watchpost: result received for command "$(watchpost.data.type)": $(watchpost.data.status)</description>
     <group>watchpost_command,</group>
   </rule>
 
   <rule id="100240" level="3">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^command.result$</field>
-    <description>Watchpost : commande « $(watchpost.data.type) » traitée par $(watchpost.device_name) : $(watchpost.data.status)</description>
+    <description>Watchpost: command "$(watchpost.data.type)" processed by $(watchpost.device_name): $(watchpost.data.status)</description>
     <group>watchpost_command,watchpost_command_result,</group>
   </rule>
 
@@ -882,7 +881,7 @@
     <if_sid>100240</if_sid>
     <field name="watchpost.data.type">^lock$</field>
     <field name="watchpost.data.status">^executed$</field>
-    <description>Watchpost : $(watchpost.device_name) verrouillé à distance (commande signée exécutée)</description>
+    <description>Watchpost: $(watchpost.device_name) locked remotely (signed command executed)</description>
     <group>watchpost_command,watchpost_command_result,watchpost_command_sensitive,</group>
   </rule>
 
@@ -890,7 +889,7 @@
     <if_sid>100240</if_sid>
     <field name="watchpost.data.type">^wipe$</field>
     <field name="watchpost.data.status">^executed$</field>
-    <description>Watchpost : EFFACEMENT à distance de $(watchpost.device_name) exécuté (réinitialisation d'usine)</description>
+    <description>Watchpost: remote ERASE of $(watchpost.device_name) executed (factory reset)</description>
     <group>watchpost_command,watchpost_command_result,watchpost_command_sensitive,</group>
   </rule>
 
@@ -898,7 +897,7 @@
     <if_sid>100240</if_sid>
     <field name="watchpost.data.status">^refused$</field>
     <field name="watchpost.data.detail" type="pcre2" negate="yes">^(replay|bad_signature|locked_out)$</field>
-    <description>Watchpost : commande « $(watchpost.data.type) » refusée par $(watchpost.device_name) (motif : $(watchpost.data.detail))</description>
+    <description>Watchpost: command "$(watchpost.data.type)" refused by $(watchpost.device_name) (reason: $(watchpost.data.detail))</description>
     <group>watchpost_command,watchpost_command_result,watchpost_command_refused,</group>
   </rule>
 
@@ -906,7 +905,7 @@
     <if_sid>100240</if_sid>
     <field name="watchpost.data.status">^refused$</field>
     <field name="watchpost.data.detail">^bad_signature$</field>
-    <description>Watchpost : signature invalide pour la commande sensible « $(watchpost.data.type) » : quelqu'un tente de commander $(watchpost.device_name) sans le code de commande</description>
+    <description>Watchpost: invalid signature for the sensitive command "$(watchpost.data.type)": someone is trying to command $(watchpost.device_name) without the command passphrase</description>
     <group>watchpost_command,watchpost_command_result,watchpost_command_refused,watchpost_command_forgery,</group>
   </rule>
 
@@ -914,58 +913,59 @@
     <if_sid>100240</if_sid>
     <field name="watchpost.data.status">^refused$</field>
     <field name="watchpost.data.detail">^locked_out$</field>
-    <description>Watchpost : commandes sensibles bloquées une heure sur $(watchpost.device_name) après 5 signatures invalides (tentative de prise de contrôle ?)</description>
+    <description>Watchpost: sensitive commands blocked for one hour on $(watchpost.device_name) after 5 invalid signatures (takeover attempt?)</description>
     <group>watchpost_command,watchpost_command_result,watchpost_command_refused,watchpost_command_forgery,</group>
   </rule>
 
-  <!-- Refus « replay » : réponse normale à une commande renvoyée par le serveur. -->
+  <!-- "replay" refusal: normal answer to a command sent again by the server. -->
   <rule id="100246" level="2">
     <if_sid>100240</if_sid>
     <field name="watchpost.data.status">^refused$</field>
     <field name="watchpost.data.detail">^replay$</field>
-    <description>Watchpost : commande « $(watchpost.data.type) » déjà traitée (renvoi du serveur)</description>
+    <description>Watchpost: command "$(watchpost.data.type)" already processed (sent again by the server)</description>
     <group>watchpost_command,watchpost_command_result,</group>
   </rule>
 
   <rule id="100247" level="6">
     <if_sid>100240</if_sid>
     <field name="watchpost.data.status">^failed$</field>
-    <description>Watchpost : la commande « $(watchpost.data.type) » a échoué sur $(watchpost.device_name) ($(watchpost.data.detail))</description>
+    <description>Watchpost: command "$(watchpost.data.type)" failed on $(watchpost.device_name) ($(watchpost.data.detail))</description>
     <group>watchpost_command,watchpost_command_result,</group>
   </rule>
 
-  <!-- ========================= app.notification (APK compagnon, contrat §10) ========================= -->
-  <!-- Marqué pour les tableaux de bord, sans alerte. Le titre et le texte (option « contenu des
-       notifications ») ne figurent JAMAIS dans une description d'alerte ni dans une notification. -->
+  <!-- ========================= app.notification (companion APK, contract §10) ========================= -->
+  <!-- Marked for the dashboards, without an alert. The title and the text ("notification
+       content" option) NEVER appear in an alert description nor in a notification. -->
 
   <rule id="100270" level="2">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^app.notification$</field>
-    <description>Watchpost : notification de $(watchpost.data.package) ($(watchpost.data.event))</description>
+    <description>Watchpost: notification from $(watchpost.data.package) ($(watchpost.data.event))</description>
     <group>watchpost_app,watchpost_notification,</group>
   </rule>
 
-  <!-- ========================= v1.2 : détections du collecteur (detect.*, contrat §11.3) ========================= -->
-  <!-- Émises par le collecteur (watchpost.source = « server » exigé : un appareil ne peut pas les imiter).
-       Une détection par application, par type et par fenêtre (jour UTC ; 24 h après l'installation
-       pour new_app_risky) ; une mise à jour n'est réexportée (update: true, detection_id) que si la
-       sévérité augmente ou si un élément nouveau apparaît, une fois par heure au plus.
-       - Première émission (sans « update ») : une règle par type, niveau selon le type et watchpost.sev.
-         Groupe watchpost_detect_new (corrélation 100489) ; watchpost_detect_below3 quand sev < 3 (100452).
-       - Mise à jour : niveau 5 (pas de seconde alerte grave pour la même détection), sauf si elle
-         passe à la sévérité 3 alors qu'une émission de la même détection était sous 3 (100452).
-       - Plusieurs TYPES de détection pour la même application en 24 h : 100489 (niveau 13).
-       Les descriptions ne reprennent que l'application et des faits courts (domaines, compteurs) :
-       jamais de contenu de notification ni de message. « update » est testé sur la ligne brute
-       (une condition field en negate ne joue pas sur un champ absent). -->
+  <!-- ========================= v1.2: collector detections (detect.*, contract §11.3) ========================= -->
+  <!-- Emitted by the collector (watchpost.source = "server" required: a device cannot imitate them).
+       One detection per application, per type and per window (UTC day; 24 h after installation
+       for new_app_risky); an update is exported again (update: true, detection_id) only if the
+       severity increases or a new item appears, at most once per hour.
+       - First emission (without "update"): one rule per type, level according to the type and
+         watchpost.sev. Group watchpost_detect_new (correlation 100489); watchpost_detect_below3
+         when sev < 3 (100452).
+       - Update: level 5 (no second severe alert for the same detection), unless it goes to
+         severity 3 while an emission of the same detection was below 3 (100452).
+       - Several detection TYPES for the same application within 24 h: 100489 (level 13).
+       The descriptions only repeat the application and short facts (domains, counters):
+       never any notification content nor message. "update" is tested on the raw line
+       (a negated field condition does not apply to a missing field). -->
 
-  <!-- Parent, et repli d'un type detect.* sans règle dédiée (type ajouté au collecteur après ces
-       règles) de sévérité 0 ou 1 ; 100454/100455 pour les sévérités 3 et 2. -->
+  <!-- Parent, and fallback for a detect.* type without a dedicated rule (type added to the collector
+       after these rules) with severity 0 or 1; 100454/100455 for severities 3 and 2. -->
   <rule id="100450" level="3">
     <if_sid>100100</if_sid>
     <field name="watchpost.type" type="pcre2">^detect\.[a-z_]+$</field>
     <field name="watchpost.source">^server$</field>
-    <description>Watchpost : détection $(watchpost.type) pour $(watchpost.data.label) ($(watchpost.data.package)) sur $(watchpost.device_name)</description>
+    <description>Watchpost: detection $(watchpost.type) for $(watchpost.data.label) ($(watchpost.data.package)) on $(watchpost.device_name)</description>
     <group>watchpost_detect,</group>
   </rule>
 
@@ -974,7 +974,7 @@
     <field name="watchpost.type" type="pcre2" negate="yes">^detect\.(threat_domain|upload_spike|fanout|mail_ports|dns_bypass|sms_abuse|sensor_background|new_app_risky|sms_permission|default_app_changed|inventory_mismatch|flood|muted|unmuted)$</field>
     <field name="watchpost.sev">^3$</field>
     <match type="pcre2" negate="yes">"update":true</match>
-    <description>Watchpost : détection $(watchpost.type) (sans règle dédiée, sévérité 3) : $(watchpost.data.summary)</description>
+    <description>Watchpost: detection $(watchpost.type) (no dedicated rule, severity 3): $(watchpost.data.summary)</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_unknown,</group>
   </rule>
 
@@ -983,16 +983,16 @@
     <field name="watchpost.type" type="pcre2" negate="yes">^detect\.(threat_domain|upload_spike|fanout|mail_ports|dns_bypass|sms_abuse|sensor_background|new_app_risky|sms_permission|default_app_changed|inventory_mismatch|flood|muted|unmuted)$</field>
     <field name="watchpost.sev">^2$</field>
     <match type="pcre2" negate="yes">"update":true</match>
-    <description>Watchpost : détection $(watchpost.type) (sans règle dédiée, sévérité 2) : $(watchpost.data.summary)</description>
+    <description>Watchpost: detection $(watchpost.type) (no dedicated rule, severity 2): $(watchpost.data.summary)</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_below3,watchpost_detect_unknown,</group>
   </rule>
 
-  <!-- Mises à jour d'une détection déjà émise -->
+  <!-- Updates of a detection already emitted -->
   <rule id="100451" level="5">
     <if_sid>100450</if_sid>
     <field name="watchpost.data.update">^true$</field>
     <field name="watchpost.sev">^3$</field>
-    <description>Watchpost : détection $(watchpost.type) mise à jour pour $(watchpost.data.label) ($(watchpost.data.package)) : nouvel élément</description>
+    <description>Watchpost: detection $(watchpost.type) updated for $(watchpost.data.label) ($(watchpost.data.package)): new item</description>
     <group>watchpost_detect,watchpost_detect_update,</group>
   </rule>
 
@@ -1000,17 +1000,17 @@
     <if_sid>100450</if_sid>
     <field name="watchpost.data.update">^true$</field>
     <field name="watchpost.sev" type="pcre2">^[0-2]$</field>
-    <description>Watchpost : détection $(watchpost.type) mise à jour pour $(watchpost.data.label) ($(watchpost.data.package)) : nouvel élément</description>
+    <description>Watchpost: detection $(watchpost.type) updated for $(watchpost.data.label) ($(watchpost.data.package)): new item</description>
     <group>watchpost_detect,watchpost_detect_update,watchpost_detect_below3,</group>
   </rule>
 
-  <!-- detect.threat_domain : domaine bloqué par une liste « threat » demandé par l'application -->
+  <!-- detect.threat_domain: domain blocked by a "threat" list requested by the application -->
   <rule id="100460" level="12">
     <if_sid>100450</if_sid>
     <field name="watchpost.type">^detect.threat_domain$</field>
     <field name="watchpost.sev">^3$</field>
     <match type="pcre2" negate="yes">"update":true</match>
-    <description>Watchpost : $(watchpost.data.label) ($(watchpost.data.package)) contacte des domaines de menaces (C2, maliciel, hameçonnage) : $(watchpost.data.evidence.domains)</description>
+    <description>Watchpost: $(watchpost.data.label) ($(watchpost.data.package)) contacts threat domains (C2, malware, phishing): $(watchpost.data.evidence.domains)</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_threat,attack_mobile_T1437.001,</group>
   </rule>
 
@@ -1019,26 +1019,26 @@
     <field name="watchpost.type">^detect.threat_domain$</field>
     <field name="watchpost.sev" type="pcre2">^[0-2]$</field>
     <match type="pcre2" negate="yes">"update":true</match>
-    <description>Watchpost : $(watchpost.data.label) ($(watchpost.data.package)) a demandé un domaine de menaces (lien d'hameçonnage suivi ?) : $(watchpost.data.evidence.domains)</description>
+    <description>Watchpost: $(watchpost.data.label) ($(watchpost.data.package)) requested a threat domain (phishing link followed?): $(watchpost.data.evidence.domains)</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_below3,watchpost_detect_threat,</group>
   </rule>
 
-  <!-- detect.sms_abuse : envoi (ou tentative) de SMS par une autre appli que l'appli SMS, ou volume -->
+  <!-- detect.sms_abuse: sending (or attempt) of SMS by an app other than the SMS app, or volume -->
   <rule id="100462" level="12">
     <if_sid>100450</if_sid>
     <field name="watchpost.type">^detect.sms_abuse$</field>
     <match type="pcre2" negate="yes">"update":true</match>
-    <description>Watchpost : fraude au SMS probable : $(watchpost.data.label) ($(watchpost.data.package)) a envoyé ou tenté d'envoyer des SMS ($(watchpost.data.evidence.sent) envoyés, $(watchpost.data.evidence.rejected) refusés ; motif $(watchpost.data.evidence.reason))</description>
+    <description>Watchpost: probable SMS fraud: $(watchpost.data.label) ($(watchpost.data.package)) sent or tried to send SMS ($(watchpost.data.evidence.sent) sent, $(watchpost.data.evidence.rejected) refused; reason $(watchpost.data.evidence.reason))</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_sms,attack_mobile_T1582,</group>
   </rule>
 
-  <!-- detect.sensor_background : micro (prioritaire) ou caméra en arrière-plan au-delà du seuil -->
+  <!-- detect.sensor_background: microphone (takes precedence) or camera in the background above the threshold -->
   <rule id="100463" level="10">
     <if_sid>100450</if_sid>
     <field name="watchpost.type">^detect.sensor_background$</field>
     <field name="watchpost.data.evidence.ops" type="pcre2">record_audio</field>
     <match type="pcre2" negate="yes">"update":true</match>
-    <description>Watchpost : $(watchpost.data.label) ($(watchpost.data.package)) utilise le micro en arrière-plan ($(watchpost.data.evidence.microphone_background) fois dans la journée)</description>
+    <description>Watchpost: $(watchpost.data.label) ($(watchpost.data.package)) uses the microphone in the background ($(watchpost.data.evidence.microphone_background) times in the day)</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_below3,watchpost_hidden_capture,attack_mobile_T1429,</group>
   </rule>
 
@@ -1047,36 +1047,36 @@
     <field name="watchpost.type">^detect.sensor_background$</field>
     <field name="watchpost.data.evidence.ops" type="pcre2">camera</field>
     <match type="pcre2" negate="yes">"update":true</match>
-    <description>Watchpost : $(watchpost.data.label) ($(watchpost.data.package)) utilise la caméra en arrière-plan ($(watchpost.data.evidence.camera_background) fois dans la journée)</description>
+    <description>Watchpost: $(watchpost.data.label) ($(watchpost.data.package)) uses the camera in the background ($(watchpost.data.evidence.camera_background) times in the day)</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_below3,watchpost_hidden_capture,attack_mobile_T1512,</group>
   </rule>
 
-  <!-- detect.upload_spike : pic d'envoi isolé, moins grave (sauvegarde, vidéo…) -->
+  <!-- detect.upload_spike: isolated upload spike, less severe (backup, video…) -->
   <rule id="100465" level="7">
     <if_sid>100450</if_sid>
     <field name="watchpost.type">^detect.upload_spike$</field>
     <match type="pcre2" negate="yes">"update":true|"recurring":true</match>
-    <!-- Résumé du collecteur (octets en Gio) : Wazuh affiche les grands nombres en flottant. -->
-    <description>Watchpost : pic d'envoi : $(watchpost.data.summary)</description>
+    <!-- Summary from the collector (bytes in GiB): Wazuh displays large numbers as floats. -->
+    <description>Watchpost: upload spike: $(watchpost.data.summary)</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_below3,watchpost_detect_network,</group>
   </rule>
 
-  <!-- detect.fanout : beaucoup d'adresses distinctes en une heure (relais / proxy résidentiel) -->
+  <!-- detect.fanout: many distinct addresses within one hour (relay / residential proxy) -->
   <rule id="100466" level="8">
     <if_sid>100450</if_sid>
     <field name="watchpost.type">^detect.fanout$</field>
     <match type="pcre2" negate="yes">"update":true</match>
-    <description>Watchpost : $(watchpost.data.label) ($(watchpost.data.package)) s'est connectée à $(watchpost.data.evidence.addresses) adresses en une heure (relais réseau / proxy résidentiel ?)</description>
+    <description>Watchpost: $(watchpost.data.label) ($(watchpost.data.package)) connected to $(watchpost.data.evidence.addresses) addresses in one hour (network relay / residential proxy?)</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_below3,watchpost_detect_network,attack_mobile_T1604,</group>
   </rule>
 
-  <!-- detect.mail_ports : envoi de courriel par une appli qui n'est pas un client de messagerie -->
+  <!-- detect.mail_ports: e-mail sent by an app that is not a mail client -->
   <rule id="100467" level="8">
     <if_sid>100450</if_sid>
     <field name="watchpost.type">^detect.mail_ports$</field>
     <field name="watchpost.sev" type="pcre2">^[0-2]$</field>
     <match type="pcre2" negate="yes">"update":true|"recurring":true</match>
-    <description>Watchpost : $(watchpost.data.label) ($(watchpost.data.package)) envoie du courriel (ports $(watchpost.data.evidence.ports), $(watchpost.data.evidence.connections) connexions) sans être un client de messagerie connu</description>
+    <description>Watchpost: $(watchpost.data.label) ($(watchpost.data.package)) sends e-mail (ports $(watchpost.data.evidence.ports), $(watchpost.data.evidence.connections) connections) without being a known mail client</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_below3,watchpost_detect_network,</group>
   </rule>
 
@@ -1085,28 +1085,28 @@
     <field name="watchpost.type">^detect.mail_ports$</field>
     <field name="watchpost.sev">^3$</field>
     <match type="pcre2" negate="yes">"update":true</match>
-    <description>Watchpost : envoi de spam probable par $(watchpost.data.label) ($(watchpost.data.package)) : $(watchpost.data.evidence.connections) connexions vers $(watchpost.data.evidence.addresses) serveurs de courriel</description>
+    <description>Watchpost: probable spam sending by $(watchpost.data.label) ($(watchpost.data.package)): $(watchpost.data.evidence.connections) connections to $(watchpost.data.evidence.addresses) mail servers</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_network,</group>
   </rule>
 
-  <!-- detect.dns_bypass : résolveur DoH/DoT public utilisé (échappe à AdGuard et à net.dns) -->
+  <!-- detect.dns_bypass: public DoH/DoT resolver used (escapes AdGuard and net.dns) -->
   <rule id="100469" level="7">
     <if_sid>100450</if_sid>
     <field name="watchpost.type">^detect.dns_bypass$</field>
     <match type="pcre2" negate="yes">"update":true|"recurring":true</match>
-    <description>Watchpost : $(watchpost.data.label) ($(watchpost.data.package)) contourne le DNS filtrant par un résolveur public ($(watchpost.data.evidence.providers))</description>
+    <description>Watchpost: $(watchpost.data.label) ($(watchpost.data.package)) bypasses the filtering DNS through a public resolver ($(watchpost.data.evidence.providers))</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_below3,watchpost_detect_network,watchpost_dns,</group>
   </rule>
 
-  <!-- detect.new_app_risky. Sans capacité acquise (« capabilities » vide), la détection ne fait que
-       répéter l'app.risk « high » de l'installation, déjà alerté par 100502/100503 : marquée
-       seulement (niveau 3). Avec capacités : niveau selon la sévérité. -->
+  <!-- detect.new_app_risky. Without an acquired capability (empty "capabilities"), the detection only
+       repeats the "high" app.risk of the installation, already alerted by 100502/100503: marked
+       only (level 3). With capabilities: level according to the severity. -->
   <rule id="100470" level="12">
     <if_sid>100450</if_sid>
     <field name="watchpost.type">^detect.new_app_risky$</field>
     <field name="watchpost.sev">^3$</field>
     <match type="pcre2" negate="yes">"update":true|"capabilities":\[\]</match>
-    <description>Watchpost : $(watchpost.data.label) ($(watchpost.data.package)), installée depuis moins de 24 h, a obtenu des capacités sensibles : $(watchpost.data.evidence.capabilities) (risque $(watchpost.data.evidence.level))</description>
+    <description>Watchpost: $(watchpost.data.label) ($(watchpost.data.package)), installed less than 24 h ago, obtained sensitive capabilities: $(watchpost.data.evidence.capabilities) (risk $(watchpost.data.evidence.level))</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_app,</group>
   </rule>
 
@@ -1115,7 +1115,7 @@
     <field name="watchpost.type">^detect.new_app_risky$</field>
     <field name="watchpost.sev">^2$</field>
     <match type="pcre2" negate="yes">"update":true|"capabilities":\[\]</match>
-    <description>Watchpost : $(watchpost.data.label) ($(watchpost.data.package)), installée depuis moins de 24 h, a obtenu des capacités sensibles : $(watchpost.data.evidence.capabilities)</description>
+    <description>Watchpost: $(watchpost.data.label) ($(watchpost.data.package)), installed less than 24 h ago, obtained sensitive capabilities: $(watchpost.data.evidence.capabilities)</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_below3,watchpost_detect_app,</group>
   </rule>
 
@@ -1124,7 +1124,7 @@
     <field name="watchpost.type">^detect.new_app_risky$</field>
     <field name="watchpost.sev" type="pcre2">^[01]$</field>
     <match type="pcre2" negate="yes">"update":true|"capabilities":\[\]</match>
-    <description>Watchpost : $(watchpost.data.label) ($(watchpost.data.package)), installée depuis moins de 24 h, a obtenu : $(watchpost.data.evidence.capabilities)</description>
+    <description>Watchpost: $(watchpost.data.label) ($(watchpost.data.package)), installed less than 24 h ago, obtained: $(watchpost.data.evidence.capabilities)</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_below3,watchpost_detect_app,</group>
   </rule>
 
@@ -1133,7 +1133,7 @@
     <field name="watchpost.type">^detect.new_app_risky$</field>
     <field name="watchpost.sev">^3$</field>
     <match type="pcre2">^(?!.*"update":true).*"capabilities":\[\]</match>
-    <description>Watchpost : $(watchpost.data.label) ($(watchpost.data.package)) installée avec un risque élevé (déjà alerté par le profil de risque)</description>
+    <description>Watchpost: $(watchpost.data.label) ($(watchpost.data.package)) installed with a high risk (already alerted by the risk profile)</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_app,</group>
   </rule>
 
@@ -1142,38 +1142,38 @@
     <field name="watchpost.type">^detect.new_app_risky$</field>
     <field name="watchpost.sev" type="pcre2">^[0-2]$</field>
     <match type="pcre2">^(?!.*"update":true).*"capabilities":\[\]</match>
-    <description>Watchpost : $(watchpost.data.label) ($(watchpost.data.package)) installée avec un risque élevé (déjà alerté par le profil de risque)</description>
+    <description>Watchpost: $(watchpost.data.label) ($(watchpost.data.package)) installed with a high risk (already alerted by the risk profile)</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_below3,watchpost_detect_app,</group>
   </rule>
 
-  <!-- Récurrence (contrat §11.4) : dns_bypass, mail_ports, upload_spike déjà signalés pour la même
-       application dans les 30 jours (sévérité plafonnée à 1 par le collecteur) : trace seulement. -->
+  <!-- Recurrence (contract §11.4): dns_bypass, mail_ports, upload_spike already reported for the same
+       application within 30 days (severity capped at 1 by the collector): trace only. -->
   <rule id="100456" level="3">
     <if_sid>100450</if_sid>
     <match type="pcre2">^(?!.*"update":true).*"recurring":true</match>
-    <description>Watchpost : $(watchpost.type) de nouveau pour $(watchpost.data.label) ($(watchpost.data.package)), déjà signalé dans les 30 jours</description>
+    <description>Watchpost: $(watchpost.type) again for $(watchpost.data.label) ($(watchpost.data.package)), already reported within 30 days</description>
     <group>watchpost_detect,watchpost_detect_recurring,</group>
   </rule>
 
-  <!-- ===== Contrat §11.4 : détections qui ne dépendent pas d'app.ops ===== -->
-  <!-- detect.sms_permission : une appli qui n'est ni l'appli SMS ni du système DÉTIENT SEND_SMS.
-       (La règle 100161 sur app.permission_changed reste la défense en profondeur côté Wazuh.) -->
+  <!-- ===== Contract §11.4: detections that do not depend on app.ops ===== -->
+  <!-- detect.sms_permission: an app that is neither the SMS app nor a system app HOLDS SEND_SMS.
+       (Rule 100161 on app.permission_changed remains the defence in depth on the Wazuh side.) -->
   <rule id="100475" level="10">
     <if_sid>100450</if_sid>
     <field name="watchpost.type">^detect.sms_permission$</field>
     <match type="pcre2" negate="yes">"update":true</match>
-    <description>Watchpost : $(watchpost.data.label) ($(watchpost.data.package)) peut envoyer des SMS sans être l'appli SMS par défaut (permission SEND_SMS détenue)</description>
+    <description>Watchpost: $(watchpost.data.label) ($(watchpost.data.package)) can send SMS without being the default SMS app (holds the SEND_SMS permission)</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_sms,attack_mobile_T1582,</group>
   </rule>
 
-  <!-- detect.default_app_changed : rôle sms (sév. 3) grave ; dialer, keyboard, assistant (sév. 2)
-       déjà alertés par app.role (100512-100514) : marqués seulement. -->
+  <!-- detect.default_app_changed: sms role (sev. 3) severe; dialer, keyboard, assistant (sev. 2)
+       already alerted by app.role (100512-100514): marked only. -->
   <rule id="100476" level="12">
     <if_sid>100450</if_sid>
     <field name="watchpost.type">^detect.default_app_changed$</field>
     <field name="watchpost.data.evidence.role">^sms$</field>
     <match type="pcre2" negate="yes">"update":true</match>
-    <description>Watchpost : $(watchpost.data.label) ($(watchpost.data.package)) est devenue l'appli SMS par défaut (avant : $(watchpost.data.evidence.old)) : voie classique des chevaux de Troie SMS</description>
+    <description>Watchpost: $(watchpost.data.label) ($(watchpost.data.package)) became the default SMS app (before: $(watchpost.data.evidence.old)): the usual path of SMS trojans</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_sms,attack_mobile_T1582,</group>
   </rule>
 
@@ -1181,48 +1181,48 @@
     <if_sid>100450</if_sid>
     <field name="watchpost.type">^detect.default_app_changed$</field>
     <match type="pcre2" negate="yes">"update":true</match>
-    <description>Watchpost : appli par défaut « $(watchpost.data.evidence.role) » changée pour $(watchpost.data.label) ($(watchpost.data.package)) (déjà alerté par app.role)</description>
+    <description>Watchpost: default "$(watchpost.data.evidence.role)" app changed to $(watchpost.data.label) ($(watchpost.data.package)) (already alerted by app.role)</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_below3,watchpost_detect_app,</group>
   </rule>
 
-  <!-- detect.inventory_mismatch : l'inventaire déclare « système » une appli que son installateur ou
-       un app.installed antérieur contredisent (non masquable). Une appli qui se fait passer pour le
-       système échapperait aux autres détections ; le collecteur la traite en appli ordinaire. -->
+  <!-- detect.inventory_mismatch: the inventory declares "system" an app that its installer or an
+       earlier app.installed contradict (cannot be muted). An app that passes itself off as a
+       system app would escape the other detections; the collector treats it as an ordinary app. -->
   <rule id="100481" level="12">
     <if_sid>100450</if_sid>
     <field name="watchpost.type">^detect.inventory_mismatch$</field>
     <match type="pcre2" negate="yes">"update":true</match>
-    <description>Watchpost : $(watchpost.data.label) ($(watchpost.data.package)) déclarée « système » par l'appareil alors que $(watchpost.data.evidence.contradictions) disent le contraire (déguisement ou inventaire falsifié ?)</description>
+    <description>Watchpost: $(watchpost.data.label) ($(watchpost.data.package)) declared "system" by the device while $(watchpost.data.evidence.contradictions) say otherwise (disguise or forged inventory?)</description>
     <group>watchpost_detect,watchpost_detect_new,watchpost_detect_app,attack_mobile_T1655,</group>
   </rule>
 
-  <!-- detect.flood : plus de 200 détections dans la journée pour un appareil -->
+  <!-- detect.flood: more than 200 detections in the day for one device -->
   <rule id="100478" level="12">
     <if_sid>100450</if_sid>
     <field name="watchpost.type">^detect.flood$</field>
-    <description>Watchpost : plafond de $(watchpost.data.evidence.limit) détections par jour atteint pour $(watchpost.device_name) ($(watchpost.data.evidence.suppressed) écartées à ce stade) : données incohérentes ou appareil compromis</description>
+    <description>Watchpost: limit of $(watchpost.data.evidence.limit) detections per day reached for $(watchpost.device_name) ($(watchpost.data.evidence.suppressed) dropped so far): inconsistent data or compromised device</description>
     <group>watchpost_detect,watchpost_detect_flood,</group>
   </rule>
 
-  <!-- Mise en sourdine depuis la console : les détections couvertes ne sont plus exportées ni
-       notifiées. Affaiblissement : tracé (niveau 6) ; la levée est anodine. -->
+  <!-- Mute from the console: the covered detections are no longer exported nor
+       notified. Weakening: traced (level 6); lifting it is harmless. -->
   <rule id="100479" level="6">
     <if_sid>100450</if_sid>
     <field name="watchpost.type">^detect.muted$</field>
-    <description>Watchpost : détections $(watchpost.data.type) mises en sourdine pour $(watchpost.data.package) sur $(watchpost.device_name) (plus exportées ni notifiées ; motif : $(watchpost.data.reason))</description>
+    <description>Watchpost: $(watchpost.data.type) detections muted for $(watchpost.data.package) on $(watchpost.device_name) (no longer exported or notified; reason: $(watchpost.data.reason))</description>
     <group>watchpost_detect,watchpost_detect_mute,attack_mobile_T1629,</group>
   </rule>
 
   <rule id="100480" level="3">
     <if_sid>100450</if_sid>
     <field name="watchpost.type">^detect.unmuted$</field>
-    <description>Watchpost : sourdine levée pour les détections $(watchpost.data.type) de $(watchpost.data.package) sur $(watchpost.device_name)</description>
+    <description>Watchpost: mute lifted for the $(watchpost.data.type) detections of $(watchpost.data.package) on $(watchpost.device_name)</description>
     <group>watchpost_detect,watchpost_detect_mute,</group>
   </rule>
 
-  <!-- Aggravation : la même détection (appareil, type, application) avait été émise sous la
-       sévérité 3 dans les 24 h et sa mise à jour passe à 3. Les règles en if_matched_group doivent
-       suivre, dans le fichier, les règles du groupe (sinon elles ne voient aucun événement passé). -->
+  <!-- Escalation: the same detection (device, type, application) had been emitted below
+       severity 3 within 24 h and its update goes to 3. The if_matched_group rules must
+       follow, in the file, the rules of the group (otherwise they see no past event). -->
   <rule id="100452" level="12" frequency="2" timeframe="86400">
     <if_sid>100450</if_sid>
     <if_matched_group>watchpost_detect_below3</if_matched_group>
@@ -1231,13 +1231,13 @@
     <same_field>watchpost.type</same_field>
     <field name="watchpost.data.update">^true$</field>
     <field name="watchpost.sev">^3$</field>
-    <description>Watchpost : détection aggravée ($(watchpost.type)) pour $(watchpost.data.label) ($(watchpost.data.package)) : $(watchpost.data.summary)</description>
+    <description>Watchpost: escalated detection ($(watchpost.type)) for $(watchpost.data.label) ($(watchpost.data.package)): $(watchpost.data.summary)</description>
     <group>watchpost_detect,watchpost_detect_update,watchpost_detect_escalated,</group>
   </rule>
 
-  <!-- Corrélation : au moins deux TYPES de détection pour la même application du même appareil en
-       24 h (premières émissions seulement). Remplace l'alerte du second type (un événement = une
-       règle) : la description le nomme. -->
+  <!-- Correlation: at least two detection TYPES for the same application of the same device within
+       24 h (first emissions only). Replaces the alert of the second type (one event = one
+       rule): the description names it. -->
   <rule id="100489" level="13" frequency="2" timeframe="86400">
     <if_sid>100450</if_sid>
     <if_matched_group>watchpost_detect_new</if_matched_group>
@@ -1246,26 +1246,26 @@
     <different_field>watchpost.type</different_field>
     <field name="watchpost.type" type="pcre2" negate="yes">^detect\.(flood|muted|unmuted)$</field>
     <match type="pcre2" negate="yes">"update":true|"recurring":true</match>
-    <description>Watchpost : comportements suspects multiples de $(watchpost.data.label) ($(watchpost.data.package)) en 24 h, dont $(watchpost.type) : $(watchpost.data.summary)</description>
+    <description>Watchpost: multiple suspicious behaviours of $(watchpost.data.label) ($(watchpost.data.package)) within 24 h, including $(watchpost.type): $(watchpost.data.summary)</description>
     <group>watchpost_detect,watchpost_detect_correlated,</group>
   </rule>
 
-  <!-- ========================= v1.2 : profil de risque, rôles, opérations (contrat §11.2) ========================= -->
+  <!-- ========================= v1.2: risk profile, roles, operations (contract §11.2) ========================= -->
 
-  <!-- app.risk : marqué (tableaux de bord). « high » alerte seulement à l'installation : corrélé avec
-       app.installed du même paquet dans l'heure (groupe watchpost_app_installed). Rien sur « low ». -->
+  <!-- app.risk: marked (dashboards). "high" alerts only at installation: correlated with
+       app.installed of the same package within the hour (watchpost_app_installed group). Nothing on "low". -->
   <rule id="100500" level="2">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^app.risk$</field>
-    <description>Watchpost : profil de risque de $(watchpost.data.label) ($(watchpost.data.package)) : $(watchpost.data.level), score $(watchpost.data.score)</description>
+    <description>Watchpost: risk profile of $(watchpost.data.label) ($(watchpost.data.package)): $(watchpost.data.level), score $(watchpost.data.score)</description>
     <group>watchpost_app,watchpost_app_risk,</group>
   </rule>
 
-  <!-- « high » hors installation (mise à jour, nouveau score) : visible dans les alertes, sans notification. -->
+  <!-- "high" outside installation (update, new score): visible in the alerts, without notification. -->
   <rule id="100501" level="4">
     <if_sid>100500</if_sid>
     <field name="watchpost.data.level">^high$</field>
-    <description>Watchpost : profil de risque élevé pour $(watchpost.data.label) ($(watchpost.data.package)), score $(watchpost.data.score) : $(watchpost.data.reasons)</description>
+    <description>Watchpost: high risk profile for $(watchpost.data.label) ($(watchpost.data.package)), score $(watchpost.data.score): $(watchpost.data.reasons)</description>
     <group>watchpost_app,watchpost_app_risk,</group>
   </rule>
 
@@ -1275,7 +1275,7 @@
     <same_field>watchpost.device_id</same_field>
     <same_field>watchpost.data.package</same_field>
     <field name="watchpost.data.level">^high$</field>
-    <description>Watchpost : application à risque élevé installée : $(watchpost.data.label) ($(watchpost.data.package)), score $(watchpost.data.score) : $(watchpost.data.reasons)</description>
+    <description>Watchpost: high-risk application installed: $(watchpost.data.label) ($(watchpost.data.package)), score $(watchpost.data.score): $(watchpost.data.reasons)</description>
     <group>watchpost_app,watchpost_app_risk,watchpost_app_risk_install,</group>
   </rule>
 
@@ -1286,16 +1286,16 @@
     <same_field>watchpost.data.package</same_field>
     <field name="watchpost.data.level">^high$</field>
     <field name="watchpost.data.reasons" type="pcre2">combo_</field>
-    <description>Watchpost : application installée au profil de logiciel malveillant : $(watchpost.data.label) ($(watchpost.data.package)), score $(watchpost.data.score) : $(watchpost.data.reasons)</description>
+    <description>Watchpost: application with a malware profile installed: $(watchpost.data.label) ($(watchpost.data.package)), score $(watchpost.data.score): $(watchpost.data.reasons)</description>
     <group>watchpost_app,watchpost_app_risk,watchpost_app_risk_install,</group>
   </rule>
 
-  <!-- app.role : appli par défaut changée. SMS, téléphone, clavier, assistant, saisie automatique :
-       rôles qu'un logiciel malveillant cherche à obtenir. Le premier relevé ne produit rien. -->
+  <!-- app.role: default app changed. SMS, phone, keyboard, assistant, autofill: roles that
+       malware tries to obtain. The first reading produces nothing. -->
   <rule id="100510" level="3">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^app.role$</field>
-    <description>Watchpost : application par défaut « $(watchpost.data.role) » changée : $(watchpost.data.old) -> $(watchpost.data.new)</description>
+    <description>Watchpost: default "$(watchpost.data.role)" application changed: $(watchpost.data.old) -> $(watchpost.data.new)</description>
     <group>watchpost_app,watchpost_app_role,</group>
   </rule>
 
@@ -1303,7 +1303,7 @@
     <if_sid>100510</if_sid>
     <field name="watchpost.data.role">^sms$</field>
     <field name="watchpost.data.new">\S</field>
-    <description>Watchpost : nouvelle application SMS par défaut : $(watchpost.data.new) (avant : $(watchpost.data.old))</description>
+    <description>Watchpost: new default SMS application: $(watchpost.data.new) (before: $(watchpost.data.old))</description>
     <group>watchpost_app,watchpost_app_role,attack_mobile_T1582,</group>
   </rule>
 
@@ -1311,7 +1311,7 @@
     <if_sid>100510</if_sid>
     <field name="watchpost.data.role">^dialer$</field>
     <field name="watchpost.data.new">\S</field>
-    <description>Watchpost : nouvelle application de téléphone par défaut : $(watchpost.data.new) (avant : $(watchpost.data.old))</description>
+    <description>Watchpost: new default phone application: $(watchpost.data.new) (before: $(watchpost.data.old))</description>
     <group>watchpost_app,watchpost_app_role,attack_mobile_T1616,</group>
   </rule>
 
@@ -1319,7 +1319,7 @@
     <if_sid>100510</if_sid>
     <field name="watchpost.data.role">^keyboard$</field>
     <field name="watchpost.data.new">\S</field>
-    <description>Watchpost : nouveau clavier par défaut : $(watchpost.data.new) (avant : $(watchpost.data.old)) ; il voit tout ce qui est saisi</description>
+    <description>Watchpost: new default keyboard: $(watchpost.data.new) (before: $(watchpost.data.old)); it sees everything that is typed</description>
     <group>watchpost_app,watchpost_app_role,attack_mobile_T1417.001,</group>
   </rule>
 
@@ -1327,23 +1327,23 @@
     <if_sid>100510</if_sid>
     <field name="watchpost.data.role" type="pcre2">^(assistant|autofill)$</field>
     <field name="watchpost.data.new">\S</field>
-    <description>Watchpost : nouvelle application « $(watchpost.data.role) » par défaut : $(watchpost.data.new) (avant : $(watchpost.data.old))</description>
+    <description>Watchpost: new default "$(watchpost.data.role)" application: $(watchpost.data.new) (before: $(watchpost.data.old))</description>
     <group>watchpost_app,watchpost_app_role,</group>
   </rule>
 
-  <!-- app.ops.app (app.ops éclaté, une ligne par application et opération) : marqué pour les
-       tableaux de bord. Un envoi de SMS refusé est une tentative bloquée (garde SMS, quarantaine). -->
+  <!-- app.ops.app (app.ops split, one line per application and operation): marked for the
+       dashboards. A refused SMS sending is a blocked attempt (SMS guard, quarantine). -->
   <rule id="100520" level="2">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^app.ops.app$</field>
-    <description>Watchpost : opération $(watchpost.data.op) par $(watchpost.data.package) : $(watchpost.data.count) ($(watchpost.data.background_count) en arrière-plan, $(watchpost.data.rejected_count) refusées)</description>
+    <description>Watchpost: operation $(watchpost.data.op) by $(watchpost.data.package): $(watchpost.data.count) ($(watchpost.data.background_count) in the background, $(watchpost.data.rejected_count) refused)</description>
     <group>watchpost_app,watchpost_app_ops,</group>
   </rule>
 
   <rule id="100521" level="3">
     <if_sid>100520</if_sid>
     <field name="watchpost.data.rejected_count" type="pcre2">^[1-9]\d*$</field>
-    <description>Watchpost : accès « $(watchpost.data.op) » refusé $(watchpost.data.rejected_count) fois à $(watchpost.data.package)</description>
+    <description>Watchpost: "$(watchpost.data.op)" access refused $(watchpost.data.rejected_count) times to $(watchpost.data.package)</description>
     <group>watchpost_app,watchpost_app_ops,watchpost_guard,</group>
   </rule>
 
@@ -1351,65 +1351,65 @@
     <if_sid>100520</if_sid>
     <field name="watchpost.data.op">^send_sms$</field>
     <field name="watchpost.data.rejected_count" type="pcre2">^[1-9]\d*$</field>
-    <description>Watchpost : $(watchpost.data.rejected_count) tentatives d'envoi de SMS de $(watchpost.data.package) bloquées (garde SMS ou quarantaine)</description>
+    <description>Watchpost: $(watchpost.data.rejected_count) SMS sending attempts of $(watchpost.data.package) blocked (SMS guard or quarantine)</description>
     <group>watchpost_app,watchpost_app_ops,watchpost_guard,attack_mobile_T1582,</group>
   </rule>
 
-  <!-- ========================= v1.2 : gardes (security.policy, profile « guard:<clé> », §11.1) ========================= -->
-  <!-- Un échec (ok = false) reste alerté par 100187 (niveau 5). -->
+  <!-- ========================= v1.2: guards (security.policy, profile "guard:<key>", §11.1) ========================= -->
+  <!-- A failure (ok = false) is still alerted by 100187 (level 5). -->
 
   <rule id="100530" level="2">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^security.policy$</field>
     <field name="watchpost.data.profile" type="pcre2">^guard:</field>
-    <description>Watchpost : garde $(watchpost.data.profile) : $(watchpost.data.action) $(watchpost.data.target) $(watchpost.data.permission)</description>
+    <description>Watchpost: guard $(watchpost.data.profile): $(watchpost.data.action) $(watchpost.data.target) $(watchpost.data.permission)</description>
     <group>watchpost_security,watchpost_policy,watchpost_guard,</group>
   </rule>
 
   <rule id="100531" level="3">
     <if_sid>100530</if_sid>
     <field name="watchpost.data.action">^guard_enabled$</field>
-    <description>Watchpost : garde « $(watchpost.data.target) » activée sur $(watchpost.device_name)</description>
+    <description>Watchpost: "$(watchpost.data.target)" guard enabled on $(watchpost.device_name)</description>
     <group>watchpost_security,watchpost_policy,watchpost_guard,</group>
   </rule>
 
-  <!-- Désactivation d'une garde : affaiblissement des protections, comme toute désactivation. -->
+  <!-- Disabling a guard: weakening of the protections, like any disabling. -->
   <rule id="100532" level="8">
     <if_sid>100530</if_sid>
     <field name="watchpost.data.action">^guard_disabled$</field>
-    <description>Watchpost : garde « $(watchpost.data.target) » DÉSACTIVÉE sur $(watchpost.device_name) (protection affaiblie)</description>
+    <description>Watchpost: "$(watchpost.data.target)" guard DISABLED on $(watchpost.device_name) (protection weakened)</description>
     <group>watchpost_security,watchpost_policy,watchpost_guard,attack_mobile_T1629,</group>
   </rule>
 
   <rule id="100533" level="3">
     <if_sid>100530</if_sid>
     <field name="watchpost.data.action">^quarantined$</field>
-    <description>Watchpost : $(watchpost.data.target) mise en quarantaine (permissions à risque refusées jusqu'à libération)</description>
+    <description>Watchpost: $(watchpost.data.target) quarantined (risky permissions refused until it is released)</description>
     <group>watchpost_security,watchpost_policy,watchpost_guard,</group>
   </rule>
 
   <rule id="100534" level="5">
     <if_sid>100530</if_sid>
     <field name="watchpost.data.action">^released$</field>
-    <description>Watchpost : $(watchpost.data.target) libérée de la quarantaine</description>
+    <description>Watchpost: $(watchpost.data.target) released from quarantine</description>
     <group>watchpost_security,watchpost_policy,watchpost_guard,</group>
   </rule>
 
   <rule id="100535" level="3">
     <if_sid>100530</if_sid>
     <field name="watchpost.data.action">^permission_restored$</field>
-    <description>Watchpost : permission $(watchpost.data.permission) rendue à $(watchpost.data.target) ($(watchpost.data.profile))</description>
+    <description>Watchpost: permission $(watchpost.data.permission) restored to $(watchpost.data.target) ($(watchpost.data.profile))</description>
     <group>watchpost_security,watchpost_policy,watchpost_guard,</group>
   </rule>
 
-  <!-- ========================= v1.2 : vue « pistage » (tracking.*, événements du collecteur) ========================= -->
-  <!-- Un événement par appareil non révoqué. sev 2 (collecteur) = blocage affaibli. -->
+  <!-- ========================= v1.2: Tracking page (tracking.*, collector events) ========================= -->
+  <!-- One event per non-revoked device. sev 2 (collector) = weakened blocking. -->
 
   <rule id="100540" level="3">
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^tracking.level_changed$</field>
     <field name="watchpost.source">^server$</field>
-    <description>Watchpost : niveau de blocage DNS changé en « $(watchpost.data.new) » par $(watchpost.data.user) (console)</description>
+    <description>Watchpost: DNS blocking level changed to "$(watchpost.data.new)" by $(watchpost.data.user) (console)</description>
     <group>watchpost_tracking,watchpost_dns,</group>
   </rule>
 
@@ -1417,16 +1417,16 @@
     <if_sid>100540</if_sid>
     <field name="watchpost.sev">^2$</field>
     <match>"old":"</match>
-    <description>Watchpost : blocage DNS affaibli : niveau « $(watchpost.data.old) » -> « $(watchpost.data.new) » posé par $(watchpost.data.user) depuis la console</description>
+    <description>Watchpost: DNS blocking weakened: level "$(watchpost.data.old)" -> "$(watchpost.data.new)" set by $(watchpost.data.user) from the console</description>
     <group>watchpost_tracking,watchpost_dns,attack_mobile_T1629,</group>
   </rule>
 
-  <!-- « old » absent : les listes avaient été changées à la main (aucun niveau reconnu). -->
+  <!-- "old" missing: the lists had been changed by hand (no recognised level). -->
   <rule id="100546" level="8">
     <if_sid>100540</if_sid>
     <field name="watchpost.sev">^2$</field>
     <match negate="yes">"old":"</match>
-    <description>Watchpost : niveau de blocage DNS « $(watchpost.data.new) » posé par $(watchpost.data.user) depuis un état inconnu (listes modifiées hors de la console)</description>
+    <description>Watchpost: DNS blocking level "$(watchpost.data.new)" set by $(watchpost.data.user) from an unknown state (lists changed outside the console)</description>
     <group>watchpost_tracking,watchpost_dns,attack_mobile_T1629,</group>
   </rule>
 
@@ -1434,14 +1434,14 @@
     <if_sid>100100</if_sid>
     <field name="watchpost.type">^tracking.override$</field>
     <field name="watchpost.source">^server$</field>
-    <description>Watchpost : règle DNS « $(watchpost.data.action) » posée sur $(watchpost.data.domain) par $(watchpost.data.user) (console)</description>
+    <description>Watchpost: DNS rule "$(watchpost.data.action)" set on $(watchpost.data.domain) by $(watchpost.data.user) (console)</description>
     <group>watchpost_tracking,watchpost_dns,</group>
   </rule>
 
   <rule id="100543" level="8">
     <if_sid>100542</if_sid>
     <field name="watchpost.data.action">^allow$</field>
-    <description>Watchpost : domaine $(watchpost.data.domain) autorisé de force par $(watchpost.data.user) : il échappe à toutes les listes de blocage, menaces comprises</description>
+    <description>Watchpost: domain $(watchpost.data.domain) force-allowed by $(watchpost.data.user): it escapes every blocklist, threats included</description>
     <group>watchpost_tracking,watchpost_dns,attack_mobile_T1629,</group>
   </rule>
 
@@ -1449,7 +1449,7 @@
     <if_sid>100542</if_sid>
     <field name="watchpost.data.action">^default$</field>
     <field name="watchpost.data.previous">^block$</field>
-    <description>Watchpost : blocage manuel de $(watchpost.data.domain) retiré par $(watchpost.data.user)</description>
+    <description>Watchpost: manual block of $(watchpost.data.domain) removed by $(watchpost.data.user)</description>
     <group>watchpost_tracking,watchpost_dns,</group>
   </rule>
 
@@ -1457,75 +1457,75 @@
     <if_sid>100542</if_sid>
     <field name="watchpost.data.action">^block$</field>
     <field name="watchpost.sev">^2$</field>
-    <description>Watchpost : domaine indispensable $(watchpost.data.domain) bloqué de force par $(watchpost.data.user) (push, mises à jour ou Watchpost peuvent cesser de fonctionner)</description>
+    <description>Watchpost: essential domain $(watchpost.data.domain) force-blocked by $(watchpost.data.user) (push, updates or Watchpost may stop working)</description>
     <group>watchpost_tracking,watchpost_dns,</group>
   </rule>
 
-  <!-- ========================= watchpost_watch.py (absence, séquence) ========================= -->
+  <!-- ========================= watchpost_watch.py (absence, sequence) ========================= -->
 
   <rule id="100300" level="0">
     <decoded_as>json</decoded_as>
     <field name="watchpost_watch.check">\w</field>
-    <description>Watchpost : sonde de surveillance</description>
+    <description>Watchpost: monitoring watcher</description>
     <group>watchpost_watch,</group>
   </rule>
 
   <rule id="100301" level="7">
     <if_sid>100300</if_sid>
     <field name="watchpost_watch.check">^silence$</field>
-    <description>Watchpost : aucun événement de $(watchpost_watch.device_name) depuis $(watchpost_watch.silence_min) min (appareil éteint, hors ligne ou agent arrêté ?)</description>
+    <description>Watchpost: no event from $(watchpost_watch.device_name) for $(watchpost_watch.silence_min) min (device off, offline or agent stopped?)</description>
 <group>watchpost_watch,watchpost_silence,attack_mobile_T1629.003,</group>
   </rule>
 
   <rule id="100302" level="3">
     <if_sid>100300</if_sid>
     <field name="watchpost_watch.check">^resumed$</field>
-    <description>Watchpost : $(watchpost_watch.device_name) émet de nouveau</description>
+    <description>Watchpost: $(watchpost_watch.device_name) is sending again</description>
     <group>watchpost_watch,</group>
   </rule>
 
   <rule id="100303" level="6">
     <if_sid>100300</if_sid>
     <field name="watchpost_watch.check">^seq_gap$</field>
-    <description>Watchpost : $(watchpost_watch.missing_count) événements manquants dans la séquence de $(watchpost_watch.device_name)</description>
+    <description>Watchpost: $(watchpost_watch.missing_count) events missing in the sequence of $(watchpost_watch.device_name)</description>
     <group>watchpost_watch,watchpost_data_loss,</group>
   </rule>
 
   <rule id="100304" level="3">
     <if_sid>100303</if_sid>
     <field name="watchpost_watch.explained">^buffer_overflow$</field>
-    <description>Watchpost : $(watchpost_watch.missing_count) événements manquants (purge du tampon de l'agent)</description>
+    <description>Watchpost: $(watchpost_watch.missing_count) events missing (agent buffer purge)</description>
     <group>watchpost_watch,watchpost_data_loss,</group>
   </rule>
 
   <rule id="100305" level="8">
     <if_sid>100300</if_sid>
     <field name="watchpost_watch.check">^seq_reset$</field>
-    <description>Watchpost : compteur de séquence de $(watchpost_watch.device_name) revenu en arrière (agent réinstallé ou données effacées ?)</description>
+    <description>Watchpost: sequence counter of $(watchpost_watch.device_name) went backwards (agent reinstalled or data wiped?)</description>
     <group>watchpost_watch,watchpost_tamper,</group>
   </rule>
 
-  <!-- ========================= Rotation des fichiers lus ========================= -->
+  <!-- ========================= Rotation of the files read ========================= -->
 
-  <!-- Rotation par renommage de l'export Watchpost ou du journal AdGuard : normale, pas d'alerte.
-       (La troncature, elle, reste signalée par la règle 592, niveau 8.) -->
+  <!-- Rotation by renaming of the Watchpost export or of the AdGuard log: normal, no alert.
+       (Truncation, on the other hand, is still reported by rule 592, level 8.) -->
   <rule id="100290" level="0">
     <if_sid>591</if_sid>
     <match type="pcre2">/var/(watchpost|adguard)/</match>
-    <description>Watchpost : rotation normale d'un fichier lu par Wazuh</description>
+    <description>Watchpost: normal rotation of a file read by Wazuh</description>
     <group>watchpost_rotation,</group>
   </rule>
 
-  <!-- ========================= Sévérité signalée par l'agent ========================= -->
-  <!-- Wazuh essaie les règles filles par niveau DÉCROISSANT (pas dans l'ordre du fichier) : une
-       règle générique de niveau 10 passerait avant une règle dédiée de niveau 8. Ces règles ne
-       s'appliquent donc qu'aux types SANS règle dédiée (types futurs ou rares). -->
+  <!-- ========================= Severity reported by the agent ========================= -->
+  <!-- Wazuh tries the child rules by DECREASING level (not in file order): a generic level 10
+       rule would come before a dedicated level 8 rule. These rules therefore apply only to the
+       types WITHOUT a dedicated rule (future or rare types). -->
 
   <rule id="100105" level="10">
     <if_sid>100100</if_sid>
     <field name="watchpost.sev">^3$</field>
     <field name="watchpost.type" type="pcre2" negate="yes">^(agent\.(tamper|stopped|buffer_overflow|collector_error|config_changed|heartbeat)|device\.(time_changed|usb)|location\.fix|net\.(cell_security|ble_tracker|wifi|connectivity|dns)|app\.(installed|removed|special_access|permission_changed)|sensor\.(microphone|camera)|security\.(keyguard|ca_cert|policy|posture|posture_change|log)|app\.inventory\.app|net\.usage\.app|net\.wifi_scan\.ap|command\.(issued|cancelled|reported|expired|result)|app\.notification|detect\.[a-z_]+|tracking\.(level_changed|override)|app\.(risk|role|ops\.app))$</field>
-    <description>Watchpost : événement critique signalé par l'agent ($(watchpost.type))</description>
+    <description>Watchpost: critical event reported by the agent ($(watchpost.type))</description>
     <group>watchpost_sev,</group>
   </rule>
 
@@ -1533,7 +1533,7 @@
     <if_sid>100100</if_sid>
     <field name="watchpost.sev">^2$</field>
     <field name="watchpost.type" type="pcre2" negate="yes">^(agent\.(tamper|stopped|buffer_overflow|collector_error|config_changed|heartbeat)|device\.(time_changed|usb)|location\.fix|net\.(cell_security|ble_tracker|wifi|connectivity|dns)|app\.(installed|removed|special_access|permission_changed)|sensor\.(microphone|camera)|security\.(keyguard|ca_cert|policy|posture|posture_change|log)|app\.inventory\.app|net\.usage\.app|net\.wifi_scan\.ap|command\.(issued|cancelled|reported|expired|result)|app\.notification|detect\.[a-z_]+|tracking\.(level_changed|override)|app\.(risk|role|ops\.app))$</field>
-    <description>Watchpost : avertissement signalé par l'agent ($(watchpost.type))</description>
+    <description>Watchpost: warning reported by the agent ($(watchpost.type))</description>
     <group>watchpost_sev,</group>
   </rule>
 

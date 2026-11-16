@@ -1,13 +1,13 @@
 <!--
-  Règles Wazuh Watchpost — journal des requêtes d'AdGuard Home (querylog.json, une ligne JSON par
-  requête : T horodatage, QH nom demandé, QT type, CP protocole client, IP client, CID ClientID,
-  Result.IsFiltered, Result.Reason, Result.Rules[] (non décodé par Wazuh : tableau d'objets),
-  Elapsed en ns). Le champ Answer (réponse DNS en base64) est retiré avant l'indexation par
-  Filebeat (voir manager/entrypoint-scripts/watchpost-init.sh).
-  Identifiants 100400-100449. Toutes les requêtes sont archivées (wazuh-archives-*, niveau 0) ;
-  seules les situations remarquables donnent une alerte.
-  Identifiants de listes AdGuard fixés par install.sh : 1 Watchpost base, 2 Watchpost strict,
-  10 HaGeZi Pro/Pro++, 20 HaGeZi Samsung, 30 HaGeZi TIF (menaces), 90 règles personnelles.
+  Watchpost Wazuh rules: AdGuard Home query log (querylog.json, one JSON line per query:
+  T timestamp, QH requested name, QT type, CP client protocol, IP client, CID ClientID,
+  Result.IsFiltered, Result.Reason, Result.Rules[] (not decoded by Wazuh: array of objects),
+  Elapsed in ns). The Answer field (DNS answer in base64) is removed before indexing by
+  Filebeat (see manager/entrypoint-scripts/watchpost-init.sh).
+  Identifiers 100400-100449. Every query is archived (wazuh-archives-*, level 0);
+  only the notable situations give an alert.
+  AdGuard list identifiers fixed by install.sh: 1 Watchpost base, 2 Watchpost strict,
+  10 HaGeZi Pro/Pro++, 20 HaGeZi Samsung, 30 HaGeZi TIF (threats), 90 personal rules.
 -->
 
 <group name="watchpost,adguard,dns,">
@@ -16,40 +16,40 @@
     <decoded_as>json</decoded_as>
     <field name="QH">\S</field>
     <field name="T">^\d\d\d\d-\d\d-\d\dT</field>
-    <description>AdGuard : requête DNS $(QH) ($(QT)) de $(IP)</description>
+    <description>AdGuard: DNS query $(QH) ($(QT)) from $(IP)</description>
     <group>watchpost_dns,</group>
   </rule>
 
-  <!-- Niveau 1 (pas d'alerte) et non 0 : nécessaire aux règles de corrélation ci-dessous. -->
+  <!-- Level 1 (no alert) and not 0: needed by the correlation rules below. -->
   <rule id="100401" level="1">
     <if_sid>100400</if_sid>
     <field name="Result.IsFiltered">^true$</field>
-    <description>AdGuard : requête bloquée $(QH)</description>
+    <description>AdGuard: query blocked $(QH)</description>
     <group>watchpost_dns,watchpost_dns_blocked,</group>
   </rule>
 
-  <!-- Domaine présent dans le flux de menaces HaGeZi TIF (maliciel, hameçonnage, C2) -->
+  <!-- Domain present in the HaGeZi TIF threat feed (malware, phishing, C2) -->
   <rule id="100402" level="10">
     <if_sid>100401</if_sid>
     <match type="pcre2">"FilterListID":30[,}]</match>
-    <description>AdGuard : domaine malveillant connu demandé et bloqué : $(QH)</description>
+    <description>AdGuard: known malicious domain requested and blocked: $(QH)</description>
     <group>watchpost_dns,watchpost_dns_threat,</group>
   </rule>
 
-  <!-- Rafale de blocages : une app qui insiste (télémétrie en boucle, publicité) ou un
-       comportement anormal. Seuil : 60 requêtes bloquées en 2 min pour un même client. -->
+  <!-- Burst of blocks: an app that insists (looping telemetry, advertising) or abnormal
+       behaviour. Threshold: 60 blocked queries in 2 min for the same client. -->
   <rule id="100403" level="5" frequency="60" timeframe="120" ignore="600">
     <if_matched_sid>100401</if_matched_sid>
     <same_field>IP</same_field>
-    <description>AdGuard : rafale de requêtes bloquées depuis $(IP) (dernière : $(QH))</description>
+    <description>AdGuard: burst of blocked queries from $(IP) (last one: $(QH))</description>
     <group>watchpost_dns,watchpost_dns_burst,</group>
   </rule>
 
-  <!-- Rafale de requêtes vers des domaines du flux de menaces : appareil probablement infecté -->
+  <!-- Burst of queries to threat feed domains: device probably infected -->
   <rule id="100404" level="12" frequency="5" timeframe="600" ignore="1800">
     <if_matched_sid>100402</if_matched_sid>
     <same_field>IP</same_field>
-    <description>AdGuard : requêtes répétées vers des domaines malveillants depuis $(IP)</description>
+    <description>AdGuard: repeated queries to malicious domains from $(IP)</description>
     <group>watchpost_dns,watchpost_dns_threat,</group>
   </rule>
 

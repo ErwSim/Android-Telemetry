@@ -1,0 +1,3 @@
+# DNS query blocked
+# expected: 100401
+{"T":"2026-11-15T22:30:36.905394867Z","QH":"app-measurement.com","QT":"A","QC":"IN","CP":"dot","Answer":"PjuBgAABAAEAAAAAD2FwcC1tZWFzdXJlbWVudANjb20AAAEAAcAMAAEAAQAAAAoABAAAAAA=","IP":"203.0.113.7","Result":{"Rules":[{"Text":"||app-measurement.com^","FilterListID":1}],"Reason":3,"IsFiltered":true},"Elapsed":186617}

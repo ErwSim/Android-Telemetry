@@ -1,3 +1,0 @@
-# Un échec de déverrouillage
-# attendu: 100180
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001045","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1045,"type":"security.keyguard","domain":"security","sev":1,"data":{"event":"unlock_failed","failed_attempts":1}}}

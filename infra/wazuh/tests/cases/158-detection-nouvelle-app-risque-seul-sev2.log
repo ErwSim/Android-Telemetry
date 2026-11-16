@@ -1,3 +1,0 @@
-# Risque élevé (sans combo) sans capacité (marqué)
-# attendu: 100474
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001171","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":0,"type":"detect.new_app_risky","domain":"detect","sev":2,"source":"server","data":{"evidence":{"capabilities":[],"from_store":false,"high_risk":true,"installed_at":"2026-11-15T12:42:07.204Z","installer":"com.google.android.packageinstaller","level":"high","reasons":["no_launcher_icon","background_location","boot_receiver"],"score":65},"label":"Contrôle parental","package":"com.parental.ctrl","summary":"Contrôle parental : constat de test (new_app_risky)","window_from":"2026-11-15T12:42:07.204Z","window_to":"2026-11-16T12:42:07.204Z"}}}

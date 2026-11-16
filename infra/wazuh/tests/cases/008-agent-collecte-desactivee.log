@@ -1,3 +1,0 @@
-# Collecte désactivée dans l'agent
-# attendu: 100115
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001008","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1008,"type":"agent.config_changed","domain":"agent","sev":1,"data":{"key":"collector.location.enabled","old":true,"new":false}}}

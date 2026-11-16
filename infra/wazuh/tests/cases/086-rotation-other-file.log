@@ -1,0 +1,3 @@
+# Rotation of another file: Wazuh rule 591 kept
+# expected: 591
+ossec: File rotated (inode changed): '/var/log/autre.log'.

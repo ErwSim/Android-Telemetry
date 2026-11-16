@@ -24,5 +24,5 @@
 ||samsungcloud.com^
 !
 ! To block other domains: look at the AdGuard query log (adguard.<domain>) or at the
-! "Watchpost: tracking and DNS" Wazuh dashboard, then add the rule here (or, for a setting
+! "Watchpost — tracking and DNS" Wazuh dashboard, then add the rule here (or, for a setting
 ! specific to your installation, in infra/data/adguard/userfilters/personal-rules.txt).

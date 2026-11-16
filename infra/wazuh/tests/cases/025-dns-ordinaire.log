@@ -1,3 +1,0 @@
-# Requête DNS ordinaire
-# attendu: 100100
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001025","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1025,"type":"net.dns","domain":"net","sev":0,"data":{"package":"org.mozilla.firefox","hostname":"example.org","address_count":2}}}

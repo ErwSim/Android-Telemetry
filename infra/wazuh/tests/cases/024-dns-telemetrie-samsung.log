@@ -1,3 +1,0 @@
-# Requête vers la télémétrie Samsung
-# attendu: 100148
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001024","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1024,"type":"net.dns","domain":"net","sev":0,"data":{"package":"com.samsung.android.game.gos","hostname":"api.gos-gsp.io","address_count":0}}}

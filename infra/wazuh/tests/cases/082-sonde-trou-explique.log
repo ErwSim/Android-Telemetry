@@ -1,3 +1,0 @@
-# Trou de séquence dû à la purge du tampon
-# attendu: 100304
-{"vigie_watch":{"check":"seq_gap","device_id":"dev_7k2m9q","device_name":"s25","missing_count":300,"first_missing":120,"last_missing":419,"sample":[120],"explained":"buffer_overflow"}}

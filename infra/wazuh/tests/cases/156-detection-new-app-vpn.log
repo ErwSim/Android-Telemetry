@@ -1,0 +1,3 @@
+# Recent app that becomes a VPN (sev. 1)
+# expected: 100472
+{"watchpost":{"device_id":"dev_7k2m9q","device_name":"phone","id":"01JTEST0000000000000001169","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":0,"type":"detect.new_app_risky","domain":"detect","sev":1,"source":"server","data":{"evidence":{"capabilities":["vpn"],"from_store":false,"high_risk":false,"installed_at":"2026-11-15T12:42:07.204Z","installer":"com.google.android.packageinstaller","level":"low","reasons":["vpn_service"],"score":20,"minutes_to_first_capability":3},"label":"Fast Browser","package":"com.fastvpn.browser","summary":"Fast Browser: test finding (new_app_risky)","window_from":"2026-11-15T12:42:07.204Z","window_to":"2026-11-16T12:42:07.204Z"}}}

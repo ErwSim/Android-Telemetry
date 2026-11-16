@@ -1,3 +1,0 @@
-# Position normale : règle de base, niveau 0
-# attendu: 100100
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001001","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1001,"type":"location.fix","domain":"location","sev":0,"data":{"lat":48.8566,"lon":2.3522,"acc_m":12.5,"provider":"gps","mock":false,"fix_ts":"2026-11-15T21:43:03Z","location":{"lat":48.8566,"lon":2.3522}}}}

@@ -1,3 +1,3 @@
-# Perte du Device Owner
-# attendu: 100255
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001101","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1101,"type":"security.posture_change","domain":"security","sev":3,"data":{"field":"device_owner","old":"true","new":"false"}}}
+# Device Owner lost
+# expected: 100255
+{"watchpost":{"device_id":"dev_7k2m9q","device_name":"phone","id":"01JTEST0000000000000001101","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1101,"type":"security.posture_change","domain":"security","sev":3,"data":{"field":"device_owner","old":"true","new":"false"}}}

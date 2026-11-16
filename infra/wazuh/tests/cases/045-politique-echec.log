@@ -1,3 +1,0 @@
-# Échec d'une action Device Owner
-# attendu: 100187
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001054","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1054,"type":"security.policy","domain":"security","sev":1,"data":{"action":"package_disabled","target":"com.samsung.android.bixby.agent","profile":"equilibre","ok":false,"error":"SecurityException"}}}

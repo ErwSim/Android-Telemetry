@@ -1,3 +1,0 @@
-# AC installée (journal)
-# attendu: 100216
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001082","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1082,"type":"security.log","domain":"security","sev":0,"data":{"tag":"cert_authority_installed","level":"info","log_id":12345,"fields":{"success":true,"subject":"CN=Proxy MITM","user_id":0}}}}

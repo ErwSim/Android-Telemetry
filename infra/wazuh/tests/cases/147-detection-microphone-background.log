@@ -1,0 +1,3 @@
+# Microphone and camera in the background (the microphone wins)
+# expected: 100463
+{"watchpost":{"device_id":"dev_7k2m9q","device_name":"phone","id":"01JTEST0000000000000001160","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":0,"type":"detect.sensor_background","domain":"detect","sev":2,"source":"server","data":{"evidence":{"camera_background":3,"camera_count":3,"microphone_background":44,"microphone_count":44,"ops":["record_audio","camera"]},"label":"Battery Service","package":"com.android.battery.service","summary":"Battery Service: test finding (sensor_background)","window_from":"2026-11-15T00:00:00.000Z","window_to":"2026-11-16T00:00:00.000Z"}}}

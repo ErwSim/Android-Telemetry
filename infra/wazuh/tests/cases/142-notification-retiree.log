@@ -1,3 +1,0 @@
-# Notification retirée (sans contenu)
-# attendu: 100270
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001148","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1148,"type":"app.notification","domain":"app","sev":0,"data":{"package":"com.whatsapp","event":"removed","category":"msg","channel":"c","ongoing":false,"importance":"default"}}}

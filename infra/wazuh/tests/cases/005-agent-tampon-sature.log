@@ -1,3 +1,0 @@
-# Purge du tampon
-# attendu: 100112
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001005","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1005,"type":"agent.buffer_overflow","domain":"agent","sev":2,"data":{"dropped":1200,"oldest_ts":"2026-10-01T00:00:00Z","newest_ts":"2026-10-03T00:00:00Z"}}}

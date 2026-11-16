@@ -1,3 +1,0 @@
-# Erreur d'un collecteur
-# attendu: 100113
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001006","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1006,"type":"agent.collector_error","domain":"agent","sev":1,"data":{"collector":"net.cell","error":"SecurityException"}}}

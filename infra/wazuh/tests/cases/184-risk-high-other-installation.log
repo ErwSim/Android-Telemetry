@@ -1,0 +1,4 @@
+# Installation of another application: no correlation
+# expected: 100501
+{"watchpost":{"device_id":"dev_7k2m9q","device_name":"phone","id":"01JTEST0000000000000001207","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1207,"type":"app.installed","domain":"app","sev":0,"data":{"package":"org.example.app","version_name":"1","version_code":1,"installer":"com.android.vending","signer_sha256":"15b9d7d0c1f9e0a3b8f6c2d4e5a7b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6"}}}
+{"watchpost":{"device_id":"dev_7k2m9q","device_name":"phone","id":"01JTEST0000000000000001208","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1208,"type":"app.risk","domain":"app","sev":2,"data":{"from_store":true,"installer":"com.android.vending","label":"Parental Control","level":"high","package":"com.parental.ctrl","reasons":["boot_receiver"],"score":65,"version_code":7}}}
