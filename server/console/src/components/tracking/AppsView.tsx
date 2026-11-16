@@ -10,13 +10,13 @@ import { SplitBar } from './SplitBar.tsx';
 /** Vue par application : ce qu'elle contacte, bloqué ou autorisé, volumes. Une application à la fois est dépliée. */
 export function AppsView({
   apps,
-  degraded,
+  showStatus,
   openPkg,
   onOpen,
   onShowDomain,
 }: {
   apps: TrackingApp[];
-  degraded: boolean;
+  showStatus: boolean;
   openPkg: string | undefined;
   onOpen: (pkg: string | undefined) => void;
   onShowDomain: (domain: string) => void;
@@ -40,6 +40,10 @@ export function AppsView({
           <input type="search" value={q} onChange={(e) => { setQ(e.target.value); setShown(40); }} placeholder="nom ou paquet" />
         </label>
       </div>
+      <p className="hint">
+        Les requêtes DNS par application viennent de l'agent. Les décomptes bloqué / autorisé et les octets par application sont des <strong>estimations</strong>{' '}
+        (répartition au prorata des requêtes DNS) : ils indiquent un ordre de grandeur, pas une mesure.
+      </p>
       {rows.length === 0 && <Empty>Aucune application ne correspond.</Empty>}
       <ul className="trk-apps">
         {visible.map((a) => {
@@ -54,7 +58,7 @@ export function AppsView({
                 <span className="trk-app-num">
                   <strong>{fmtNumber(a.queries)}</strong> <span className="muted">requêtes</span>
                 </span>
-                {!degraded && (
+                {showStatus && (
                   <span className="trk-app-split">
                     <SplitBar blocked={a.blocked} allowed={a.allowed} />
                     <span className="muted"> {pct === undefined ? '' : `${fmtPct(pct)} bloquées`}</span>
@@ -75,7 +79,7 @@ export function AppsView({
                         const st = domainStatus(d.status);
                         return (
                           <li key={d.domain}>
-                            {!degraded && <Badge tone={st.tone}>{st.label}</Badge>}
+                            {showStatus && <Badge tone={st.tone}>{st.label}</Badge>}
                             <span className="f-label mono break">{d.domain}</span>
                             <span className="f-val">
                               {fmtNumber(d.count)} requêtes ·{' '}

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/endpoints.ts';
-import { ApiError } from '../api/client.ts';
+import { ApiError, clockSkewMs } from '../api/client.ts';
 import { useCommandList } from '../api/useCommands.ts';
 import { useEventStream } from '../api/useEventStream.ts';
 import type { Device, LastLocation, VigieEvent } from '../api/types.ts';
@@ -14,6 +14,8 @@ import {
   badSignatureCount,
   canSign,
   channelState,
+  clockProblem,
+  commandErrorMessage,
   commandLabel,
   defaultValidityMs,
   prepareCommand,
@@ -85,7 +87,7 @@ export default function Commands() {
   const badSigs = badSignatureCount(cmds, now);
 
   const fail = (e: unknown) => {
-    const msg = e instanceof ApiError ? (e.status === 429 ? `Limite atteinte : ${e.message}` : e.message) : String(e);
+    const msg = e instanceof ApiError ? commandErrorMessage(e) : String(e);
     setNotice({ tone: 'bad', text: `La commande n'a pas été envoyée. ${msg}` });
   };
 
@@ -134,6 +136,12 @@ export default function Commands() {
           {device.name} · <span className="mono">{device.device_id}</span>
         </span>
       </div>
+
+      {clockProblem(clockSkewMs()) && (
+        <div className="state state-warn" role="alert">
+          {clockProblem(clockSkewMs())}
+        </div>
+      )}
 
       {device.revoked && (
         <div className="state state-error" role="alert">

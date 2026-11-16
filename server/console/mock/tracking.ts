@@ -81,6 +81,8 @@ export interface Override {
 }
 export interface TrackState {
   adguard: boolean;
+  /** AdGuard injoignable mais agrégats déjà stockés servis (contrat §9, précisions) */
+  stored: boolean;
   levelChanges: { t: number; level: Level }[];
   overrides: Override[];
 }
@@ -89,6 +91,7 @@ export function initialTrackState(now: number): TrackState {
   const t0 = now - 8 * 86_400_000;
   return {
     adguard: process.env['MOCK_ADGUARD'] !== '0',
+    stored: false,
     // Niveau permissif jusqu'à J-2, puis équilibré : la télémétrie Samsung apparaît « mixte » sur 7 jours.
     levelChanges: [
       { t: t0, level: 'permissif' },
@@ -100,6 +103,8 @@ export function initialTrackState(now: number): TrackState {
     ],
   };
 }
+
+const vis = (st: TrackState): boolean => st.adguard || st.stored;
 
 export const currentLevel = (st: TrackState): Level => (st.levelChanges[st.levelChanges.length - 1] as { level: Level }).level;
 
@@ -159,7 +164,7 @@ function aggregate(events: MockEvent[], st: TrackState, r: Range): Map<string, D
       m.set(host, a);
     }
     a.queries += n;
-    if (st.adguard) {
+    if (vis(st)) {
       const d = decide(st, host, e.t);
       if (d.blocked) a.blocked += n;
       else a.allowed += n;
@@ -228,7 +233,7 @@ export function summary(events: MockEvent[], st: TrackState, r: Range) {
       key,
       name: PUB_NAME.get(key) ?? key,
       queries: p.queries,
-      ...(st.adguard ? { blocked: p.blocked, allowed: p.allowed } : {}),
+      ...(vis(st) ? { blocked: p.blocked, allowed: p.allowed } : {}),
       domains: p.domains,
       apps: p.apps.size,
       tx_bytes: Math.round(p.tx),
@@ -240,7 +245,7 @@ export function summary(events: MockEvent[], st: TrackState, r: Range) {
     adguard: st.adguard,
     ...(st.adguard ? { level: currentLevel(st) } : {}),
     levels: LEVELS,
-    totals: st.adguard ? { queries: q, blocked: b, allowed: q - b } : { queries: q },
+    totals: vis(st) ? { queries: q, blocked: b, allowed: q - b } : { queries: q },
     publishers,
   };
 }
@@ -250,17 +255,17 @@ export function domains(events: MockEvent[], st: TrackState, r: Range, f: { publ
   let list = [...aggregate(events, st, r).values()];
   if (f.publisher) list = list.filter((d) => d.publisher === f.publisher);
   if (q) list = list.filter((d) => d.domain.includes(q));
-  if (st.adguard && f.status === 'blocked') list = list.filter((d) => d.blocked > 0);
-  if (st.adguard && f.status === 'allowed') list = list.filter((d) => d.allowed > 0);
+  if (vis(st) && f.status === 'blocked') list = list.filter((d) => d.blocked > 0);
+  if (vis(st) && f.status === 'allowed') list = list.filter((d) => d.allowed > 0);
   list.sort((a, b) => b.queries - a.queries || a.domain.localeCompare(b.domain));
   const page = list.slice(f.offset, f.offset + f.limit);
   const out = page.map((d) => {
-    const ov = st.adguard ? overrideAt(st, d.domain, Date.now()) : undefined;
+    const ov = vis(st) ? overrideAt(st, d.domain, Date.now()) : undefined;
     return {
       domain: d.domain,
       publisher: d.publisher,
       queries: d.queries,
-      ...(st.adguard
+      ...(vis(st)
         ? { blocked: d.blocked, allowed: d.allowed, status: d.blocked === 0 ? 'allowed' : d.allowed === 0 ? 'blocked' : 'mixed', reason: d.reason, ...(ov ? { override: ov } : {}) }
         : {}),
       apps: [...d.apps.entries()].sort((a, b) => b[1] - a[1]).map(([pkg, count]) => ({ package: pkg, count })),
@@ -290,7 +295,7 @@ export function appsView(events: MockEvent[], st: TrackState, r: Range, publishe
       byApp.set(pkg, a);
     }
     const n = typeof e.data['count'] === 'number' && e.data['count'] >= 1 ? e.data['count'] : 1;
-    const dec = st.adguard ? decide(st, host, e.t) : undefined;
+    const dec = vis(st) ? decide(st, host, e.t) : undefined;
     const c = a.per.get(host) ?? { n: 0, b: 0, a: 0 };
     for (const x of [a.total, c]) {
       x.n += n;
@@ -308,12 +313,12 @@ export function appsView(events: MockEvent[], st: TrackState, r: Range, publishe
         package: pkg,
         ...(label ? { label } : {}),
         queries: a.total.n,
-        ...(st.adguard ? { blocked: a.total.b, allowed: a.total.a } : {}),
+        ...(vis(st) ? { blocked: a.total.b, allowed: a.total.a } : {}),
         ...(u ? { tx_bytes: u.tx, rx_bytes: u.rx } : {}),
         top_domains: [...a.per.entries()]
           .sort((x, y) => y[1].n - x[1].n)
           .slice(0, 6)
-          .map(([domain, c]) => ({ domain, count: c.n, ...(st.adguard ? { status: c.b === 0 ? 'allowed' : c.a === 0 ? 'blocked' : 'mixed' } : {}) })),
+          .map(([domain, c]) => ({ domain, count: c.n, ...(vis(st) ? { status: c.b === 0 ? 'allowed' : c.a === 0 ? 'blocked' : 'mixed' } : {}) })),
       };
     });
   return { apps };

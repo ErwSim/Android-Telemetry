@@ -467,6 +467,18 @@ async function runFeatures(browser) {
   if (!(await page.textContent('.main')).includes('Interrogation')) fail('mode interrogation non affiché'); else ok('mode interrogation affiché');
   await control({ channel: 'stream' });
 
+  // ---- Horloge du navigateur décalée : avertissement, puis refus clair du serveur (issued_at à plus de 10 min)
+  await control({ clock_skew_ms: 2 * 3600_000 });
+  await page.reload({ waitUntil: 'load' });
+  await settle(page, '.cmd-list');
+  await page.waitForSelector('.state-warn:has-text("horloge de cet ordinateur")');
+  await page.click('button:has-text("Vibrer"):not(:has-text("aussi"))');
+  await page.waitForSelector('.state-error:has-text("Horloge de cet ordinateur décalée")');
+  ok('horloge décalée : avertissement préalable et refus du serveur traduit en message clair');
+  await control({ clock_skew_ms: 0 });
+  await page.reload({ waitUntil: 'load' });
+  await settle(page, '.cmd-list');
+
   // ---- Verrouillage : mauvais code (bad_signature), puis bon code
   const sensitiveSteps = async (code, message) => {
     await page.click('button:has-text("Verrouiller…")');
@@ -634,7 +646,15 @@ async function runFeatures(browser) {
   if (!dis || !lvlDis) fail('mode dégradé : actions ou niveau non désactivés'); else ok('adguard=false : vue DNS seule, actions et niveau désactivés avec explication');
   if (txt.includes('Bloquées') && (await page.locator('.trk-pub').textContent()).includes('Bloquées / autorisées')) fail('mode dégradé : colonnes bloqué/autorisé affichées');
   await shot(page, sc, '09-pistage-degrade');
-  await control({ adguard: true });
+  // AdGuard injoignable mais agrégats déjà stockés : décomptes affichés, actions désactivées
+  await control({ adguard: false, stored: true });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.state-warn:has-text("enregistrés avant la panne")');
+  await page.waitForSelector('.trk-dom tbody tr');
+  const stDis = await page.locator('.trk-dom tbody tr button.btn-sm').evaluateAll((els) => els.length > 0 && els.every((e) => e.disabled));
+  const stCols = await page.locator('.trk-pub').textContent();
+  if (!stDis || !stCols.includes('Bloquées / autorisées')) fail('agrégats stockés : décomptes absents ou actions actives'); else ok('adguard=false avec agrégats stockés : décomptes servis, actions désactivées, avertissement');
+  await control({ adguard: true, stored: false });
 
   // ---- Notifications : contenu, masquage, texte hostile affiché comme texte
   await page.goto(`${BASE}/evenements`, { waitUntil: 'load' });

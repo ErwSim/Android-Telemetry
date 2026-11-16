@@ -11,7 +11,7 @@ import { LevelCard } from '../components/tracking/LevelCard.tsx';
 import { PublisherTable } from '../components/tracking/PublisherTable.tsx';
 import { fmtNumber, fmtPct } from '../lib/format.ts';
 import { periodRange } from '../lib/period.ts';
-import { blockedPct, totalsOf } from '../lib/tracking.ts';
+import { blockedPct, hasStatusData, totalsOf } from '../lib/tracking.ts';
 import { useAppLabels } from '../state/appLabels.ts';
 import { useDevice } from '../state/device.tsx';
 
@@ -51,8 +51,10 @@ export default function Tracking() {
   );
 
   const degraded = summary.data ? !summary.data.adguard : false;
-  // En mode dégradé aucun statut n'existe : le filtre bloqué / autorisé est ignoré.
-  const effStatus = degraded ? 'all' : status;
+  // Des décomptes bloqué/autorisé existent (même si AdGuard est momentanément injoignable : les agrégats stockés restent servis).
+  const showStatus = summary.data ? hasStatusData(totalsOf(summary.data.totals, summary.data.publishers)) : true;
+  // Sans décompte de statut, le filtre bloqué / autorisé est ignoré.
+  const effStatus = showStatus ? status : 'all';
   const haveSummary = !!summary.data;
   const domParams = useMemo(
     () =>
@@ -99,9 +101,11 @@ export default function Tracking() {
       {degraded && (
         <div className="state state-warn" role="alert">
           <div>
-            <strong>Mode dégradé : AdGuard Home n'est pas joignable ou pas configuré sur ce collecteur.</strong> La vue est construite à partir des seules requêtes
-            DNS relevées par l'agent du téléphone (Device Owner) : on voit qui demande quoi, mais pas si la requête a été bloquée. Les boutons Bloquer, Autoriser
-            et le choix du niveau de blocage sont désactivés tant qu'AdGuard Home n'est pas rétabli.
+            <strong>Mode dégradé : AdGuard Home n'est pas joignable ou pas configuré sur ce collecteur.</strong>{' '}
+            {showStatus
+              ? "Les décomptes bloqué / autorisé affichés sont ceux enregistrés avant la panne ; les requêtes récentes n'y figurent pas."
+              : "La vue est construite à partir des seules requêtes DNS relevées par l'agent du téléphone (Device Owner) : on voit qui demande quoi, mais pas si la requête a été bloquée."}{' '}
+            Les boutons Bloquer, Autoriser et le choix du niveau de blocage sont désactivés tant qu'AdGuard Home n'est pas rétabli.
           </div>
         </div>
       )}
@@ -130,13 +134,13 @@ export default function Tracking() {
                     <>
                       <div className="stats trk-stats">
                         <Stat label="Requêtes DNS" value={fmtNumber(totals.queries)} />
-                        {!degraded && <Stat label="Bloquées" value={fmtNumber(totals.blocked)} sub={pct === undefined ? undefined : fmtPct(pct, 1)} tone="ok" />}
-                        {!degraded && <Stat label="Autorisées" value={fmtNumber(totals.allowed)} sub={pct === undefined ? undefined : fmtPct(100 - pct, 1)} />}
+                        {showStatus && <Stat label="Bloquées" value={fmtNumber(totals.blocked)} sub={pct === undefined ? undefined : fmtPct(pct, 1)} tone="ok" />}
+                        {showStatus && <Stat label="Autorisées" value={fmtNumber(totals.allowed)} sub={pct === undefined ? undefined : fmtPct(100 - pct, 1)} />}
                       </div>
-                      <PublisherTable publishers={s.publishers} totals={totals} degraded={degraded} selected={publisher} onSelect={setPublisher} />
+                      <PublisherTable publishers={s.publishers} totals={totals} showStatus={showStatus} selected={publisher} onSelect={setPublisher} />
                       <p className="hint">
-                        Cliquez un éditeur pour filtrer la liste des domaines et des applications. Octets : volumes des applications, répartis entre éditeurs au prorata
-                        de leurs requêtes (indicatif).
+                        Cliquez un éditeur pour filtrer la liste des domaines et des applications. Les octets par éditeur sont des <strong>estimations</strong> : le volume de chaque
+                        application est réparti entre éditeurs au prorata de ses requêtes DNS.
                       </p>
                     </>
                   );
@@ -202,8 +206,8 @@ export default function Tracking() {
                         type="button"
                         className={`seg-btn${effStatus === k ? ' is-active' : ''}`}
                         aria-pressed={effStatus === k}
-                        disabled={degraded && k !== 'all'}
-                        title={degraded && k !== 'all' ? "Indisponible sans AdGuard Home : le statut n'est pas connu" : undefined}
+                        disabled={!showStatus && k !== 'all'}
+                        title={!showStatus && k !== 'all' ? "Indisponible : aucun décompte bloqué / autorisé" : undefined}
                         onClick={() => setStatus(k)}
                       >
                         {label}
@@ -217,7 +221,7 @@ export default function Tracking() {
                 </label>
               </div>
               <div className="flush">
-                <DomainList paged={domains} degraded={degraded} publisherNames={publisherNames} labelOf={labelOf} onOpenApp={showApp} onNotice={setNotice} />
+                <DomainList paged={domains} degraded={degraded} showStatus={showStatus} publisherNames={publisherNames} labelOf={labelOf} onOpenApp={showApp} onNotice={setNotice} />
               </div>
             </Card>
           )}
@@ -225,7 +229,7 @@ export default function Tracking() {
           {tab === 'apps' && (
             <Card>
               <Async state={apps} isEmpty={(d) => d.apps.length === 0} empty="Aucune application n'a émis de requête DNS sur cette période.">
-                {(d) => <AppsView apps={d.apps} degraded={degraded} openPkg={openApp} onOpen={setOpenApp} onShowDomain={showDomain} />}
+                {(d) => <AppsView apps={d.apps} showStatus={showStatus} openPkg={openApp} onOpen={setOpenApp} onShowDomain={showDomain} />}
               </Async>
             </Card>
           )}

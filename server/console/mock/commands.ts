@@ -58,6 +58,10 @@ export const agent: AgentSim = {
   exec_ms: 1400,
 };
 
+/** Décalage simulé de l'horloge du serveur (ms), pour tester le refus d'`issued_at` (contrat §8, précisions). */
+export const clock = { skew_ms: 0 };
+export const serverNow = (): number => Date.now() + clock.skew_ms;
+
 export const commands: Command[] = [];
 let lastContact = Date.now();
 const seen: string[] = []; // identifiants déjà exécutés (500 derniers)
@@ -145,6 +149,7 @@ export function create(body: unknown, user: string): { id: string } | Failure {
   const issued = Date.parse(String(p['issued_at']));
   const expires = Date.parse(String(p['expires_at']));
   if (Number.isNaN(issued) || Number.isNaN(expires)) return bad('invalid_payload', 'issued_at / expires_at invalides');
+  if (Math.abs(issued - serverNow()) > 10 * 60_000) return bad('invalid_validity', "issued_at doit être à moins de 10 minutes de l'heure du serveur");
   if (expires <= issued || expires - issued > 30 * DAY) return bad('bad_validity', 'Validité : 30 jours au plus');
   if (expires <= Date.now()) return bad('bad_validity', 'La commande est déjà expirée');
   const sensitive = SENSITIVE.has(type);

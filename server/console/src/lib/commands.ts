@@ -390,7 +390,7 @@ export function clockProblem(skewMs: number | undefined): string | undefined {
 
 /** Message utile pour l'échec de `POST /commands`. */
 export function commandErrorMessage(e: { status: number; code: string; message: string }): string {
-  if (e.code === 'invalid_validity' && /issued_at|10 minutes/.test(e.message)) {
+  if (e.code === 'invalid_validity' && /^issued_at|10 minutes/.test(e.message)) {
     return "Horloge de cet ordinateur décalée : l'heure d'émission de la commande est à plus de 10 minutes de l'heure du serveur. Corrigez la date et l'heure de cet appareil, puis recommencez.";
   }
   switch (e.code) {

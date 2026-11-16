@@ -63,7 +63,9 @@ stockage, cookie ou champ ne le contient, ni en clair ni encodé). Captures dans
 `scripts/verify-real.cjs` rejoue dans Chromium les parcours commandes (simple, mauvais code puis bon code, annulation, position
 reçue), pistage, notifications et carte contre un collecteur réel (`REAL_URL`, `REAL_PASSWORD`, `REAL_CODE`), avec les mêmes
 contrôles (console, CSP, tiers, fuite du code). Prérequis : collecteur lancé avec `VIGIE_CONSOLE_DIR=$PWD/dist`, un appareil
-enrôlé et alimenté par `sim`, et un agent qui interroge `/api/v1/commands` avec le même code de commande.
+enrôlé et alimenté par `sim --command-code 'correct horse battery staple' --fake-adguard 127.0.0.1:3001 …` (agent de commandes et faux
+AdGuard Home du simulateur : voir `server/collector/README.md`). Avec AdGuard joignable, le script rejoue aussi le blocage
+d'un domaine, le `409` d'un domaine indispensable et un changement de niveau ; sans AdGuard, il contrôle le mode dégradé.
 
 ## Déploiement
 
@@ -141,6 +143,11 @@ qui se met à jour en direct) ; la vue d'ensemble n'affiche que l'état du canal
   que l'effacement doit être autorisé dans l'app, nom de l'appareil à retaper, puis code). L'interface explique que le serveur
   ne connaît pas le code, ne peut pas vérifier la signature, et qu'un code faux n'est détecté que par le téléphone
   (`bad_signature`, avertissement après chaque refus, rappel de la limite de 5 par heure).
+- Précisions du contrat appliquées : `issued_at` à moins de 10 min de l'heure du serveur (la console compare l'en-tête `Date` des
+  réponses à son horloge, avertit à 8 min d'écart et traduit le `400` en « horloge de cet ordinateur décalée ») ; message de
+  verrouillage ≤ 200 unités UTF-16, sans caractère de contrôle hors saut de ligne, validé avant de signer ; corps limité à
+  `{ device_id, payload, sig }` ; un appareil en interrogation se juge sur `last_contact` (`connected` n'est vrai que pour un flux
+  ouvert) ; une commande `delivered` peut le rester plusieurs minutes (renvoi du serveur après 5 min).
 - L'historique se rafraîchit toutes les 2,5 s tant qu'une commande est `pending`/`delivered` (et à chaque `command.result` du
   flux SSE) ; annulation possible tant que `pending`.
 - « Localiser maintenant » : le flux SSE apporte le `location.fix` ; la carte de la page Commandes et la trace de la page Carte
@@ -152,7 +159,11 @@ Répartition avec **Réseau** : *Réseau* décrit le trafic observé (noms deman
 sans AdGuard ; *Pistage* répond à « qu'est-ce qui est bloqué ou autorisé, vers qui, et que fait-on » (éditeurs, statut, motif,
 actions, niveau). Les deux pages se renvoient l'une à l'autre (`/reseau?app=<paquet>` ouvre le détail d'une application).
 La page affiche en permanence que Vigie voit à qui le téléphone parle, combien et depuis quelle application, **pas le contenu**
-(chiffré). Sans AdGuard (`adguard: false`) : vue DNS seule, pas de statut, actions et niveau désactivés avec explication.
+(chiffré). AdGuard injoignable (`adguard: false`) : actions et niveau désactivés avec explication ; sans décompte bloqué/autorisé la vue est
+celle des seules requêtes DNS, avec des agrégats déjà stockés ils restent affichés (avertissement « enregistrés avant la
+panne »). Les octets par éditeur et les décomptes bloqué/autorisé par application sont présentés comme des **estimations**
+(prorata des requêtes DNS). Les erreurs `409 essential_domain` (détail `breaks`, confirmation puis `force`), `409 corrupt_rules`,
+`502 adguard_error`, `503 adguard_unavailable` et `503 levels_not_configured` sont traduites.
 
 ## Limites connues liées au contrat §6
 

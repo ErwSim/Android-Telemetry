@@ -5,6 +5,8 @@ import type { Device } from '../../api/types.ts';
 import {
   canSign,
   codeProblem,
+  commandErrorMessage,
+  validateParams,
   DAY_MS,
   HOUR_MS,
   LIMITS,
@@ -62,6 +64,7 @@ export function SensitiveDialog({
   const cryptoOk = canSign();
 
   const nameOk = typedName.trim() === deviceName;
+  const messageProblem = kind === 'lock' ? validateParams('lock', { message }) : undefined;
   const lastStep: 1 | 2 | 3 = 3;
   const stepCount = isWipe ? 3 : 1;
   const stepNo = isWipe ? step : 1;
@@ -187,7 +190,7 @@ export function SensitiveDialog({
           type="button"
           className={`btn ${isWipe ? 'btn-danger' : 'btn-primary'}`}
           onClick={() => void submit()}
-          disabled={busy || !cryptoOk || codeLen < LIMITS.codeMin || (kind === 'lock' && !confirmed)}
+          disabled={busy || !cryptoOk || codeLen < LIMITS.codeMin || (kind === 'lock' && (!confirmed || !!messageProblem))}
         >
           {phase === 'signing' ? 'Calcul de la signature…' : phase === 'sending' ? 'Envoi…' : isWipe ? 'Signer et effacer définitivement' : 'Signer et envoyer'}
         </button>
@@ -263,6 +266,11 @@ export function SensitiveDialog({
               disabled={busy}
               placeholder="Téléphone perdu, appelez le 01 23 45 67 89"
             />
+            {messageProblem && (
+              <span className="form-error" role="alert">
+                {messageProblem}
+              </span>
+            )}
             <span className="counter" aria-live="polite">
               {message.length} / {LIMITS.messageMax}
             </span>
@@ -326,8 +334,7 @@ export function SensitiveDialog({
 }
 
 function sendError(e: ApiError): string {
-  if (e.status === 429) return `Limite atteinte : ${e.message}`;
   if (e.status === 0) return e.message;
-  return `Le serveur a refusé la commande : ${e.message}`;
+  return `Le serveur a refusé la commande. ${commandErrorMessage(e)}`;
 }
 

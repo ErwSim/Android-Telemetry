@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api } from '../../api/endpoints.ts';
 import { ApiError } from '../../api/client.ts';
 import type { TrackingSummary } from '../../api/types.ts';
-import { levelTexts } from '../../lib/tracking.ts';
+import { levelTexts, trackingErrorMessage } from '../../lib/tracking.ts';
 import { Dialog } from '../Dialog.tsx';
 import { Badge } from '../ui.tsx';
 
@@ -30,7 +30,7 @@ export function LevelCard({ summary, onChanged }: { summary: TrackingSummary; on
       setChoice(undefined);
       onChanged(selected);
     } catch (e) {
-      setError(e instanceof ApiError ? `Le niveau n'a pas été changé. ${e.message}` : String(e));
+      setError(e instanceof ApiError ? `Le niveau n'a pas été changé. ${trackingErrorMessage(e)}` : String(e));
     } finally {
       setBusy(false);
     }
@@ -51,6 +51,9 @@ export function LevelCard({ summary, onChanged }: { summary: TrackingSummary; on
           </label>
         ))}
       </fieldset>
+      {!off && !current && (
+        <p className="hint">Aucun niveau ne correspond à l'état actuel des listes d'AdGuard Home (réglées à la main ?). Choisir un niveau les remet d'équerre.</p>
+      )}
       {off ? (
         <p className="hint">Le niveau ne peut pas être lu ni changé : AdGuard Home n'est pas joignable depuis le collecteur.</p>
       ) : (

@@ -3,7 +3,7 @@ import { api } from '../../api/endpoints.ts';
 import { ApiError } from '../../api/client.ts';
 import type { PagedDomains } from '../../api/usePagedDomains.ts';
 import type { TrackingDomain } from '../../api/types.ts';
-import { ACTION_LABELS, availableActions, domainStatus, effectiveOverride, overrideLabel, parseConflict, reasonLabel, splitApps, type Conflict, type TrackAction } from '../../lib/tracking.ts';
+import { ACTION_LABELS, availableActions, domainStatus, effectiveOverride, overrideLabel, parseConflict, reasonLabel, splitApps, trackingErrorMessage, type Conflict, type TrackAction } from '../../lib/tracking.ts';
 import { fmtNumber } from '../../lib/format.ts';
 import { cleanText } from '../../lib/text.ts';
 import { Dialog } from '../Dialog.tsx';
@@ -19,13 +19,17 @@ interface Pending {
 export function DomainList({
   paged,
   degraded,
+  showStatus,
   publisherNames,
   labelOf,
   onOpenApp,
   onNotice,
 }: {
   paged: PagedDomains;
+  /** AdGuard injoignable : actions désactivées */
   degraded: boolean;
+  /** des décomptes bloqué/autorisé existent : colonnes statut et motif */
+  showStatus: boolean;
   publisherNames: ReadonlyMap<string, string>;
   labelOf: (pkg: string | undefined) => string | undefined;
   onOpenApp: (pkg: string) => void;
@@ -52,13 +56,10 @@ export function DomainList({
             : `« ${domain} » : règle « ${action === 'block' ? 'bloquer' : 'autoriser'} » enregistrée dans AdGuard Home. Elle s'applique aux prochaines requêtes ; les décomptes affichés restent ceux du passé.`,
       });
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409 && action === 'block') {
+      if (e instanceof ApiError && e.status === 409 && e.code === 'essential_domain' && action === 'block' && !force) {
         setConflict({ domain, action, conflict: parseConflict(e) });
-      } else if (e instanceof ApiError && e.status === 503) {
-        onNotice({ tone: 'bad', text: `La règle n'a pas été enregistrée. ${e.message}` });
-        setConflict(undefined);
       } else {
-        onNotice({ tone: 'bad', text: `La règle n'a pas été enregistrée. ${e instanceof ApiError ? e.message : String(e)}` });
+        onNotice({ tone: 'bad', text: `La règle n'a pas été enregistrée. ${e instanceof ApiError ? trackingErrorMessage(e) : String(e)}` });
         setConflict(undefined);
       }
     } finally {
@@ -81,8 +82,8 @@ export function DomainList({
               <th scope="col" className="right">
                 Requêtes
               </th>
-              {!degraded && <th scope="col">Statut</th>}
-              {!degraded && <th scope="col">Motif</th>}
+              {showStatus && <th scope="col">Statut</th>}
+              {showStatus && <th scope="col">Motif</th>}
               <th scope="col">Applications</th>
               <th scope="col">
                 <span className="sr-only">Actions</span>
@@ -95,6 +96,7 @@ export function DomainList({
                 key={d.domain}
                 d={d}
                 degraded={degraded}
+                showStatus={showStatus}
                 override={effectiveOverride(d, local)}
                 pendingLocal={local.has(d.domain)}
                 busy={busy === d.domain}
@@ -172,6 +174,7 @@ export function DomainList({
 function DomainRow({
   d,
   degraded,
+  showStatus,
   override,
   pendingLocal,
   busy,
@@ -184,6 +187,7 @@ function DomainRow({
 }: {
   d: TrackingDomain;
   degraded: boolean;
+  showStatus: boolean;
   override: 'block' | 'allow' | undefined;
   pendingLocal: boolean;
   busy: boolean;
@@ -206,7 +210,7 @@ function DomainRow({
           <span className="mono">{d.domain}</span> <PublisherChip pkey={d.publisher} name={publisherName} />
         </td>
         <td className="right c-q">{fmtNumber(d.queries)}</td>
-        {!degraded && (
+        {showStatus && (
           <td className="c-st">
             <Badge tone={st.tone}>{st.label}</Badge>
             {d.blocked !== undefined && d.allowed !== undefined && d.status === 'mixed' && (
@@ -224,7 +228,7 @@ function DomainRow({
             )}
           </td>
         )}
-        {!degraded && (
+        {showStatus && (
           <td className="c-why break">
             <span className="hint">{reason ?? '—'}</span>
           </td>

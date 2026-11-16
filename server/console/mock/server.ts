@@ -3,7 +3,7 @@
 //   --static dist      sert aussi la console construite, avec une CSP stricte et le repli SPA
 // Identifiants : admin / vigie (MOCK_USER, MOCK_PASSWORD).
 // Contrôle de test : POST /__mock/control { wazuh?, expire?, fail?, latency_ms?,
-//   adguard?, channel?: "stream"|"poll"|"offline", agent?: { disabled, wipe_allowed, code_configured, device_owner,
+//   clock_skew_ms? (horloge du serveur décalée), adguard?, stored? (adguard=false mais agrégats stockés servis), channel?: "stream"|"poll"|"offline", agent?: { disabled, wipe_allowed, code_configured, device_owner,
 //   locate_fail, deliver_ms, exec_ms }, quiet? (plus d'événements aléatoires en direct) } ; GET /__mock/requests : corps des requêtes modifiantes reçues.
 // Code de commande du mock (celui de l'« app » simulée) : MOCK_COMMAND_CODE, défaut « correct horse battery staple ».
 import http from 'node:http';
@@ -69,7 +69,7 @@ const requestLog: { method: string; path: string; headers: Record<string, string
 type Res = http.ServerResponse;
 function sendJson(res: Res, status: number, body: unknown): void {
   const s = JSON.stringify(body);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(s) });
+  res.writeHead(status, { Date: new Date(cmd.serverNow()).toUTCString(), 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(s) });
   res.end(s);
 }
 const err = (res: Res, status: number, code: string, message: string) => sendJson(res, status, { error: code, message });
@@ -407,20 +407,24 @@ const server = http.createServer((req, res) => {
         fail?: string[];
         latency_ms?: number;
         adguard?: boolean;
+        stored?: boolean;
         channel?: cmd.AgentSim['channel'];
         agent?: Partial<cmd.AgentSim>;
         reset_lockout?: boolean;
         quiet?: boolean;
+        clock_skew_ms?: number;
       };
+      if (typeof b.clock_skew_ms === 'number') cmd.clock.skew_ms = b.clock_skew_ms;
       if (typeof b.quiet === 'boolean') control.quiet = b.quiet;
       if (typeof b.adguard === 'boolean') track.adguard = b.adguard;
+      if (typeof b.stored === 'boolean') track.stored = b.stored;
       if (b.channel) cmd.agent.channel = b.channel;
       if (b.agent) Object.assign(cmd.agent, b.agent);
       if (typeof b.wazuh === 'boolean') control.wazuh = b.wazuh;
       if (b.expire) sessions.clear();
       if (Array.isArray(b.fail)) control.fail = b.fail;
       if (typeof b.latency_ms === 'number') control.latency_ms = b.latency_ms;
-      sendJson(res, 200, { ...control, adguard: track.adguard, agent: cmd.agent });
+      sendJson(res, 200, { ...control, adguard: track.adguard, stored: track.stored, agent: cmd.agent });
       return;
     }
     if (p === '/__mock/requests' && method === 'GET') {

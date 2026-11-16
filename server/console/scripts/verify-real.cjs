@@ -35,7 +35,7 @@ async function main() {
   page.on('console', (m) => { logs.push(m.text()); if (['error', 'warning'].includes(m.type()) && !/status of (401|409|503)/.test(m.text())) errors.push('console: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('exception: ' + e.message));
   page.on('request', (r) => { const u = new URL(r.url()); if (u.protocol.startsWith('http') && u.host !== host) hosts.add(u.host); requests.push({ url: r.url(), body: r.postData() || '', headers: JSON.stringify(r.headers()) }); });
-  page.on('response', (r) => { const u = new URL(r.url()); if (r.status() >= 400 && u.host === host && !(r.status() === 401 && u.pathname.endsWith('/me'))) errors.push(`HTTP ${r.status()} ${u.pathname}`); });
+  page.on('response', (r) => { const u = new URL(r.url()); if (r.status() >= 400 && u.host === host && !(r.status() === 401 && u.pathname.endsWith('/me')) && !(r.status() === 409 && u.pathname.endsWith('/tracking/override'))) errors.push(`HTTP ${r.status()} ${u.pathname}`); });
 
   console.log('\n== connexion');
   await page.goto(`${BASE}/connexion`, { waitUntil: 'load' });
@@ -96,6 +96,21 @@ async function main() {
     ok('annulation : ' + (await page.locator('.cmd-tbl tbody tr:first-child .badge').first().textContent()));
   } else ok('annulation : la commande avait déjà été remise (course avec l\'agent)');
 
+  // Effacement : parcours en trois étapes, refusé par l'agent (effacement non autorisé dans l'app)
+  await page.click('button:has-text("Effacer le téléphone…")');
+  await page.waitForSelector('dialog[open]');
+  await page.check('dialog input[type=checkbox]');
+  await page.click('dialog button:has-text("Continuer")');
+  const devName = (await page.locator('dialog strong.mono').textContent()).trim();
+  await page.fill('dialog input[type=text]', devName);
+  await page.click('dialog button:has-text("Continuer")');
+  await page.fill('#cmd-code', RIGHT);
+  await page.click('dialog button:has-text("Signer et effacer")');
+  await page.waitForSelector('dialog[open]', { state: 'detached', timeout: 20000 });
+  await firstRow('Effacer le téléphone');
+  await page.waitForFunction(() => document.querySelector('.cmd-tbl tbody tr:first-child')?.textContent.includes('Refusée'), null, { timeout: 30000 });
+  if (!(await page.locator('.cmd-tbl tbody tr:first-child').textContent()).includes('Canal désactivé')) fail('effacement : motif disabled non traduit'); else ok('effacement : parcours en trois étapes, refus « disabled » de l\'agent traduit');
+
   const secrets = [RIGHT, WRONG];
   const leaks = [];
   for (const r of requests) for (const c of secrets) for (const v of [c, encodeURIComponent(c), Buffer.from(c).toString('base64'), Buffer.from(c).toString('hex')]) if (r.url.includes(v) || r.body.includes(v) || r.headers.includes(v)) leaks.push(r.url);
@@ -114,6 +129,49 @@ async function main() {
   else ok('AdGuard joignable : vue complète');
   const rows = await page.locator('.trk-dom tbody tr').count();
   ok(`${rows} domaines listés (première page)`);
+  if (!ptxt.includes('Mode dégradé')) {
+    // AdGuard Home (réel ou faux) joignable : filtres, règle manuelle, 409, niveau.
+    await page.click('.seg-btn:has-text("Bloqués")');
+    await page.waitForTimeout(1200);
+    const bl = await page.locator('.trk-dom tbody tr').allTextContents();
+    if (bl.length && bl.every((t) => /Bloqué|Mixte/.test(t))) ok(`filtre Bloqués : ${bl.length} domaines`); else fail('filtre Bloqués incohérent');
+    await page.click('.seg-btn:has-text("Tous")');
+    await page.fill('input[placeholder^="ex. doubleclick"]', 'mtalk.google.com');
+    await page.waitForSelector('.trk-dom tbody tr:has-text("mtalk.google.com")', { timeout: 15000 });
+    await page.locator('.trk-dom tbody tr', { hasText: 'mtalk.google.com' }).first().locator('button:has-text("Bloquer")').click();
+    await page.waitForSelector('dialog[open]:has-text("indispensable")');
+    await page.screenshot({ path: path.join(OUT, 'reel-04b-pistage-409.png') });
+    ok('409 domaine indispensable : ' + (await page.locator('dialog[open] .callout li').allTextContents()).join(' | ').slice(0, 120));
+    await page.click('dialog button:has-text("Ne pas bloquer")');
+    await page.fill('input[placeholder^="ex. doubleclick"]', 'tracker');
+    await page.waitForTimeout(1500);
+    let target = page.locator('.trk-dom tbody tr:has(button:has-text("Bloquer"))').first();
+    if (!(await target.count())) { await page.fill('input[placeholder^="ex. doubleclick"]', ''); await page.waitForTimeout(1500); target = page.locator('.trk-dom tbody tr:has(button:has-text("Bloquer")):not(:has-text("mtalk"))').first(); }
+    const dom = (await target.locator('.c-dom .mono').textContent()).trim();
+    await target.locator('button:has-text("Bloquer")').first().click();
+    await page.waitForSelector('dialog[open]', { timeout: 3000 }).then(async () => { await page.click('dialog button:has-text("Ne pas bloquer")'); fail('domaine ' + dom + ' signalé indispensable'); }).catch(() => undefined);
+    const row = page.locator('.trk-dom tbody tr', { hasText: dom }).first();
+    await row.locator('button:has-text("Remettre par défaut")').waitFor({ timeout: 15000 });
+    ok('Bloquer ' + dom + ' : règle enregistrée dans AdGuard Home (badge « règle manuelle »)');
+    await row.locator('button:has-text("Remettre par défaut")').click();
+    await row.locator('button:has-text("Remettre par défaut")').waitFor({ state: 'detached', timeout: 15000 });
+    ok('Remettre par défaut : règle retirée');
+    // Niveau : on change puis on remet l'ancien
+    const cur = (await page.locator('.level.is-sel strong').first().textContent()).trim();
+    const other = cur === 'Équilibré' ? 'Strict' : 'Équilibré';
+    await page.click(`.level:has-text("${other}")`);
+    await page.click('button:has-text("Appliquer le niveau")');
+    await page.click('dialog button:has-text("Changer le niveau")');
+    await page.waitForSelector(`.level.is-sel:has-text("${other}") .badge:has-text("Actuel")`, { timeout: 120000 });
+    ok(`niveau ${cur} -> ${other} appliqué dans AdGuard Home`);
+    await page.click(`.level:has-text("${cur}")`);
+    await page.click('button:has-text("Appliquer le niveau")');
+    await page.click('dialog button:has-text("Changer le niveau")');
+    await page.waitForSelector(`.level.is-sel:has-text("${cur}") .badge:has-text("Actuel")`, { timeout: 120000 });
+    await page.screenshot({ path: path.join(OUT, 'reel-04c-pistage-niveau.png'), fullPage: true });
+    ok(`niveau remis sur ${cur}`);
+    await page.fill('input[placeholder^="ex. doubleclick"]', '');
+  }
   if (rows > 0) {
     await page.click('role=tab[name="Applications"]');
     await page.waitForSelector('.trk-apps > li', { timeout: 15000 });

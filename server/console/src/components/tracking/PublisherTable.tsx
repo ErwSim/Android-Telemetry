@@ -6,13 +6,13 @@ import { SplitBar } from './SplitBar.tsx';
 export function PublisherTable({
   publishers,
   totals,
-  degraded,
+  showStatus,
   selected,
   onSelect,
 }: {
   publishers: Publisher[];
   totals: TrackingTotals;
-  degraded: boolean;
+  showStatus: boolean;
   selected: string | undefined;
   onSelect: (key: string | undefined) => void;
 }) {
@@ -28,8 +28,8 @@ export function PublisherTable({
             <th scope="col" className="right">
               Requêtes
             </th>
-            {!degraded && <th scope="col">Bloquées / autorisées</th>}
-            {!degraded && (
+            {showStatus && <th scope="col">Bloquées / autorisées</th>}
+            {showStatus && (
               <th scope="col" className="right hide-sm">
                 Bloquées
               </th>
@@ -69,12 +69,12 @@ export function PublisherTable({
                   </span>
                 </th>
                 <td className="right">{fmtNumber(p.queries)}</td>
-                {!degraded && (
+                {showStatus && (
                   <td className="split-cell">
                     <SplitBar blocked={p.blocked} allowed={p.allowed} />
                   </td>
                 )}
-                {!degraded && <td className="right hide-sm">{pct === undefined ? '—' : fmtPct(pct)}</td>}
+                {showStatus && <td className="right hide-sm">{pct === undefined ? '—' : fmtPct(pct)}</td>}
                 <td className="right hide-sm">{fmtNumber(p.domains)}</td>
                 <td className="right hide-sm">{fmtNumber(p.apps)}</td>
                 <td className="right hide-sm">{fmtBytes(p.tx_bytes)}</td>
@@ -87,12 +87,12 @@ export function PublisherTable({
           <tr>
             <th scope="row">Total</th>
             <td className="right">{fmtNumber(totals.queries)}</td>
-            {!degraded && (
+            {showStatus && (
               <td>
                 <SplitBar blocked={totals.blocked} allowed={totals.allowed} />
               </td>
             )}
-            {!degraded && <td className="right hide-sm">{totals.blocked === undefined ? '—' : fmtPct(blockedPct(totals) ?? 0)}</td>}
+            {showStatus && <td className="right hide-sm">{totals.blocked === undefined ? '—' : fmtPct(blockedPct(totals) ?? 0)}</td>}
             <td className="hide-sm" colSpan={4} />
           </tr>
         </tfoot>

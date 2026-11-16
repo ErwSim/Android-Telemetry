@@ -7,7 +7,7 @@ import type { Device } from '../api/types.ts';
 import { Async, Badge, Card, Empty, LevelBadge, Loading, Stat, StatusPill } from '../components/ui.tsx';
 import { EventList } from '../components/EventList.tsx';
 import { channelState } from '../lib/commands.ts';
-import { blockedPct, totalsOf } from '../lib/tracking.ts';
+import { blockedPct, hasStatusData, totalsOf } from '../lib/tracking.ts';
 import { attentionPoints, evaluatePosture, overallStatus } from '../lib/posture.ts';
 import { fmtBytes, fmtDateTime, fmtNumber, fmtPct, fmtRelative, fmtDuration } from '../lib/format.ts';
 import { useNow } from '../lib/useNow.ts';
@@ -117,10 +117,10 @@ export default function Overview() {
                   <>
                     <div className="stats">
                       <Stat label="Requêtes DNS" value={fmtNumber(totals.queries)} />
-                      {t.adguard ? (
+                      {hasStatusData(totals) ? (
                         <Stat label="Bloquées" value={fmtNumber(totals.blocked)} sub={pct === undefined ? undefined : fmtPct(pct, 1)} tone="ok" />
                       ) : (
-                        <Stat label="Blocage" value="Inconnu" sub="AdGuard Home injoignable" tone="warn" />
+                        <Stat label="Blocage" value="Inconnu" sub={t.adguard ? 'aucun décompte' : 'AdGuard Home injoignable'} tone="warn" />
                       )}
                     </div>
                     <p className="hint">Vigie voit à qui le téléphone parle, pas le contenu des échanges (chiffré).</p>

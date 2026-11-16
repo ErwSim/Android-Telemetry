@@ -124,7 +124,7 @@ export function CommandHistory({
                         {c.result_at && <li>Résultat le {fmtDateTime(c.result_at)}</li>}
                         <li>
                           Identifiant <code>{c.id}</code>
-                          {c.detail ? (
+                          {c.detail && c.detail !== 'cancelled' ? (
                             <>
                               {' '}
                               · motif <code>{cleanText(c.detail, 80)}</code>
