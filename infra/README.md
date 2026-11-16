@@ -70,19 +70,26 @@ Sans option, `install.sh` pose les questions. Il :
    publics) sont supprimés —, `wazuh.yml` du dashboard, `AdGuardHome.yaml`, compte d'administration
    Caddy ;
 5. construit l'image du collecteur (`server/Dockerfile`) si elle est absente (`--build` pour forcer) ;
-6. démarre l'indexeur, **applique les comptes avec `securityadmin.sh`** puis vérifie que le mot de
-   passe admin généré est accepté ; pose le modèle d'index et les politiques de rétention ;
+6. démarre l'indexeur ; au premier démarrage, les comptes sont créés depuis `internal_users.yml` ;
+   ensuite, un compte Vigie (admin, kibanaserver, vigie_reader) dont le mot de passe ne correspond
+   plus à `.env` est corrigé, un par un, par l'API de sécurité (les utilisateurs créés dans le
+   dashboard sont conservés) ; vérifie le mot de passe admin ; pose le modèle d'index et les
+   politiques de rétention ;
 7. démarre le collecteur, récupère l'AC de ses certificats clients pour Caddy (mTLS), démarre Wazuh,
    Caddy (obtention des certificats), puis AdGuard Home dès que le certificat de `dns.D` existe ;
-8. crée le compte console `admin` (`vigie-collector user set-password`) et importe les tableaux de
-   bord Wazuh « Vigie » ;
+8. crée le compte console `admin` (`vigie-collector user set-password`) **à la première installation
+   seulement** et importe les tableaux de bord Wazuh « Vigie » ;
 9. affiche le récapitulatif : adresses, enregistrements DNS, ports à ouvrir, où sont les mots de passe.
 
 Il est **rejouable** : on le relance après toute modification de `.env` ou une mise à jour du dépôt
 (vérifié : deux exécutions successives laissent `.env` identique octet pour octet et la pile saine).
+Il ne défait pas ce que vous avez réglé dans les interfaces : mot de passe de la console changé
+avec `set-password`, réglages d'AdGuard (§6.2), utilisateurs créés dans le dashboard Wazuh.
 
 Options utiles : `--profile strict` (filtrage DNS strict), `--clientid` (§6.3), `--admin-allow
-"203.0.113.0/24 2001:db8::/32"` (§5), `--rotate-passwords`, `--no-start`.
+"203.0.113.0/24 2001:db8::/32"` (§5), `--rotate-passwords` (§8.3), `--reset-console-password`
+(§8.3), `--reset-adguard` (§6.2), `--renew-wazuh-certs` / `--renew-wazuh-ca` (§8.6), `--build`,
+`--no-start`.
 
 **Où sont les mots de passe ?** `infra/secrets/identifiants.txt` (récapitulatif lisible) et
 `infra/.env` (source de vérité), droits 600, jamais versionnés. Sauvegardez-les (§8.2).
@@ -188,8 +195,20 @@ Firebase, télémétrie Play Services, régies Google et Samsung, diagnostic Sam
 Profil **strict** : `sudo ./install.sh --profile strict` (retour : `--profile equilibre`).
 
 Les listes HaGeZi (GPL-3.0) sont téléchargées par AdGuard depuis jsDelivr et rafraîchies toutes les
-12 h. `install.sh` régénère `AdGuardHome.yaml` à chaque exécution : **les réglages faits dans
-l'interface web d'AdGuard sont écrasés**, mettez vos règles dans `regles-perso.txt`.
+12 h.
+
+**Qui décide de quoi** (`adguard/merge-config.py`) : à chaque `install.sh`, la configuration gérée
+par Vigie est **fusionnée** dans celle en service (AdGuard est arrêté quelques secondes).
+
+| Géré par Vigie (réappliqué à chaque `install.sh`, depuis `.env` et le dépôt) | À vous (conservé) |
+|---|---|
+| compte `admin` et son mot de passe ; TLS/DoT et certificat ; écoute DNS ; amonts (Quad9, Mullvad) et DNSSEC ; clients autorisés (mode ClientID) et client « Telephone (Vigie) » ; journal des requêtes lu par Wazuh ; listes Vigie et HaGeZi du profil (identifiants 1, 2, 10, 20, 30, 90) | règles personnalisées de l'interface (« Règles de filtrage personnalisées »), listes ajoutées, listes d'autorisation, clients, services bloqués, réécritures DNS, limitation de débit, cache, statistiques, durée du journal ; et l'état activé/désactivé d'une liste Vigie tant que son adresse ne change pas |
+
+Vérifié : règle personnalisée, client, réécriture, limitation de débit et liste HaGeZi désactivée
+dans l'interface survivent à `install.sh` et au passage `--profile strict` (qui remplace bien les
+listes du profil). Pour repartir de zéro : `sudo ./install.sh --reset-adguard` (l'ancienne
+configuration est gardée dans `data/adguard/conf/AdGuardHome.yaml.avant-reset-*`). Les règles
+versionnables à la main restent possibles dans `data/adguard/userfilters/regles-perso.txt`.
 
 ### 6.3 Risque de résolveur ouvert
 
@@ -316,10 +335,19 @@ volumes et de la configuration, puis `restore.sh` → pile saine, téléphone en
 sudo ./install.sh --rotate-passwords
 ```
 
-régénère tous les mots de passe, réapplique les comptes de l'indexeur avec `securityadmin.sh`
-(procédure délicate de Wazuh, automatisée et vérifiée : ancien mot de passe refusé, nouveau accepté
-par l'indexeur, Filebeat, le dashboard, l'API, le collecteur, AdGuard et Caddy). Pour un seul mot de
-passe : modifier la valeur dans `.env`, puis `./install.sh`.
+régénère tous les mots de passe de `.env` et les applique partout : comptes de l'indexeur (par
+l'API de sécurité, compte par compte : les utilisateurs créés dans le dashboard sont conservés),
+Filebeat, dashboard, API Wazuh, collecteur, AdGuard, Caddy, et le compte console `admin` (vérifié :
+ancien mot de passe refusé, nouveau accepté, utilisateur ajouté dans le dashboard toujours valide).
+
+Règle par compte :
+
+| Compte | Source de vérité | Changer le mot de passe |
+|---|---|---|
+| Console Vigie `admin` | la base du collecteur | `docker compose exec collector vigie-collector user set-password admin` : conservé par `install.sh` ; `--reset-console-password` repose celui de `.env` |
+| Indexeur `admin`, `kibanaserver`, `vigie_reader` ; API `wazuh-wui` | `.env` | modifier `.env` puis `./install.sh` (pas dans le dashboard : Filebeat, le dashboard et le collecteur utilisent ces comptes ; une modification faite ailleurs est remise à la valeur de `.env`) |
+| Autres utilisateurs du dashboard Wazuh | le dashboard | dans le dashboard (jamais touchés par `install.sh`) |
+| AdGuard `admin`, accès Caddy `admin`, WireGuard | `.env` | modifier `.env` puis `./install.sh` |
 
 ### 8.4 Dépannage
 
@@ -330,8 +358,60 @@ passe : modifier la valeur dans `.env`, puis `./install.sh`.
 | Une app est cassée | Journal des requêtes AdGuard (`adguard.D`) ou tableau « pistage et DNS » : repérer le domaine bloqué, ajouter `@@\|\|domaine^$important` à `data/adguard/userfilters/regles-perso.txt`, `./install.sh` |
 | Pas de certificat | DNS pas encore propagé ou port 80 fermé : `docker compose logs caddy` |
 | Rien dans Wazuh | `./wazuh/tests/run-tests.sh` ; `docker compose exec wazuh.manager tail /var/ossec/logs/ossec.log` ; erreurs d'indexation : `docker compose logs wazuh.manager \| grep 'Cannot index'` |
-| Indexeur en lecture seule | disque plein (> 95 %) : réduire la rétention, libérer de la place |
+| Indexeur en lecture seule, dashboard `unhealthy` (« create-index blocked ») | disque trop plein (seuils 90/95/97 %) : réduire la rétention, libérer de la place ; le blocage se lève seul quand l'espace revient |
 | Après un redémarrage de l'hôte | tout redémarre seul (`restart: unless-stopped`) ; un défaut de l'image wazuh-manager (réinitialisation interrompue au redémarrage) est contourné par `wazuh/manager/cont-init/00-vigie-pre` |
+
+### 8.5 Notifications (optionnelles)
+
+Sans notification, une alerte grave ne se voit qu'en ouvrant la console ou le dashboard. Dans
+`.env` (désactivé tant que `VIGIE_NOTIFY_URL` et `VIGIE_NOTIFY_SMTP_HOST` sont vides), puis
+`./install.sh` :
+
+| Variable | Rôle |
+|---|---|
+| `VIGIE_NOTIFY_LEVEL` | niveau Wazuh minimal notifié (défaut 10) ; le silence de l'agent (règle 100301) et la remise à zéro de séquence (100305) sont toujours notifiés |
+| `VIGIE_NOTIFY_URL` | webhook : `POST` d'un JSON `{"title","message","priority","tags"}` |
+| `VIGIE_NOTIFY_TOPIC` | sujet ntfy : ajouté au JSON (`"topic"`) ; avec ntfy, `VIGIE_NOTIFY_URL` est la racine du serveur, ex. `https://ntfy.sh` |
+| `VIGIE_NOTIFY_TOKEN` | jeton facultatif, envoyé en `Authorization: Bearer …` |
+| `VIGIE_NOTIFY_SMTP_HOST`, `_PORT` (587), `_TLS` (`starttls`, `tls` ou `none`), `_USER`, `_PASSWORD`, `_FROM`, `_TO` (adresses séparées par des virgules) | e-mail par un relais SMTP (celui de votre messagerie) |
+
+Exemple avec ntfy : `VIGIE_NOTIFY_URL='https://ntfy.sh'` et `VIGIE_NOTIFY_TOPIC='un-nom-long-et-secret'`,
+puis s'abonner à ce sujet dans l'app ntfy. Contenu : titre de la règle, niveau, nom de l'appareil,
+type d'événement, heures, techniques ATT&CK Mobile — **jamais** le journal brut, les données de
+l'événement (position GPS, identifiants, contenu) ni un secret : la notification part chez un tiers.
+Un sujet ntfy public est lisible par quiconque en connaît le nom : choisissez-le long et aléatoire,
+ou utilisez votre propre serveur ntfy avec jeton. Vérifié avec un récepteur local : alerte de niveau
+12 et silence de l'agent reçus (webhook et e-mail), alertes sous le seuil non envoyées. Mise en
+œuvre : intégration Wazuh `custom-vigie-notify` (`wazuh/notify/`), configurée au démarrage du manager.
+Les échéances des certificats d'appareils ne sont pas notifiées : `./enroll.sh --list` (§8.7).
+
+### 8.6 Certificats internes Wazuh
+
+La PKI interne (indexeur, manager, dashboard, admin) est valable 5 ans (AC : 10 ans). L'échéance est
+rappelée à la fin de chaque `install.sh` (avertissement sous 90 jours).
+
+```bash
+sudo ./install.sh --renew-wazuh-certs   # nouveaux certificats, même AC (cas normal)
+sudo ./install.sh --renew-wazuh-ca      # nouvelle AC et nouveaux certificats (AC compromise ou expirée)
+```
+
+Les anciens fichiers sont gardés dans `secrets/wazuh-certs/ancien-<date>/` ; les conteneurs Wazuh (et
+le collecteur, avec `--renew-wazuh-ca`) sont recréés, Caddy rechargé. Vérifié pour les deux : pile
+saine, données de l'indexeur conservées, nouveaux événements indexés, alertes lues par la console,
+dashboard joignable par Caddy.
+
+### 8.7 Appareils : liste, renouvellement, révocation
+
+```bash
+sudo ./enroll.sh --list                 # appareils, dernier contact, expiration du certificat (« à renouveler » sous 30 jours)
+sudo ./enroll.sh --renew s25            # s25-renouvellement.vigie : nouveau jeton et certificat, même appareil
+sudo ./enroll.sh --revoke s25           # ou dev_… : jeton et certificat refusés immédiatement
+```
+
+Après `--renew`, importer le nouveau fichier dans l'app (puis le détruire) : l'ancien couple reste
+accepté jusqu'au premier envoi fait avec le nouveau, puis il est refusé. Vérifié à travers Caddy en
+mTLS : ancien accepté (200), nouveau accepté (200), ancien refusé ensuite (401). Les certificats
+d'appareils durent 2 ans.
 
 ## 9. Dimensionnement mémoire (hôte 8 Go)
 
