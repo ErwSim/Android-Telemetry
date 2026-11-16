@@ -9,7 +9,9 @@
 #   --domain D            domaine de base (console.D, ingest.D, siem.D, adguard.D, dns.D)
 #   --email E             e-mail pour Let's Encrypt (mode acme)
 #   --tls acme|internal   mode TLS (acme = Let's Encrypt ; internal = AC interne de Caddy)
-#   --profile equilibre|strict   profil de filtrage DNS (défaut : equilibre)
+#   --profile permissif|equilibre|strict   APPLIQUE ce niveau de blocage DNS (comme la console,
+#                         vue « pistage ») ; sans --profile, le niveau en service est conservé
+#                         (à la première installation : equilibre)
 #   --clientid            DoT restreint par ClientID (<id>.dns.D) ; en mode acme exige
 #   --dns-provider P --dns-token T   (P = cloudflare | desec | duckdns) pour le défi DNS-01
 #   --admin-allow "CIDR…" adresses autorisées sur siem.D et adguard.D (défaut : toutes)
@@ -25,7 +27,8 @@
 #   --build               reconstruit l'image du collecteur (sinon : seulement si absente)
 #
 # Rejouable sans risque : les secrets existants (.env, secrets/) sont conservés ; les réglages
-# faits dans les interfaces (console, AdGuard, utilisateurs créés dans le dashboard Wazuh) aussi.
+# faits dans les interfaces (console — dont le niveau de blocage et les règles de la vue
+# « pistage » —, AdGuard, utilisateurs créés dans le dashboard Wazuh) aussi.
 set -Eeuo pipefail
 trap 'echo "[erreur] ligne $LINENO : $BASH_COMMAND" >&2' ERR
 
@@ -58,7 +61,7 @@ while (($#)); do
     --reset-adguard) RESET_ADGUARD=1; shift ;;
     --renew-wazuh-certs) RENEW_CERTS=--renew; shift ;;
     --renew-wazuh-ca) RENEW_CERTS=--renew-ca; shift ;;
-    -h | --help) sed -n '2,33p' "$0"; exit 0 ;;
+    -h | --help) sed -n '2,35p' "$0"; exit 0 ;;
     *) die "option inconnue : $1 (voir --help)" ;;
   esac
 done
@@ -122,9 +125,13 @@ if [[ "$TLS_MODE" == acme && -z "$EMAIL" ]]; then
   [[ "$EMAIL" == *@* ]] || die "un e-mail est requis en mode acme"
 fi
 
-PROFILE="${ARG_PROFILE:-$(env_get VIGIE_DNS_PROFILE)}"
-PROFILE="${PROFILE:-equilibre}"
-[[ "$PROFILE" == equilibre || "$PROFILE" == strict ]] || die "profil DNS invalide : $PROFILE"
+# Niveau de blocage DNS : il vit dans la configuration d'AdGuard Home (listes activées), que la
+# console modifie ; --profile l'applique ponctuellement, sans rien mémoriser ailleurs (README §6.2).
+# VIGIE_DNS_PROFILE (v1) ne sert plus qu'à la migration : niveau par défaut, puis retiré de .env.
+PROFILE="$ARG_PROFILE"
+[[ -z "$PROFILE" || "$PROFILE" =~ ^(permissif|equilibre|strict)$ ]] || die "niveau de blocage invalide : $PROFILE (permissif, equilibre ou strict)"
+DEFAULT_LEVEL="$(env_get VIGIE_DNS_PROFILE)"
+[[ "$DEFAULT_LEVEL" =~ ^(permissif|equilibre|strict)$ ]] || DEFAULT_LEVEL=equilibre
 
 CLIENTID_MODE="${ARG_CLIENTID:-$(env_get VIGIE_DNS_CLIENTID_MODE)}"
 CLIENTID_MODE="${CLIENTID_MODE:-false}"
@@ -141,7 +148,7 @@ fi
 ADMIN_ALLOW="${ARG_ADMIN_ALLOW:-$(env_get VIGIE_ADMIN_ALLOW)}"
 ADMIN_ALLOW="${ADMIN_ALLOW:-0.0.0.0/0 ::/0}"
 
-info "Domaine : $DOMAIN | TLS : $TLS_MODE | profil DNS : $PROFILE | ClientID : $CLIENTID_MODE"
+info "Domaine : $DOMAIN | TLS : $TLS_MODE | niveau DNS : ${PROFILE:-conservé} | ClientID : $CLIENTID_MODE"
 
 # ============================================================================== 3. Secrets
 title "3. Secrets (.env, jamais versionné)"
@@ -157,6 +164,7 @@ secret WAZUH_DASHBOARD_PASSWORD
 secret WAZUH_READER_PASSWORD
 secret WAZUH_API_PASSWORD
 secret ADGUARD_ADMIN_PASSWORD
+secret ADGUARD_COLLECTOR_PASSWORD
 secret VIGIE_ADMIN_PASSWORD
 secret VIGIE_CONSOLE_PASSWORD
 secret WG_ADMIN_PASSWORD
@@ -166,7 +174,7 @@ VIGIE_DNS_CLIENTID="$(env_get VIGIE_DNS_CLIENTID)"
 env_set VIGIE_DOMAIN "$DOMAIN"
 env_set VIGIE_TLS_MODE "$TLS_MODE"
 env_set VIGIE_ACME_EMAIL "$EMAIL"
-env_set VIGIE_DNS_PROFILE "$PROFILE"
+env_del VIGIE_DNS_PROFILE
 env_set VIGIE_DNS_CLIENTID_MODE "$CLIENTID_MODE"
 env_set VIGIE_DNS_CLIENTID "$VIGIE_DNS_CLIENTID"
 env_set VIGIE_ACME_DNS_PROVIDER "$DNS_PROVIDER"
@@ -175,7 +183,7 @@ env_set VIGIE_ADMIN_ALLOW "$ADMIN_ALLOW"
 for k in WAZUH_INDEXER_HEAP:2g WAZUH_INDEXER_MEM_LIMIT:3g WAZUH_MANAGER_MEM_LIMIT:1536m \
   WAZUH_DASHBOARD_MEM_LIMIT:1g WAZUH_DASHBOARD_NODE_HEAP_MB:640 \
   WAZUH_ALERTS_RETENTION_DAYS:180 WAZUH_ARCHIVES_RETENTION_DAYS:90 VIGIE_RETENTION_DAYS:90 \
-  VIGIE_WATCH_SILENCE_MIN:60 VIGIE_ARCHIVES_FILE_DAYS:14 \
+  VIGIE_WATCH_SILENCE_MIN:60 VIGIE_ARCHIVES_FILE_DAYS:14 VIGIE_CMD_KEEPALIVE_S:120 VIGIE_ADGUARD_POLL_S:60 \
   VIGIE_SUBNET:172.31.250.0/24 VIGIE_CADDY_IP:172.31.250.10 VIGIE_ADGUARD_IP:172.31.250.53 VIGIE_WG_IP:172.31.250.20 \
   VIGIE_NOTIFY_LEVEL:10 VIGIE_NOTIFY_SMTP_PORT:587 VIGIE_NOTIFY_SMTP_TLS:starttls; do
   [[ -n "$(env_get "${k%%:*}")" ]] || env_set "${k%%:*}" "${k#*:}"
@@ -228,6 +236,7 @@ HASH_ADMIN="$(bcrypt_hash "$WAZUH_ADMIN_PASSWORD")"
 HASH_KIBANASERVER="$(bcrypt_hash "$WAZUH_DASHBOARD_PASSWORD")"
 HASH_READER="$(bcrypt_hash "$WAZUH_READER_PASSWORD")"
 ADGUARD_ADMIN_HASH="$(bcrypt_hash "$ADGUARD_ADMIN_PASSWORD")"
+ADGUARD_COLLECTOR_HASH="$(bcrypt_hash "$ADGUARD_COLLECTOR_PASSWORD")"
 VIGIE_ADMIN_HASH="$(bcrypt_hash "$VIGIE_ADMIN_PASSWORD")"
 render "$INFRA_DIR/wazuh/indexer/internal_users.yml.tmpl" "$DATA_DIR/wazuh/internal_users.yml"
 render "$INFRA_DIR/wazuh/dashboard/wazuh.yml.tmpl" "$DATA_DIR/wazuh/wazuh.yml"
@@ -267,24 +276,9 @@ fi
 
 # --- AdGuard Home
 VIGIE_DOMAIN="$DOMAIN"
-VIGIE_DNS_PROFILE="$PROFILE"
 ADGUARD_CERT_PATH="/certs/$CERT_NAME.crt"
 ADGUARD_KEY_PATH="/certs/$CERT_NAME.key"
 ADGUARD_UPSTREAMS=$'\n    - https://dns.quad9.net/dns-query\n    - tls://dns.quad9.net'
-HAGEZI="https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock"
-filter() { printf '\n  - enabled: true\n    url: %s\n    name: "%s"\n    id: %s' "$1" "$2" "$3"; }
-ADGUARD_FILTERS="$(
-  filter /opt/adguardhome/work/userfilters/vigie/vigie-base.txt "Vigie — base (exceptions et télémétrie)" 1
-  if [[ "$PROFILE" == strict ]]; then
-    filter /opt/adguardhome/work/userfilters/vigie/vigie-strict.txt "Vigie — strict" 2
-    filter "$HAGEZI/pro.plus.txt" "HaGeZi Multi PRO++" 10
-  else
-    filter "$HAGEZI/pro.txt" "HaGeZi Multi PRO" 10
-  fi
-  filter "$HAGEZI/native.samsung.txt" "HaGeZi Native Tracker — Samsung" 20
-  filter "$HAGEZI/tif.medium.txt" "HaGeZi Threat Intelligence Feeds (medium)" 30
-  filter /opt/adguardhome/work/userfilters/perso/regles-perso.txt "Règles personnelles" 90
-)"
 if [[ "$CLIENTID_MODE" == true ]]; then
   # Jamais le sous-réseau Docker entier : sa passerelle (.1) est l'adresse vue pour toute connexion
   # relayée par docker-proxy (IPv6 sans ip6tables, accès local), ce qui ouvrirait le résolveur.
@@ -307,7 +301,9 @@ else
   ADGUARD_CLIENTS=" []"
 fi
 # Configuration gérée par Vigie, fusionnée dans celle en service : les réglages faits dans
-# l'interface d'AdGuard sont conservés (règle détaillée dans adguard/merge-config.py et README §6.2).
+# l'interface d'AdGuard et dans la console Vigie (niveau de blocage = listes activées, bloc
+# « ! vigie:begin … ! vigie:end » des règles) sont conservés ; les listes viennent de
+# adguard/niveaux.json, le fichier que lit aussi le collecteur (règle : merge-config.py, README §6.2).
 render "$INFRA_DIR/adguard/AdGuardHome.yaml.tmpl" "$DATA_DIR/adguard/vigie-gere.yaml"
 AGH_CONF="$DATA_DIR/adguard/conf/AdGuardHome.yaml"
 AGH_WAS_RUNNING=0
@@ -315,16 +311,27 @@ if [[ -n "$(dc ps -q --status running adguardhome 2>/dev/null)" ]]; then
   AGH_WAS_RUNNING=1
   dc stop adguardhome >/dev/null 2>&1 # AdGuard écrit sa configuration à l'arrêt : lire la dernière
 fi
-if [[ -s "$AGH_CONF" && $RESET_ADGUARD -eq 0 ]]; then CUR=/w/conf/AdGuardHome.yaml; else CUR=-; fi
-[[ -s "$AGH_CONF" && $RESET_ADGUARD -eq 1 ]] && cp -p "$AGH_CONF" "$AGH_CONF.avant-reset-$(date +%Y%m%d-%H%M%S)"
-docker run --rm -v "$DATA_DIR/adguard:/w" -v "$INFRA_DIR/adguard/merge-config.py:/merge.py:ro" \
+if [[ -s "$AGH_CONF" ]]; then CUR=/w/conf/AdGuardHome.yaml; else CUR=-; fi
+MERGE_ARGS=(--default-level "$DEFAULT_LEVEL")
+[[ -n "$PROFILE" ]] && MERGE_ARGS+=(--level "$PROFILE")
+if [[ -s "$AGH_CONF" && $RESET_ADGUARD -eq 1 ]]; then
+  cp -p "$AGH_CONF" "$AGH_CONF.avant-reset-$(date +%Y%m%d-%H%M%S)"
+  MERGE_ARGS+=(--reset)
+fi
+MERGE_OUT="$(docker run --rm -v "$DATA_DIR/adguard:/w" -v "$INFRA_DIR/adguard/merge-config.py:/merge.py:ro" \
+  -v "$INFRA_DIR/adguard/niveaux.json:/niveaux.json:ro" \
   --entrypoint /var/ossec/framework/python/bin/python3 wazuh/wazuh-manager:4.14.10 \
-  /merge.py /w/vigie-gere.yaml "$CUR" /w/conf/AdGuardHome.yaml.new ||
+  /merge.py /w/vigie-gere.yaml "$CUR" /w/conf/AdGuardHome.yaml.new /niveaux.json "${MERGE_ARGS[@]}")" ||
   die "fusion de la configuration AdGuard impossible"
+DNS_LEVEL="$(sed -n 's/^NIVEAU=//p' <<<"$MERGE_OUT")"
 cat "$AGH_CONF.new" >"$AGH_CONF" # en place (même inode)
 rm -f "$AGH_CONF.new"
 chmod 600 "$AGH_CONF" "$DATA_DIR/adguard/vigie-gere.yaml"
-if [[ "$CUR" == - ]]; then info "Configuration AdGuard générée."; else info "Configuration AdGuard : réglages Vigie réappliqués, réglages de l'interface conservés."; fi
+if [[ "$CUR" == - ]]; then info "Configuration AdGuard générée."
+elif ((RESET_ADGUARD)); then info "Configuration AdGuard régénérée (niveau et règles de la console conservés)."
+else info "Configuration AdGuard : réglages Vigie réappliqués, réglages de l'interface et de la console conservés."; fi
+if [[ -n "$PROFILE" ]]; then info "Niveau de blocage DNS appliqué : $PROFILE"
+else info "Niveau de blocage DNS en service : ${DNS_LEVEL:-personnalisé (listes modifiées à la main)}"; fi
 if [[ ! -f "$DATA_DIR/adguard/userfilters/regles-perso.txt" ]]; then
   cat >"$DATA_DIR/adguard/userfilters/regles-perso.txt" <<'EOF'
 ! Règles AdGuard personnelles (non versionnées, conservées par install.sh et les sauvegardes).
@@ -342,6 +349,7 @@ Console Vigie        https://console.$DOMAIN        admin / $VIGIE_CONSOLE_PASSW
 Accès administration siem./adguard. (1re barrière, Caddy)  admin / $VIGIE_ADMIN_PASSWORD
 Dashboard Wazuh      https://siem.$DOMAIN           admin / $WAZUH_ADMIN_PASSWORD
 AdGuard Home         https://adguard.$DOMAIN        admin / $ADGUARD_ADMIN_PASSWORD
+AdGuard Home, compte du collecteur (interne ; AdGuard n'a que des comptes administrateurs)  vigie-collecteur / $ADGUARD_COLLECTOR_PASSWORD
 API Wazuh (interne)  wazuh-wui / $WAZUH_API_PASSWORD
 Indexeur, compte du dashboard (interne)  kibanaserver / $WAZUH_DASHBOARD_PASSWORD
 Indexeur, lecture seule du collecteur (interne)  vigie_reader / $WAZUH_READER_PASSWORD
@@ -462,6 +470,9 @@ dc up -d adguardhome
 dc start adguardhome >/dev/null # arrêté plus haut pour la fusion de sa configuration
 wait_healthy adguardhome 180 || die "AdGuard Home ne démarre pas : docker compose logs adguardhome"
 
+# Mode ClientID : correspondance appareil -> ClientID DoT pour la vue « pistage » du collecteur.
+adguard_clients_sync
+
 # Rattrape les changements de .env (dc up recrée les conteneurs dont la configuration a changé)
 dc up -d
 wait_healthy wazuh.manager 300 || die "le manager Wazuh ne démarre pas : docker compose logs wazuh.manager"
@@ -505,6 +516,7 @@ ${C_BLD}Adresses${C_RST}
   Wazuh (SIEM)      https://siem.$DOMAIN        (2 connexions : Caddy puis Wazuh)
   AdGuard Home      https://adguard.$DOMAIN     (2 connexions : Caddy puis AdGuard)
   DNS privé Android $PRIVATE_DNS_HOST          (DNS-over-TLS, port 853)
+  Niveau de blocage ${DNS_LEVEL:-personnalisé}   (console → Pistage, ou ./install.sh --profile …)
 
 ${C_BLD}Mots de passe${C_RST} : $SECRETS_DIR/identifiants.txt (et $ENV_FILE), droits 600.
 

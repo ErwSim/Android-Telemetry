@@ -54,7 +54,8 @@
 }
 
 # ---------------------------------------------------------------------------------------------
-# Console Vigie : fichiers statiques + /api/console/* + /healthz (authentification du collecteur)
+# Console Vigie : fichiers statiques + /api/console/* (dont commandes à distance et vue « pistage »)
+# + /healthz (authentification du collecteur). Seul hôte où passent les routes de la console.
 console.{$VIGIE_DOMAIN} {
 	import securite
 	import journal
@@ -82,6 +83,17 @@ ingest.{$VIGIE_DOMAIN} {
 		# Contrat §3 : 1 Mio compressé, 8 Mio décompressé ; un lot non compressé est permis.
 		# Le collecteur applique les limites fines (413).
 		max_size 9MB
+	}
+	# Flux de commandes de l'agent (SSE, contrat §8) : connexion permanente, un commentaire de
+	# maintien toutes les 120 s (VIGIE_CMD_KEEPALIVE_S). Chaque message est transmis sans tampon ;
+	# aucun délai de Caddy ne s'applique à une réponse en cours (read_body et idle ne visent que la
+	# lecture de la requête et les connexions inactives entre deux requêtes). Une ligne de journal
+	# par connexion (à sa fermeture), pas par message.
+	handle /api/v1/commands/stream {
+		reverse_proxy collector:8080 {
+			header_up X-Vigie-Client-Cert-Sha256 {http.request.tls.client.fingerprint}
+			flush_interval -1
+		}
 	}
 	handle /api/v1/* {
 		reverse_proxy collector:8080 {

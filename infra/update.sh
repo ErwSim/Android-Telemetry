@@ -31,8 +31,9 @@ dc build --pull -q collector
 
 title "4. Application (install.sh)"
 "$INFRA_DIR/install.sh" --yes
-# Les fichiers montés un par un (ossec.conf, Caddyfile…) ne sont vus qu'après recréation.
-dc up -d --force-recreate wazuh.manager caddy >/dev/null
+# Les fichiers montés un par un (ossec.conf, Caddyfile, adguard/niveaux.json…) ne sont vus
+# qu'après recréation.
+dc up -d --force-recreate wazuh.manager caddy collector >/dev/null
 wait_healthy wazuh.manager 300 || warn "manager Wazuh lent à redémarrer"
 
 title "5. Nettoyage"

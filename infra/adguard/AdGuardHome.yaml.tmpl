@@ -1,8 +1,11 @@
 # AdGuard Home — configuration gérée par Vigie (gabarit infra/adguard/AdGuardHome.yaml.tmpl).
 # Rendu dans data/adguard/vigie-gere.yaml puis FUSIONNÉ par infra/adguard/merge-config.py dans la
-# configuration en service : seuls les réglages gérés par Vigie (compte admin, TLS, amonts,
-# clients autorisés, journal des requêtes, listes Vigie) sont réappliqués à chaque install.sh ;
-# les réglages faits dans l'interface sont conservés. --reset-adguard repart de ce gabarit.
+# configuration en service : seuls les réglages gérés par Vigie (comptes admin et
+# vigie-collecteur, TLS, amonts, clients autorisés, journal des requêtes, présence des listes)
+# sont réappliqués à chaque install.sh ; les réglages faits dans l'interface et dans la console
+# Vigie (niveau de blocage, bloc « vigie:begin ») sont conservés. --reset-adguard repart de ce
+# gabarit en gardant le niveau et le bloc de la console. Les listes (filters) sont construites par
+# merge-config.py depuis adguard/niveaux.json.
 schema_version: 34
 http:
   # Interface web derrière Caddy (adguard.<domaine>), jamais publiée.
@@ -14,9 +17,15 @@ http:
   pprof:
     enabled: false
     port: 6060
+# AdGuard Home n'a qu'un type de compte : tout compte est administrateur complet. Le compte
+# « vigie-collecteur » sert au collecteur (vue « pistage », niveaux, règles de la console) par le
+# réseau Docker interne ; son mot de passe (.env : ADGUARD_COLLECTOR_PASSWORD) vaut donc celui
+# d'admin et se protège de la même façon.
 users:
   - name: admin
     password: '@@ADGUARD_ADMIN_HASH@@'
+  - name: vigie-collecteur
+    password: '@@ADGUARD_COLLECTOR_HASH@@'
 auth_attempts: 5
 block_auth_min: 15
 language: fr
@@ -123,9 +132,10 @@ statistics:
   interval: 168h
   enabled: true
   ignored_enabled: false
-# Listes de blocage (profil « @@VIGIE_DNS_PROFILE@@ »). Les identifiants sont fixes : les règles
-# Wazuh s'en servent (FilterListID 30 = flux de menaces).
-filters:@@ADGUARD_FILTERS@@
+# Listes de blocage : construites par merge-config.py depuis adguard/niveaux.json (présentes pour
+# tous les niveaux, activées selon le niveau choisi). Identifiants fixes : les règles Wazuh s'en
+# servent (FilterListID 30 = flux de menaces).
+filters: []
 whitelist_filters: []
 user_rules: []
 dhcp:

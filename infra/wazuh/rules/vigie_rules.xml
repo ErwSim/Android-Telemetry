@@ -1,6 +1,7 @@
 <!--
   Règles Wazuh Vigie — événements de l'agent Android (export NDJSON du collecteur, contrat §5).
-  Plage d'identifiants : 100100-100299 (événements de l'appareil), 100300-100349 (sonde
+  Plage d'identifiants : 100100-100299 (événements de l'appareil, et du collecteur pour les
+  commandes à distance : 100230-100249), 100300-100349 (sonde
   vigie_watch.py), 100400-100449 (AdGuard Home, fichier vigie_adguard_rules.xml).
 
   Niveaux : 0 = archivé seulement ; 2 = indicateur pour les tableaux de bord (sous le seuil
@@ -767,6 +768,166 @@
     <group>vigie_securitylog,</group>
   </rule>
 
+  <!-- ========================= command.* (commandes à distance, contrat §8) ========================= -->
+  <!-- Émis par le collecteur (vigie.source = « server ») : command.issued, command.cancelled,
+       command.reported, command.expired. Émis par l'appareil : command.result. Les règles des
+       événements serveur exigent vigie.source = server : un appareil ne peut pas les imiter.
+       Le message de verrouillage n'est jamais exporté (seul message_set l'est) et aucune
+       description ne reprend un texte libre de la console.
+       Le résultat d'une commande arrive deux fois : command.result (ce que dit le téléphone) et
+       command.reported (le même résultat reçu par l'API). Les alertes portent sur command.result ;
+       command.reported est seulement marqué (niveau 2), pour ne pas alerter deux fois. -->
+
+  <rule id="100230" level="3">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^command.issued$</field>
+    <field name="vigie.source">^server$</field>
+    <description>Vigie : commande à distance « $(vigie.data.type) » émise par $(vigie.data.created_by) vers $(vigie.device_name)</description>
+    <group>vigie_command,vigie_command_issued,</group>
+  </rule>
+
+  <rule id="100231" level="5">
+    <if_sid>100230</if_sid>
+    <field name="vigie.data.type">^locate$</field>
+    <description>Vigie : localisation à distance de $(vigie.device_name) demandée par $(vigie.data.created_by)</description>
+    <group>vigie_command,vigie_command_issued,</group>
+  </rule>
+
+  <rule id="100232" level="10">
+    <if_sid>100230</if_sid>
+    <field name="vigie.data.type">^lock$</field>
+    <description>Vigie : verrouillage à distance de $(vigie.device_name) demandé par $(vigie.data.created_by) (commande signée, message affiché : $(vigie.data.message_set))</description>
+    <group>vigie_command,vigie_command_issued,vigie_command_sensitive,</group>
+  </rule>
+
+  <rule id="100233" level="12">
+    <if_sid>100230</if_sid>
+    <field name="vigie.data.type">^wipe$</field>
+    <description>Vigie : EFFACEMENT à distance de $(vigie.device_name) demandé par $(vigie.data.created_by) (commande signée)</description>
+    <group>vigie_command,vigie_command_issued,vigie_command_sensitive,</group>
+  </rule>
+
+  <rule id="100234" level="5">
+    <if_sid>100230</if_sid>
+    <field name="vigie.data.type">^clear_lock_message$</field>
+    <description>Vigie : retrait du message de verrouillage de $(vigie.device_name) demandé par $(vigie.data.created_by)</description>
+    <group>vigie_command,vigie_command_issued,vigie_command_sensitive,</group>
+  </rule>
+
+  <!-- Rafale : le collecteur accepte 20 commandes par heure et par appareil ; 8 en 10 min ne
+       correspondent pas à un usage normal (session console volée, script). -->
+  <rule id="100235" level="8" frequency="8" timeframe="600" ignore="600">
+    <if_matched_group>vigie_command_issued</if_matched_group>
+    <same_field>vigie.device_id</same_field>
+    <description>Vigie : rafale de commandes à distance vers $(vigie.device_name) (8 en 10 min, dernière : « $(vigie.data.type) »)</description>
+    <group>vigie_command,vigie_command_burst,</group>
+  </rule>
+
+  <rule id="100236" level="3">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^command.cancelled$</field>
+    <field name="vigie.source">^server$</field>
+    <description>Vigie : commande « $(vigie.data.type) » vers $(vigie.device_name) annulée par $(vigie.data.cancelled_by)</description>
+    <group>vigie_command,</group>
+  </rule>
+
+  <rule id="100237" level="3">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^command.expired$</field>
+    <field name="vigie.source">^server$</field>
+    <description>Vigie : commande « $(vigie.data.type) » vers $(vigie.device_name) expirée sans résultat (livrée : $(vigie.data.delivered))</description>
+    <group>vigie_command,</group>
+  </rule>
+
+  <rule id="100238" level="6">
+    <if_sid>100237</if_sid>
+    <field name="vigie.data.type" type="pcre2">^(lock|wipe|clear_lock_message)$</field>
+    <description>Vigie : commande sensible « $(vigie.data.type) » jamais exécutée par $(vigie.device_name) (téléphone injoignable ou canal de commandes coupé ?)</description>
+    <group>vigie_command,vigie_command_sensitive,</group>
+  </rule>
+
+  <rule id="100239" level="2">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^command.reported$</field>
+    <field name="vigie.source">^server$</field>
+    <description>Vigie : résultat reçu pour la commande « $(vigie.data.type) » : $(vigie.data.status)</description>
+    <group>vigie_command,</group>
+  </rule>
+
+  <rule id="100240" level="3">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^command.result$</field>
+    <description>Vigie : commande « $(vigie.data.type) » traitée par $(vigie.device_name) : $(vigie.data.status)</description>
+    <group>vigie_command,vigie_command_result,</group>
+  </rule>
+
+  <rule id="100241" level="10">
+    <if_sid>100240</if_sid>
+    <field name="vigie.data.type">^lock$</field>
+    <field name="vigie.data.status">^executed$</field>
+    <description>Vigie : $(vigie.device_name) verrouillé à distance (commande signée exécutée)</description>
+    <group>vigie_command,vigie_command_result,vigie_command_sensitive,</group>
+  </rule>
+
+  <rule id="100242" level="12">
+    <if_sid>100240</if_sid>
+    <field name="vigie.data.type">^wipe$</field>
+    <field name="vigie.data.status">^executed$</field>
+    <description>Vigie : EFFACEMENT à distance de $(vigie.device_name) exécuté (réinitialisation d'usine)</description>
+    <group>vigie_command,vigie_command_result,vigie_command_sensitive,</group>
+  </rule>
+
+  <rule id="100243" level="5">
+    <if_sid>100240</if_sid>
+    <field name="vigie.data.status">^refused$</field>
+    <field name="vigie.data.detail" type="pcre2" negate="yes">^(replay|bad_signature|locked_out)$</field>
+    <description>Vigie : commande « $(vigie.data.type) » refusée par $(vigie.device_name) (motif : $(vigie.data.detail))</description>
+    <group>vigie_command,vigie_command_result,vigie_command_refused,</group>
+  </rule>
+
+  <rule id="100244" level="10">
+    <if_sid>100240</if_sid>
+    <field name="vigie.data.status">^refused$</field>
+    <field name="vigie.data.detail">^bad_signature$</field>
+    <description>Vigie : signature invalide pour la commande sensible « $(vigie.data.type) » : quelqu'un tente de commander $(vigie.device_name) sans le code de commande</description>
+    <group>vigie_command,vigie_command_result,vigie_command_refused,vigie_command_forgery,</group>
+  </rule>
+
+  <rule id="100245" level="12">
+    <if_sid>100240</if_sid>
+    <field name="vigie.data.status">^refused$</field>
+    <field name="vigie.data.detail">^locked_out$</field>
+    <description>Vigie : commandes sensibles bloquées une heure sur $(vigie.device_name) après 5 signatures invalides (tentative de prise de contrôle ?)</description>
+    <group>vigie_command,vigie_command_result,vigie_command_refused,vigie_command_forgery,</group>
+  </rule>
+
+  <!-- Refus « replay » : réponse normale à une commande renvoyée par le serveur. -->
+  <rule id="100246" level="2">
+    <if_sid>100240</if_sid>
+    <field name="vigie.data.status">^refused$</field>
+    <field name="vigie.data.detail">^replay$</field>
+    <description>Vigie : commande « $(vigie.data.type) » déjà traitée (renvoi du serveur)</description>
+    <group>vigie_command,vigie_command_result,</group>
+  </rule>
+
+  <rule id="100247" level="6">
+    <if_sid>100240</if_sid>
+    <field name="vigie.data.status">^failed$</field>
+    <description>Vigie : la commande « $(vigie.data.type) » a échoué sur $(vigie.device_name) ($(vigie.data.detail))</description>
+    <group>vigie_command,vigie_command_result,</group>
+  </rule>
+
+  <!-- ========================= app.notification (APK compagnon, contrat §10) ========================= -->
+  <!-- Marqué pour les tableaux de bord, sans alerte. Le titre et le texte (option « contenu des
+       notifications ») ne figurent JAMAIS dans une description d'alerte ni dans une notification. -->
+
+  <rule id="100270" level="2">
+    <if_sid>100100</if_sid>
+    <field name="vigie.type">^app.notification$</field>
+    <description>Vigie : notification de $(vigie.data.package) ($(vigie.data.event))</description>
+    <group>vigie_app,vigie_notification,</group>
+  </rule>
+
   <!-- ========================= vigie_watch.py (absence, séquence) ========================= -->
 
   <rule id="100300" level="0">
@@ -830,7 +991,7 @@
   <rule id="100105" level="10">
     <if_sid>100100</if_sid>
     <field name="vigie.sev">^3$</field>
-    <field name="vigie.type" type="pcre2" negate="yes">^(agent\.(tamper|stopped|buffer_overflow|collector_error|config_changed|heartbeat)|device\.(time_changed|usb)|location\.fix|net\.(cell_security|ble_tracker|wifi|connectivity|dns)|app\.(installed|removed|special_access|permission_changed)|sensor\.(microphone|camera)|security\.(keyguard|ca_cert|policy|posture|posture_change|log)|app\.inventory\.app|net\.usage\.app|net\.wifi_scan\.ap)$</field>
+    <field name="vigie.type" type="pcre2" negate="yes">^(agent\.(tamper|stopped|buffer_overflow|collector_error|config_changed|heartbeat)|device\.(time_changed|usb)|location\.fix|net\.(cell_security|ble_tracker|wifi|connectivity|dns)|app\.(installed|removed|special_access|permission_changed)|sensor\.(microphone|camera)|security\.(keyguard|ca_cert|policy|posture|posture_change|log)|app\.inventory\.app|net\.usage\.app|net\.wifi_scan\.ap|command\.(issued|cancelled|reported|expired|result)|app\.notification)$</field>
     <description>Vigie : événement critique signalé par l'agent ($(vigie.type))</description>
     <group>vigie_sev,</group>
   </rule>
@@ -838,7 +999,7 @@
   <rule id="100106" level="6">
     <if_sid>100100</if_sid>
     <field name="vigie.sev">^2$</field>
-    <field name="vigie.type" type="pcre2" negate="yes">^(agent\.(tamper|stopped|buffer_overflow|collector_error|config_changed|heartbeat)|device\.(time_changed|usb)|location\.fix|net\.(cell_security|ble_tracker|wifi|connectivity|dns)|app\.(installed|removed|special_access|permission_changed)|sensor\.(microphone|camera)|security\.(keyguard|ca_cert|policy|posture|posture_change|log)|app\.inventory\.app|net\.usage\.app|net\.wifi_scan\.ap)$</field>
+    <field name="vigie.type" type="pcre2" negate="yes">^(agent\.(tamper|stopped|buffer_overflow|collector_error|config_changed|heartbeat)|device\.(time_changed|usb)|location\.fix|net\.(cell_security|ble_tracker|wifi|connectivity|dns)|app\.(installed|removed|special_access|permission_changed)|sensor\.(microphone|camera)|security\.(keyguard|ca_cert|policy|posture|posture_change|log)|app\.inventory\.app|net\.usage\.app|net\.wifi_scan\.ap|command\.(issued|cancelled|reported|expired|result)|app\.notification)$</field>
     <description>Vigie : avertissement signalé par l'agent ($(vigie.type))</description>
     <group>vigie_sev,</group>
   </rule>

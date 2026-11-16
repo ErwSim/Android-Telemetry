@@ -1,0 +1,3 @@
+# Résultat reçu par l'API (marqué seulement)
+# attendu: 100239
+{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001138","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":0,"type":"command.reported","domain":"command","sev":3,"data":{"command_id":"01JCQ8Z3K4M5N6P7Q8R9S0T1V2","type":"lock","status":"refused","detail":"bad_signature","signed":true,"agent_at":"2026-11-16T10:00:01.000Z"},"source":"server"}}

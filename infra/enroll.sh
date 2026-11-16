@@ -57,10 +57,19 @@ resolve_device() {
   esac
 }
 
+# Mode ClientID : la correspondance appareil -> ClientID de la vue « pistage » suit les appareils.
+sync_clients() {
+  [[ "$(env_get VIGIE_DNS_CLIENTID_MODE)" == true ]] || return 0
+  local before
+  before="$(env_get VIGIE_ADGUARD_CLIENTS)"
+  adguard_clients_sync
+  [[ "$(env_get VIGIE_ADGUARD_CLIENTS)" == "$before" ]] || { dc up -d collector >/dev/null && info "Vue « pistage » : ClientID DoT associé aux appareils actifs."; }
+}
+
 case "${1:-}" in
   "" | -h | --help) sed -n '2,18p' "$0"; exit 0 ;;
   --list) dc exec -T collector vigie-collector devices; exit 0 ;;
-  --revoke) dc exec -T collector vigie-collector revoke "$(resolve_device "${2:?identifiant ou nom manquant}")"; exit 0 ;;
+  --revoke) dc exec -T collector vigie-collector revoke "$(resolve_device "${2:?identifiant ou nom manquant}")"; sync_clients; exit 0 ;;
   --renew)
     REF="${2:?identifiant ou nom de l appareil manquant}"
     ID="$(resolve_device "$REF")"
@@ -76,3 +85,4 @@ esac
 NAME="$1"
 [[ "$NAME" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || die "nom d'appareil invalide : $NAME"
 run_to_file "${2:-$PWD/$NAME.vigie}" enroll --name "$NAME"
+sync_clients

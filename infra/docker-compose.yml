@@ -85,11 +85,23 @@ services:
       VIGIE_WAZUH_INDEXER_CA_FILE: /etc/vigie/wazuh-root-ca.pem
       VIGIE_TILE_URL: ${VIGIE_TILE_URL:-}
       VIGIE_LOG_LEVEL: ${VIGIE_LOG_LEVEL:-info}
+      # Commandes à distance (contrat §8) : maintien du flux SSE des agents.
+      VIGIE_CMD_KEEPALIVE_S: ${VIGIE_CMD_KEEPALIVE_S:-120}
+      # Vue « pistage » (contrat §9) : API d'AdGuard Home par le réseau interne uniquement, avec le
+      # compte « vigie-collecteur » (administrateur : AdGuard n'a qu'un type de compte).
+      VIGIE_ADGUARD_URL: http://adguardhome:3000
+      VIGIE_ADGUARD_USER: vigie-collecteur
+      VIGIE_ADGUARD_PASSWORD: ${ADGUARD_COLLECTOR_PASSWORD:?}
+      VIGIE_ADGUARD_LEVELS_FILE: /etc/vigie/adguard-niveaux.json
+      VIGIE_ADGUARD_POLL_S: ${VIGIE_ADGUARD_POLL_S:-60}
+      VIGIE_ADGUARD_CLIENTS: ${VIGIE_ADGUARD_CLIENTS:-}
     volumes:
       - collector_data:/data
       - vigie_export:/export
       - ./secrets/wazuh-certs/root-ca.pem:/etc/vigie/wazuh-root-ca.pem:ro
       - ./data/caddy:/etc/vigie/caddy:ro
+      # Niveaux de blocage : même fichier que celui qui construit les listes d'AdGuard (install.sh).
+      - ./adguard/niveaux.json:/etc/vigie/adguard-niveaux.json:ro
     networks: [vigie]
     healthcheck:
       test: ["CMD", "/usr/local/bin/vigie-collector", "healthcheck"]

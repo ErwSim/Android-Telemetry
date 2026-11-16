@@ -63,6 +63,32 @@ env_set() {
   mv "$tmp" "$ENV_FILE"; chmod 600 "$ENV_FILE"
 }
 
+# Retire KEY de .env (sans effet si absente)
+env_del() {
+  local key="$1" tmp
+  [[ -f "$ENV_FILE" ]] && grep -qE "^${key}=" "$ENV_FILE" || return 0
+  tmp="$(mktemp "$ENV_FILE.XXXXXX")"
+  grep -vE "^${key}=" "$ENV_FILE" >"$tmp" || true
+  mv "$tmp" "$ENV_FILE"; chmod 600 "$ENV_FILE"
+}
+
+# Mode ClientID : VIGIE_ADGUARD_CLIENTS = « device_id=ClientID » pour chaque appareil actif, afin que
+# la vue « pistage » du collecteur n'attribue au téléphone que les requêtes DoT de son ClientID
+# (et pas celles d'inconnus refusées). Vide hors mode ClientID (adresse IP mobile variable : tout le
+# journal d'AdGuard est alors attribué à l'appareil consulté). Le collecteur doit être démarré ;
+# il faut ensuite « dc up -d collector » pour qu'il voie la nouvelle valeur.
+adguard_clients_sync() {
+  local v="" cid id
+  if [[ "$(env_get VIGIE_DNS_CLIENTID_MODE)" == true ]]; then
+    cid="$(env_get VIGIE_DNS_CLIENTID)"
+    for id in $(dc exec -T collector vigie-collector devices | awk 'NR > 1 && $1 ~ /^dev_/ && $0 !~ /révoqué/ { print $1 }'); do
+      v="${v:+$v,}$id=$cid"
+    done
+  fi
+  [[ "$(env_get VIGIE_ADGUARD_CLIENTS)" == "$v" ]] && grep -qE '^VIGIE_ADGUARD_CLIENTS=' "$ENV_FILE" && return 0
+  env_set VIGIE_ADGUARD_CLIENTS "$v"
+}
+
 # Rendu de gabarit : remplace @@NOM@@ par la valeur de la variable shell NOM.
 render() {
   local src="$1" dst="$2" content name

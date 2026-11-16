@@ -10,11 +10,24 @@ os.makedirs(out, exist_ok=True)
 for f in os.listdir(out):
     if f.endswith('.log'): os.remove(os.path.join(out, f))
 seq = [1000]
-def ev(typ, data, sev=0, dev="dev_7k2m9q", name="s25"):
+def ev(typ, data, sev=0, dev="dev_7k2m9q", name="s25", source=None):
     seq[0] += 1
-    return json.dumps({"vigie": {"device_id": dev, "device_name": name, "id": "01JTEST%019d" % seq[0],
+    v = {"device_id": dev, "device_name": name, "id": "01JTEST%019d" % seq[0],
         "ts": "2026-11-15T21:43:03.974Z", "received_at": "2026-11-15T21:43:05.120Z", "seq": seq[0],
-        "type": typ, "domain": typ.split('.')[0], "sev": sev, "data": data}}, ensure_ascii=False, separators=(',', ':'))
+        "type": typ, "domain": typ.split('.')[0], "sev": sev, "data": data}
+    if source:  # événements produits par le collecteur (commandes, contrat §8)
+        v["seq"] = 0; v["source"] = source
+    return json.dumps({"vigie": v}, ensure_ascii=False, separators=(',', ':'))
+CMD = "01JCQ8Z3K4M5N6P7Q8R9S0T1V2"
+def issued(typ, params=None, sev=0, **kw):
+    d = {"command_id": CMD, "type": typ, "signed": typ in ("lock", "wipe", "clear_lock_message"), "created_by": "admin",
+         "expires_at": "2026-11-23T10:00:00.000Z", "params": params or {}}
+    d.update(kw)
+    return ev("command.issued", d, sev, source="server")
+def result(typ, status, detail=None, sev=0):
+    d = {"command_id": CMD, "type": typ, "status": status, "signed": typ in ("lock", "wipe", "clear_lock_message")}
+    if detail: d["detail"] = detail
+    return ev("command.result", d, sev)
 def agh(qh, filtered=False, listid=10, ip="203.0.113.7", cp="dot"):
     d = {"T": "2026-11-15T22:30:36.905394867Z", "QH": qh, "QT": "A", "QC": "IN", "CP": cp,
          "Answer": "PjuBgAABAAEAAAAAD2FwcC1tZWFzdXJlbWVudANjb20AAAEAAcAMAAEAAQAAAAoABAAAAAA=", "IP": ip}
@@ -165,6 +178,28 @@ cases = [
  ("100402", "adguard-menace", "Domaine du flux de menaces", [agh("malware.example", True, 30)]),
  ("100403", "adguard-rafale", "60 requêtes bloquées en rafale", [agh("ads%d.example" % i, True, 10) for i in range(60)]),
  ("100404", "adguard-menaces-repetees", "5 domaines malveillants", [agh("c2-%d.example" % i, True, 30) for i in range(5)]),
+ # --- Commandes à distance (v1.1, contrat §8) et notifications (§10)
+ ("100230", "commande-emise-sonnerie", "Commande simple émise (sonner)", [issued("ring", {"duration_s": 60, "vibrate": True})]),
+ ("100231", "commande-emise-localiser", "Localisation à distance demandée", [issued("locate")]),
+ ("100232", "commande-emise-verrouillage", "Verrouillage à distance demandé (message non exporté)", [issued("lock", {}, 1, message_set=True)]),
+ ("100233", "commande-emise-effacement", "Effacement à distance demandé", [issued("wipe", {}, 2)]),
+ ("100234", "commande-emise-retrait-message", "Retrait du message de verrouillage demandé", [issued("clear_lock_message", {}, 1)]),
+ ("100100", "commande-emise-imitee", "command.issued envoyé par un appareil (sans source serveur) : aucune alerte", [ev("command.issued", {"command_id": CMD, "type": "wipe", "signed": True, "created_by": "admin"}, 2)]),
+ ("100235", "commandes-rafale", "8 commandes en 10 min vers le même appareil", [issued("ring", {"duration_s": 5}) for _ in range(7)] + [issued("lock", {}, 1, message_set=False)]),
+ ("100236", "commande-annulee", "Commande annulée", [ev("command.cancelled", {"command_id": CMD, "type": "ring", "signed": False, "cancelled_by": "admin"}, source="server")]),
+ ("100237", "commande-expiree", "Commande simple expirée", [ev("command.expired", {"command_id": CMD, "type": "ring", "signed": False, "delivered": False}, 1, source="server")]),
+ ("100238", "commande-sensible-expiree", "Verrouillage expiré sans résultat", [ev("command.expired", {"command_id": CMD, "type": "lock", "signed": True, "delivered": True}, 1, source="server")]),
+ ("100239", "commande-resultat-api", "Résultat reçu par l'API (marqué seulement)", [ev("command.reported", {"command_id": CMD, "type": "lock", "status": "refused", "detail": "bad_signature", "signed": True, "agent_at": "2026-11-16T10:00:01.000Z"}, 3, source="server")]),
+ ("100240", "commande-resultat-simple", "Sonnerie exécutée", [result("ring", "executed")]),
+ ("100241", "commande-resultat-verrouillage", "Verrouillage exécuté par le téléphone", [result("lock", "executed", None, 2)]),
+ ("100242", "commande-resultat-effacement", "Effacement exécuté par le téléphone", [result("wipe", "executed", None, 2)]),
+ ("100243", "commande-refusee", "Commande refusée (expirée)", [result("lock", "refused", "expired", 1)]),
+ ("100244", "commande-signature-invalide", "Signature invalide (sévérité 3 : pas de repli 100105)", [result("lock", "refused", "bad_signature", 3)]),
+ ("100245", "commande-canal-verrouille", "Canal des commandes sensibles verrouillé", [result("wipe", "refused", "locked_out", 3)]),
+ ("100246", "commande-rejouee", "Refus replay (renvoi normal)", [result("ring", "refused", "replay", 1)]),
+ ("100247", "commande-echec", "Commande échouée", [result("lock", "failed", "not_device_owner", 1)]),
+ ("100270", "notification-avec-contenu", "Notification avec titre et texte (jamais dans la description)", [ev("app.notification", {"package": "org.thoughtcrime.securesms", "event": "posted", "category": "msg", "channel": "messages", "ongoing": False, "importance": "high", "title": "Alice <script>\"'", "text": "Ton code est 123456 — « secret » \\ ligne\nsuivante", "redacted": True})]),
+ ("100270", "notification-retiree", "Notification retirée (sans contenu)", [ev("app.notification", {"package": "com.whatsapp", "event": "removed", "category": "msg", "channel": "c", "ongoing": False, "importance": "default"})]),
 ]
 for i, (rid, slug, desc, lines) in enumerate(cases, 1):
     with open(os.path.join(out, "%03d-%s.log" % (i, slug)), "w") as f:

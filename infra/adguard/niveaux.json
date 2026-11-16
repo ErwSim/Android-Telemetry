@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "lists": {
+    "vigie_base": {
+      "name": "Vigie — base (exceptions et télémétrie)",
+      "url": "/opt/adguardhome/work/userfilters/vigie/vigie-base.txt"
+    },
+    "vigie_strict": {
+      "name": "Vigie — strict",
+      "url": "/opt/adguardhome/work/userfilters/vigie/vigie-strict.txt"
+    },
+    "hagezi_pro": {
+      "name": "HaGeZi Multi PRO",
+      "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/pro.txt"
+    },
+    "hagezi_pro_plus": {
+      "name": "HaGeZi Multi PRO++",
+      "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/pro.plus.txt"
+    },
+    "hagezi_samsung": {
+      "name": "HaGeZi Native Tracker — Samsung",
+      "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/native.samsung.txt"
+    },
+    "hagezi_tif": {
+      "name": "HaGeZi Threat Intelligence Feeds (medium)",
+      "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/tif.medium.txt"
+    }
+  },
+  "levels": [
+    {
+      "key": "permissif",
+      "name": "Permissif",
+      "description": "Menaces (hameçonnage, maliciels, serveurs de commande) et règles Vigie de base : principales télémétries Google et Samsung et régies publicitaires Google bloquées, exceptions indispensables garanties. Pas de liste publicitaire générale : tout fonctionne.",
+      "lists": ["vigie_base", "hagezi_tif"]
+    },
+    {
+      "key": "equilibre",
+      "name": "Équilibré",
+      "description": "Ajoute HaGeZi Multi PRO (publicité, pistage, télémétrie) et les pisteurs natifs Samsung. Play Services, Play Store, notifications push et applications bancaires restent fonctionnels.",
+      "lists": ["vigie_base", "hagezi_pro", "hagezi_samsung", "hagezi_tif"]
+    },
+    {
+      "key": "strict",
+      "name": "Strict",
+      "description": "HaGeZi Multi PRO++ (plus agressive) au lieu de PRO, et blocages Vigie stricts : Firebase Remote Config, Galaxy Store, push et cloud Samsung. Les exceptions indispensables restent garanties, mais certaines apps et fonctions Samsung peuvent mal fonctionner.",
+      "lists": ["vigie_base", "vigie_strict", "hagezi_pro_plus", "hagezi_samsung", "hagezi_tif"]
+    }
+  ]
+}

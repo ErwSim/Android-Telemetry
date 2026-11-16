@@ -1,6 +1,6 @@
 ! Title: Vigie — blocages supplémentaires du profil STRICT
-! Description: Activée par VIGIE_DNS_PROFILE=strict (en plus de vigie-base.txt et de HaGeZi Pro++
-!   au lieu de Pro). Coupe des services Samsung/Google utiles mais bavards. Effets visibles
+! Description: Activée au niveau « strict » (adguard/niveaux.json), en plus de vigie-base.txt et de HaGeZi Pro++
+!   au lieu de Pro. Coupe des services Samsung/Google utiles mais bavards. Effets visibles
 !   attendus, à accepter en connaissance de cause (colonne « casse »).
 !
 ! Les exceptions de vigie-base.txt (push FCM, Play Store, test de connectivité, mises à jour)
