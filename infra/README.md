@@ -346,14 +346,11 @@ variable reste vide et tout le journal d'AdGuard est attribué à l'appareil con
 téléphones, un blocage « menace » de l'un peut donc être rattaché à une application d'un autre qui a
 demandé le même domaine le même jour). Les variables `VIGIE_DETECT_*` des détections sont au §7.4.
 
-**Limite constatée lors de l'essai (§11.1, à corriger dans le collecteur)** : AdGuard Home v0.107.80
-ne renvoie rien pour `GET /control/querylog?older_than=T` quand `T` tombe **entre** deux entrées du
-journal sur disque (il ne trouve que l'horodatage exact d'une entrée, ou un instant postérieur à la
-dernière), et ignore alors aussi l'entrée la plus récente encore en mémoire. Le collecteur interroge
-avec `older_than` = maintenant − 60 s : dès que le téléphone a fait des requêtes dans la dernière
-minute, le relevé revient vide et la plage est considérée comme lue. Dans l'essai, 4 requêtes sur 5
-ont été comptées ; avec un téléphone réel (requêtes continues), la vue « pistage » risque de rester
-très incomplète. Les blocages eux-mêmes, le niveau et les règles ne sont pas affectés.
+**Lecture du journal d'AdGuard (limite de l'essai §11.1, corrigée depuis dans le collecteur)** : AdGuard
+Home v0.107.80 ne trouve, pour `older_than=T`, que l'horodatage exact d'une entrée. Le collecteur ne
+passe donc plus d'instant arbitraire : première page sans `older_than`, puis l'horodatage exact de la plus
+ancienne entrée lue ; chaque entrée est comptée une fois (détail : `server/collector/README.md`, relevé du
+journal). Condition côté infrastructure : `size_memory` entre 1 et 500 exclus, d'où 50 (§6.2).
 
 ## 7. Wazuh
 
@@ -402,7 +399,7 @@ Correspondances MITRE ATT&CK **Mobile** (T1629.003, T1638, T1461, T1453, T1517, 
 MITRE embarquée dans Wazuh ne connaît que la matrice Entreprise (une balise `<mitre>` mobile est
 rejetée et disparaît de l'alerte) ; elles sont donc portées par les groupes `attack_mobile_<ID>`.
 
-**Tests** : `wazuh/tests/cases/*.log` (209 cas, un fichier par cas, la dernière ligne doit déclencher
+**Tests** : `wazuh/tests/cases/*.log` (210 cas, un fichier par cas, la dernière ligne doit déclencher
 la règle attendue) ; `./wazuh/tests/run-tests.sh` les rejoue avec `wazuh-logtest` dans le manager ;
 `wazuh/tests/generer-cas.py` les régénère.
 
@@ -475,9 +472,21 @@ second type et le nomme.
 | `fanout` : centaines d'adresses en une heure | 100466 (8) | Relais / proxy résidentiel (votre connexion revendue) : désinstaller. Pair à pair ou test de débit : ignorer, ou relever `VIGIE_DETECT_FANOUT`. |
 | `dns_bypass` : résolveur DoH/DoT public utilisé | 100469 (7) | L'appli échappe au filtrage DNS. Navigateur avec « DNS sécurisé » : le désactiver, ou l'exempter (`VIGIE_DETECT_DNS_BYPASS_EXEMPT`, ou sourdine dans la console). |
 | `upload_spike` : envoi massif en une heure | 100465 (7) | Sauvegarde ou vidéo : rien. Sinon (galerie « coffre », appli inconnue) : exfiltration possible, désinstaller et changer les mots de passe exposés. |
+| `inventory_mismatch` (§11.4, non masquable) : l'appareil déclare « système » une appli que son installateur ou un `app.installed` antérieur contredisent | 100481 (12) | Une appli qui se fait passer pour le système échapperait aux autres détections : vérifier son installateur dans la console, la désinstaller si elle n'est pas d'origine. |
 | `flood` (§11.4) : plus de 200 détections dans la journée | 100478 (12) | Données incohérentes ou appareil compromis : regarder la console, l'état de l'agent et la posture. |
-| `muted` / `unmuted` (§11.4) : sourdine posée / levée dans la console | 100479 (6) / 100480 (3) | Sourdine non voulue = quelqu'un a utilisé la console : changer le mot de passe console. |
+| `muted` / `unmuted` (§11.4) : sourdine posée / levée dans la console (`POST`/`DELETE /api/console/detections/mute` ; `sms_abuse`, `default_app_changed`, `inventory_mismatch`, `flood` refusées : `400 not_mutable`) | 100479 (6) / 100480 (3) | Sourdine non voulue = quelqu'un a utilisé la console : changer le mot de passe console. |
 | type `detect.*` sans règle dédiée | 100454 (sév. 3 : 10), 100455 (sév. 2 : 6), 100450 (3) | Lire le résumé ; mettre à jour le dépôt. |
+
+**Ce qui sonne pour l'attaque « SMS discret »** (application de boutique sans icône, `SEND_SMS` accordée
+25 à 30 h après l'installation, puis envois en masse ; scénario `sms-discret` du simulateur, rejoué ici,
+§11.2) :
+
+| | Sans `app_ops` (cas réel probable) | Avec `app_ops` |
+|---|---|---|
+| À l'installation | `app.risk` `medium` : marqué, aucune alerte (pas de `new_app_risky`) | idem |
+| À l'octroi de `SEND_SMS` | 100161 (8, `app.permission_changed`) **et** `detect.sms_permission` 100475 (**10, notifiée** au seuil par défaut) | idem |
+| Pendant les envois | rien : les SMS ne sont pas comptés | `detect.sms_abuse` 100462 (12), ou 100489 (13) si une autre détection vise la même appli dans les 24 h ; refus de la garde : 100522 (4) |
+| Si elle se fait appli SMS par défaut | 100511 (8, `app.role`) et `detect.default_app_changed` 100476 (12) | idem |
 
 **Sans le collecteur expérimental `app_ops` de l'agent, l'envoi de SMS lui-même n'est pas compté** :
 `sms_abuse` et `sensor_background` restent muettes (les SMS ne passent pas par le réseau IP). La protection
@@ -777,8 +786,21 @@ appareils neufs après le passage à un fil d'analyse). Prouvé :
   corps reçus ;
 - **`install.sh` rejoué** : `.env` identique (`sha256sum -c`), niveau `permissif` et bloc `vigie:begin`
   conservés, `size_memory` remis de 1 à 50, tableaux de bord importés ;
-- `run-tests.sh` : 209 cas sur 209, dont les détections du §11.4 sur des lignes construites d'après le
-  contrat (le collecteur ne les produisait pas encore).
+- `run-tests.sh` : 210 cas sur 210.
+
+**Second essai (même jour, collecteur avec le §11.4, image reconstruite deux fois)** : scénarios
+`sms-discret --app-ops=false`, `cheval-de-troie`, `tout`, `sain`, puis `contournement-dns` sur un appareil
+mis en sourdine, et `sms-discret --app-ops=false` rejoué avec le simulateur aligné sur les seuils réels du
+profil de risque. Prouvé : 320 585 lignes exportées = 320 585 documents, aucun rejet ;
+**`sms-discret` sans `app_ops` → une seule détection, `detect.sms_permission`, règle 100475 (10), reçue par
+le webhook et par SMTP** (plus 100161, 8, à l'octroi) ; `cheval-de-troie` → `default_app_changed` exporté
+(`evidence.role = sms`) et alerté (100489 en direct car corrélé à `new_app_risky` ; la ligne exportée,
+rejouée seule dans `wazuh-logtest`, donne 100476, 12) ; `app.role` réel → 100511 (8) ; `tout` →
+`sms_permission` 100475, `recurring` → 100456 ; **sourdine** par `POST /api/console/detections/mute` →
+`detect.muted` exporté (`type`, `package`, `reason`, `user`) et alerté (100479) ; la détection couverte est
+`muted: true` dans l'API et **absente de l'export** ; type non masquable → `400 not_mutable` ; `sain` :
+aucune détection. Non produits par le simulateur, vérifiés par `run-tests.sh` seulement :
+`inventory_mismatch`, `flood`, `unmuted`.
 
 Constaté et corrigé pendant l'essai : corrélations manquées une fois sur deux avec plusieurs fils
 d'analyse (§7.2) ; règle de corrélation placée avant les règles de son groupe (jamais déclenchée).
