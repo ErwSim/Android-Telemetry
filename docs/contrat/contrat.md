@@ -139,6 +139,10 @@ Note : `app.notification` n'est **pas** produit par l'APK principal en v1 (un se
   nombre d'occurrences identiques regroupées sur la fenêtre) et `last_event_ts` (heure de la dernière
   occurrence) ; `ts` est alors l'heure de la première. Les statistiques du collecteur (`/stats/top`) pondèrent
   par `count`.
+  Seul un entier de 1 à 1 000 000 est pris en compte (toute autre valeur vaut 1). La pondération ne concerne
+  que les genres `dns_*` et `connect_*` ; `/stats/timeline` reste un nombre d'événements.
+- Un événement dont `ts` est plus ancien que la durée de rétention du serveur est acquitté (compté dans
+  `accepted`, donc supprimé du tampon de l'agent) mais n'est ni stocké ni exporté.
 - `security.log` : `level` ∈ `info`/`warning`/`error` ; `pre_reboot` (bool) pour les journaux récupérés d'avant
   redémarrage ; `start_time` de `app_process_start` en millisecondes.
 - `security.policy.action` admet aussi `permission_restored`, `setting_changed`, `setting_restored`.
