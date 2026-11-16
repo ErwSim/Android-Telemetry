@@ -483,7 +483,8 @@ class CommandChannel(
                     if (!it.request(MAX_POLL_BODY_BYTES + 1) || it.buffer.size <= MAX_POLL_BODY_BYTES) it.readUtf8() else throw IOException("poll answer too large")
                 }
                 val commands = try {
-                    (VigieJson.parseToJsonElement(body) as? JsonObject)?.get("commands") as? JsonArray
+                    // Depth checked first: the parser recurses on nested arrays (see JsonNesting).
+                    if (JsonNesting.deeperThan(body, JsonNesting.MAX_ENVELOPE_DEPTH)) null else (VigieJson.parseToJsonElement(body) as? JsonObject)?.get("commands") as? JsonArray
                 } catch (_: Exception) {
                     null
                 }
@@ -510,7 +511,8 @@ class CommandChannel(
     /** Raw JSON of one command object; parsed by the worker. Full queue: dropped (the server delivers it again). */
     private fun enqueue(json: String) {
         val envelope = try {
-            processor.parseEnvelope(VigieJson.parseToJsonElement(json))
+            // Depth checked first: the parser recurses on nested arrays (see JsonNesting).
+            if (JsonNesting.deeperThan(json, JsonNesting.MAX_ENVELOPE_DEPTH)) null else processor.parseEnvelope(VigieJson.parseToJsonElement(json))
         } catch (_: Exception) {
             null
         }

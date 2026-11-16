@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import { api } from '../../api/endpoints.ts';
-import { ApiError } from '../../api/client.ts';
+import { ApiError, clockSkewMs } from '../../api/client.ts';
 import type { Device } from '../../api/types.ts';
 import {
   canSign,
   codeProblem,
   commandErrorMessage,
+  issueTime,
   validateParams,
   DAY_MS,
   HOUR_MS,
@@ -81,7 +82,7 @@ export function SensitiveDialog({
     setError(undefined);
     let prepared;
     try {
-      prepared = prepareCommand(device.device_id, kind, kind === 'lock' ? { message } : {}, validityMs);
+      prepared = prepareCommand(device.device_id, kind, kind === 'lock' ? { message } : {}, validityMs, issueTime(Date.now(), clockSkewMs()));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       return;
@@ -141,7 +142,8 @@ export function SensitiveDialog({
           ? `${codeLen} caractère${codeLen > 1 ? 's' : ''} sur ${LIMITS.codeMin} au moins. `
           : ''}
         Le code est utilisé ici, dans ce navigateur, pour calculer la signature, puis effacé. Il n'est ni envoyé au serveur ni enregistré.
-        Les espaces comptent.
+        Les espaces comptent. Cette page est toutefois servie par votre serveur : si vous le pensez compromis, ne saisissez pas le code ici et
+        changez-le dans l'application du téléphone.
       </p>
     </div>
   );
@@ -160,7 +162,8 @@ export function SensitiveDialog({
       </select>
       <span className="hint">
         Si le téléphone est éteint ou hors ligne, la commande l'attend jusqu'au {fmtDateTime(new Date(openedAt + validityMs))} ; passé ce délai elle
-        expire sans jamais s'exécuter. Vous pouvez l'annuler tant qu'elle est « En attente ».
+        expire sans jamais s'exécuter. Vous pouvez l'annuler tant qu'elle est « En attente » ; l'annulation est faite par le serveur : une
+        commande signée reste exécutable par le téléphone jusqu'à cette date, sauf si vous changez le code de commande dans l'application.
       </span>
     </label>
   );
@@ -231,6 +234,10 @@ export function SensitiveDialog({
         <>
           <p>
             Pour confirmer, tapez le nom de l'appareil : <strong className="mono">{deviceName}</strong>
+          </p>
+          <p className="hint">
+            Identifiant qui sera signé : <span className="mono">{device.device_id}</span> (celui qu'affiche l'application du téléphone, écran
+            « Enrôlement »).
           </p>
           <label className="field">
             <span className="sr-only">Nom de l'appareil</span>

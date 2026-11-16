@@ -642,3 +642,92 @@ func TestCommandContractVectorAccepted(t *testing.T) {
 	}
 	_ = store.CmdPending
 }
+
+// The signature of a sensitive command is kept only while the command can still be handed to the agent:
+// a copy of the database (or a backup) taken later holds no (payload, signature) pair of past commands
+// to search the owner's command code offline. The console still shows the command as signed.
+func TestCommandSignatureErasedOnceFinal(t *testing.T) {
+	e := newEnv(t, nil)
+	c := e.session()
+	key, err := command.DeriveKey("correct horse battery staple", e.dev.DeviceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed := func(typ string, validity time.Duration) (string, string) {
+		id := model.NewULID(time.Now())
+		now := time.Now()
+		p := cmdPayload(id, e.dev.DeviceID, typ, `{}`, now, now.Add(validity))
+		sig := command.Sign(key, p)
+		if rec := e.createCommand(c, map[string]any{"device_id": e.dev.DeviceID, "payload": p, "sig": sig}); rec.Code != http.StatusCreated {
+			t.Fatalf("create: %d %s", rec.Code, rec.Body)
+		}
+		return id, sig
+	}
+	stored := func(id string) string {
+		cmd, err := e.st.GetCommand(context.Background(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cmd.Sig
+	}
+
+	// Result received: kept while pending and delivered (also after a non-final "replay"), erased afterwards.
+	done, sig := signed("lock", time.Hour)
+	if stored(done) != sig {
+		t.Fatal("signature not stored while pending")
+	}
+	if cmds := e.poll(nil); len(cmds) != 1 || cmds[0].Sig != sig {
+		t.Fatalf("poll %+v", cmds)
+	}
+	e.result(done, "refused", "replay", nil)
+	if stored(done) != sig {
+		t.Fatal("signature erased by a non-final result: the command could not be delivered again")
+	}
+	if code := e.result(done, "executed", "ok", nil); code != http.StatusNoContent {
+		t.Fatal(code)
+	}
+	if got := stored(done); got != store.SigErased {
+		t.Fatalf("signature kept after the result: %q", got)
+	}
+
+	// Cancelled.
+	cancelled, _ := signed("clear_lock_message", time.Hour)
+	if rec := e.do(http.MethodPost, "/api/console/commands/"+cancelled+"/cancel", nil, withCookie(c), withHeader("X-Requested-With", "vigie")); rec.Code != http.StatusNoContent {
+		t.Fatalf("cancel: %d", rec.Code)
+	}
+	if got := stored(cancelled); got != store.SigErased {
+		t.Fatalf("signature kept after cancellation: %q", got)
+	}
+
+	// Expired.
+	expired, _ := signed("wipe", time.Minute)
+	e.srv.now = func() time.Time { return time.Now().Add(2 * time.Hour) }
+	e.srv.expireCommands(context.Background())
+	e.srv.now = time.Now
+	if got := stored(expired); got != store.SigErased {
+		t.Fatalf("signature kept after expiry: %q", got)
+	}
+
+	// A simple command has no signature before or after; the console still sees which ones were signed.
+	simple, _ := e.simpleCommand(c, "ring", `{}`)
+	e.poll(nil)
+	e.result(simple, "executed", "", nil)
+	if got := stored(simple); got != "" {
+		t.Fatalf("simple command: %q", got)
+	}
+	list := e.commands(c)
+	if !list[done].Signed || !list[cancelled].Signed || !list[expired].Signed || list[simple].Signed {
+		t.Fatalf("signed flags: %+v", list)
+	}
+	for _, typ := range []string{"command.reported", "command.cancelled", "command.expired"} {
+		for _, ev := range e.serverEvents(c, typ) {
+			if d := ev["data"].(map[string]any); d["command_id"] != simple && d["signed"] != true {
+				t.Fatalf("%s lost the signed flag: %v", typ, d)
+			}
+		}
+	}
+	// Nothing left to deliver, and no marker ever reaches the agent.
+	if cmds := e.poll(nil); len(cmds) != 0 {
+		t.Fatalf("poll after final states: %+v", cmds)
+	}
+}

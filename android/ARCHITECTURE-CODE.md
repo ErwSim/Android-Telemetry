@@ -339,9 +339,9 @@ aux réglages, à la politique ou à l'enrôlement.
 | Élément | Où | Rôle |
 |---|---|---|
 | Modèle | `core/command/CommandModel.kt` | `CommandTypes` (liste fermée, sensibles, Device Owner), `Refusal` (motifs du contrat), `CommandParams` (seuls champs qui atteignent un exécuteur), `AcceptedCommand` (constructeur `internal` : seul le vérificateur en crée), `CommandExecutor`. |
-| Cryptographie | `CommandCrypto.kt` | PBKDF2-HMAC-SHA256 écrit sur `Mac("HmacSHA256")` (l'encodage du mot de passe de `SecretKeyFactory` varie selon le fournisseur : ici toujours UTF-8, sans normalisation, comme `TextEncoder`), HMAC, comparaison `MessageDigest.isEqual`. |
+| Cryptographie | `CommandCrypto.kt` | PBKDF2-HMAC-SHA256 écrit sur `Mac("HmacSHA256")` (l'encodage du mot de passe de `SecretKeyFactory` varie selon le fournisseur : ici toujours UTF-8, sans normalisation, comme `TextEncoder`), HMAC, comparaison `MessageDigest.isEqual`. `isTooWeak` : plancher du code (6 caractères différents ; sans lettre, 20 chiffres), car le serveur peut chercher le code hors ligne à partir d'une commande signée. |
 | État | `CommandStore.kt` | `CommandKeyStore` : `K` scellé par `SecretBox` (clé AES-GCM du Keystore, alias `vigie_command_key`), lié au `device_id`. `CommandStateStore` : deux fenêtres anti-rejeu de 500 (signées / simples), signatures invalides et verrouillage, historique (50), résultats en attente. Tout en `commit()` : ce qui garde une exécution est sur disque avant elle. |
-| Vérification | `CommandVerifier.kt` | Ordre exact du contrat ; avant la signature, seuls `v`, `id`, `device_id`, `type` sont lus. `WipeGate` : les six conditions de l'effacement et leur revérification sur l'état courant. |
+| Vérification | `CommandVerifier.kt` | Ordre exact du contrat ; avant la signature, seuls `v`, `id`, `device_id`, `type` sont lus. Un `wipe` signé et valide refusé parce que l'effacement n'est pas autorisé consomme son `id` (il ne s'exécutera pas si le serveur le livre de nouveau après l'activation de l'interrupteur). `JsonNesting` : profondeur du JSON bornée avant toute analyse (payload ici, événements et réponses dans `CommandChannel`). `WipeGate` : les six conditions de l'effacement et leur revérification sur l'état courant. |
 | Traitement | `CommandProcessor.kt` | Un à la fois : vérification → exécuteur → `command.result` (sévérités du contrat) → historique → résultat à poster. Commande déjà traitée livrée de nouveau (renvoi du serveur, flux + interrogation) : jamais réexécutée, son résultat d'origine (mémoire de 1000 résultats, `CommandStateStore.rememberResult`) est renvoyé. `wipe` : événement et envoi borné à 10 s **avant** l'exécuteur. |
 | Canal | `CommandChannel.kt`, `AndroidChannelPlatform.kt` | Boucle (une coroutine, `Dispatchers.IO`) : désactivé / non enrôlé / refusé (401-403) / sans réseau → attente d'un signal ; sinon flux SSE (`SseParser`) ou interrogation ; backoff à gigue en `elapsedRealtime` ; signaux : réglages, réseau (`Agent.startNetworkWatch`), envoi de lot (`Agent.handleUploadOutcome`), alarme (`CommandAlarmReceiver`), maintenance. Une file + un ouvrier traitent les commandes pendant que la lecture continue. |
 | Câblage | `RemoteCommands.kt`, `Agent.commands` | Réglages `commands.*`, code (`setCode` lent : hors fil principal), enregistrement des exécuteurs par module (`register`). |
@@ -361,7 +361,8 @@ aux réglages, à la politique ou à l'enrôlement.
   comme un échec, `401`/`403` = arrêt affiché, `404` = 6 h ; une seule alarme en attente à la fois ;
 - l'interrogation à chaque envoi de lot n'a lieu que si le flux n'est pas ouvert, au plus une fois par minute.
 
-**Tests** : `core/src/test/…/command/` (vérification, ordre, vecteur, rejeu, verrouillage, canal contre
+**Tests** : `core/src/test/…/command/` (vérification, ordre, vecteur, cas difficiles signés par la console
+— `ConsoleVectorsTest` —, rejeu, `wipe` refusé puis rejoué, verrouillage, plancher du code, canal contre
 MockWebServer), `policy/src/test/…/RemoteCommandsPolicyTest` (matrice des 64 combinaisons de `wipe`,
 isolement de l'appel réel vérifié dans les sources), `app/src/test/…/CommandResultContractTest` (conformité de
 `command.result`). Banc partagé : `CommandKit`, `CommandVector`, `RecordingSink`, `PlainSecretBox`

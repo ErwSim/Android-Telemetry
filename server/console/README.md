@@ -143,13 +143,32 @@ qui se met à jour en direct) ; la vue d'ensemble n'affiche que l'état du canal
   que l'effacement doit être autorisé dans l'app, nom de l'appareil à retaper, puis code). L'interface explique que le serveur
   ne connaît pas le code, ne peut pas vérifier la signature, et qu'un code faux n'est détecté que par le téléphone
   (`bad_signature`, avertissement après chaque refus, rappel de la limite de 5 par heure).
-- Précisions du contrat appliquées : `issued_at` à moins de 10 min de l'heure du serveur (la console compare l'en-tête `Date` des
-  réponses à son horloge, avertit à 8 min d'écart et traduit le `400` en « horloge de cet ordinateur décalée ») ; message de
-  verrouillage ≤ 200 unités UTF-16, sans caractère de contrôle hors saut de ligne, validé avant de signer ; corps limité à
+- Précisions du contrat appliquées : `issued_at` à moins de 10 min de l'heure du serveur. La console compare l'en-tête `Date`
+  des réponses à son horloge et **date la commande à l'heure du serveur quand l'écart est de 30 s à 10 min** (`issueTime`) :
+  le téléphone refuse `expired` une commande émise plus de 5 min dans son futur, alors que le serveur en tolère 10 — un
+  ordinateur en avance de 5 à 10 min produisait des commandes acceptées par le serveur puis refusées par le téléphone.
+  Au-delà de 10 min l'écart n'est jamais suivi (avertissement, et `400` traduit en « horloge de cet ordinateur décalée ») :
+  le serveur ne doit pas pouvoir faire signer une commande datée du futur. Message de
+  verrouillage ≤ 200 unités UTF-16, sans caractère de contrôle hors saut de ligne ni séparateur U+2028/U+2029 (refusés par
+  le collecteur), validé avant de signer ; corps limité à
   `{ device_id, payload, sig }` ; un appareil en interrogation se juge sur `last_contact` (`connected` n'est vrai que pour un flux
   ouvert) ; une commande `delivered` peut le rester plusieurs minutes (renvoi du serveur après 5 min).
 - L'historique se rafraîchit toutes les 2,5 s tant qu'une commande est `pending`/`delivered` (et à chaque `command.result` du
-  flux SSE) ; annulation possible tant que `pending`.
+  flux SSE) ; annulation possible tant que `pending`. Une commande **remise puis expirée sans résultat** est affichée
+  « Expirée sans réponse » : elle a pu être exécutée (un effacement éteint le téléphone dix secondes après avoir tenté
+  d'envoyer son compte rendu) ; seule une commande jamais remise est dite « jamais exécutée ».
+- **Ce que la signature dans le navigateur garantit, et ce qu'elle ne garantit pas.** Le code ne quitte pas la page tant que
+  le JavaScript servi est celui de ce dépôt. Mais c'est le serveur qui sert ce JavaScript : un serveur compromis peut le
+  remplacer et lire le code à la saisie (ou le demander sous un faux prétexte), et la CSP, servie par le même serveur, n'y
+  change rien. Le dialogue le dit, rappelle que l'annulation n'engage que le serveur et montre l'identifiant d'appareil qui
+  sera signé. Pistes hors de ce dépôt : signer depuis une copie de la console gardée hors du serveur (fichiers `dist/`
+  servis en local) ou un outil en ligne de commande ; en cas de doute sur le serveur, changer le code dans l'application.
+- **Cas difficiles partagés** : `src/lib/commandVectors.ts` construit et signe, avec le vrai code de la console, des
+  commandes à accents, émojis, guillemets, sauts de ligne, texte bidirectionnel, codes non ASCII, décomposés (NFD) ou bordés
+  d'espaces. Figées dans `src/lib/fixtures/command-vectors.json` (`commandVectors.test.ts` ; régénération :
+  `node scripts/command-vectors.ts > src/lib/fixtures/command-vectors.json`), elles sont rejouées par le vérificateur
+  Kotlin de l'agent (`ConsoleVectorsTest`) et par le collecteur Go (`internal/command/vectors_test.go`) ;
+  `node scripts/command-vectors.ts <device_id>` les produit pour un appareil réel (essai croisé `CrossCommandsTest`).
 - « Localiser maintenant » : le flux SSE apporte le `location.fix` ; la carte de la page Commandes et la trace de la page Carte
   (« Suivi en direct ») se mettent à jour.
 

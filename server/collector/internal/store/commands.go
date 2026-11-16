@@ -68,6 +68,15 @@ func scanCommand(sc interface{ Scan(...any) error }) (*Command, error) {
 	return &c, nil
 }
 
+// SigErased replaces the signature of a signed command once the command can no longer be handed to the
+// agent (result received, expired, cancelled). The collector cannot verify a signature and only needs it
+// for the relay; kept longer, each (payload, signature) pair would stay in the database and in its backups
+// as material for an offline search of the owner's command code. A real signature is 44 characters of
+// base64, so the marker cannot be mistaken for one; "signed" stays true for the console.
+const SigErased = "-"
+
+const eraseSig = `sig = CASE WHEN sig IS NULL THEN NULL ELSE '` + SigErased + `' END`
+
 // Command creation errors.
 var (
 	ErrDuplicateID = errors.New("identifiant de commande déjà utilisé")
@@ -217,7 +226,7 @@ func (s *Store) CancelCommand(ctx context.Context, id, user string, now time.Tim
 		return StoredEvent{}, nil, err
 	}
 	nowMS := now.UnixMilli()
-	res, err := tx.ExecContext(ctx, `UPDATE commands SET status = 'cancelled', result_ms = ?, detail = 'cancelled'
+	res, err := tx.ExecContext(ctx, `UPDATE commands SET status = 'cancelled', result_ms = ?, detail = 'cancelled', `+eraseSig+`
 		WHERE id = ? AND status = 'pending' AND expires_ms > ?`, nowMS, id, nowMS)
 	if err != nil {
 		return StoredEvent{}, nil, err
@@ -325,7 +334,7 @@ func (s *Store) RecordResult(ctx context.Context, u ResultUpdate, now time.Time)
 	if u.AgentAtMS != nil {
 		agentAt = *u.AgentAtMS
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE commands SET status = ?, detail = ?, result_ms = ?, agent_at_ms = ? WHERE id = ?`,
+	if _, err := tx.ExecContext(ctx, `UPDATE commands SET status = ?, detail = ?, result_ms = ?, agent_at_ms = ?, `+eraseSig+` WHERE id = ?`,
 		u.Status, u.Detail, nowMS, agentAt, c.ID); err != nil {
 		return nil, nil, err
 	}
@@ -367,7 +376,7 @@ func (s *Store) ExpireCommands(ctx context.Context, now time.Time, event func(c 
 	}
 	var evs []StoredEvent
 	for _, c := range cmds {
-		if _, err := tx.ExecContext(ctx, `UPDATE commands SET status = 'expired', result_ms = ? WHERE id = ?`, nowMS, c.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE commands SET status = 'expired', result_ms = ?, `+eraseSig+` WHERE id = ?`, nowMS, c.ID); err != nil {
 			return nil, err
 		}
 		data, sev := event(c)

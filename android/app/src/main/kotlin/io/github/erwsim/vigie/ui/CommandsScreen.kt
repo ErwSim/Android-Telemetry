@@ -224,6 +224,7 @@ private fun CodeSection(agent: Agent, enrolled: Boolean, codeConfigured: Boolean
                     message = when (result) {
                         RemoteCommands.CodeResult.Saved -> R.string.cmd_code_saved
                         RemoteCommands.CodeResult.TooShort -> R.string.cmd_code_too_short
+                        RemoteCommands.CodeResult.TooWeak -> R.string.cmd_code_too_weak
                         RemoteCommands.CodeResult.Mismatch -> R.string.cmd_code_mismatch
                         RemoteCommands.CodeResult.NotEnrolled -> R.string.cmd_code_not_enrolled
                     }

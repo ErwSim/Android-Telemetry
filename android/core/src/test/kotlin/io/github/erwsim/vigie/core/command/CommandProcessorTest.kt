@@ -47,6 +47,46 @@ class CommandProcessorTest {
         assertEquals("dnd_alarms_muted", resent.detail)
     }
 
+    /**
+     * The server keeps every signed command until it expires (7 days by default). A `wipe` refused because the
+     * permission was off must not run when the server delivers it again after the owner switched the permission
+     * on — not even once unsigned traffic (which a compromised server produces at will) has pushed its result
+     * out of the result memory.
+     */
+    @Test
+    fun aWipeRefusedWhileNotAllowedNeverRunsLaterEvenAfterTheResultMemoryIsFlooded() = runBlocking {
+        val kit = CommandKit()
+        val sink = RecordingSink()
+        val wipes = AtomicInteger()
+        var wipeAllowed = false
+        val p = CommandProcessor(
+            clock = kit.clock,
+            verifier = kit.verifier,
+            state = kit.state,
+            sink = sink,
+            environment = { kit.env(wipeAllowed = wipeAllowed) },
+            executors = { mapOf(CommandTypes.WIPE to CommandExecutor { wipes.incrementAndGet(); ExecutionResult.executed() }) },
+            hooks = object : CommandProcessor.Hooks {
+                override suspend fun beforeIrreversible(timeoutMs: Long) = Unit
+            },
+        )
+        val wipe = kit.signed("wipe")
+        assertEquals("disabled", p.process(wipe)!!.detail)
+        kit.state.removePendingResult(wipe.id) // acknowledged by the server
+        // Unsigned traffic until the refusal is no longer remembered.
+        repeat(CommandStateStore.RESULT_MEMORY + 10) {
+            val filler = kit.simple("stop_ring")
+            p.process(filler)
+            kit.state.removePendingResult(filler.id)
+        }
+        assertNull(kit.state.originalResult(wipe.id))
+        wipeAllowed = true
+        val again = p.process(wipe)
+        assertEquals(0, wipes.get())
+        assertEquals("refused", again!!.status)
+        assertEquals("replay", again.detail)
+    }
+
     @Test
     fun aRefusalIsAlsoAnsweredWithTheOriginalRefusal() = runBlocking {
         val kit = CommandKit()

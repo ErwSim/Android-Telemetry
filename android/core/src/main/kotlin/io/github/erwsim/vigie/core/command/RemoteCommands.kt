@@ -83,6 +83,9 @@ class RemoteCommands(
     sealed class CodeResult {
         data object Saved : CodeResult()
         data object TooShort : CodeResult()
+
+        /** Long enough but trivially searchable offline (see [CommandCrypto.isTooWeak]). */
+        data object TooWeak : CodeResult()
         data object Mismatch : CodeResult()
         data object NotEnrolled : CodeResult()
     }
@@ -95,6 +98,7 @@ class RemoteCommands(
     fun setCode(code: String, confirmation: String): CodeResult {
         if (code != confirmation) return CodeResult.Mismatch
         if (CommandCrypto.codeLength(code) < CommandCrypto.MIN_CODE_CODE_POINTS) return CodeResult.TooShort
+        if (CommandCrypto.isTooWeak(code)) return CodeResult.TooWeak
         val id = deviceId() ?: return CodeResult.NotEnrolled
         val before = if (keys.isConfigured(id)) "set" else "unset"
         keys.save(id, CommandCrypto.deriveKey(code, id), clock.nowMillis())

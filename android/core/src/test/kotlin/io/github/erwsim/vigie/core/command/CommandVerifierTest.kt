@@ -143,7 +143,8 @@ class CommandVerifierTest {
         val signedBad = kit.sign(id2, p2)
         assertEquals(Refusal.DISABLED, kit.verifier.verify(signedBad, kit.env(wipeAllowed = false)).reason())
         assertEquals(Refusal.EXPIRED, kit.verifier.verify(signedBad, kit.env(wipeAllowed = true)).reason())
-        // expired comes before replay: an expired command is not recorded as seen.
+        // expired comes before replay: an expired command is not recorded as seen (not even when it was first
+        // refused because wipe is switched off).
         assertFalse(kit.state.wasSeen(id2))
         val (id3, p3) = kit.payload("wipe", params = """{"x":1}""")
         val s3 = kit.sign(id3, p3)
@@ -156,6 +157,59 @@ class CommandVerifierTest {
         // unknown type before signature (an unsigned unknown type never counts as a bad signature)
         assertEquals(Refusal.UNKNOWN_TYPE, kit.verifier.verify(kit.simple("erase_all"), kit.env()).reason())
         assertEquals(0L, kit.state.lockedOutUntil(kit.clock.now))
+    }
+
+    @Test
+    fun aSignedWipeRefusedWhileTheSwitchIsOffIsConsumedForGood() {
+        val statePrefs = MemoryPrefs()
+        val kit = CommandKit(statePrefs = statePrefs)
+        val wipe = kit.signed("wipe")
+        assertEquals(Refusal.DISABLED, kit.verifier.verify(wipe, kit.env(wipeAllowed = false)).reason())
+        // The owner switches "Autoriser l'effacement à distance" on later (also after a restart): the signed
+        // command the server still holds must not run then.
+        val later = CommandKit(statePrefs = statePrefs, clock = kit.clock)
+        assertEquals(Refusal.REPLAY, later.verifier.verify(wipe, later.env(wipeAllowed = true)).reason())
+        // A new command signed after the switch was turned on runs.
+        assertEquals("accepted", later.verifier.verify(later.signed("wipe"), later.env(wipeAllowed = true)).reason())
+        // Nothing is consumed without a valid signature: a forged wipe cannot use up the signed window.
+        val forged = kit.signed("wipe", key = ByteArray(32))
+        assertEquals(Refusal.BAD_SIGNATURE, kit.verifier.verify(forged, kit.env(wipeAllowed = false)).reason())
+        assertFalse(kit.state.wasSeen(forged.id))
+    }
+
+    /**
+     * The payload of a simple command is not signed: the server can put anything in it. A few thousand nested
+     * arrays must be a plain `malformed` whatever the stack of the thread, not a StackOverflowError (which no
+     * `catch (Exception)` stops and which would end the command worker). Without the depth check made before
+     * parsing, this test overflows in the JSON parser on its 128 KiB stack.
+     */
+    @Test
+    fun aDeeplyNestedUnsignedPayloadIsRefusedWithoutOverflowingTheStack() {
+        val kit = CommandKit()
+        val deep = "[".repeat(3_900) + "]".repeat(3_900)
+        val (id, p) = kit.payload("ring", params = deep)
+        assertTrue(p.length <= CommandVerifier.MAX_PAYLOAD_CHARS)
+        var reason: String? = null
+        var error: Throwable? = null
+        val t = Thread(null, {
+            try {
+                reason = kit.verifier.verify(CommandEnvelope(id, p, null), kit.env()).reason()
+            } catch (e: Throwable) {
+                error = e
+            }
+        }, "small-stack", 128 * 1024)
+        t.start()
+        t.join()
+        assertEquals("$error", Refusal.MALFORMED, reason)
+        // Brackets inside strings are text, not nesting.
+        assertFalse(JsonNesting.deeperThan("""{"a":"[[[[[[[[[[[[[[[[[[[[","b":"\"[[[[[[[[[[[[[[[[[[[[["}""", 2))
+        assertTrue(JsonNesting.deeperThan("""{"a":[[1]]}""", 2))
+        assertFalse(JsonNesting.deeperThan("""{"a":[[1]]}""", 3))
+        // Nesting the contract never produces, even shallow enough for any stack, is refused the same way.
+        val (id2, p2) = kit.payload("ring", params = "[".repeat(17) + "]".repeat(17))
+        assertEquals(Refusal.MALFORMED, kit.verifier.verify(CommandEnvelope(id2, p2, null), kit.env()).reason())
+        // What the contract allows still passes.
+        assertEquals("accepted", kit.verifier.verify(kit.simple("ring", """{"duration_s":5,"vibrate":false}"""), kit.env()).reason())
     }
 
     @Test

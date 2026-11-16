@@ -73,7 +73,7 @@
     <string name="cmd_reconnect">Reconnecter</string>
 
     <string name="cmd_section_code">Code de commande</string>
-    <string name="cmd_code_explain">Ce code n\'est connu que de ce téléphone et de vous : le serveur ne le reçoit jamais et ne peut donc ni verrouiller ni effacer ce téléphone sans lui. Il vous sera demandé dans la console à chaque commande sensible (verrouiller, effacer le message, effacer). Le téléphone n\'en garde qu\'une clé dérivée, chiffrée. 12 caractères au moins ; une phrase de passe est idéale.</string>
+    <string name="cmd_code_explain">Ce code n\'est connu que de ce téléphone et de vous : le serveur ne le reçoit pas et ne peut ni verrouiller ni effacer ce téléphone sans lui. Il vous sera demandé dans la console à chaque commande sensible (verrouiller, effacer le message, effacer). Le téléphone n\'en garde qu\'une clé dérivée, chiffrée.\n\nDeux limites à connaître. 1) Le serveur voit passer vos commandes signées : qui le contrôle peut essayer des codes à son rythme. Choisissez un code long et imprévisible, réservé à cet usage : cinq mots tirés au hasard ou plus, ou 16 caractères produits par un gestionnaire de mots de passe (12 caractères est un minimum, pas une garantie). 2) Vous saisissez ce code dans la console, que ce même serveur vous sert : un serveur compromis peut l\'apprendre à ce moment-là. Au moindre doute, changez le code ici — les commandes déjà signées deviennent sans effet — et coupez « Autoriser l\'effacement à distance ».</string>
     <string name="cmd_code_set">Défini le %1$s</string>
     <string name="cmd_code_unset">Non défini : verrouiller et effacer sont refusés</string>
     <string name="cmd_code_stale">À ressaisir : l\'identifiant de l\'appareil a changé depuis</string>
@@ -85,6 +85,7 @@
     <string name="cmd_code_saving">Calcul de la clé…</string>
     <string name="cmd_code_saved">Code enregistré. Saisissez exactement le même dans la console.</string>
     <string name="cmd_code_too_short">12 caractères au moins.</string>
+    <string name="cmd_code_too_weak">Code trop facile à retrouver : il faut au moins 6 caractères différents et, sans lettres, au moins 20 chiffres. Préférez cinq mots tirés au hasard.</string>
     <string name="cmd_code_mismatch">Les deux saisies diffèrent.</string>
     <string name="cmd_code_delete">Supprimer le code</string>
     <string name="cmd_code_deleted">Code supprimé ; l\'effacement à distance est de nouveau interdit.</string>
@@ -94,7 +95,7 @@
     <string name="cmd_wipe_summary">Désactivé par défaut. Activé, une commande « effacer » signée avec votre code remet le téléphone à zéro : toutes les données sont perdues, définitivement. La protection contre la réinitialisation (compte Google) et les eSIM sont conservées.</string>
     <string name="cmd_wipe_needs_code">Définissez d\'abord un code de commande.</string>
     <string name="cmd_wipe_confirm_title">Autoriser l\'effacement à distance ?</string>
-    <string name="cmd_wipe_confirm_text">Une commande signée avec votre code de commande pourra réinitialiser ce téléphone aux paramètres d\'usine, sans autre confirmation sur le téléphone. C\'est irréversible : photos, messages et applications seront perdus s\'ils ne sont pas sauvegardés ailleurs.\n\nPour confirmer, tapez EFFACER.</string>
+    <string name="cmd_wipe_confirm_text">Une commande signée avec votre code de commande pourra réinitialiser ce téléphone aux paramètres d\'usine, sans autre confirmation sur le téléphone. C\'est irréversible : photos, messages et applications seront perdus s\'ils ne sont pas sauvegardés ailleurs.\n\nQuiconque connaît ou retrouve ce code et contrôle votre serveur peut donc effacer ce téléphone : n\'activez ce réglage qu\'avec un code long, imprévisible et réservé à cet usage.\n\nPour confirmer, tapez EFFACER.</string>
     <string name="cmd_wipe_confirm_word">EFFACER</string>
     <string name="cmd_wipe_confirm_action">Autoriser</string>
 

@@ -18,7 +18,8 @@ import kotlinx.serialization.json.booleanOrNull
  *  5. sensitive type: a code is set (`no_code_configured`), no lock-out in progress (`locked_out`), valid
  *     HMAC-SHA256 over the exact payload bytes, compared in constant time (`bad_signature`); a simple type
  *     must not carry `sig` (`malformed`);
- *  6. `wipe` allowed locally (`disabled`);
+ *  6. `wipe` allowed locally (`disabled`); the id of a signed, still valid `wipe` refused here is consumed
+ *     (a later delivery of the same command is a `replay`, even after the switch is turned on);
  *  7. not expired, 5 min clock tolerance (`expired`);
  *  8. `id` never seen, persistent window of 500 (`replay`);
  *  9. parameters within bounds, no extra parameter (`bad_params`);
@@ -65,7 +66,7 @@ class CommandVerifier(
         val outerId = envelope.id.takeIf { ULID.matches(it) }
         val reportId = outerId ?: INVALID_ID
         // Routing view, used only to refuse (and to name the type in command.result).
-        val root: JsonObject? = if (envelope.payload.length <= MAX_PAYLOAD_CHARS) {
+        val root: JsonObject? = if (envelope.payload.length <= MAX_PAYLOAD_CHARS && !JsonNesting.deeperThan(envelope.payload, JsonNesting.MAX_PAYLOAD_DEPTH)) {
             try {
                 VigieJson.parseToJsonElement(envelope.payload) as? JsonObject
             } catch (_: Exception) {
@@ -117,14 +118,22 @@ class CommandVerifier(
         val expiresAt = root.string("expires_at")?.let(Rfc3339::parseOrNull) ?: return refuse(Refusal.MALFORMED, signed)
         if (expiresAt < issuedAt) return refuse(Refusal.MALFORMED, signed)
 
-        // 6. Wipe allowed on the phone.
-        if (type == CommandTypes.WIPE && !env.wipeAllowed) return refuse(Refusal.DISABLED, signed)
-
-        // 7. Validity window.
         val now = clock.nowMillis()
         val notExpired = now <= expiresAt + CLOCK_TOLERANCE_MS &&
             issuedAt <= now + CLOCK_TOLERANCE_MS &&
             expiresAt - issuedAt <= MAX_VALIDITY_MS
+
+        // 6. Wipe allowed on the phone.
+        if (type == CommandTypes.WIPE && !env.wipeAllowed) {
+            // This refusal is final for this command: its id is consumed in the signed anti-replay window. Otherwise
+            // the server, which keeps the signed command until it expires (7 days by default), could deliver it
+            // again once the owner switches "Autoriser l'effacement à distance" on, and it would then run. An
+            // expired command is not recorded (it can no longer run, and must not fill the window).
+            if (notExpired) state.markSeen(outerId, signed)
+            return refuse(Refusal.DISABLED, signed)
+        }
+
+        // 7. Validity window.
         if (!notExpired) return refuse(Refusal.EXPIRED, signed)
 
         // 8. Replay (checked and recorded atomically, persisted before anything runs).
@@ -212,19 +221,68 @@ class CommandVerifier(
 }
 
 /**
+ * Nesting depth of a JSON text, measured without recursion BEFORE the text is given to the JSON parser.
+ *
+ * Everything the server sends on the command channel is parsed by kotlinx.serialization's tree reader, which
+ * reads nested arrays recursively (`JsonTreeReader.readArray`) and only refuses them after several hundred
+ * levels. Measured on the test JVM (1.13.0): 500 nested `[` are refused with a `JsonDecodingException` on a
+ * 512 KiB stack but overflow a 256 KiB one. A `StackOverflowError` is not an `Exception`: it would end the
+ * command worker or the channel loop until the service restarts. Rather than depend on the frame size of the
+ * phone's runtime, the depth is bounded here first; nothing the contract defines nests deeper than 3 levels.
+ */
+internal object JsonNesting {
+    /** `payload`: root → `params` → values. */
+    const val MAX_PAYLOAD_DEPTH = 16
+
+    /** Command object, or poll answer `{ "commands": [ { … } ] }` (payloads are strings: they add no depth). */
+    const val MAX_ENVELOPE_DEPTH = 8
+
+    /** True when [text] opens more than [max] objects or arrays inside one another (strings are skipped). */
+    fun deeperThan(text: String, max: Int): Boolean {
+        var depth = 0
+        var inString = false
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            if (inString) {
+                if (c == '\\') i++ else if (c == '"') inString = false
+            } else {
+                when (c) {
+                    '"' -> inString = true
+                    '{', '[' -> if (++depth > max) return true
+                    '}', ']' -> depth--
+                }
+            }
+            i++
+        }
+        return false
+    }
+}
+
+/**
  * Detects an object with the same key twice anywhere in a JSON text that already parsed (the parser keeps
  * the last one silently; contract §8: a payload with a duplicate key is refused). Keys are compared once
  * their escapes are decoded (`"type"` and `"\u0074ype"` are the same key).
+ *
+ * The scan is recursive: nesting deeper than [MAX_DEPTH] counts as "found" (the verifier refuses such a
+ * payload before, see [JsonNesting]).
  */
 internal object JsonDuplicateKeys {
+    const val MAX_DEPTH = JsonNesting.MAX_PAYLOAD_DEPTH
+
     fun found(text: String): Boolean = try {
         Scanner(text).value()
     } catch (_: Exception) {
-        true // unreadable here although the parser accepted it: refuse rather than guess
+        true // unreadable here although the parser accepted it, or nested too deep: refuse rather than guess
     }
 
     private class Scanner(private val s: String) {
         private var i = 0
+        private var depth = 0
+
+        private fun enter() {
+            if (++depth > MAX_DEPTH) throw IllegalArgumentException("nested too deep")
+        }
 
         private fun ws() {
             while (i < s.length && s[i].isWhitespace()) i++
@@ -234,8 +292,14 @@ internal object JsonDuplicateKeys {
         fun value(): Boolean {
             ws()
             return when (s[i]) {
-                '{' -> obj()
-                '[' -> arr()
+                '{' -> {
+                    enter()
+                    obj().also { depth-- }
+                }
+                '[' -> {
+                    enter()
+                    arr().also { depth-- }
+                }
                 '"' -> {
                     string()
                     false

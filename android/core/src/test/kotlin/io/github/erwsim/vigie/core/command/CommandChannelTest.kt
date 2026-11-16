@@ -324,6 +324,30 @@ class CommandChannelTest {
         assertEquals(0, fake.results.size)
     }
 
+    /**
+     * Whatever the server sends must not end the channel: a stream event or a poll answer made of tens of
+     * thousands of `[` is a plain unreadable delivery (traced `malformed`, or a failed poll), and the loop
+     * goes on. (On this JVM the parser refuses such depths by itself; the depth check made before parsing
+     * makes it independent of the stack size, see `JsonNesting`.)
+     */
+    @Test
+    fun deeplyNestedJsonFromTheServerDoesNotKillTheChannel() {
+        val deep = "[".repeat(30_000) + "]".repeat(30_000)
+        val ring = kit.simple("ring")
+        fake.streams += StreamPlan(listOf("event: command\ndata: $deep\n\n", sse(ring)), keepOpen = true)
+        channel.start()
+        eventually("the command that follows the hostile event is executed") { executed.size == 1 }
+        assertTrue(channel.isRunning)
+        assertEquals(listOf("malformed", "ok"), sink.of("command.result").map { it.data["detail"]!!.jsonPrimitive.content })
+
+        // Same answer to a poll (up to 1 MiB is read): a failed attempt, the loop goes on.
+        fake.pollBody = """{"commands":${"[".repeat(400_000)}${"]".repeat(400_000)}}"""
+        config = config.copy(mode = ChannelMode.POLL)
+        channel.onConfigChanged()
+        eventually("poll answered and refused") { channel.channelState.value.lastError == "bad_response" }
+        assertTrue(channel.isRunning)
+    }
+
     // ------------------------------------------------------------------------------------ fakes
 
     private fun CommandChannel.flushResultsNow() = kotlinx.coroutines.runBlocking { flushResults(client to target, force = true) }

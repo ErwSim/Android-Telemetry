@@ -88,7 +88,9 @@ func RuleFor(domain, action string) string {
 
 // ApplyOverride returns the user rules with the override of domain set (block, allow) or removed
 // (default), and whether they changed. The block is rewritten sorted; it is appended at the end when
-// absent and removed when empty. The domain must already be validated (ValidDomain).
+// absent and removed when empty. A line found between the markers that is not a rule written by Vigie
+// (a rule or a comment added there by hand in AdGuard Home) is never deleted: it is moved right after
+// the block. The domain must already be validated (ValidDomain).
 func ApplyOverride(rules []string, domain, action string) ([]string, bool, error) {
 	if !ValidDomain(domain) {
 		return nil, false, errors.New("nom de domaine invalide")
@@ -129,6 +131,13 @@ func ApplyOverride(rules []string, domain, action string) ([]string, bool, error
 	} else {
 		out = append(out, rules[:begin]...)
 		out = append(out, block...)
+		for _, l := range rules[begin+1 : end] {
+			t := strings.TrimSpace(l)
+			if m := managedRuleRe.FindStringSubmatch(t); t == "" || (m != nil && ValidDomain(m[2])) {
+				continue
+			}
+			out = append(out, l) // not ours: kept, outside the block
+		}
 		out = append(out, rules[end+1:]...)
 	}
 	return out, !equalRules(out, rules), nil

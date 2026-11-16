@@ -6,7 +6,7 @@ import { cleanText } from '../../lib/text.ts';
 import { Badge } from '../ui.tsx';
 
 function Detail({ c }: { c: RemoteCommand }) {
-  const st = statusInfo(c.status);
+  const st = statusInfo(c.status, !!c.delivered_at);
   if (c.status === 'refused') {
     const r = refusalInfo(c.detail);
     return (
@@ -53,7 +53,7 @@ export function CommandHistory({
         </thead>
         <tbody>
           {commands.map((c) => {
-            const st = statusInfo(c.status);
+            const st = statusInfo(c.status, !!c.delivered_at);
             const sum = paramsSummary(c.type, c.params);
             const alert = c.status === 'refused' && (c.detail === 'bad_signature' || c.detail === 'locked_out');
             const isOpen = open === c.id;

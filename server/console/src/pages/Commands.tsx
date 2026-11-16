@@ -18,6 +18,7 @@ import {
   commandErrorMessage,
   commandLabel,
   defaultValidityMs,
+  issueTime,
   prepareCommand,
   type CommandParams,
   type CommandType,
@@ -95,7 +96,7 @@ export default function Commands() {
     setSending(true);
     setNotice(undefined);
     try {
-      const c = prepareCommand(deviceId, type, params, defaultValidityMs(type));
+      const c = prepareCommand(deviceId, type, params, defaultValidityMs(type), issueTime(Date.now(), clockSkewMs()));
       await api.createCommand({ device_id: deviceId, payload: c.payload });
       if (type === 'locate') {
         waitingFix.current = true;

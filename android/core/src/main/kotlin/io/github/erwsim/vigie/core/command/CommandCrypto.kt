@@ -26,6 +26,23 @@ object CommandCrypto {
 
     fun codeLength(code: String): Int = code.codePointCount(0, code.length)
 
+    /** Digits a code without any letter must have to be accepted (20 random digits ≈ 66 bits). */
+    const val MIN_DIGITS_WITHOUT_LETTERS = 20
+
+    /**
+     * Codes that an offline search finds quickly whatever the 600 000 iterations: the server relays every
+     * signed command (`payload` + `sig`), so whoever controls it can try codes at its own pace — in the order
+     * of 10 000 to 20 000 codes per second and per high-end graphics card. Twelve digits (10^12 codes) fall in
+     * about two card-years, a few days on rented hardware. Refused here: fewer than 6 distinct characters, or
+     * no letter at all with fewer than [MIN_DIGITS_WITHOUT_LETTERS] digits (PIN, date, phone number).
+     * This is a floor, not a strength meter: a dictionary word followed by digits passes and is still weak.
+     */
+    fun isTooWeak(code: String): Boolean {
+        val points = code.codePoints().toArray()
+        if (points.toSet().size < 6) return true
+        return points.none { Character.isLetter(it) } && points.count { Character.isDigit(it) } < MIN_DIGITS_WITHOUT_LETTERS
+    }
+
     /** K for this device. Slow on purpose (about a second on a phone): never on the main thread. */
     fun deriveKey(code: String, deviceId: String, iterations: Int = ITERATIONS): ByteArray {
         val password = code.toByteArray(Charsets.UTF_8)

@@ -56,11 +56,14 @@ export interface CommandParams {
   message?: string;
 }
 
-/** Caractère de contrôle (C0, DEL, C1) autre que le saut de ligne. */
+/**
+ * Caractère de contrôle (C0, DEL, C1) autre que le saut de ligne, ou séparateur de ligne/paragraphe Unicode
+ * (U+2028, U+2029) : le collecteur refuse les mêmes (`bad_params`), autant le dire avant de signer.
+ */
 export function hasForbiddenControl(s: string): boolean {
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);
-    if ((c < 0x20 && c !== 0x0a) || (c >= 0x7f && c <= 0x9f)) return true;
+    if ((c < 0x20 && c !== 0x0a) || (c >= 0x7f && c <= 0x9f) || c === 0x2028 || c === 0x2029) return true;
   }
   return false;
 }
@@ -205,7 +208,18 @@ export interface StatusInfo {
   help: string;
 }
 
-export function statusInfo(status: string): StatusInfo {
+/** `delivered` : la commande avait été remise au téléphone (`delivered_at` renseigné). */
+export function statusInfo(status: string, delivered = false): StatusInfo {
+  if (status === 'expired' && delivered) {
+    // Remise puis aucun compte rendu : on ne sait pas ce que le téléphone en a fait. Un effacement, notamment,
+    // éteint le téléphone dix secondes après avoir tenté d'envoyer son résultat.
+    return {
+      label: 'Expirée sans réponse',
+      tone: 'warn',
+      active: false,
+      help: "Elle avait été remise au téléphone, mais aucun résultat n'est revenu avant son expiration : elle a pu être exécutée sans que le compte rendu parvienne au serveur (c'est le cas probable d'un effacement).",
+    };
+  }
   switch (status) {
     case 'pending':
       return { label: 'En attente', tone: 'info', active: true, help: "Le serveur la garde : le téléphone ne l'a pas encore récupérée. Elle peut être annulée." };
@@ -379,11 +393,27 @@ export function badSignatureCount(cmds: { status: string; detail?: string | unde
 
 // ------------------------------------------------------------------------- horloge et erreurs d'envoi
 
-/** Écart d'horloge au-delà duquel le serveur refuse `issued_at` (10 min) : on prévient un peu avant. */
-export const SKEW_WARN_MS = 8 * 60_000;
+/** Écart d'horloge au-delà duquel le serveur refuse `issued_at` (10 min), et correction maximale appliquée. */
+export const SKEW_WARN_MS = 10 * 60_000;
+/** En deçà, l'écart mesuré (en-tête `Date`, à la seconde près, plus le délai réseau) n'est que du bruit. */
+const SKEW_NOISE_MS = 30_000;
+
+/**
+ * Heure d'émission (`issued_at`) d'une commande. L'horloge de ce navigateur fait foi, corrigée de l'écart mesuré
+ * avec le serveur (`skewMs` = serveur − navigateur) quand il est plausible : le téléphone refuse (`expired`) une
+ * commande émise plus de 5 min dans son futur alors que le serveur en tolère 10, si bien qu'un ordinateur en
+ * avance de 5 à 10 min produisait des commandes acceptées par le serveur puis refusées par le téléphone.
+ * Au-delà de 10 min l'écart n'est jamais suivi (le serveur refusera, et l'utilisateur est averti) : un serveur
+ * compromis ne doit pas pouvoir faire signer une commande datée du futur, qui resterait valable bien après.
+ */
+export function issueTime(nowMs: number, skewMs: number | undefined): Date {
+  if (skewMs === undefined || !Number.isFinite(skewMs)) return new Date(nowMs);
+  const a = Math.abs(skewMs);
+  return new Date(a >= SKEW_NOISE_MS && a <= SKEW_WARN_MS ? nowMs + Math.round(skewMs) : nowMs);
+}
 
 export function clockProblem(skewMs: number | undefined): string | undefined {
-  if (skewMs === undefined || Math.abs(skewMs) < SKEW_WARN_MS) return undefined;
+  if (skewMs === undefined || Math.abs(skewMs) <= SKEW_WARN_MS) return undefined;
   const min = Math.round(Math.abs(skewMs) / 60_000);
   return `L'horloge de cet ordinateur est décalée d'environ ${min} minutes par rapport au serveur (${skewMs > 0 ? 'en retard' : 'en avance'}) : le serveur refusera les commandes (écart de 10 minutes au plus). Corrigez la date et l'heure de cet appareil.`;
 }

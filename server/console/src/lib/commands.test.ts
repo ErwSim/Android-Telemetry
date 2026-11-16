@@ -10,6 +10,7 @@ import {
   defaultValidityMs,
   deriveKeyBytes,
   isSensitive,
+  issueTime,
   paramsSummary,
   prepareCommand,
   refusalInfo,
@@ -197,12 +198,34 @@ describe('signatures invalides récentes', () => {
   });
 });
 
+describe('commande expirée', () => {
+  it('jamais remise : elle ne sera jamais exécutée', () => {
+    expect(statusInfo('expired').help).toContain('jamais exécutée');
+    expect(statusInfo('expired', false).tone).toBe('neutral');
+  });
+  it('remise puis sans réponse : la console ne prétend pas qu’elle n’a pas été exécutée', () => {
+    const st = statusInfo('expired', true);
+    expect(st.label).toBe('Expirée sans réponse');
+    expect(st.tone).toBe('warn');
+    expect(st.help).toContain('a pu être exécutée');
+    expect(st.help).not.toContain('jamais exécutée');
+    expect(st.active).toBe(false);
+  });
+  it('les autres états ne dépendent pas de la remise', () => {
+    expect(statusInfo('executed', true)).toEqual(statusInfo('executed'));
+    expect(statusInfo('cancelled', true)).toEqual(statusInfo('cancelled'));
+  });
+});
+
 describe('contrat §8 : précisions du collecteur', () => {
   it('message de verrouillage : contrôles interdits sauf le saut de ligne', () => {
     expect(hasForbiddenControl('ligne 1\nligne 2')).toBe(false);
     expect(hasForbiddenControl('a\tb')).toBe(true);
     expect(hasForbiddenControl('a\u0007b')).toBe(true);
     expect(hasForbiddenControl('a\u0085b')).toBe(true);
+    // Séparateurs de ligne et de paragraphe Unicode : le collecteur les refuse aussi (bad_params).
+    expect(hasForbiddenControl('a\u2028b')).toBe(true);
+    expect(validateParams('lock', { message: 'a\u2029b' })).toContain('contrôle');
     expect(validateParams('lock', { message: 'a\u0000b' })).toContain('contrôle');
     expect(validateParams('lock', { message: 'Rendez-moi\nmon téléphone' })).toBeUndefined();
   });
@@ -210,11 +233,30 @@ describe('contrat §8 : précisions du collecteur', () => {
     expect(validateParams('lock', { message: `${'x'.repeat(198)}😀` })).toBeUndefined();
     expect(validateParams('lock', { message: `${'x'.repeat(199)}😀` })).toBeDefined();
   });
-  it('horloge décalée : avertit avant la limite de 10 minutes', () => {
+  it('horloge décalée : avertit au-delà de la limite de 10 minutes (en deçà, issued_at est corrigée)', () => {
     expect(clockProblem(undefined)).toBeUndefined();
     expect(clockProblem(5 * 60_000)).toBeUndefined();
-    expect(clockProblem(-9 * 60_000)).toContain('en avance');
+    expect(clockProblem(-9 * 60_000)).toBeUndefined();
+    expect(clockProblem(-11 * 60_000)).toContain('en avance');
     expect(clockProblem(2 * 3_600_000)).toContain('120 minutes');
+  });
+  it('issued_at suit l’heure du serveur quand l’écart est plausible, jamais au-delà de 10 minutes', () => {
+    const now = Date.UTC(2026, 10, 16, 10, 0, 0);
+    // Ordinateur en avance de 7 min (serveur − navigateur = −7 min) : sans correction, le serveur accepte
+    // (±10 min) mais le téléphone refuse « expired » (émise plus de 5 min dans son futur).
+    expect(issueTime(now, -7 * 60_000).getTime()).toBe(now - 7 * 60_000);
+    expect(issueTime(now, 9 * 60_000).getTime()).toBe(now + 9 * 60_000);
+    // Bruit de mesure : ignoré.
+    expect(issueTime(now, 1_500).getTime()).toBe(now);
+    expect(issueTime(now, undefined).getTime()).toBe(now);
+    expect(issueTime(now, Number.NaN).getTime()).toBe(now);
+    // Un serveur (compromis ou mal réglé) qui annonce une heure lointaine n'est pas suivi : pas de commande
+    // signée datée du futur.
+    expect(issueTime(now, 365 * 86_400_000).getTime()).toBe(now);
+    expect(issueTime(now, -11 * 60_000).getTime()).toBe(now);
+    const p = JSON.parse(prepareCommand(DEVICE, 'lock', {}, defaultValidityMs('lock'), issueTime(now, -7 * 60_000)).payload) as { issued_at: string; expires_at: string };
+    expect(p.issued_at).toBe('2026-11-16T09:53:00.000Z');
+    expect(p.expires_at).toBe('2026-11-23T09:53:00.000Z');
   });
   it('erreur d’envoi : horloge, limites, révocation', () => {
     expect(commandErrorMessage({ status: 400, code: 'invalid_validity', message: "issued_at doit être à moins de 10 minutes de l'heure du serveur" })).toContain('Horloge de cet ordinateur décalée');

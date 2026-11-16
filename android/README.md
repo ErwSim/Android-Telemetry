@@ -465,8 +465,17 @@ renvoyé tant qu'il n'est pas acquitté). La notification permanente et l'accuei
 2. **Commandes à distance** › « Recevoir les commandes à distance » (**désactivé par défaut**), mode
    « Connexion permanente » (défaut) ou « Interrogation périodique » (1 à 15 min).
 3. **Code de commande** : 12 caractères au moins, saisi deux fois. Il n'est connu que du téléphone et de vous ;
-   le serveur ne le reçoit jamais et ne peut donc ni verrouiller ni effacer sans lui. Il est ressaisi dans la
-   console à chaque commande sensible. Le téléphone n'en garde que la clé dérivée
+   le serveur ne le reçoit pas et ne peut ni verrouiller ni effacer sans lui. **Cette promesse a deux
+   limites** (l'écran les dit) : le serveur voit passer les commandes signées et peut donc essayer des codes
+   hors ligne — de l'ordre de 15 000 essais par seconde et par carte graphique haut de gamme malgré les
+   600 000 itérations (ordre de grandeur tiré des bancs publics de PBKDF2-HMAC-SHA256, non mesuré ici) :
+   12 chiffres tombent en environ deux années-carte, soit quelques jours de matériel loué, un mot du
+   dictionnaire suivi de chiffres en quelques heures, alors que cinq mots tirés au hasard ou 16 caractères
+   aléatoires sont hors de portée ; et le code est saisi dans la console, que ce même serveur sert (un serveur
+   compromis peut modifier la page et le lire). L'app refuse un code de moins de 6 caractères différents, ou
+   sans lettre avec moins de 20 chiffres (`CommandCrypto.isTooWeak` : un plancher, pas une mesure de force).
+   **Changer le code rend caduques toutes les commandes déjà signées**, y compris celles que le serveur
+   détiendrait encore. Il est ressaisi dans la console à chaque commande sensible. Le téléphone n'en garde que la clé dérivée
    `K = PBKDF2-HMAC-SHA256(code, "vigie-cmd-v1:" + device_id, 600 000, 32 octets)`, chiffrée par une clé AES du
    Keystore ; le code lui-même n'est conservé nulle part (pas même dans l'écran). Après un réenrôlement sous un
    autre identifiant, l'app demande de le ressaisir. « Supprimer le code » remet aussi l'effacement à distance
@@ -482,7 +491,9 @@ renvoyé tant qu'il n'est pas acquitté). La notification permanente et l'accuei
 canal activé (`disabled`) → `payload` analysable, `v` = 1, même `id` (`malformed`) → `device_id` (`wrong_device`)
 → type de la liste (`unknown_type`) → pour un type sensible : code défini (`no_code_configured`), pas de
 verrouillage temporaire (`locked_out`), HMAC-SHA256 sur les **octets UTF-8 exacts** de `payload`, comparé en
-temps constant (`bad_signature`) → `wipe` autorisé (`disabled`) → non expirée, 5 min de tolérance (`expired`) →
+temps constant (`bad_signature`) → `wipe` autorisé (`disabled` ; l'`id` d'un `wipe` signé et encore valide
+refusé ici est **consommé** : le serveur garde la commande signée jusqu'à son expiration et pourrait sinon la
+livrer de nouveau après l'activation de l'interrupteur) → non expirée, 5 min de tolérance (`expired`) →
 jamais vue (`replay`) → paramètres dans les bornes (`bad_params`) → Device Owner pour `lock`,
 `clear_lock_message`, `wipe` (`not_device_owner`). Avant la signature, seuls `v`, `id`, `device_id` et `type`
 sont lus, pour refuser ; le reste (paramètres, dates) n'est analysé qu'après. Cinq `bad_signature` en une heure
@@ -494,7 +505,14 @@ au premier niveau de `payload` ou `expires_at` antérieur à `issued_at` → `ma
 `malformed` ; `payload` avec une clé en double (même cachée derrière un échappement `\u`) → `malformed` ;
 message de `lock` : 200 unités UTF-16 au plus, aucun caractère de contrôle sauf le saut de ligne
 (`bad_params`, revérifié par l'agent : le serveur n'est pas de confiance). Le vecteur de test du §8 est reproduit à l'octet près
-(`CommandVerifierTest`).
+(`CommandVerifierTest`). Tout JSON venu du serveur (payload, événement du flux, réponse d'interrogation) est
+refusé au-delà de quelques niveaux d'imbrication **avant** d'être analysé (`JsonNesting`) : l'analyseur est
+récursif et un débordement de pile, qui n'est pas une `Exception`, arrêterait le canal.
+
+Ce que la signature ne couvre pas, par construction : une commande signée reste exécutable jusqu'à son
+`expires_at` (7 jours par défaut dans la console), quoi qu'affiche la console — un serveur compromis peut la
+retenir puis la livrer plus tard, ou ignorer une annulation (l'annulation n'existe que côté serveur). Parade
+locale : changer le code de commande, ou couper le canal ou l'effacement à distance.
 
 ### Effacement à distance : garde-fous
 
@@ -558,8 +576,13 @@ combinaisons des six conditions (une seule efface) et, dans les sources, qu'aucu
 
 ### Ce qui est vérifié, ce qui ne l'est pas
 
-- **Vérifié (JVM)** : vecteur de test du §8 (et vecteurs PBKDF2 de la RFC 7914), chaque motif de refus et
-  l'ordre des vérifications, anti-rejeu après redémarrage, verrouillage après 5 signatures invalides, matrice
+- **Vérifié (JVM)** : vecteur de test du §8 (et vecteurs PBKDF2 de la RFC 7914), **cas difficiles signés par
+  le vrai code TypeScript de la console** (`ConsoleVectorsTest` rejoue
+  `server/console/src/lib/fixtures/command-vectors.json` : accents, émojis, guillemets, sauts de ligne, texte
+  bidirectionnel, codes non ASCII, décomposés ou bordés d'espaces), chaque motif de refus et
+  l'ordre des vérifications, anti-rejeu après redémarrage, `wipe` refusé interrupteur coupé puis rejoué
+  interrupteur activé (y compris après saturation de la mémoire des résultats par des commandes simples),
+  JSON imbriqué à l'excès, plancher du code de commande, verrouillage après 5 signatures invalides, matrice
   des garde-fous de `wipe`, revérification avant l'effacement, client du canal contre MockWebServer (flux SSE,
   coupure, reconnexion, surveillance du flux, `401`, absence de réseau, bascule vers l'interrogation, résultat
   renvoyé après coupure, livraison en double, renvoi du résultat d'origine sans réexécution — `wipe`, `lock`,
@@ -569,8 +592,14 @@ combinaisons des six conditions (une seule efface) et, dans les sources, qu'aucu
   commandes créées par l'API console avec un `payload` et une signature construits comme la console
   (`ring`, `lock` signé avec un message accentué sur deux lignes, `wipe` signé, `lock` signé avec un autre
   code), livrées par le vrai flux SSE puis par l'interrogation, vérifiées par le vrai client ; le serveur a
-  enregistré `executed` pour les commandes légitimes et `refused`/`bad_signature` pour la fausse. Non couvert
-  par cet essai : le renvoi du serveur après 5 min (testé seulement contre MockWebServer et le processeur).
+  enregistré `executed` pour les commandes légitimes et `refused`/`bad_signature` pour la fausse. Deux essais
+  ajoutés par la revue de sécurité (16/11/2026, mêmes conditions) : les 13 cas difficiles **signés par le vrai
+  code de la console** (`node server/console/scripts/command-vectors.ts <device_id>`) traversent le vrai
+  collecteur et sont acceptés par le vrai vérificateur avec leur message exact ; et le **renvoi après 5 min par
+  le vrai serveur** : `lock` et `wipe` (réinitialisation factice) dont le résultat n'était pas parvenu au
+  serveur sont livrés de nouveau, ne sont pas réexécutés, et leur résultat d'origine est enregistré ; un
+  `ring` dont le résultat ne pouvait pas partir est renvoyé entre-temps, n'est pas rejoué, et son résultat
+  arrive à la reprise.
 - **Rien n'a été exécuté sur un téléphone.** À vérifier sur le S25+, par ordre de risque :
   1. **`wipe`** : avec un téléphone de test ou une sauvegarde complète, vérifier que `wipeDevice(0)` réinitialise
      bien (et qu'il ne se passe rien tant que l'interrupteur est coupé) ;

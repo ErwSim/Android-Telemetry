@@ -188,8 +188,14 @@ l'infrastructure doit vérifier celles qu'elle retient).
   doublon, ou un refus `replay`, est acquitté `204` sans effet) ; `expired` (balayage toutes les 30 s, et
   affiché dès l'échéance) ; `cancelled` (seulement depuis `pending`). Un résultat tardif (commande expirée ou
   annulée) est enregistré : c'est l'état réel du téléphone. Une commande non acquittée par un résultat est
-  renvoyée après 5 min (3 remises au plus ; l'agent répond `replay` s'il l'avait déjà traitée). Si l'écriture
-  vers l'agent échoue, la commande repasse `pending`.
+  renvoyée après 5 min (3 remises au plus ; l'agent, qui ne la réexécute jamais, renvoie alors son résultat
+  d'origine, ou `replay` — non final — s'il ne l'a plus). Si l'écriture vers l'agent échoue, la commande
+  repasse `pending`. **La signature n'est conservée que tant que la commande peut encore être remise** : dès
+  qu'elle est terminée (résultat reçu, expirée, annulée), `sig` est remplacé en base par le repère `-`
+  (`store.SigErased` ; la console continue de la voir « signée »). Une copie ultérieure de la base ou d'une
+  sauvegarde ne contient donc plus de couple (`payload`, `sig`) des commandes passées, qui servirait à
+  chercher hors ligne le code de commande du propriétaire ; un serveur compromis **en direct** voit toujours
+  passer les nouvelles commandes signées.
 - **Flux de commandes** : une connexion par appareil (la nouvelle ferme l'ancienne), 64 au plus
   (`503` + `Retry-After` au-delà), délai de lecture du serveur levé pour cette seule requête authentifiée,
   délai d'écriture de 30 s par message (une connexion morte est détectée au plus tard au maintien suivant),
@@ -228,7 +234,9 @@ l'infrastructure doit vérifier celles qu'elle retient).
   passer. Règles `||domaine^$important` / `@@||domaine^$important` écrites entre `! vigie:begin …` et
   `! vigie:end` parmi les règles utilisateur (lues par `GET /control/filtering/status`, réécrites par
   `POST /control/filtering/set_rules` seulement si elles changent ; bloc trié, retiré quand il est vide ;
-  repères incohérents → `409 corrupt_rules`, rien n'est écrit). Garde-fou : bloquer un domaine qui est (ou
+  repères incohérents → `409 corrupt_rules`, rien n'est écrit). Une ligne trouvée entre les repères qui
+  n'est pas une règle écrite par Vigie (règle ou commentaire ajouté là à la main dans AdGuard Home) n'est
+  jamais supprimée : elle est déplacée juste après le bloc. Garde-fou : bloquer un domaine qui est (ou
   dont un sous-domaine est) indispensable — FCM, test de connectivité, NTP, mises à jour Samsung/Google, hôtes
   d'ingestion et de DNS privé de Vigie (`internal/tracking/essential.go`) — répond `409 essential_domain` avec
   `breaks: [{domain, breaks}]` sans `"force": true`.
@@ -264,8 +272,14 @@ l'infrastructure doit vérifier celles qu'elle retient).
   pages pourraient être sautées (négligeable). Une requête dont le traitement a duré plus de 60 s n'est pas
   comptée. Les `apps` d'un domaine et les `blocked`/`allowed` d'une application sont des estimations (AdGuard
   ne voit pas l'application ; `net.dns` ne voit pas le blocage).
-- Commandes : le collecteur ne vérifie pas `sig` ; un serveur compromis peut au pire faire sonner, vibrer ou
-  localiser le téléphone (principe n° 2).
+- Commandes : le collecteur ne vérifie pas `sig` (il n'a pas le code). Sans le code, un serveur compromis
+  peut faire sonner, vibrer ou localiser le téléphone autant qu'il veut, retenir, retarder ou rejouer dans
+  leur période de validité les commandes signées qu'il a reçues, et afficher n'importe quel état dans la
+  console. Il ne peut verrouiller ou effacer que s'il obtient le code : en le cherchant hors ligne à partir
+  d'une commande signée (d'où l'exigence d'un code long et imprévisible, voir `android/README.md`), ou en
+  modifiant la console qu'il sert pour le lire quand le propriétaire le saisit. L'annulation d'une commande
+  n'engage que le serveur : seule l'expiration, ou le changement du code dans l'application, la rend
+  caduque à coup sûr.
 
 - Agrégats « top » et timeline horaire/journalière alignés sur des heures/jours **UTC** pleins : les bornes
   `from`/`to` sont arrondies à l'heure.

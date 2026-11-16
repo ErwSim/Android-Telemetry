@@ -8,6 +8,7 @@ import io.github.erwsim.vigie.core.command.CommandChannel
 import io.github.erwsim.vigie.core.command.CommandCrypto
 import io.github.erwsim.vigie.core.command.CommandExecutor
 import io.github.erwsim.vigie.core.command.CommandKeyStore
+import io.github.erwsim.vigie.core.command.CommandParams
 import io.github.erwsim.vigie.core.command.CommandProcessor
 import io.github.erwsim.vigie.core.command.CommandStateStore
 import io.github.erwsim.vigie.core.command.CommandTypes
@@ -31,6 +32,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -41,15 +43,22 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File
+import java.io.IOException
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -62,6 +71,15 @@ import java.util.concurrent.atomic.AtomicInteger
  * Skipped unless these are set (development server in `http://`, see `server/collector/README.md`):
  * `VIGIE_CROSS_ENROLL` (`.vigie` file), `VIGIE_CROSS_URL` (e.g. `http://127.0.0.1:8080`, ingestion and console
  * on the same listener), `VIGIE_CROSS_CONSOLE_USER`, `VIGIE_CROSS_CONSOLE_PASSWORD`.
+ *
+ * Two more tests, each with its own enrollment (the collector accepts 20 commands per hour and device):
+ * - `VIGIE_CROSS_TS_ENROLL` + `VIGIE_CROSS_TS_VECTORS`: commands built and signed by the real console code
+ *   (`node server/console/scripts/command-vectors.ts <device_id> > vectors.json`, at most 10 minutes before)
+ *   go through the real collector to the real verifier;
+ * - `VIGIE_CROSS_REDELIVERY_ENROLL` (and `VIGIE_CROSS_REDELIVERY_ENROLL_2`, a second device, for the case of a
+ *   result that cannot be posted): the real collector delivers again, after 5 minutes, commands whose result
+ *   did not reach it; nothing runs twice and the original result comes back (takes 6 to 15 minutes; start the
+ *   collector with `VIGIE_CMD_KEEPALIVE_S=10` to shorten the wait after the 5 minutes).
  */
 class CrossCommandsTest {
     private val enrollPath: String? = System.getenv("VIGIE_CROSS_ENROLL")
@@ -226,6 +244,265 @@ class CrossCommandsTest {
         } finally {
             channel.stop()
             scope.cancel()
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // Shared rig of the two tests below: the real phone-side code, platform effects recorded instead of run.
+
+    private class Rig(enrollFile: String, baseUrl: String, resultInterceptor: Interceptor? = null) {
+        val parsed = EnrollmentParser.parse(File(enrollFile).readBytes())
+        val deviceId: String = parsed.deviceId
+        private val fingerprint = MessageDigest.getInstance("SHA-256").digest(parsed.clientChain.first().encoded).joinToString("") { "%02x".format(it) }
+        private val client = IngestHttp.baseBuilder("0.1.0-cross")
+            .addInterceptor(Interceptor { chain -> chain.proceed(chain.request().newBuilder().header("X-Vigie-Client-Cert-Sha256", fingerprint).build()) })
+            .apply { if (resultInterceptor != null) addInterceptor(resultInterceptor) }
+            .build()
+        private val target = IngestTarget(baseUrl.toHttpUrl(), deviceId, parsed.deviceToken, "0.1.0-cross")
+        val keys = CommandKeyStore(MemoryPrefs(), PlainSecretBox())
+        val state = CommandStateStore(MemoryPrefs())
+        val sink = RecordingSink()
+
+        /** One line per execution: `type:id:params`. */
+        val executed = CopyOnWriteArrayList<String>()
+        val lockMessages = ConcurrentHashMap<String, String>()
+        val wipes = AtomicInteger()
+        private fun record(detail: String = "ok") = CommandExecutor {
+            executed += "${it.type}:${it.id}:${it.params}"
+            (it.params as? CommandParams.Lock)?.let { p -> lockMessages[it.id] = p.message ?: "<none>" }
+            ExecutionResult.executed(detail)
+        }
+        private val processor = CommandProcessor(
+            clock = WallClock,
+            verifier = CommandVerifier(WallClock, state, keys),
+            state = state,
+            sink = sink,
+            environment = { CommandVerifier.Environment(true, deviceId, wipeAllowed = true) { true } },
+            executors = {
+                mapOf(
+                    CommandTypes.RING to record(),
+                    CommandTypes.VIBRATE to record(),
+                    CommandTypes.STOP_RING to record("not_ringing"),
+                    CommandTypes.LOCATE to record("fix_gps_5m"),
+                    CommandTypes.LOCK to record("ok_message"),
+                    CommandTypes.CLEAR_LOCK_MESSAGE to record(),
+                    CommandTypes.WIPE to WipeExecutor({ WipeGate.Live(true, true, true, WallClock.nowMillis()) }, { true }, { wipes.incrementAndGet() }),
+                )
+            },
+            hooks = object : CommandProcessor.Hooks {
+                override suspend fun beforeIrreversible(timeoutMs: Long) = Unit
+            },
+        )
+        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private val alarms = Executors.newSingleThreadScheduledExecutor()
+
+        // Like the Android alarm: one pending wake-up, which ticks the channel (retry of the results, watchdog).
+        private val platform = object : ChannelPlatform {
+            @Volatile var pending: java.util.concurrent.ScheduledFuture<*>? = null
+            override fun isNetworkAvailable() = true
+            override fun networkKey() = "cross"
+            override fun scheduleWakeup(atElapsedMs: Long) {
+                pending?.cancel(false)
+                pending = alarms.schedule({ channel.tick() }, (atElapsedMs - WallClock.elapsedRealtime()).coerceAtLeast(0), TimeUnit.MILLISECONDS)
+            }
+            override fun cancelWakeup() {
+                pending?.cancel(false)
+            }
+            override suspend fun <T> withWakeLock(timeoutMs: Long, block: suspend () -> T): T = block()
+        }
+        val channel: CommandChannel = CommandChannel(
+            scope, WallClock, { client to target }, { ChannelConfig(enabled = true, mode = ChannelMode.STREAM, pollIntervalMin = 1) }, processor, state, platform,
+        )
+
+        fun useCode(code: String) = keys.save(deviceId, CommandCrypto.deriveKey(code, deviceId), WallClock.nowMillis())
+
+        fun close() {
+            channel.stop()
+            scope.cancel()
+            alarms.shutdownNow()
+        }
+    }
+
+    private fun login() = assertEquals(204, console("POST", "/login", buildJsonObject { put("username", user); put("password", password) }).first)
+
+    private fun listed(deviceId: String, id: String): JsonObject? {
+        val (_, body) = console("GET", "/commands?device_id=$deviceId&limit=100")
+        return (VigieJson.parseToJsonElement(body).jsonObject["commands"] as JsonArray).map { it.jsonObject }.firstOrNull { it["id"]!!.jsonPrimitive.content == id }
+    }
+
+    private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content
+
+    /**
+     * The signature computed by the real console code (TypeScript, WebCrypto) on hard cases — accents, emojis,
+     * quotes, line feeds, bidirectional text, non-ASCII and decomposed command codes — survives the real
+     * collector (payload relayed to the byte) and is accepted by the real verifier, with the exact message.
+     */
+    @Test
+    fun commandsSignedByTheRealConsoleCodePassThroughTheRealCollector() {
+        val enroll = System.getenv("VIGIE_CROSS_TS_ENROLL")
+        val vectorsPath = System.getenv("VIGIE_CROSS_TS_VECTORS")
+        assumeTrue("VIGIE_CROSS_TS_ENROLL / VIGIE_CROSS_TS_VECTORS not set: skipped", enroll != null && vectorsPath != null && url != null && user != null && password != null)
+        val rig = Rig(enroll!!, url!!)
+        val vectors = (VigieJson.parseToJsonElement(File(vectorsPath!!).readText(Charsets.UTF_8)) as JsonArray).map { it.jsonObject }
+        assertTrue("vectors", vectors.size >= 12)
+        login()
+        try {
+            rig.channel.start()
+            eventually("stream connected") { rig.channel.channelState.value.phase == ChannelPhase.CONNECTED }
+            var currentCode: String? = null
+            for (v in vectors) {
+                val name = v.text("name")!!
+                assertEquals("$name: vectors generated for another device", rig.deviceId, v.text("device_id"))
+                val payload = v.text("payload")!!
+                val id = (VigieJson.parseToJsonElement(payload) as JsonObject).text("id")!!
+                val code = v.text("code")
+                if (code != null && code != currentCode) {
+                    rig.useCode(code)
+                    currentCode = code
+                }
+                val body = buildJsonObject {
+                    put("device_id", rig.deviceId)
+                    put("payload", payload)
+                    v.text("sig")?.let { put("sig", it) }
+                }
+                val (status, answer) = console("POST", "/commands", body)
+                assertEquals("$name: $answer", 201, status)
+                eventually("$name: result recorded by the server") { listed(rig.deviceId, id)?.text("status") in setOf("executed", "refused", "failed") }
+                val result = listed(rig.deviceId, id)!!
+                assertEquals("$name: ${result.text("detail")}", "executed", result.text("status"))
+                val expect = v["expect"]!!.jsonObject
+                val type = v.text("type")!!
+                when (type) {
+                    "lock" -> assertEquals(name, expect.text("message") ?: "<none>", rig.lockMessages[id])
+                    "wipe" -> assertEquals(name, 1, rig.wipes.get())
+                    "ring" -> assertTrue(name, rig.executed.any { it == "ring:$id:${CommandParams.Ring(300, false)}" })
+                    "vibrate" -> assertTrue(name, rig.executed.any { it == "vibrate:$id:${CommandParams.Vibrate(10)}" })
+                    else -> assertTrue(name, rig.executed.any { it.startsWith("$type:$id:") })
+                }
+            }
+            // Every result event says whether the command was signed, nothing was refused, nothing ran twice.
+            val results = rig.sink.of("command.result")
+            assertEquals(vectors.size, results.size)
+            results.forEach { Contract.check(it.type, it.data) }
+            assertEquals(vectors.count { it.text("sig") != null }, results.count { (it.data["signed"] as JsonPrimitive).content == "true" })
+            assertEquals(rig.executed.size, rig.executed.toSet().size)
+            System.getenv("VIGIE_CROSS_OUT")?.let { File(it).appendText("console vectors through the real collector: ${vectors.size} accepted (${results.count { (it.data["signed"] as JsonPrimitive).content == "true" }} signed)\n") }
+        } finally {
+            rig.close()
+        }
+    }
+
+    /**
+     * Contract §8 "Renvoi", against the real collector: a command whose result did not reach the server is
+     * delivered again after 5 minutes. The phone must not run it again and the server must end up with the
+     * ORIGINAL result. Two situations, on two enrolled devices (results are posted in order, so a result
+     * that cannot leave holds the following ones back: the two cases would disturb each other on one device):
+     * - first device — `lock` (signed) and `wipe` (signed, fake reset): the phone believes its result was
+     *   acknowledged, the server never received it (something on the way answered 204 for it);
+     * - second device (`VIGIE_CROSS_REDELIVERY_ENROLL_2`, optional) — `ring`: the result cannot be posted at
+     *   all (network error) until after the redelivery.
+     */
+    @Test
+    fun aCommandDeliveredAgainAfterFiveMinutesIsNotRunAgainAndItsOriginalResultComesBack() {
+        val enroll = System.getenv("VIGIE_CROSS_REDELIVERY_ENROLL")
+        val enroll2 = System.getenv("VIGIE_CROSS_REDELIVERY_ENROLL_2")
+        assumeTrue("VIGIE_CROSS_REDELIVERY_ENROLL not set: skipped", enroll != null && url != null && user != null && password != null)
+        val posts = ConcurrentHashMap<String, CopyOnWriteArrayList<Long>>() // command id -> times of the POST …/result attempts
+        val drop = ConcurrentHashMap.newKeySet<String>() // ids whose result cannot be posted for now
+        val swallowOnce = ConcurrentHashMap.newKeySet<String>() // ids whose first result is "acknowledged" without reaching the server
+        val interceptor = Interceptor { chain ->
+            val request = chain.request()
+            val segments = request.url.pathSegments
+            if (request.method != "POST" || segments.lastOrNull() != "result") return@Interceptor chain.proceed(request)
+            val id = segments[segments.size - 2]
+            posts.getOrPut(id) { CopyOnWriteArrayList() } += System.currentTimeMillis()
+            when {
+                id in drop -> throw IOException("simulated network failure")
+                swallowOnce.remove(id) -> Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(204).message("No Content").body("".toResponseBody()).build()
+                else -> chain.proceed(request)
+            }
+        }
+        val code = "Phrase de passe très longue 2026"
+        val rig = Rig(enroll!!, url!!, interceptor).also { it.useCode(code) }
+        val rig2 = enroll2?.let { Rig(it, url, interceptor) }
+        login()
+        val ulid = UlidGenerator()
+        fun create(r: Rig, type: String, params: String, signed: Boolean, before: (String) -> Unit): String {
+            val id = ulid.next(WallClock.nowMillis())
+            val now = WallClock.nowMillis()
+            val payload = """{"v":1,"id":"$id","device_id":"${r.deviceId}","type":"$type","params":$params,"issued_at":"${Rfc3339.format(now)}","expires_at":"${Rfc3339.format(now + 3_600_000L)}"}"""
+            val body = buildJsonObject {
+                put("device_id", r.deviceId)
+                put("payload", payload)
+                if (signed) put("sig", CommandCrypto.sign(CommandCrypto.deriveKey(code, r.deviceId), payload))
+            }
+            before(id)
+            val (status, answer) = console("POST", "/commands", body)
+            assertEquals("create $type: $answer", 201, status)
+            return id
+        }
+        fun status(r: Rig, id: String) = listed(r.deviceId, id)?.text("status")
+        try {
+            rig.channel.start()
+            rig2?.channel?.start()
+            eventually("streams connected") {
+                rig.channel.channelState.value.phase == ChannelPhase.CONNECTED && (rig2 == null || rig2.channel.channelState.value.phase == ChannelPhase.CONNECTED)
+            }
+            val lock = create(rig, "lock", """{"message":"Renvoi après 5 min"}""", signed = true) { swallowOnce += it }
+            val wipe = create(rig, "wipe", "{}", signed = true) { swallowOnce += it }
+            val ring = rig2?.let { r -> create(r, "ring", """{"duration_s":5,"vibrate":false}""", signed = false) { drop += it } }
+            val start = System.currentTimeMillis()
+            eventually("lock and wipe ran once") { rig.executed.size == 1 && rig.wipes.get() == 1 }
+            eventually("first results of lock and wipe posted") { posts[lock]?.size == 1 && posts[wipe]?.size == 1 }
+            if (rig2 != null) eventually("ring ran once, its result could not leave") { rig2.executed.size == 1 && (posts[ring]?.size ?: 0) >= 1 }
+            Thread.sleep(3_000)
+            // The server has no result: the commands stay "delivered"; the first phone believes lock and wipe are done.
+            assertEquals("delivered", status(rig, lock))
+            assertEquals("delivered", status(rig, wipe))
+            assertTrue(rig.state.pendingResults().toString(), rig.state.pendingResults().isEmpty())
+            val firstDelivery = listed(rig.deviceId, lock)!!.text("delivered_at")!!
+            val ringFirstDelivery = rig2?.let {
+                assertEquals("delivered", status(it, ring!!))
+                assertEquals(listOf(ring), it.state.pendingResults().map { p -> p.id })
+                listed(it.deviceId, ring)!!.text("delivered_at")!!
+            }
+
+            // The real server delivers them again 5 minutes after the first delivery (at its next keep-alive).
+            eventually("lock and wipe redelivered, original results recorded", timeoutMs = 9 * 60_000L) { status(rig, lock) == "executed" && status(rig, wipe) == "executed" }
+            val waited = System.currentTimeMillis() - start
+            assertTrue("results came back after ${waited / 1000} s: not a redelivery", waited >= 295_000)
+            val lockRow = listed(rig.deviceId, lock)!!
+            assertEquals("ok_message", lockRow.text("detail"))
+            assertTrue("delivered_at unchanged (${lockRow.text("delivered_at")}): the server did not deliver it again", lockRow.text("delivered_at") != firstDelivery)
+            assertEquals(2, posts[lock]!!.size)
+            assertEquals(2, posts[wipe]!!.size)
+            assertTrue(posts[lock]!![1] - posts[lock]!![0] >= 295_000)
+            // Nothing ran twice; one command.result event per command; nothing left to post.
+            assertEquals(listOf("lock:$lock:${CommandParams.Lock("Renvoi après 5 min")}"), rig.executed.toList())
+            assertEquals(1, rig.wipes.get())
+            assertEquals(2, rig.sink.of("command.result").size)
+            eventually("results all acknowledged") { rig.state.pendingResults().isEmpty() }
+            var summary = "redelivery by the real collector: lock and wipe redelivered after ${(posts[lock]!![1] - posts[lock]!![0]) / 1000} s, executed once " +
+                "(wipe(fake)=${rig.wipes.get()}), original results recorded (lock detail=${lockRow.text("detail")}, statuses lock=${status(rig, lock)} wipe=${status(rig, wipe)})"
+
+            if (rig2 != null) {
+                // The ring was delivered again too while its result still could not leave: skipped, not rung again.
+                eventually("ring redelivered by the server", timeoutMs = 2 * 60_000L) { listed(rig2.deviceId, ring!!)!!.text("delivered_at") != ringFirstDelivery }
+                Thread.sleep(3_000)
+                assertEquals("delivered", status(rig2, ring!!))
+                assertEquals(1, rig2.executed.size)
+                val failedAttempts = posts[ring]!!.size
+                drop -= ring
+                eventually("ring result finally posted (backoff of the results)", timeoutMs = 12 * 60_000L) { status(rig2, ring) == "executed" }
+                assertEquals(listOf("ring:$ring:${CommandParams.Ring(5, false)}"), rig2.executed.toList())
+                assertEquals(1, rig2.sink.of("command.result").size)
+                eventually("ring result acknowledged") { rig2.state.pendingResults().isEmpty() }
+                summary += "; ring (result blocked by $failedAttempts failed posts, redelivered meanwhile) rung once, status=${status(rig2, ring)}"
+            }
+            System.getenv("VIGIE_CROSS_OUT")?.let { File(it).appendText(summary + "\n") }
+        } finally {
+            rig.close()
+            rig2?.close()
         }
     }
 }

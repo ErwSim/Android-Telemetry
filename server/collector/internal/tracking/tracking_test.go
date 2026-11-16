@@ -144,6 +144,52 @@ func TestApplyOverride(t *testing.T) {
 	}
 }
 
+// Contract §9: "les règles saisies à la main dans AdGuard ne sont pas touchées" — also when the owner (or
+// AdGuard Home) put some between the markers of the managed block.
+func TestApplyOverrideKeepsForeignLinesOfTheBlock(t *testing.T) {
+	rules := []string{
+		"||before.example^",
+		BlockBegin,
+		"||tracker.example.com^$important",
+		"||hand-made.example^",           // not written by Vigie (no $important)
+		"! note du propriétaire",         // a comment
+		"@@||app.example.net^$important", // ours
+		"",
+		"||other.example^$important,client=1.2.3.4", // looks like ours, is not
+		BlockEnd,
+		"||after.example^",
+	}
+	out, changed, err := ApplyOverride(rules, "new.example.org", ActionBlock)
+	if err != nil || !changed {
+		t.Fatal(err, changed)
+	}
+	want := []string{
+		"||before.example^",
+		BlockBegin,
+		"@@||app.example.net^$important",
+		"||new.example.org^$important",
+		"||tracker.example.com^$important",
+		BlockEnd,
+		"||hand-made.example^",
+		"! note du propriétaire",
+		"||other.example^$important,client=1.2.3.4",
+		"||after.example^",
+	}
+	if !slices.Equal(out, want) {
+		t.Fatalf("got %q", out)
+	}
+	// Removing every override removes the block and nothing else.
+	for _, d := range []string{"new.example.org", "tracker.example.com", "app.example.net"} {
+		if out, _, err = ApplyOverride(out, d, ActionDefault); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want = []string{"||before.example^", "||hand-made.example^", "! note du propriétaire", "||other.example^$important,client=1.2.3.4", "||after.example^"}
+	if !slices.Equal(out, want) {
+		t.Fatalf("after removal: %q", out)
+	}
+}
+
 const levelsJSON = `{
   "version": 1,
   "lists": {
