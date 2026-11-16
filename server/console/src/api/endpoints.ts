@@ -3,12 +3,18 @@ import type {
   AlertsResponse,
   AppsResponse,
   Bucket,
+  CommandsResponse,
   DevicesResponse,
   EventsResponse,
+  LevelResponse,
   LocationsResponse,
   MeResponse,
+  OverrideAction,
   PostureResponse,
   TimelineResponse,
+  TrackingAppsResponse,
+  TrackingDomainsResponse,
+  TrackingSummary,
   TopKind,
   TopResponse,
   VigieEvent,
@@ -53,4 +59,23 @@ export const api = {
     request<PostureResponse>('/posture', { device_id }, signal ? { signal } : {}),
   alerts: (q: { from?: string; to?: string; level_min?: number; limit?: number }, signal?: AbortSignal) =>
     request<AlertsResponse>('/alerts', q as Query, signal ? { signal } : {}),
+  // Commandes à distance (§8)
+  commands: (q: { device_id?: string; limit?: number }, signal?: AbortSignal) =>
+    request<CommandsResponse>('/commands', q as Query, signal ? { signal } : {}),
+  createCommand: (body: { device_id: string; payload: string; sig?: string }) =>
+    request<{ id: string }>('/commands', undefined, { method: 'POST', body }),
+  cancelCommand: (id: string) => request<void>(`/commands/${encodeURIComponent(id)}/cancel`, undefined, { method: 'POST' }),
+  // Pistage (§9)
+  trackingSummary: (q: Range & { device_id?: string }, signal?: AbortSignal) =>
+    request<TrackingSummary>('/tracking/summary', q as unknown as Query, signal ? { signal } : {}),
+  trackingDomains: (
+    q: Range & { device_id?: string; publisher?: string; status?: string; q?: string; limit?: number; cursor?: string },
+    signal?: AbortSignal,
+  ) => request<TrackingDomainsResponse>('/tracking/domains', q as unknown as Query, signal ? { signal } : {}),
+  trackingApps: (q: Range & { device_id?: string; publisher?: string }, signal?: AbortSignal) =>
+    request<TrackingAppsResponse>('/tracking/apps', q as unknown as Query, signal ? { signal } : {}),
+  trackingOverride: (body: { domain: string; action: OverrideAction; force?: boolean }) =>
+    request<void>('/tracking/override', undefined, { method: 'PUT', body }),
+  trackingLevel: (signal?: AbortSignal) => request<LevelResponse>('/tracking/level', undefined, signal ? { signal } : {}),
+  setTrackingLevel: (level: string) => request<void>('/tracking/level', undefined, { method: 'PUT', body: { level } }),
 };

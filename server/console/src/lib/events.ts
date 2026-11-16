@@ -1,6 +1,8 @@
 import type { VigieEvent } from '../api/types.ts';
 import { fmtBytes, fmtDuration, fmtNumber, fmtValue } from './format.ts';
 import { bool, list, num, obj, str, strList } from './data.ts';
+import { cleanText } from './text.ts';
+import { commandLabel, refusalInfo } from './commands.ts';
 
 export const SEV_LABELS = ['Info', 'Notable', 'Avertissement', 'Critique'] as const;
 
@@ -21,6 +23,7 @@ export const DOMAIN_LABELS: Record<string, string> = {
   app: 'Applications',
   sensor: 'Capteurs',
   security: 'Sécurité',
+  command: 'Commandes',
 };
 
 export function domainLabel(d: string): string {
@@ -88,6 +91,9 @@ export const TYPE_LABELS: Record<string, string> = {
   'security.keyguard': 'Verrouillage',
   'security.ca_cert': "Certificat d'AC",
   'security.policy': 'Politique appliquée',
+  'command.result': 'Résultat de commande',
+  'command.issued': 'Commande émise',
+  'command.cancelled': 'Commande annulée',
 };
 
 export function typeLabel(type: string): string {
@@ -193,7 +199,12 @@ export function describeEvent(ev: VigieEvent): string {
       case 'app.special_access':
         return `accessibilité ${strList(d, 'accessibility_services').length} · écoute notif. ${strList(d, 'notification_listeners').length} · admins ${strList(d, 'device_admins').length} · VPN ${strList(d, 'vpn_apps').length}`;
       case 'app.notification':
-        return `${str(d, 'package') ?? '?'} ${str(d, 'event') ?? ''}${str(d, 'category') ? ` · ${str(d, 'category')}` : ''}`;
+        return describeNotification(d);
+      case 'command.result':
+        return describeCommandResult(d);
+      case 'command.issued':
+      case 'command.cancelled':
+        return `${commandLabel(str(d, 'type') ?? '?')}${str(d, 'command_id') ? ` · ${str(d, 'command_id')}` : ''}`;
       case 'sensor.camera':
         return `${bool(d, 'in_use') ? 'utilisée' : 'libérée'} · caméra ${str(d, 'camera_id') ?? (num(d, 'camera_id') ?? '?')}${str(d, 'package') ? ` · ${str(d, 'package')}` : ''}`;
       case 'sensor.microphone':
@@ -222,6 +233,34 @@ export function describeEvent(ev: VigieEvent): string {
   } catch {
     return genericSummary(d);
   }
+}
+
+const NOTIFICATION_EVENTS: Record<string, string> = { posted: 'publiée', removed: 'retirée' };
+
+/**
+ * Notification : application, événement, puis titre et texte s'ils existent. Ces deux champs viennent de
+ * n'importe quelle application : ils sont nettoyés (caractères de contrôle, bidirectionnel) et ne sont jamais
+ * interprétés. `redacted` : un code numérique de 4 à 8 chiffres a été masqué par le téléphone.
+ */
+export function describeNotification(d: Record<string, unknown>): string {
+  const title = cleanText(d['title']);
+  const text = cleanText(d['text']);
+  const ev = str(d, 'event');
+  const head = `${str(d, 'package') ?? '?'} ${ev ? (NOTIFICATION_EVENTS[ev] ?? ev) : ''}`.trim();
+  const content = title && text ? `${title} — ${text}` : title || text;
+  const parts = [head];
+  if (content) parts.push(`« ${content} »`);
+  else if (!bool(d, 'ongoing')) parts.push(str(d, 'category') ?? '');
+  if (bool(d, 'redacted')) parts.push('contenu masqué (code numérique)');
+  return parts.filter(Boolean).join(' · ');
+}
+
+function describeCommandResult(d: Record<string, unknown>): string {
+  const status = str(d, 'status');
+  const statusLabel = status === 'executed' ? 'exécutée' : status === 'failed' ? 'échec' : status === 'refused' ? 'refusée' : (status ?? '?');
+  const detail = str(d, 'detail');
+  const why = status === 'refused' ? refusalInfo(detail)?.title : detail;
+  return `${commandLabel(str(d, 'type') ?? '?')} · ${statusLabel}${why ? ` (${why})` : ''}${bool(d, 'signed') ? ' · signée' : ''}`;
 }
 
 function genericSummary(d: Record<string, unknown>): string {

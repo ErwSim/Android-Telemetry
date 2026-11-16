@@ -57,6 +57,13 @@ export interface LastLocation {
   acc_m?: number;
 }
 
+export interface CommandChannelState {
+  connected?: boolean;
+  /** `stream` (connexion permanente), `poll` (interrogation) ou `unknown` */
+  mode?: string;
+  last_contact?: string;
+}
+
 export interface Device {
   device_id: string;
   name: string;
@@ -67,6 +74,8 @@ export interface Device {
   last_heartbeat?: Heartbeat;
   last_location?: LastLocation;
   last_posture?: Posture;
+  /** Contrat §8 : état du canal de commandes. */
+  command_channel?: CommandChannelState;
 }
 
 export interface DevicesResponse {
@@ -169,4 +178,100 @@ export interface AlertsResponse {
 
 export interface MeResponse {
   username: string;
+}
+
+// ---------------------------------------------------------------- Commandes à distance (contrat §8)
+
+export type CommandStatus = 'pending' | 'delivered' | 'executed' | 'failed' | 'refused' | 'expired' | 'cancelled';
+
+export interface RemoteCommand {
+  id: string;
+  device_id?: string;
+  type: string;
+  params?: Record<string, unknown>;
+  signed?: boolean;
+  status: CommandStatus | string;
+  created_at?: string;
+  created_by?: string;
+  expires_at?: string;
+  delivered_at?: string;
+  result_at?: string;
+  detail?: string;
+}
+
+export interface CommandsResponse {
+  commands: RemoteCommand[];
+}
+
+// ---------------------------------------------------------------- Pistage (contrat §9)
+
+export interface TrackingLevelInfo {
+  key: string;
+  name?: string;
+  description?: string;
+}
+
+export interface TrackingTotals {
+  queries: number;
+  blocked?: number;
+  allowed?: number;
+}
+
+export interface Publisher {
+  key: string;
+  name: string;
+  queries: number;
+  blocked?: number;
+  allowed?: number;
+  domains?: number;
+  apps?: number;
+  tx_bytes?: number;
+  rx_bytes?: number;
+}
+
+export interface TrackingSummary {
+  adguard: boolean;
+  level?: string;
+  levels?: TrackingLevelInfo[];
+  totals?: TrackingTotals;
+  publishers: Publisher[];
+}
+
+export type DomainStatus = 'blocked' | 'allowed' | 'mixed';
+export type OverrideAction = 'block' | 'allow' | 'default';
+
+export interface TrackingDomain {
+  domain: string;
+  publisher?: string;
+  queries: number;
+  blocked?: number;
+  allowed?: number;
+  status?: DomainStatus | string;
+  reason?: string;
+  override?: 'block' | 'allow';
+  apps?: { package: string; count: number }[];
+}
+
+export interface TrackingDomainsResponse {
+  domains: TrackingDomain[];
+  next_cursor?: string;
+}
+
+export interface TrackingApp {
+  package: string;
+  label?: string;
+  queries: number;
+  blocked?: number;
+  allowed?: number;
+  tx_bytes?: number;
+  rx_bytes?: number;
+  top_domains?: { domain: string; count: number; status?: string }[];
+}
+
+export interface TrackingAppsResponse {
+  apps: TrackingApp[];
+}
+
+export interface LevelResponse {
+  level: string;
 }

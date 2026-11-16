@@ -3,11 +3,14 @@
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
-  constructor(status: number, code: string, message: string) {
+  /** Corps JSON de l'erreur (champs supplémentaires, par exemple le détail d'un 409). */
+  readonly body: Record<string, unknown> | undefined;
+  constructor(status: number, code: string, message: string, body?: Record<string, unknown>) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.body = body;
   }
 }
 
@@ -43,21 +46,22 @@ export function buildQuery(q?: Query): string {
 async function parseError(res: Response): Promise<ApiError> {
   let code = `http_${res.status}`;
   let message = res.statusText || `Erreur ${res.status}`;
+  let extra: Record<string, unknown> | undefined;
   try {
     const body: unknown = await res.json();
-    if (body && typeof body === 'object') {
-      const b = body as { error?: unknown; message?: unknown };
-      if (typeof b.error === 'string') code = b.error;
-      if (typeof b.message === 'string') message = b.message;
+    if (body && typeof body === 'object' && !Array.isArray(body)) {
+      extra = body as Record<string, unknown>;
+      if (typeof extra['error'] === 'string') code = extra['error'];
+      if (typeof extra['message'] === 'string') message = extra['message'];
     }
   } catch {
     /* corps non JSON */
   }
-  return new ApiError(res.status, code, message);
+  return new ApiError(res.status, code, message, extra);
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PUT';
   body?: unknown;
   signal?: AbortSignal;
   /** Ne pas déclencher le retour à la connexion sur 401 (utilisé par /login et /me). */
