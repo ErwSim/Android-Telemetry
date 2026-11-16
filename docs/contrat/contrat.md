@@ -718,3 +718,21 @@ passent pas par le réseau IP. D'où les règles suivantes.
 - **Plafond** : au plus 200 détections par appareil et par jour ; au-delà, une seule `detect.flood` (sévérité 3 :
   l'appareil envoie des données incohérentes ou est compromis). Un `app.inventory` ne peut pas faire passer pour
   « système » une application dont `installer` ou l'historique disent le contraire sans que cela soit signalé.
+
+Précisions du §11.4 (issues du développement) :
+
+- `detect.inventory_mismatch` (sévérité 3, non masquable) : une application déclarée « système » dans
+  l'inventaire alors que son installateur ou un `app.installed` antérieur disent le contraire ; elle est
+  alors traitée comme une application ordinaire par les autres détections.
+- Types non masquables : `detect.sms_abuse`, `detect.default_app_changed`, `detect.inventory_mismatch`,
+  `detect.flood`. `detect.muted` a la sévérité 1, `detect.unmuted` la sévérité 0 ; champs : `type`, `package`,
+  `reason`, `user`.
+- `POST`/`DELETE /detections/mute` exigent `X-Requested-With: vigie` ; erreurs `400 not_mutable`,
+  `400 invalid_parameter`, `404 not_found`. `GET /detections/mutes?device_id` →
+  `{ "mutes": [ { "device_id","type","package","reason","created_at","created_by" } ] }`.
+- `detect.flood` : `evidence` = `suppressed`, `limit`. `detect.sms_permission` : `evidence` = `level`, `score`,
+  `reasons`, `granted`, `since`, `until` (si la détention a pris fin), `source`. Les clés d'`evidence` de tous
+  les types sont tenues à jour dans `server/collector/README.md`.
+- Scénario de simulateur `sms-discret` (l'attaque subie par le propriétaire : application de boutique,
+  `SEND_SMS` accordée 25 à 30 h après l'installation) ; avec `--app-ops=false` il produit
+  `detect.new_app_risky` et `detect.sms_permission`, sans `detect.sms_abuse`.
