@@ -15,7 +15,6 @@ import io.github.erwsim.vigie.core.event.Severity
 import io.github.erwsim.vigie.core.event.VigieJson
 import io.github.erwsim.vigie.core.event.eventData
 import io.github.erwsim.vigie.policy.R
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -103,7 +102,7 @@ class PostureCollector : Collector {
 
     private suspend fun collect(ctx: CollectorContext, always: Boolean) = mutex.withLock {
         val reader = reader ?: PostureReader(ctx.appContext).also { reader = it }
-        val (posture, cas) = withContext(Dispatchers.IO) {
+        val (posture, cas) = withContext(ctx.io) {
             val cas = reader.userCaCerts()
             reader.read(ctx.clock.nowMillis(), cas) to cas
         }

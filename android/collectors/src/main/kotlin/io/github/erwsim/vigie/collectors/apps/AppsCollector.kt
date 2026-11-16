@@ -16,7 +16,6 @@ import io.github.erwsim.vigie.core.collector.CollectorContext
 import io.github.erwsim.vigie.core.collector.PeriodicSpec
 import io.github.erwsim.vigie.core.event.Severity
 import io.github.erwsim.vigie.core.event.UlidGenerator
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -66,7 +65,7 @@ class AppsCollector : Collector {
         val state = AppInventoryLogic.decode(ctx.prefs.getString(K_STATE, null))?.toMutableMap() ?: return@withLock
         when {
             action == Intent.ACTION_PACKAGE_ADDED && !replacing -> {
-                val rec = withContext(Dispatchers.IO) { recordOf(pm, pkg, withInstaller = true) } ?: return@withLock
+                val rec = withContext(ctx.io) { recordOf(pm, pkg, withInstaller = true) } ?: return@withLock
                 val known = state.put(pkg, rec)
                 // Unhidden (DevicePolicyManager.setApplicationHidden) rather than installed: same app.
                 if (known == null || known.versionCode != rec.versionCode || known.signer != rec.signer) {
@@ -74,14 +73,14 @@ class AppsCollector : Collector {
                 }
             }
             action == Intent.ACTION_PACKAGE_REPLACED -> {
-                val rec = withContext(Dispatchers.IO) { recordOf(pm, pkg, withInstaller = true) } ?: return@withLock
+                val rec = withContext(ctx.io) { recordOf(pm, pkg, withInstaller = true) } ?: return@withLock
                 val old = state.put(pkg, rec)
                 emitChange(ctx, TYPE_UPDATED, rec, signerChanged = old != null && old.signer != rec.signer)
                 if (old != null) AppInventoryLogic.permissionChanges(old, rec).forEach { emitPermission(ctx, it) }
             }
             action == Intent.ACTION_PACKAGE_REMOVED && !replacing -> {
                 // Hiding an app also broadcasts PACKAGE_REMOVED: it is still installed (and inventoried).
-                if (withContext(Dispatchers.IO) { isInstalled(pm, pkg) }) return@withLock
+                if (withContext(ctx.io) { isInstalled(pm, pkg) }) return@withLock
                 val old = state.remove(pkg) ?: AppRecord(pkg, null, 0, null, emptySet())
                 emitChange(ctx, TYPE_REMOVED, old)
             }
@@ -96,13 +95,13 @@ class AppsCollector : Collector {
         val lastInventory = ctx.prefs.getLong(K_INVENTORY_MS, 0)
         val inventoryDue = now - lastInventory !in 0 until 20 * 3_600_000L ||
             (reason == CollectReason.START && (ctx.boot.isNewBoot || ctx.boot.isFirstRun))
-        val scan = withContext(Dispatchers.IO) { scan(pm, details = inventoryDue) }
+        val scan = withContext(ctx.io) { scan(pm, details = inventoryDue) }
         val old = AppInventoryLogic.decode(ctx.prefs.getString(K_STATE, null))
         var current = AppInventoryLogic.carryInstallers(old.orEmpty(), scan.records)
         if (old != null) {
             val diff = AppInventoryLogic.diff(old, current)
             val withInstaller = (diff.installed + diff.updated).associate { r ->
-                r.pkg to (r.installer?.let { r } ?: withContext(Dispatchers.IO) { r.copy(installer = installerOf(pm, r.pkg)) })
+                r.pkg to (r.installer?.let { r } ?: withContext(ctx.io) { r.copy(installer = installerOf(pm, r.pkg)) })
             }
             current = current + withInstaller
             diff.installed.forEach { emitChange(ctx, TYPE_INSTALLED, withInstaller.getValue(it.pkg)) }
@@ -114,7 +113,7 @@ class AppsCollector : Collector {
             // The installer is read once per app version (daily inventory, installs and updates).
             val missing = current.values.filter { it.installer == null }
             if (missing.isNotEmpty()) {
-                current = current + withContext(Dispatchers.IO) {
+                current = current + withContext(ctx.io) {
                     missing.mapNotNull { r -> installerOf(pm, r.pkg)?.let { r.pkg to r.copy(installer = it) } }
                 }
             }
@@ -143,7 +142,7 @@ class AppsCollector : Collector {
         }
     }
 
-    // ---- Package manager (blocking: call on Dispatchers.IO) ----
+    // ---- Package manager (blocking: call on ctx.io) ----
 
     private class Scan(val records: Map<String, AppRecord>, val details: List<AppDetails>)
 

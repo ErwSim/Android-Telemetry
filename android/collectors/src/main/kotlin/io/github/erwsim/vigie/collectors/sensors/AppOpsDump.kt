@@ -4,7 +4,7 @@ import android.Manifest
 import android.os.Debug
 import android.os.ParcelFileDescriptor
 import io.github.erwsim.vigie.core.collector.CollectorContext
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
@@ -26,17 +26,17 @@ object AppOpsDump {
     /** Package currently running [op] ("CAMERA", "RECORD_AUDIO"), only if exactly one is found. */
     suspend fun runningPackage(ctx: CollectorContext, op: String, timeoutMs: Long = 3_000): String? {
         if (!available(ctx)) return null
-        val text = withTimeoutOrNull(timeoutMs) { dump(op) } ?: return null
+        val text = withTimeoutOrNull(timeoutMs) { dump(ctx.io, op) } ?: return null
         return parseRunning(text, op, exclude = ctx.appContext.packageName).singleOrNull()
     }
 
-    private suspend fun dump(op: String): String? = withContext(Dispatchers.IO) {
+    private suspend fun dump(io: CoroutineDispatcher, op: String): String? = withContext(io) {
         val pipe = ParcelFileDescriptor.createPipe()
         val read = pipe[0]
         val write = pipe[1]
         coroutineScope {
             // Read concurrently: the remote side blocks when the pipe buffer (64 KiB) is full.
-            val reader = async(Dispatchers.IO) {
+            val reader = async(io) {
                 ParcelFileDescriptor.AutoCloseInputStream(read).use { input ->
                     val buffer = StringBuilder()
                     val chars = CharArray(8192)

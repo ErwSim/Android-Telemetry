@@ -82,7 +82,7 @@ class Agent private constructor(
     )
     val uploader = Uploader(outbox, enrollment::target, uploadStatus, clock, ::netState, ::uploadLimits)
     val uploadScheduler = UploadScheduler(context)
-    val integrity = IntegrityMonitor(context, prefs(PREFS_INTEGRITY), capabilities, sink)
+    val integrity = IntegrityMonitor(context, prefs(PREFS_INTEGRITY), capabilities, sink, clock)
     val host = CollectorHost(
         appContext = context,
         collectors = collectorsFactory(context),

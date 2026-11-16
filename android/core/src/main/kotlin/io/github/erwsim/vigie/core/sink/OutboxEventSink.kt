@@ -84,14 +84,17 @@ class OutboxEventSink(
         }
     }
 
-    override fun emit(type: String, sev: Int, data: JsonObject) {
+    override fun emit(type: String, sev: Int, data: JsonObject, originTsMs: Long?) {
         require(EventTypes.isValid(type)) { "invalid event type '$type'" }
         require(Severity.isValid(sev)) { "invalid severity $sev" }
+        require(originTsMs == null || originTsMs > 0) { "invalid origin time $originTsMs" }
         val now = clock.nowMillis()
+        val elapsedNow = clock.elapsedRealtime()
         val event = PendingEvent(
+            // The ULID keeps the emission time: ids stay monotonic whatever the origin time.
             id = ulid.next(now),
-            tsMs = now,
-            elapsedMs = clock.elapsedRealtime(),
+            tsMs = originTsMs ?: now,
+            elapsedMs = if (originTsMs == null) elapsedNow else OriginTime.elapsedAt(originTsMs, now, elapsedNow),
             bootId = bootId,
             type = type,
             sev = sev,

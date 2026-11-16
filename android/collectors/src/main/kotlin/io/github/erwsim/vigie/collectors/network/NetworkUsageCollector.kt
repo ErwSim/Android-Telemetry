@@ -17,7 +17,6 @@ import io.github.erwsim.vigie.core.collector.PeriodicSpec
 import io.github.erwsim.vigie.core.event.Rfc3339
 import io.github.erwsim.vigie.core.event.Severity
 import io.github.erwsim.vigie.core.event.eventData
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 
@@ -49,7 +48,7 @@ class NetworkUsageCollector : Collector {
         val nsm = ctx.appContext.getSystemService(NetworkStatsManager::class.java) ?: return
         val now = ctx.clock.nowMillis()
         val (from, to) = window(now, ctx.prefs.getLong("watermark_ms", 0)) ?: return
-        val rows = withContext(Dispatchers.IO) {
+        val rows = withContext(ctx.io) {
             query(nsm, ConnectivityManager.TYPE_WIFI, "wifi", from, to) +
                 query(nsm, ConnectivityManager.TYPE_MOBILE, "cellular", from, to)
         }

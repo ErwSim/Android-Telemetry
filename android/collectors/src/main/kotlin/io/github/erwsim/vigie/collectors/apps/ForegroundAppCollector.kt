@@ -16,7 +16,6 @@ import io.github.erwsim.vigie.core.collector.CollectorContext
 import io.github.erwsim.vigie.core.collector.PeriodicSpec
 import io.github.erwsim.vigie.core.event.Severity
 import io.github.erwsim.vigie.core.event.eventData
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -91,7 +90,7 @@ class ForegroundAppCollector : Collector {
         val tracker = ForegroundTracker(ctx.prefs.getString(K_PACKAGE, null), ctx.prefs.getString(K_CLASS, null))
         val changes = ArrayList<ForegroundTracker.Change>()
         var lastTs = watermark
-        withContext(Dispatchers.IO) {
+        withContext(ctx.io) {
             val events = usm.queryEvents(from, now) ?: return@withContext
             val e = UsageEvents.Event()
             while (events.hasNextEvent() && events.getNextEvent(e)) {

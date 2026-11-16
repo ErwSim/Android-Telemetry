@@ -25,7 +25,6 @@ import io.github.erwsim.vigie.core.collector.Collector
 import io.github.erwsim.vigie.core.collector.CollectorContext
 import io.github.erwsim.vigie.core.collector.PeriodicSpec
 import io.github.erwsim.vigie.core.event.Severity
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -103,7 +102,7 @@ class SpecialAccessCollector : Collector {
     }
 
     private suspend fun check(ctx: CollectorContext, force: Boolean) = mutex.withLock {
-        val snapshot = withContext(Dispatchers.IO) { read(ctx.appContext) } ?: return@withLock
+        val snapshot = withContext(ctx.io) { read(ctx.appContext) } ?: return@withLock
         val previous = SpecialAccessSnapshot.decode(ctx.prefs.getString(K_LAST, null))
         val now = ctx.clock.nowMillis()
         val stale = now - ctx.prefs.getLong(K_LAST_MS, 0) !in 0 until 20 * 3_600_000L
@@ -117,7 +116,7 @@ class SpecialAccessCollector : Collector {
         ctx.prefs.edit { putString(K_LAST, snapshot.encode()); putLong(K_LAST_MS, now) }
     }
 
-    // ---- Reading (blocking, Dispatchers.IO) ----
+    // ---- Reading (blocking, ctx.io) ----
 
     @SuppressLint("QueryPermissionsNeeded")
     private fun read(context: Context): SpecialAccessSnapshot? {

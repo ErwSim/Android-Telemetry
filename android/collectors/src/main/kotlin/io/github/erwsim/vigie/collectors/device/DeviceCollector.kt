@@ -16,7 +16,6 @@ import io.github.erwsim.vigie.core.collector.CollectorContext
 import io.github.erwsim.vigie.core.collector.PeriodicSpec
 import io.github.erwsim.vigie.core.event.Severity
 import io.github.erwsim.vigie.core.event.eventData
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 
@@ -122,7 +121,7 @@ class DeviceCollector : Collector {
     }
 
     override suspend fun collectOnce(ctx: CollectorContext, reason: CollectReason) {
-        val inventory = withContext(Dispatchers.IO) { inventory(ctx) }
+        val inventory = withContext(ctx.io) { inventory(ctx) }
         val signature = inventory.toString().hashCode().toString()
         val lastSignature = ctx.prefs.getString("inventory_signature", null)
         val lastMs = ctx.prefs.getLong("inventory_ms", 0)
@@ -134,7 +133,7 @@ class DeviceCollector : Collector {
             ctx.sink.emit("device.inventory", Severity.INFO, inventory)
             ctx.prefs.edit().putString("inventory_signature", signature).putLong("inventory_ms", ctx.clock.nowMillis()).apply()
         }
-        val stat = withContext(Dispatchers.IO) { StatFs(Environment.getDataDirectory().path) }
+        val stat = withContext(ctx.io) { StatFs(Environment.getDataDirectory().path) }
         ctx.emit("device.storage") {
             put("free_bytes", stat.availableBytes)
             put("total_bytes", stat.totalBytes)
@@ -144,7 +143,7 @@ class DeviceCollector : Collector {
     private suspend fun reportBootOnce(ctx: CollectorContext) {
         if (!ctx.boot.isNewBoot) return
         if (ctx.prefs.getString("boot_reported", null) == ctx.boot.bootId) return
-        val reason = withContext(Dispatchers.IO) {
+        val reason = withContext(ctx.io) {
             SystemProps.get("sys.boot.reason") ?: SystemProps.get("ro.boot.bootreason")
         } ?: "unknown"
         ctx.emit("device.boot", Severity.NOTABLE) { put("reason", reason) }

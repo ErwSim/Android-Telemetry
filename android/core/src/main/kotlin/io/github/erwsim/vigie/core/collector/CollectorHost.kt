@@ -15,6 +15,7 @@ import io.github.erwsim.vigie.core.sink.EventSink
 import io.github.erwsim.vigie.core.sink.emit
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.android.asCoroutineDispatcher
@@ -31,7 +32,13 @@ import kotlinx.coroutines.withTimeoutOrNull
  * The collectors' thread. In production a `HandlerThread` (so Android callbacks can be bound to its
  * Looper); JVM tests pass a plain single-thread dispatcher and no Looper.
  */
-class CollectorThreading(val looper: Looper?, val handler: Handler?, val dispatcher: CoroutineDispatcher) {
+class CollectorThreading(
+    val looper: Looper?,
+    val handler: Handler?,
+    val dispatcher: CoroutineDispatcher,
+    /** Blocking work of the collectors ([CollectorContext.io]); tests pass a tracked dispatcher. */
+    val io: CoroutineDispatcher = Dispatchers.IO,
+) {
     companion object {
         fun android(): CollectorThreading {
             val thread = HandlerThread("vigie-collectors").apply { start() }
@@ -105,13 +112,24 @@ class CollectorHost(
         hostScope.launch {
             active = true
             failed.clear()
-            collectors.forEach { reconcileOne(it) }
+            reconcileEach()
         }
     }
 
     /** Re-evaluates enablement and requirements (permission granted, Device Owner gained…). */
     fun reconcile() {
-        hostScope.launch { collectors.forEach { reconcileOne(it) } }
+        hostScope.launch { reconcileEach() }
+    }
+
+    /** One collector failing to reconcile (bug, unexpected platform exception) never stops the others. */
+    private suspend fun reconcileEach() {
+        for (c in collectors) {
+            try {
+                reconcileOne(c)
+            } catch (e: Exception) {
+                onError(c.id, e, "reconcile")
+            }
+        }
     }
 
     /** Stops every collector; blocks for at most [timeoutMs] (called from the service's onDestroy). */
@@ -147,8 +165,14 @@ class CollectorHost(
         }
     }
 
-    /** Requirement check, in French, without starting anything. */
-    fun availability(c: Collector): Availability {
+    /** Requirement check, in French, without starting anything. Never throws. */
+    fun availability(c: Collector): Availability = try {
+        checkRequirements(c)
+    } catch (e: Exception) {
+        Availability.Unavailable(text(R.string.vigie_reason_check_failed, arrayOf(e.toString())))
+    }
+
+    private fun checkRequirements(c: Collector): Availability {
         val missing = c.requirements.filterIsInstance<Requirement.Permission>()
             .filter { !it.optional && !capabilities.hasPermission(it.name) }
         if (missing.isNotEmpty()) {
@@ -217,13 +241,18 @@ class CollectorHost(
 
     private suspend fun onSettingChanged(key: String) {
         for (c in collectors) {
-            val enabledKey = settings.collectorEnabledKey(c.id, c.defaultEnabled).name
-            if (key == enabledKey) {
-                failed.remove(c.id)
-                reconcileOne(c)
-            } else if (c.settings.any { it.key.name == key } && running.containsKey(c.id)) {
-                stopOne(c.id, CollectorRunState.DISABLED, null)
-                reconcileOne(c)
+            // An exception here would end the observation of every later setting change.
+            try {
+                val enabledKey = settings.collectorEnabledKey(c.id, c.defaultEnabled).name
+                if (key == enabledKey) {
+                    failed.remove(c.id)
+                    reconcileOne(c)
+                } else if (c.settings.any { it.key.name == key } && running.containsKey(c.id)) {
+                    stopOne(c.id, CollectorRunState.DISABLED, null)
+                    reconcileOne(c)
+                }
+            } catch (e: Exception) {
+                onError(c.id, e, "setting $key")
             }
         }
     }

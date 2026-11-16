@@ -13,7 +13,6 @@ import io.github.erwsim.vigie.core.settings.SettingSpec
 import io.github.erwsim.vigie.policy.PolicyModule
 import io.github.erwsim.vigie.policy.R
 import io.github.erwsim.vigie.policy.VigieAdminReceiver
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -49,16 +48,16 @@ class SecurityLogCollector : Collector {
 
     override suspend fun start(ctx: CollectorContext) {
         this.ctx = ctx
-        withContext(Dispatchers.IO) { ensureLogging(ctx, true) }
+        withContext(ctx.io) { ensureLogging(ctx, true) }
         if (ctx.prefs.getString(K_PRE_REBOOT_BOOT, null) != ctx.boot.bootId) {
-            ctx.scope.launch(Dispatchers.IO) { preReboot(ctx) }
+            ctx.scope.launch(ctx.io) { preReboot(ctx) }
         }
     }
 
     override suspend fun stop(ctx: CollectorContext) {
         this.ctx = null
         if (!ctx.settings[ctx.settings.collectorEnabledKey(id, defaultEnabled)]) {
-            withContext(Dispatchers.IO) { ensureLogging(ctx, false) }
+            withContext(ctx.io) { ensureLogging(ctx, false) }
         }
     }
 
@@ -66,7 +65,7 @@ class SecurityLogCollector : Collector {
     fun onLogsAvailable(context: Context) {
         val c = ctx
         if (c != null) {
-            c.scope.launch(Dispatchers.IO) { retrieve(c) }
+            c.scope.launch(c.io) { retrieve(c) }
         } else {
             PolicyModule.onLogsWhileStopped(context, id) { gw -> gw.setSecurityLoggingEnabled(false) }
         }

@@ -20,20 +20,28 @@ sealed class SettingKey<T : Any>(val name: String, val default: T) {
  * [io.github.erwsim.vigie.core.collector.Collector.settings]; the app renders them without
  * knowing the collector.
  */
-sealed class SettingSpec(open val key: SettingKey<*>, @StringRes open val titleRes: Int, @StringRes open val summaryRes: Int?) {
+sealed class SettingSpec(
+    open val key: SettingKey<*>,
+    @StringRes open val titleRes: Int,
+    @StringRes open val summaryRes: Int?,
+    /** Shown with an "Expérimental" mark (unstable platform behaviour, best effort). */
+    open val experimental: Boolean,
+) {
     data class IntSpec(
         override val key: SettingKey.IntKey,
         @StringRes override val titleRes: Int,
         @StringRes override val summaryRes: Int? = null,
         /** Unit suffix shown after the value, e.g. "s", "min", "Mo". */
         val unit: String = "",
-    ) : SettingSpec(key, titleRes, summaryRes)
+        override val experimental: Boolean = false,
+    ) : SettingSpec(key, titleRes, summaryRes, experimental)
 
     data class BoolSpec(
         override val key: SettingKey.BoolKey,
         @StringRes override val titleRes: Int,
         @StringRes override val summaryRes: Int? = null,
-    ) : SettingSpec(key, titleRes, summaryRes)
+        override val experimental: Boolean = false,
+    ) : SettingSpec(key, titleRes, summaryRes, experimental)
 }
 
 /**

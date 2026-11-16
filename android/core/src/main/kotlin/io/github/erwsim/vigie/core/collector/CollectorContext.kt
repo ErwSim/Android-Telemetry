@@ -16,6 +16,7 @@ import io.github.erwsim.vigie.core.event.eventData
 import io.github.erwsim.vigie.core.settings.AgentSettings
 import io.github.erwsim.vigie.core.sink.EventSink
 import io.github.erwsim.vigie.core.sink.FlushableSink
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.serialization.json.JsonObject
 import java.util.concurrent.Executor
@@ -67,25 +68,36 @@ class CollectorContext internal constructor(
         appContext.getSharedPreferences("collector_$collectorId", Context.MODE_PRIVATE)
     }
 
+    /**
+     * Dispatcher for blocking work (binder-heavy PackageManager calls, `getprop`, log retrieval):
+     * `withContext(ctx.io) { … }` or `ctx.scope.launch(ctx.io) { … }`. `Dispatchers.IO` in
+     * production; the test harness substitutes a tracked one, so never use `Dispatchers.IO` directly.
+     */
+    val io: CoroutineDispatcher get() = threading.io
+
     /** Sink that never throws: an invalid event is reported as `agent.collector_error`. */
     val sink: EventSink = object : EventSink {
-        override fun emit(type: String, sev: Int, data: JsonObject) {
+        override fun emit(type: String, sev: Int, data: JsonObject, originTsMs: Long?) {
             try {
-                rawSink.emit(type, sev, data)
+                rawSink.emit(type, sev, data, originTsMs)
             } catch (e: Exception) {
                 errorReporter(e, "emit $type")
             }
         }
     }
 
-    fun emit(type: String, sev: Int = Severity.INFO, block: EventDataBuilder.() -> Unit) {
+    /**
+     * Emits an event. [originTsMs]: wall-clock time given by the system for an event read after
+     * the fact (`app.foreground`, `net.dns`, `net.connect`, `security.log`); it becomes `ts`.
+     */
+    fun emit(type: String, sev: Int = Severity.INFO, originTsMs: Long? = null, block: EventDataBuilder.() -> Unit) {
         val data = try {
             eventData(block)
         } catch (e: Exception) {
             errorReporter(e, "data $type")
             return
         }
-        sink.emit(type, sev, data)
+        sink.emit(type, sev, data, originTsMs)
     }
 
     /**

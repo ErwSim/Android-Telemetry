@@ -30,7 +30,7 @@ class MicrophoneCollector : Collector {
     override val descriptionRes = R.string.collector_microphone_desc
     override val eventTypes = listOf(TYPE)
     override val requirements = listOf(Requirement.SystemFeature(PackageManager.FEATURE_MICROPHONE))
-    override val settings = listOf(SettingSpec.BoolSpec(ATTRIBUTION, R.string.setting_sensor_attribution, R.string.setting_sensor_attribution_summary))
+    override val settings = listOf(SettingSpec.BoolSpec(ATTRIBUTION, R.string.setting_sensor_attribution, R.string.setting_sensor_attribution_summary, experimental = true))
 
     private var last = MicState.IDLE
     private val limiter = RateLimiter(120, 3_600_000L)

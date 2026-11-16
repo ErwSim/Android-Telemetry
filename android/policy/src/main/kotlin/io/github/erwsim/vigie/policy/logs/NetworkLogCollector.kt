@@ -16,7 +16,6 @@ import io.github.erwsim.vigie.core.settings.SettingSpec
 import io.github.erwsim.vigie.policy.PolicyModule
 import io.github.erwsim.vigie.policy.R
 import io.github.erwsim.vigie.policy.VigieAdminReceiver
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -54,10 +53,10 @@ class NetworkLogCollector : Collector {
 
     override suspend fun start(ctx: CollectorContext) {
         this.ctx = ctx
-        withContext(Dispatchers.IO) { ensureLogging(ctx, true) }
+        withContext(ctx.io) { ensureLogging(ctx, true) }
         val notified = ctx.prefs.getLong(K_NOTIFIED, 0)
         if (notified > 0 && notified != ctx.prefs.getLong(K_PROCESSED, 0)) {
-            ctx.scope.launch(Dispatchers.IO) { process(ctx, notified) }
+            ctx.scope.launch(ctx.io) { process(ctx, notified) }
         }
     }
 
@@ -65,7 +64,7 @@ class NetworkLogCollector : Collector {
         this.ctx = null
         // Turned off by the owner (not an agent stop): stop the system logging as well.
         if (!ctx.settings[ctx.settings.collectorEnabledKey(id, defaultEnabled)]) {
-            withContext(Dispatchers.IO) { ensureLogging(ctx, false) }
+            withContext(ctx.io) { ensureLogging(ctx, false) }
         }
     }
 
@@ -75,7 +74,7 @@ class NetworkLogCollector : Collector {
             .edit { putLong(K_NOTIFIED, token) }
         val c = ctx
         if (c != null) {
-            c.scope.launch(Dispatchers.IO) { process(c, token) }
+            c.scope.launch(c.io) { process(c, token) }
         } else {
             PolicyModule.onLogsWhileStopped(context, id) { gw -> gw.setNetworkLoggingEnabled(false) }
         }

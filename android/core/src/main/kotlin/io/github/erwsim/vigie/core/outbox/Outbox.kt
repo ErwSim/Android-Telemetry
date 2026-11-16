@@ -39,6 +39,11 @@ data class PurgeReport(
  * - `seq` is assigned inside the same SQLite transaction as the insert and the counter update,
  *   so after any crash the counter and the rows agree: no duplicate and no reused `seq`.
  * - rows are deleted only by [remove] (after a server acknowledgement) or by purge.
+ *
+ * `ts_ms` is the event's `ts`, which is the time of origin for events read after the fact: it is
+ * NOT monotonic in `seq`. Nothing here relies on that order: uploads and the size purge go by
+ * `seq` (emission order), the age purge and `agent.buffer_overflow.oldest_ts/newest_ts` use
+ * `ts_ms` with `<`/MIN/MAX only.
  */
 class Outbox(
     private val db: OutboxDatabase,

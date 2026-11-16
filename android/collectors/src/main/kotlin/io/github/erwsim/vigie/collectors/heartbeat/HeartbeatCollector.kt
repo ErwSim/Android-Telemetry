@@ -8,7 +8,6 @@ import io.github.erwsim.vigie.core.collector.CollectorContext
 import io.github.erwsim.vigie.core.collector.PeriodicSpec
 import io.github.erwsim.vigie.core.event.EventTypes
 import io.github.erwsim.vigie.core.event.Rfc3339
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** `agent.heartbeat` every 15 minutes (contract §2), through WorkManager so it survives Doze. */
@@ -23,7 +22,7 @@ class HeartbeatCollector : Collector {
         val battery = ctx.appContext.getSystemService(BatteryManager::class.java)
         val pct = battery?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 }
         val status = ctx.status
-        val dropped = withContext(Dispatchers.IO) { status.droppedTotal() }
+        val dropped = withContext(ctx.io) { status.droppedTotal() }
         val deviceOwner = status.isDeviceOwner()
         ctx.emit(EventTypes.AGENT_HEARTBEAT) {
             put("battery_pct", pct)

@@ -29,7 +29,12 @@ open class Capabilities(private val context: Context) {
 
     fun missing(permissions: Collection<String>): List<String> = permissions.filterNot(::hasPermission)
 
-    fun hasSystemFeature(feature: String): Boolean = context.packageManager.hasSystemFeature(feature)
+    /** False when the feature is absent or the package manager cannot answer. */
+    open fun hasSystemFeature(feature: String): Boolean = try {
+        context.packageManager?.hasSystemFeature(feature) == true
+    } catch (_: Exception) {
+        false
+    }
 
     fun isIgnoringBatteryOptimizations(): Boolean =
         context.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(context.packageName) == true
