@@ -47,8 +47,8 @@ Faites cette section sans la raccourcir. Prévoyez une heure.
   récente, **vérifiée** (en connaître le contenu), avant d'ouvrir quoi que ce soit.
 - **Photos et vidéos** : confirmez qu'elles sont synchronisées ou copiées sur le PC.
 - **Contenu du Dossier sécurisé et de Dual Messenger** : à sortir avant suppression (la suppression efface ce qu'ils
-  contiennent). Dans le Dossier sécurisé, ses propres réglages proposent de déplacer les fichiers hors du dossier ;
-  pour Dual Messenger, les données de la copie d'une application sont perdues à la désactivation.
+  contiennent). Vérifiez dans les réglages du Dossier sécurisé comment en sortir les fichiers avant de le désinstaller ;
+  pour Dual Messenger, les données de la copie d'une application sont en principe perdues à la désactivation.
 - **Messageries** : exportez ou sauvegardez vos conversations (WhatsApp, Signal, etc.) avec la fonction de sauvegarde de
   chaque application, **avant** de retirer son compte de la liste d'Android.
 - **Authentification à deux facteurs** : assurez-vous de pouvoir **vous reconnecter** à vos comptes Google et Samsung
@@ -116,7 +116,7 @@ Attendu : une ligne `<numéro de série>    device`. Si vous voyez :
 Depuis le dossier `android/` du dépôt :
 
 ```bash
-./scripts/install-apk.sh ../chemin/vers/app-release.apk        # ou sans argument : app/build/outputs/apk/release/app-release.apk
+./scripts/install-apk.sh "$PWD/app/build/outputs/apk/release/app-release.apk"
 ```
 
 ```powershell
@@ -125,7 +125,9 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass     # une fois par fe
 ```
 
 Donnez toujours le chemin de l'APK **release** (voir le piège du guide 02 : sans argument, le script prend le debug
-s'il n'y a pas de release signé). Attendu : `Success` d'`adb`, puis `Vigie installée.` et la ligne `versionName=…`.
+s'il n'y a pas de release signé ; il vous demande alors confirmation, répondez `non`). Sous bash, donnez un chemin
+**absolu** (comme ci-dessus) : le script change de dossier avant de lire l'argument, donc un chemin relatif serait lu depuis
+`android/scripts/`. Attendu : `Success` d'`adb`, puis `Vigie installée.` et la ligne `versionName=…`.
 
 | Échec | Cause et remède |
 |---|---|
@@ -223,6 +225,10 @@ Sur l'écran **Accueil**, section « Administration de l'appareil », vous devez
 
 Si « Mode Device Owner » est « Non » alors que le script a réussi, fermez l'application, rouvrez-la ; sinon, guide 06.
 
+Les permissions d'exécution ne sont accordées automatiquement qu'**une seule fois** par activation du Device Owner : si vous en
+retirez une ensuite dans les Paramètres d'Android, Vigie ne la reprend pas d'elle-même. Le collecteur concerné passe
+« indisponible », un événement `agent.tamper` (`permission_revoked`) est émis, et l'onglet Collecteurs propose de la redonner.
+
 Puis les permissions qui ne s'obtiennent que par ADB (accès à l'utilisation, réglages sécurisés de la politique, attribution
 expérimentale caméra/micro) :
 
@@ -257,11 +263,12 @@ héberge cet écran (c'est un élément du profil strict, décoché par défaut)
 ## 10. Enrôler le téléphone
 
 1. **Sur le serveur** : `sudo ./enroll.sh s25` (dossier `infra`) produit `s25.vigie`. Récupérez-le sur le PC :
-   `scp vous@vps:~/vigie/infra/s25.vigie .`
+   `scp vous@vps:~/vigie/infra/s25.vigie .` depuis le dossier `android/` de votre dépôt (les fichiers `*.vigie` y sont
+   ignorés par git).
 2. **Copier sur le téléphone, par câble** :
 
    ```bash
-   ./scripts/push-enrollment.sh s25.vigie
+   ./scripts/push-enrollment.sh "$PWD/s25.vigie"      # chemin absolu : le script change de dossier avant de lire l'argument
    ```
 
    ```powershell
@@ -416,7 +423,8 @@ de 5 à 240, Réglages › Device Owner), et signale le repli par un `security.p
 voir : sur le serveur `sudo docker compose stop adguardhome` ; le téléphone perd Internet ; patientez (jusqu'à 15 minutes
 par défaut) jusqu'au retour d'Internet et à l'avertissement « En repli » de la carte DNS ; puis
 `sudo docker compose start adguardhome` : l'hôte est réimposé dès qu'il répond. Si Internet ne revient pas après
-20 minutes : `./scripts/rescue-revert.sh`.
+20 minutes : `./scripts/rescue-revert.sh`. Le repli ne tourne que si le processus de Vigie est vivant (service de premier
+plan, ou passage de maintenance toutes les 15 minutes) : un agent tué par la gestion de batterie ne le déclenche pas.
 
 > Le compromis, dit plainement : avec le repli, quelqu'un qui bloque le port 853 vous fait basculer en DNS automatique
 > (jamais en silence, c'est une alerte). Sans le repli, la protection prime : plus d'Internet tant que le serveur ne
@@ -464,7 +472,7 @@ update).
 **Contrôle supplémentaire pour « Interdire les sources inconnues »** : le texte de l'application dit que l'installation par
 ADB (donc les mises à jour de Vigie) n'est « pas concernée d'après la documentation (à vérifier) ». **Vérifiez-le
 maintenant**, pas le jour d'une mise à jour : réinstallez le même APK
-(`./scripts/install-apk.sh <apk release>` ou `.\scripts\install-apk.ps1 -Apk <apk release>`) et constatez le succès, puis que
+(`./scripts/install-apk.sh "$PWD/app/build/outputs/apk/release/app-release.apk"` ou `.\scripts\install-apk.ps1 -Apk app\build\outputs\apk\release\app-release.apk`) et constatez le succès, puis que
 l'agent redémarre et que le Device Owner est toujours là. En cas d'échec, « Rétablir » cette restriction.
 
 **Après les trois lots**, notez ce qui fonctionne. Plus tard, devant un comportement douteux, la comparaison « Tout

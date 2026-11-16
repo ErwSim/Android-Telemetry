@@ -186,10 +186,9 @@ Paramètres facultatifs (`-P…` sur la ligne de commande) :
 Pièges :
 
 - **Sans keystore**, `assembleRelease` réussit mais produit `app-release-unsigned.apk`, qui n'est **pas installable**.
-  Le script `install-apk` cherche `app-release.apk` puis, à défaut, l'APK *debug* : si vous avez aussi construit le
-  debug, vous risquez d'installer le mauvais. Vérifiez toujours quel fichier part sur le téléphone (donnez son chemin
-  explicitement au guide 03).
-- Vérifications facultatives avant d'installer : `./gradlew lint test` (lint Android et 180 tests JVM ; compter plusieurs
+  Le script `install-apk` cherche `app-release.apk` puis, à défaut, l'APK *debug* (il demande alors confirmation avant de
+  l'installer) : donnez toujours son chemin explicitement au guide 03 et lisez le fichier annoncé (« Installation de … »).
+- Vérifications facultatives avant d'installer : `./gradlew lint test` (lint Android et tests JVM ; compter plusieurs
   minutes).
 
 Erreurs fréquentes du build :

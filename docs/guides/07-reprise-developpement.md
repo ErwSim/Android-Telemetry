@@ -64,7 +64,7 @@ l'a pas été.
 ```
 
 C'est la vérification complète exigée avant de committer (`android/ARCHITECTURE-CODE.md`). Lint : 0 erreur (pas de baseline,
-`abortOnError`). Les tests sont des **tests JVM purs** (180 au moment de la rédaction) : pas d'émulateur, pas de
+`abortOnError`). Les tests sont des **tests JVM purs** (180 au dernier décompte de `android/README.md` ; la revue de l'application en a ajouté depuis) : pas d'émulateur, pas de
 Robolectric (ses jars Android étaient inaccessibles dans l'environnement de développement ; sur votre PC, c'est à réétudier).
 Le banc de test partagé est dans les `testFixtures` de `:core` (`CollectorHarness`, référence `Contract`). Aucun test
 n'est instrumenté : tout comportement sur appareil se vérifie avec le [guide 06](06-verifications-sur-appareil.md).
@@ -135,6 +135,16 @@ VIGIE_API_TARGET=http://127.0.0.1:8080 npm run dev        # http://localhost:517
 **Console seule, avec un serveur factice** : `npm run mock` (http://127.0.0.1:8787, `admin` / `vigie`) puis `npm run dev`. Le
 serveur factice génère sept jours de télémétrie et accepte `POST /__mock/control` (pannes, session expirée, latence).
 
+**Vérifier l'agent contre le vrai collecteur, sans téléphone.** Le test `CrossServerTest` (module `:app`) envoie les événements
+types des 21 collecteurs, par le vrai tampon et le vrai envoi de l'agent, au collecteur lancé ci-dessus ; il est ignoré tant que
+`VIGIE_CROSS_ENROLL` n'est pas défini (mode d'emploi dans l'en-tête du fichier du test ; commande non exécutée pour ce guide) :
+
+```bash
+cd android
+VIGIE_CROSS_ENROLL=$PWD/../server/collector/.dev/s25.vigie VIGIE_CROSS_URL=http://127.0.0.1:8080 \
+  ./gradlew :app:testDebugUnitTest --tests '*CrossServerTest*' --rerun
+```
+
 **Pile Docker complète en local** (Caddy, Wazuh, AdGuard) : possible avec `sudo ./install.sh --domain vigie.lan --tls internal`
 (AC interne de Caddy ; il faut alors faire confiance à `infra/data/caddy/server-root-ca.crt`, résoudre les noms vers la machine,
 8 Go de RAM libres). C'est le mode des essais du 15/11/2026 (`infra/README.md` §11). Il n'y a **pas de pas-à-pas** documenté
@@ -163,8 +173,10 @@ pour y brancher le simulateur à travers Caddy en mTLS ; c'est un travail à fai
   `user set-password` est annulé au passage suivant.
 - **Aucune notification des alertes** (`email_notification` à `no`, aucune intégration) : l'absence de l'agent ou une alerte de niveau 12
   ne se voit que si vous ouvrez la console.
-- **`install-apk`** prend `app-release.apk` puis, à défaut, l'APK de **débogage** : un build release non signé
-  (`app-release-unsigned.apk`) fait installer le mauvais fichier, signé par une clé propre à la machine.
+- **`install-apk`** prend `app-release.apk` puis, à défaut, l'APK de **débogage** (un build release non signé,
+  `app-release-unsigned.apk`, n'est pas reconnu) ; une version récente du script demande confirmation pour un APK de
+  débogage, mais ne propose pas de repli plus clair. En bash, un chemin relatif en argument est lu depuis
+  `android/scripts/` (le script y change de dossier) : un chemin absolu est plus sûr.
 - **Scripts PowerShell** : la politique d'exécution par défaut de Windows les bloque ; ni les scripts ni le README ne le
   mentionnent (documenté dans les guides).
 - **`docs/ETAT.md`** : la ligne « Guides d'installation » est encore « en cours ».

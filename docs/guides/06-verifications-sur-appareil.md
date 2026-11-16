@@ -121,7 +121,9 @@ Mode d'emploi :
 - [ ] **V31. Permissions automatiques et protection contre l'arrêt forcé.** *Test* : Paramètres › Applications › Vigie ›
   Autorisations (localisation « toujours », notifications, appareils à proximité, téléphone) ; « Forcer l'arrêt » et « Effacer les
   données » sont-ils grisés ? *Noter* : permissions manquantes, effet de `setUserControlDisabledPackages`, l'application est-elle
-  désinstallable (attendu : non, tant qu'elle est Device Owner).
+  désinstallable (attendu : non, tant qu'elle est Device Owner). Retirer volontairement une permission dans les Paramètres :
+  le collecteur passe-t-il « indisponible », `agent.tamper` `permission_revoked` est-il émis, et l'onglet Collecteurs
+  permet-il de la redonner (Vigie ne la reprend pas d'elle-même, la revue de l'application l'ayant voulu ainsi) ?
 - [ ] **V32. Clé dans l'Android Keystore et mTLS.** *Test* : « Tester la connexion » après l'enrôlement, **après redémarrage**
   et après plusieurs jours. *Noter* : « Connexion réussie » ou le message d'erreur exact.
 - [ ] **V33. Journal réseau du système.** *Test* : premiers `net.dns` et `net.connect` avec leur paquet (délai jusqu'à 1 h 30 ; essai
