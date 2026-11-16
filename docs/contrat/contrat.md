@@ -139,8 +139,8 @@ Note : `app.notification` est produit par l'**APK compagnon** `:notifier` (sépa
   précède le démarrage en cours de l'appareil.
 - Types fixés : `net.cell.mcc` et `mnc` sont des chaînes, `ci` un entier ; `sensor.microphone.source` une
   chaîne ; `security.posture.always_on_vpn` un booléen ; `vendor_id`/`product_id` USB des entiers.
-- L'agent compte 22 collecteurs (19 dans `:collectors`, dont `notifications` qui dépend de l'APK compagnon,
-  et 3 dans `:policy`), tous présents dans `agent.heartbeat.collectors`.
+- L'agent compte 25 collecteurs (22 dans `:collectors`, dont `notifications` qui dépend de l'APK compagnon
+  et `app_ops` qui est expérimental, et 3 dans `:policy`), tous présents dans `agent.heartbeat.collectors`.
 - Agrégation : `net.dns`, `net.connect` et `security.log` peuvent porter `count` (entier ≥ 1, défaut 1 :
   nombre d'occurrences identiques regroupées sur la fenêtre) et `last_event_ts` (heure de la dernière
   occurrence) ; `ts` est alors l'heure de la première. Les statistiques du collecteur (`/stats/top`) pondèrent
@@ -608,8 +608,8 @@ ni un composant du système ; une garde qui échoue sur un paquet le signale san
 | Type | Quand | `data` |
 |---|---|---|
 | `app.risk` | à l'installation, à la mise à jour, et quotidien si le score ou les raisons changent | `package`, `label`, `version_code`, `installer`, `from_store` (bool), `score` (0 à 100), `level` (`low`/`medium`/`high`), `reasons` (liste de codes) |
-| `app.role` | au changement | `role` (`sms`/`dialer`/`browser`/`assistant`/`home`/`call_screening`…), `old`, `new` (paquets) |
-| `app.ops` (expérimental, éteint par défaut, exige `DUMP` accordé par ADB) | horaire, seulement pour les opérations utilisées | `from`, `to`, `apps` : liste `{package, op, count, background_count, last_ts}` avec `op` ∈ `send_sms`/`read_sms`/`receive_sms`/`call_phone`/`read_contacts`/`read_call_log`/`record_audio`/`camera`/`fine_location`/`get_accounts` |
+| `app.role` | au changement (le premier relevé sert de référence, sans événement) | `role` (`sms`/`dialer`/`browser`/`home`/`keyboard`, et `assistant`/`autofill` quand ils sont lisibles), `old`, `new` (paquets ; absent = inconnu). Sévérité 2 pour `sms`/`dialer`/`assistant`/`keyboard`/`autofill`, 1 sinon |
+| `app.ops` (expérimental, éteint par défaut, exige `DUMP` accordé par ADB) | horaire, seulement pour les opérations utilisées | `from`, `to`, `apps` : liste `{package, op, count, background_count, rejected_count, last_ts}` (`rejected_count` : accès refusés par le système, par exemple par une garde ; les compteurs sont des bornes basses) avec `op` ∈ `send_sms`/`read_sms`/`receive_sms`/`call_phone`/`read_contacts`/`read_call_log`/`record_audio`/`camera`/`fine_location`/`get_accounts` |
 
 Codes de `reasons` (liste fermée, chaque code documenté dans l'app) : `sideloaded`, `unknown_installer`,
 `no_launcher_icon`, `sms_send`, `sms_read`, `calls`, `accessibility_service`, `notification_listener`,
@@ -617,7 +617,10 @@ Codes de `reasons` (liste fermée, chaque code documenté dans l'app) : `sideloa
 `mic_camera_background`, `old_target_sdk`, `debuggable`, `combo_banking_trojan` (accessibilité + superposition
 + SMS ou notifications), `combo_sms_fraud` (envoi de SMS + démarrage au boot sans être l'appli SMS),
 `combo_stalkerware` (pas d'icône + position ou micro + démarrage au boot). Les applications du système et
-l'agent Vigie lui-même sont notés mais plafonnés à `low`. Dans l'export Wazuh, `app.ops` est éclaté en
+l'agent Vigie lui-même sont notés mais plafonnés à `low` (score ≤ 29, raisons conservées). Niveaux : `low` 0 à 29,
+`medium` 30 à 59, `high` 60 à 100 ; la pondération est dans `android/README.md`. Le score mesure des
+**capacités déclarées**, pas des actes : contrôle parental, antivirus, automatisation et identification
+d'appelant légitimes sortent `high`, et un logiciel malveillant discret publié sur une boutique peut sortir `low`. Dans l'export Wazuh, `app.ops` est éclaté en
 `app.ops.app` (une ligne par élément), comme `net.usage`.
 
 ### 11.3 Détections (collecteur, événements serveur `vigie.source = "server"`)
