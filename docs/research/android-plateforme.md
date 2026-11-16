@@ -496,3 +496,13 @@ On y ajoute :
 5. `Debug.dumpService("appops")` avec `DUMP` accordé (refus SELinux ?).
 6. Survie du FGS `location`/`specialUse` après 24 h écran éteint et après reboot, sans ajout manuel dans « Jamais en veille ».
 7. Samsung Wallet, Google Wallet et une app bancaire avec le DO actif.
+
+
+## Erratum issu de la revue de code (16/11/2026)
+
+- `pm unhide` exige `MANAGE_USERS`, absent du manifeste AOSP du shell : il est **probablement refusé au shell
+  ADB**. Ne pas compter dessus pour réafficher un paquet masqué après retrait du Device Owner ; toujours
+  « Tout rétablir » (ou `rescue-revert --sweep`) **avant** de retirer le rôle. À vérifier sur l'appareil.
+- `setGlobalPrivateDnsMode*` lève `SecurityException` dès qu'un utilisateur non affilié existe (invité, mode
+  maintenance Samsung). L'agent se replie par `setGlobalSetting(private_dns_mode)`, qui n'a pas cette
+  condition.

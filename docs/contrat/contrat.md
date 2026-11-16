@@ -213,6 +213,9 @@ Réponse `200` :
   `413` lot trop gros (l'agent réduit la taille du lot), `429`/`5xx` réessayer avec backoff
   (respecter `Retry-After`).
 - `device_id` doit correspondre au jeton, sinon `401`.
+- `400` (enveloppe du lot illisible ou invalide) : l'agent coupe le lot en deux et renvoie chaque moitié ; un
+  événement qui, envoyé seul, reçoit encore `400` est supprimé et compté dans `dropped_total`. Le serveur ne
+  répond jamais `400` pour un défaut propre à un événement (il le met dans `rejected`).
 
 ### `GET /api/v1/ping`
 
@@ -238,6 +241,13 @@ Produit par `vigie-collector enroll`, importé dans l'app (sélecteur de fichier
 }
 ```
 
+- `device_id` : `dev_` suivi de caractères `[a-z0-9]`, 64 caractères au plus. `device_token` : caractères
+  `[A-Za-z0-9._~-]`, 128 au plus. L'agent refuse à l'import un fichier dont ces champs contiennent autre chose
+  que de l'ASCII visible.
+- Renouvellement : `vigie-collector renew <device_id> --out <fichier.vigie>` émet un nouveau jeton et un
+  nouveau certificat pour le **même** `device_id` (l'historique n'est pas scindé) ; l'ancien jeton et l'ancien
+  certificat restent acceptés jusqu'au premier envoi authentifié avec les nouveaux, puis sont refusés.
+  L'agent importe le nouveau fichier sans perdre son tampon.
 - La PKI cliente (AC privée ECDSA P-256 + un certificat par appareil, `CN=<device_id>`, usage `clientAuth`)
   est gérée par le collecteur lui-même ; l'AC est créée au premier démarrage dans son répertoire de données.
 - L'agent importe la clé dans l'Android Keystore (non exportable) puis oublie le PEM.
@@ -328,6 +338,7 @@ Binaire unique `vigie-collector`, sous-commandes :
 | `serve` | Démarre le serveur HTTP (ingestion + API console + fichiers de la console). Crée la base et l'AC si absentes. |
 | `enroll --name <nom> --out <fichier.vigie>` | Crée un appareil (identifiant, jeton, certificat client) et écrit le fichier d'enrôlement. |
 | `devices` / `revoke <device_id>` | Liste / révoque (jeton et certificat refusés immédiatement). |
+| `renew <device_id> --out <fichier.vigie>` | Nouveau jeton et nouveau certificat pour le même appareil (voir §4). `devices` affiche la date d'expiration du certificat. |
 | `user set-password <nom>` | Crée ou met à jour un compte console (mot de passe lu sur l'entrée standard). |
 | `sim --url … --enroll <fichier.vigie> [--rate …] [--backfill 24h]` | Simulateur : envoie par l'API d'ingestion des événements réalistes de tous les types du catalogue (tests, démonstration). |
 
