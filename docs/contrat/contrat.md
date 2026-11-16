@@ -549,3 +549,66 @@ explicite (`"force": true`), la réponse `409` expliquant ce que le blocage cass
 - **Localisation** : réglage `mode` du collecteur `location` ∈ `gps` (défaut : GPS + passif), `gps_network`
   (ajoute le fournisseur réseau), `fused` (fournisseur fusionné). `location.fix.provider` dit le fournisseur
   réel de chaque position. L'app affiche pour chaque mode ce qui est transmis à Google.
+
+## 11. Gardes, profil de risque des applications et détections (v1.2)
+
+Objectif : se protéger d'un logiciel malveillant **quel que soit son vecteur** (SMS, appels, accessibilité,
+relais réseau, exfiltration…), en verrouillant les capacités dont il a besoin, en notant chaque application à
+l'installation, et en détectant les comportements anormaux.
+
+### 11.1 Gardes (agent, module `:policy`, Device Owner requis)
+
+Éléments de politique activables un par un dans l'écran Politique, éteints par défaut, réversibles par
+« Tout rétablir » et par l'issue de secours ADB, journalisés par `security.policy` (`profile = "guard:<clé>"`).
+
+| Clé | Effet |
+|---|---|
+| `sms` | Refuse `SEND_SMS` à toutes les applications sauf une liste choisie (pré-remplie avec l'appli SMS par défaut) ; option pour refuser aussi `READ_SMS`/`RECEIVE_SMS`. S'applique aux applications déjà installées et à celles installées ensuite. |
+| `calls` | Refuse `CALL_PHONE` (et `ANSWER_PHONE_CALLS`, `READ_CALL_LOG` en option) sauf liste choisie (composeur par défaut). |
+| `accessibility` | Seuls les services d'accessibilité approuvés (et ceux du système) peuvent être activés. |
+| `input_methods` | Seuls les claviers approuvés (et ceux du système) peuvent être activés. |
+| `quarantine` | Toute application non système nouvellement installée se voit refuser un jeu de permissions à risque (SMS, appels, journal d'appels, contacts, micro, caméra, position en arrière-plan, appareils à proximité) jusqu'à ce que le propriétaire la libère dans Vigie. Les applications déjà présentes à l'activation ne sont pas touchées. |
+
+Garde-fous : les listes ne peuvent jamais exclure l'appli SMS, le composeur et le clavier par défaut en service
+ni un composant du système ; une garde qui échoue sur un paquet le signale sans bloquer les autres.
+Événements : `security.policy` avec `action` ∈ `permission_denied`/`permission_restored`/`guard_enabled`/
+`guard_disabled`/`quarantined`/`released`, `target` (paquet ou composant), et `permission` le cas échéant.
+
+### 11.2 Profil de risque et usage (agent, module `:collectors`)
+
+| Type | Quand | `data` |
+|---|---|---|
+| `app.risk` | à l'installation, à la mise à jour, et quotidien si le score ou les raisons changent | `package`, `label`, `version_code`, `installer`, `from_store` (bool), `score` (0 à 100), `level` (`low`/`medium`/`high`), `reasons` (liste de codes) |
+| `app.role` | au changement | `role` (`sms`/`dialer`/`browser`/`assistant`/`home`/`call_screening`…), `old`, `new` (paquets) |
+| `app.ops` (expérimental, éteint par défaut, exige `DUMP` accordé par ADB) | horaire, seulement pour les opérations utilisées | `from`, `to`, `apps` : liste `{package, op, count, background_count, last_ts}` avec `op` ∈ `send_sms`/`read_sms`/`receive_sms`/`call_phone`/`read_contacts`/`read_call_log`/`record_audio`/`camera`/`fine_location`/`get_accounts` |
+
+Codes de `reasons` (liste fermée, chaque code documenté dans l'app) : `sideloaded`, `unknown_installer`,
+`no_launcher_icon`, `sms_send`, `sms_read`, `calls`, `accessibility_service`, `notification_listener`,
+`device_admin`, `overlay`, `install_packages`, `vpn_service`, `boot_receiver`, `background_location`,
+`mic_camera_background`, `old_target_sdk`, `debuggable`, `combo_banking_trojan` (accessibilité + superposition
++ SMS ou notifications), `combo_sms_fraud` (envoi de SMS + démarrage au boot sans être l'appli SMS),
+`combo_stalkerware` (pas d'icône + position ou micro + démarrage au boot). Les applications du système et
+l'agent Vigie lui-même sont notés mais plafonnés à `low`. Dans l'export Wazuh, `app.ops` est éclaté en
+`app.ops.app` (une ligne par élément), comme `net.usage`.
+
+### 11.3 Détections (collecteur, événements serveur `vigie.source = "server"`)
+
+Calculées périodiquement sur les données déjà reçues, exportées vers Wazuh et servies à la console. Chaque
+détection porte `device_id`, `package` si connu, `window_from`, `window_to`, `evidence` (objet court), et
+n'est émise qu'une fois par fenêtre et par sujet. Seuils réglables par variables d'environnement.
+
+| Type | Condition |
+|---|---|
+| `detect.threat_domain` | une application a demandé un domaine qu'AdGuard a bloqué au titre d'une liste de menaces (croisement `net.dns` × motif AdGuard) |
+| `detect.upload_spike` | octets envoyés par une application sur une heure > max(plancher, k × sa médiane horaire sur 14 jours) |
+| `detect.fanout` | une application s'est connectée à plus de N adresses distinctes en une heure |
+| `detect.mail_ports` | une application qui n'est pas un client de messagerie connu se connecte aux ports 25, 465 ou 587 |
+| `detect.dns_bypass` | une application se connecte à un résolveur DoH/DoT public connu, ou se connecte massivement à des adresses jamais résolues par le DNS du téléphone |
+| `detect.sms_abuse` | d'après `app.ops` : une application autre que l'appli SMS par défaut a envoyé des SMS, ou le volume d'envoi dépasse un seuil |
+| `detect.sensor_background` | d'après `app.ops` : micro ou caméra utilisés en arrière-plan par une application, au-delà d'un seuil |
+| `detect.new_app_risky` | une application de `level = high` vient d'être installée, ou une application installée depuis moins de 24 h obtient une capacité sensible |
+
+API console : `GET /detections?device_id&from&to&type&limit&cursor` →
+`{ "detections": [ { "id","ts","type","package","label","severity","summary","evidence" } ], "next_cursor" }` ;
+`GET /apps/risk?device_id` → dernier `app.risk` par application, trié par score décroissant ;
+`GET /apps/ops?device_id&from&to` → agrégat de `app.ops` par application et par opération.
