@@ -247,3 +247,16 @@ describe('preuves au format du collecteur (internal/detect)', () => {
     expect(items.find((i) => i.label === 'Raisons')?.value).toBe('Profil de fraude au SMS, zzz');
   });
 });
+
+describe('opsBlindSpot', () => {
+  it('se tait seulement quand le collecteur app.ops tourne', async () => {
+    const { opsBlindSpot } = await import('./detections.ts');
+    expect(opsBlindSpot('running')).toBeNull();
+    for (const state of ['disabled', 'unavailable', undefined, 'autre']) {
+      const text = opsBlindSpot(state);
+      expect(text).toContain('SMS');
+      expect(text).toContain('aucune détection');
+    }
+    expect(opsBlindSpot('unavailable')).toContain('DUMP');
+  });
+});

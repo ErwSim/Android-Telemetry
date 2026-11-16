@@ -596,3 +596,21 @@ export function groupByPackage(list: readonly Detection[]): AppDetections[] {
   }
   return [...m.values()].sort((a, b) => b.maxSeverity - a.maxSeverity || b.count - a.count || a.package.localeCompare(b.package));
 }
+
+/**
+ * Ce que les détections ne surveillent pas sur ce téléphone, à dire sous le verdict : `detect.sms_abuse` et
+ * `detect.sensor_background` ne reposent que sur `app.ops`, collecteur expérimental et éteint par défaut. Sans
+ * lui, un envoi massif de SMS par une application discrète ne produit AUCUNE détection (les SMS ne passent
+ * pas par le réseau IP) : « Rien à signaler » ne doit pas le laisser croire. `state` est l'état du collecteur
+ * dans le dernier battement de cœur (`running`, `disabled`, `unavailable`, absent si inconnu).
+ */
+export function opsBlindSpot(state: string | undefined): string | null {
+  if (state === 'running') return null;
+  const why =
+    state === 'disabled'
+      ? 'est désactivé dans l’application Vigie'
+      : state === 'unavailable'
+        ? 'est indisponible sur ce téléphone (permission DUMP non accordée, ou lecture impossible)'
+        : 'n’est pas signalé par ce téléphone';
+  return `Non surveillé ici : l’envoi de SMS et l’usage du micro ou de la caméra en arrière-plan. Le collecteur expérimental « Usage des opérations sensibles » ${why} ; sans lui, une application qui enverrait des milliers de SMS ne produirait aucune détection. La protection repose alors sur la garde SMS de l’application Vigie.`;
+}

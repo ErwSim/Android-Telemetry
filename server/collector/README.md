@@ -301,6 +301,58 @@ Les détections apparaissent au passage qui suit l'arrivée des données (`VIGIE
 dépendent du journal d'AdGuard Home après son relevé (`VIGIE_ADGUARD_POLL_S` ; au premier relevé, seules les
 24 dernières heures du journal sont lues).
 
+### Ce que les détections ne voient pas, et ce qui sonnera à tort (revue v1.2)
+
+Essais du 16/11/2026 sur le vrai collecteur, par l'API d'ingestion avec un appareil enrôlé (séquences écrites
+pour la revue, hors simulateur), et fixés par `internal/detect/review_test.go`.
+
+**L'attaque vécue par le propriétaire — une appli discrète qui envoie ~2 000 SMS par jour — ne déclenche aucune
+détection sans `app.ops`.** Les SMS ne passent pas par le réseau IP : ni `net.usage`, ni `net.connect`, ni
+`net.dns` ne les voient, et `detect.sms_abuse` ne lit que `app.ops`, collecteur expérimental qui peut ne jamais
+fonctionner sur le téléphone. Essai : appli du Play Store notée `medium`, `SEND_SMS` accordée 30 h après
+l'installation, 48 h d'envois, un petit appel horaire à un serveur absent des listes de menaces → **0 détection**.
+Ce qui peut sonner quand même :
+
+| Signal | Condition | Délai |
+|---|---|---|
+| `detect.new_app_risky` | la permission SMS est accordée **dans les 24 h** qui suivent l'installation (relevé horaire des permissions par l'agent), ou l'appli est notée `high` dans ces 24 h | ≈ 1 h + envoi + un passage (5 min) |
+| `detect.threat_domain` | son serveur de commande figure dans une liste `threat` d'AdGuard Home (c'est le cas dans le simulateur, rarement garanti en vrai) | relevé AdGuard + un passage |
+| `detect.sms_abuse` | **`app.ops` fonctionne** : dès la première heure d'envoi (1 SMS suffit pour une appli qui n'est ni l'appli SMS ni une appli système ; 200 par jour UTC pour toute appli) | ≈ 1 h + envoi + un passage |
+| événements bruts | `app.permission_changed` (`SEND_SMS` accordée, sév. 1), `app.role` (nouvelle appli SMS par défaut, sév. 2) : visibles dans la console et dans Wazuh, sans détection dédiée | relevé horaire |
+
+Sans `app.ops`, la protection contre ce scénario est donc la **garde SMS** du téléphone (elle empêche l'appli
+d'obtenir la permission), pas la détection. Une détection sans `app.ops` serait possible — « une appli qui n'est
+ni l'appli SMS ni une appli système détient `SEND_SMS` », d'après `app.inventory.granted_dangerous` et
+`app.permission_changed` — mais elle n'est pas au contrat §11.3 : à y ajouter.
+
+Autres limites constatées :
+
+- La note `app.risk` de l'agent ne compte `sms_send`, `calls`, la position et le micro que **accordés**
+  (`android/README.md`) : à l'installation, une appli de fraude au SMS installée hors boutique sort `medium`
+  (32), et `high` (77) seulement au passage quotidien qui suit l'octroi. Le scénario `fraude-sms` du simulateur
+  émet, lui, `high` avec `sms_send` dès l'installation : la détection finale est la même, pas son délai. Avec la
+  garde SMS active, la permission n'est jamais accordée et la note reste basse.
+- Un appareil dont l'agent est compromis (identifiants volés) peut mentir : un inventaire qui déclare une appli
+  « système » la soustrait à `sms_abuse` (motif `not_default_sms_app`) et à `sensor_background` ; il peut aussi
+  noyer la console (3 000 paquets fictifs → 3 000 détections, aucun plafond). Une appli malveillante **sans**
+  les identifiants de l'agent ne peut rien de tout cela ; elle peut rester sous les seuils (299 adresses par
+  heure, 199 SMS par jour si elle est l'appli SMS par défaut).
+- Lots en retard : un lot vieux de 6 jours crée la détection avec sa fenêtre d'origine et `ts` = l'heure du
+  calcul ; renvoyé deux fois (mêmes `id`), il ne compte qu'une fois ; plus vieux que la rétention, il est
+  acquitté sans effet ; un `ts` dans le futur est rejeté (`invalid_ts`).
+
+**Faux positifs prévisibles sur un téléphone sain** (obtenus par essai ; le scénario `sain` du simulateur reste
+juste sous chaque seuil et ne les montre pas) :
+
+| Détection | Habitude ordinaire qui la déclenche | Remède |
+|---|---|---|
+| `detect.upload_spike` | première sauvegarde de photos ou de vidéos (3 Gio en une heure), sauvegarde WhatsApp/Android vers Drive par les Services Google Play, appel vidéo HD d'une heure (≈ 1,3 Gio), partage de connexion | `VIGIE_DETECT_UPLOAD_FLOOR_MB` plus haut ; à lire avec l'état de l'écran |
+| `detect.dns_bypass` | Firefox (DNS sur HTTPS vers Cloudflare), Chrome réglé sur un fournisseur de DNS sécurisé, Telegram (dns.google en secours), applis VPN et clients Tailscale ; les Services Google Play s'ils interrogent dns.google (non vérifié sur l'appareil) — **une par appli et par jour, indéfiniment** | `VIGIE_DETECT_DNS_BYPASS_EXEMPT` |
+| `detect.mail_ports` | client de messagerie absent de `mail_clients.txt` (essai : Yandex Mail) | `VIGIE_DETECT_MAIL_CLIENTS` |
+| `detect.fanout` | appli de podcasts ou de flux RSS qui rafraîchit ~130 flux la nuit (écran éteint : seuil 100, et chaque hôte compte deux fois en IPv4 + IPv6), client BitTorrent, heure de navigation très dense (> 300 adresses) | `VIGIE_DETECT_FANOUT_SCREEN_OFF` |
+| `detect.new_app_risky` | toute nouvelle appli qui obtient légitimement une capacité suivie : VPN, gestionnaire de mots de passe (accessibilité), appli de montre (notifications), nouvelle appli SMS ; contrôle parental, antivirus et automatisation sortent `high` | une seule fois par installation |
+| `detect.sms_abuse` (avec `app.ops`) | appli non système qui envoie un SMS avec l'accord du propriétaire : messagerie vocale visuelle, appli de montre, vérification de numéro | `VIGIE_DETECT_SMS_OTHER_MIN` |
+
 ## Choix de conception
 
 - **SQLite WAL** (`modernc.org/sqlite`, pur Go) : un pool écrivain d'une connexion (`BEGIN IMMEDIATE`) et un

@@ -119,6 +119,32 @@ object GuardSafety {
     }
 
     fun isRoleReason(reason: String?): Boolean = reason == REASON_SMS || reason == REASON_DIALER || reason == REASON_IME || reason == REASON_HOME
+
+    /**
+     * The role a guard's exception list follows: the SMS list follows the default SMS app, the calls list
+     * the default dialer. A keyboard or a home screen is spared while it holds its role (contract §11.1)
+     * but never joins the SMS or calls list: Android gives those roles no SMS or call permission, and
+     * "choose a home app" is one tap a malicious app can ask for.
+     */
+    fun isOwnRole(key: GuardKey, reason: String?): Boolean = when (key) {
+        GuardKey.SMS -> reason == REASON_SMS
+        GuardKey.CALLS -> reason == REASON_DIALER
+        else -> false
+    }
+
+    /**
+     * Permissions Android grants to the holder of a role (`roles.xml` of the Permission module: the SMS and
+     * dialer roles both get the `sms` and `phone` sets) and that a denial by policy made it skip: the role
+     * grant stops at a permission "fixed to revoked" (`Permissions.grantSingleAsUser`). When a guard lifts
+     * its denial because the app became the default SMS app or dialer, these are granted, as the role would
+     * have done — otherwise the new SMS app could neither send nor (with the option) receive, and incoming
+     * SMS would be lost until the user notices. Sensors and contacts are left to the usual prompt.
+     */
+    fun roleGrants(reason: String?): Set<String> = when (reason) {
+        REASON_SMS -> (GuardPermissions.SMS_SEND + GuardPermissions.SMS_EXTENDED + GuardPermissions.CALLS).toSet()
+        REASON_DIALER -> (GuardPermissions.SMS_SEND + GuardPermissions.SMS_EXTENDED + GuardPermissions.CALLS + GuardPermissions.CALLS_EXTENDED).toSet()
+        else -> emptySet()
+    }
 }
 
 /** Something a guard did on its own, to be shown to the owner (never silent). */
@@ -126,8 +152,12 @@ sealed class GuardNotice {
     /** A newly installed app was quarantined; [denied] may be empty (nothing risky requested yet). */
     data class Quarantined(val pkg: String, val denied: List<String>) : GuardNotice()
 
-    /** A package became a default role holder: its denials were lifted and it joined the guard's list. */
-    data class RoleHolder(val key: GuardKey, val pkg: String, val role: String, val lifted: List<String>) : GuardNotice()
+    /**
+     * A package became a default role holder: its denials were lifted. [joined]: it also joined the guard's
+     * exception list (default SMS app for the SMS guard, default dialer for the calls guard); otherwise it
+     * is only spared while it holds the role (keyboard, home screen…).
+     */
+    data class RoleHolder(val key: GuardKey, val pkg: String, val role: String, val lifted: List<String>, val joined: Boolean = true) : GuardNotice()
 
     /** A quarantined app was released automatically (it became a role holder). */
     data class Released(val pkg: String, val reason: String) : GuardNotice()
@@ -423,27 +453,35 @@ class CapabilityGuards internal constructor(
             val requested = wanted.filter { it in app.requested }
             if (requested.isEmpty() && record == null) continue
             val reason = GuardSafety.exemption(app, roles, g.guardAllowed.orEmpty())
-            // "La liste suit": a new default SMS app / dialer requesting the guarded permissions joins the list.
-            if (GuardSafety.isRoleReason(reason) && requested.isNotEmpty() && app.pkg !in g.guardAllowed.orEmpty()) {
+            // (The role comes before the list in [GuardSafety.exemption]: a listed app that becomes the default SMS app is a role holder.)
+            val role = reason.takeIf(GuardSafety::isRoleReason)
+            val lifted = record?.permissions?.filter { it.applied }?.map { it.permission }.orEmpty()
+            // "La liste suit": a new default SMS app (SMS guard) / dialer (calls guard) requesting the guarded
+            // permissions joins the list. Another role holder (keyboard, home…) is only spared while it holds it.
+            if (GuardSafety.isOwnRole(key, role) && requested.isNotEmpty() && app.pkg !in g.guardAllowed.orEmpty()) {
                 g = g.copy(guardAllowed = (g.guardAllowed.orEmpty() + app.pkg).sorted())
                 report += e.bookkeeping(g.id) { e.putRecord(g) }
-                val lifted = record?.permissions?.filter { it.applied }?.map { it.permission }.orEmpty()
                 e.safe { follow(key, app.pkg) }
-                e.safe { notify(GuardNotice.RoleHolder(key, app.pkg, reason!!, lifted)) }
+                e.safe { notify(GuardNotice.RoleHolder(key, app.pkg, role!!, lifted, joined = true)) }
+            } else if (role != null && lifted.isNotEmpty()) {
+                e.safe { notify(GuardNotice.RoleHolder(key, app.pkg, role, lifted, joined = false)) }
             }
             val target = if (reason == null) requested else emptyList()
-            report += e.isolated(id) { sync(key, app.pkg, record, target, keepEmpty = false) }
+            // What Android grants to the new default SMS app / dialer and our denial made it skip is granted back.
+            val grant = if (role != null && lifted.isNotEmpty()) GuardSafety.roleGrants(role) else emptySet()
+            report += e.isolated(id) { sync(key, app.pkg, record, target, keepEmpty = false, grant = grant) }
         }
         if (cleanup) report += cleanupUninstalled(key, apps)
         return report
     }
 
     /** Makes the record of [pkg] hold exactly [wanted] denied (restores the extra ones, denies the missing ones). */
-    private fun sync(key: GuardKey, pkg: String, record: AppliedRecord?, wanted: List<String>, keepEmpty: Boolean): EngineReport {
+    private fun sync(key: GuardKey, pkg: String, stored: AppliedRecord?, wanted: List<String>, keepEmpty: Boolean, grant: Set<String> = emptySet()): EngineReport {
         var report = EngineReport()
+        val record = stored?.let { settle(it, keepEmpty) }
         if (record != null) {
             val extra = record.permissions.map { it.permission }.filter { it !in wanted }.toSet()
-            if (extra.isNotEmpty()) report += e.revertPermissions(record, only = extra, keepRecord = keepEmpty)
+            if (extra.isNotEmpty()) report += e.revertPermissions(record, only = extra, keepRecord = keepEmpty, grant = grant)
         }
         // Entries not applied are earlier failures: not retried here (see retryFailed).
         val held = e.record(key.packageRecordId(pkg))?.permissions?.map { it.permission }.orEmpty()
@@ -455,9 +493,47 @@ class CapabilityGuards internal constructor(
         return report
     }
 
+    /**
+     * Brings a package record back in line with the device before it is used. Returns the record to work
+     * with (null: nothing of it is left and it was dropped).
+     * - A record left **pending** by a crash: a permission denied on the device without having been
+     *   confirmed is confirmed (it was denied by us: its previous state is in the record, so it can be
+     *   undone); one that was not reached is forgotten, so that it is denied now. Without this, the
+     *   interrupted guard would stay half applied for ever, and a later re-application would forget the
+     *   unconfirmed denial — leaving the permission denied and locked with nothing to undo it.
+     * - A permission recorded as denied that is **no longer denied by policy** on the device (the app was
+     *   uninstalled and reinstalled between two passes, or Vigie lost the Device Owner role for a while:
+     *   both reset the policy state) is forgotten too, hence denied again with its fresh previous state.
+     * A state that cannot be read changes nothing.
+     */
+    private fun settle(record: AppliedRecord, keepEmpty: Boolean): AppliedRecord? {
+        val pending = record.status == RecordStatus.PENDING
+        var unknown = false
+        val permissions = record.permissions.mapNotNull { p ->
+            val state = e.safe { gw.permissionGrantState(record.target, p.permission) }
+            when {
+                state == null -> p.also { unknown = true }
+                p.applied -> p.takeIf { state == Dpm.GRANT_DENIED }
+                !pending -> p // an earlier failure: retried only by a re-application (see retryFailed)
+                state == Dpm.GRANT_DENIED && p.prevState != Dpm.GRANT_DENIED -> p.copy(applied = true)
+                else -> null
+            }
+        }
+        val status = if (pending && unknown) RecordStatus.PENDING else RecordStatus.APPLIED
+        if (permissions == record.permissions && status == record.status) return record
+        if (permissions.isEmpty() && !keepEmpty) {
+            e.removeRecord(record.id)
+            return null
+        }
+        return record.copy(permissions = permissions, status = status).also { e.putRecord(it) }
+    }
+
     /** Permissions that failed earlier are forgotten, so that the next application tries them again. */
     private fun retryFailed(key: GuardKey) {
-        for (r in e.store.state().records.filter { it.id.startsWith(key.recordId + ":") && it.permissions.any { p -> !p.applied } }) {
+        for (stored in e.store.state().records.filter { it.id.startsWith(key.recordId + ":") }) {
+            // First what a crash left unconfirmed (never forgotten while it is denied on the device).
+            val r = settle(stored, keepEmpty = key == GuardKey.QUARANTINE) ?: continue
+            if (r.status == RecordStatus.PENDING || r.permissions.all { it.applied }) continue
             val kept = r.permissions.filter { it.applied }
             if (kept.isEmpty() && key != GuardKey.QUARANTINE) e.removeRecord(r.id) else e.putRecord(r.copy(permissions = kept))
         }
@@ -489,7 +565,7 @@ class CapabilityGuards internal constructor(
             if (record != null) {
                 if (reason != null) {
                     // Became the default SMS app, dialer, keyboard or launcher: the owner chose it.
-                    report += e.isolated(id) { releaseLocked(record, auto = reason) }
+                    report += e.isolated(id) { releaseLocked(record, auto = reason, grant = GuardSafety.roleGrants(reason)) }
                     g = e.record(key.recordId) ?: g
                 } else {
                     // Update of a quarantined app: newly requested risky permissions are denied too.
@@ -542,9 +618,9 @@ class CapabilityGuards internal constructor(
         e.isolated(record.id) { releaseLocked(record, auto = null) }
     }
 
-    private fun releaseLocked(record: AppliedRecord, auto: String?): EngineReport {
+    private fun releaseLocked(record: AppliedRecord, auto: String?, grant: Set<String> = emptySet()): EngineReport {
         val key = GuardKey.QUARANTINE
-        var report = e.revertPermissions(record)
+        var report = e.revertPermissions(record, grant = grant)
         val done = e.record(record.id) == null
         if (done) {
             val firstInstall = e.safe { gw.appInfo(record.target) }?.firstInstallMs ?: record.firstInstallMs

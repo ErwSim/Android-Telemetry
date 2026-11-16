@@ -611,16 +611,17 @@ class PolicyEngine(
      * the same original state and restores it when it is undone). The record is removed once nothing in
      * it remains applied, unless [keepRecord] (quarantine: the package stays quarantined).
      */
-    internal fun revertPermissions(record: AppliedRecord, only: Set<String>? = null, keepRecord: Boolean = false): EngineReport {
+    internal fun revertPermissions(record: AppliedRecord, only: Set<String>? = null, keepRecord: Boolean = false, grant: Set<String> = emptySet()): EngineReport {
         var report = EngineReport()
         var remaining = record.permissions
         val pkg = record.target
         val guard = CapabilityGuards.isGuardId(record.id)
-        // A record still pending means the process died while denying: a permission may be denied on the
-        // device without having been confirmed in the record. Whatever is denied now and was not before
-        // is restored too (otherwise it would stay denied and locked in the Settings for ever).
-        val pending = record.status == RecordStatus.PENDING
-        fun deniedByTheCrash(p: PermissionPrev) = pending && p.prevState != Dpm.GRANT_DENIED &&
+        // A permission listed in the record without being confirmed (the process died while denying, or the
+        // denial was read back as failed) may nevertheless be denied on the device. Whatever is denied by
+        // policy now and was not before is restored too (otherwise it would stay denied and locked in the
+        // Settings for ever): only this admin can have denied it, and a denial held by another record of
+        // Vigie is left to that record below.
+        fun deniedByTheCrash(p: PermissionPrev) = !p.applied && p.prevState != Dpm.GRANT_DENIED &&
             safe { gateway.permissionGrantState(pkg, p.permission) } == Dpm.GRANT_DENIED
         // Foreground location before background location when granting back.
         val order = record.permissions.filter { (only == null || it.permission in only) && (it.applied || deniedByTheCrash(it)) }
@@ -631,10 +632,13 @@ class PolicyEngine(
                 remaining = remaining.map { if (it.permission == prev.permission) it.copy(applied = false) else it }
                 continue
             }
+            // [grant]: the package became the holder of a role that Android would have granted this permission
+            // to, had our denial not been in the way (see GuardSafety.roleGrants): it is granted, best effort.
+            val roleGrant = prev.permission in grant && !prev.prevGranted && prev.prevState == Dpm.GRANT_DEFAULT
             val error = attempt {
                 when {
                     prev.prevState != Dpm.GRANT_DEFAULT -> gateway.setPermissionGrantState(pkg, prev.permission, prev.prevState)
-                    prev.prevGranted -> {
+                    prev.prevGranted || roleGrant -> {
                         // Grant then hand back to the user: granted, still user-controlled (as before).
                         gateway.setPermissionGrantState(pkg, prev.permission, Dpm.GRANT_GRANTED)
                         gateway.setPermissionGrantState(pkg, prev.permission, Dpm.GRANT_DEFAULT)
@@ -646,12 +650,14 @@ class PolicyEngine(
             val restored = safe {
                 !gateway.isInstalled(pkg) || (
                     gateway.permissionGrantState(pkg, prev.permission) == prev.prevState &&
-                        gateway.isPermissionGranted(pkg, prev.permission) == prev.prevGranted
+                        // A role grant that did not take is not a failure of the undo: the denial is lifted.
+                        (roleGrant || gateway.isPermissionGranted(pkg, prev.permission) == prev.prevGranted)
                     )
             } == true
+            val grantedNow = prev.prevGranted || (roleGrant && safe { gateway.isPermissionGranted(pkg, prev.permission) } == true)
             // Kept (marked applied) until it is really restored, so that a retry finds it.
             remaining = remaining.map { if (it.permission == prev.permission) it.copy(applied = !restored) else it }
-            val action = if (prev.prevGranted) "permission_granted" else "permission_restored"
+            val action = if (grantedNow) "permission_granted" else "permission_restored"
             val failure = if (restored) null else error ?: "état non restauré"
             report += if (guard) outcome(action, pkg, record.profile, restored, failure, permission = prev.permission) else outcome(action, "$pkg/${prev.permission}", record.profile, restored, failure)
         }

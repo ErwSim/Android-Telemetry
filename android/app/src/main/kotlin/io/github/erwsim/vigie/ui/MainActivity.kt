@@ -53,6 +53,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // This app releases quarantined apps and switches guards off: no other app may draw over it to steer
+        // a tap ("tapjacking"). Needs the normal permission HIDE_OVERLAY_WINDOWS; best effort.
+        try {
+            window.setHideOverlayWindows(true)
+        } catch (_: Exception) {
+        }
         if (Agent.getOrNull() == null) {
             // The agent could not be built (see VigieApplication): say so instead of crashing, the ADB
             // rescue stays available.

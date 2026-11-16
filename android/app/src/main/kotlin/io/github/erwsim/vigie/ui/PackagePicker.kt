@@ -46,6 +46,18 @@ import io.github.erwsim.vigie.core.settings.SettingSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/**
+ * An app chooses its own name: one line, bounded, no control or formatting characters (a name made of line
+ * breaks or right-to-left overrides must not push the package name away or disguise it). The package name
+ * is always shown next to it.
+ */
+fun safeLabel(raw: String): String =
+    raw.map { if (it.isWhitespace() || it.isISOControl()) ' ' else it }
+        .filter { Character.getType(it) != Character.FORMAT.toInt() }
+        .joinToString("").replace(Regex(" +"), " ").trim().take(MAX_SAFE_LABEL)
+
+private const val MAX_SAFE_LABEL = 60
+
 /** Names and icons of installed applications, for lists and pickers (cached, read off the main thread). */
 object Apps {
     private const val ICON_PX = 96
@@ -64,7 +76,7 @@ object Apps {
     /** Display name (the package name when the app is not installed). */
     fun label(context: Context, pkg: String): String = labels.get(pkg) ?: try {
         val pm = context.packageManager
-        pm.getApplicationLabel(pm.getApplicationInfo(pkg, PackageManager.ApplicationInfoFlags.of(0))).toString().also { labels.put(pkg, it) }
+        safeLabel(pm.getApplicationLabel(pm.getApplicationInfo(pkg, PackageManager.ApplicationInfoFlags.of(0))).toString()).ifEmpty { pkg }.also { labels.put(pkg, it) }
     } catch (_: Exception) {
         pkg
     }
@@ -105,7 +117,7 @@ fun AppRow(pkg: String, note: String? = null, trailing: @Composable () -> Unit =
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         AppIcon(pkg)
         Column(Modifier.weight(1f).padding(start = 8.dp, end = 8.dp)) {
-            Text(label, style = MaterialTheme.typography.bodyMedium)
+            Text(label, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
             Text(pkg, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
             note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }

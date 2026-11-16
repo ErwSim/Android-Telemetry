@@ -254,6 +254,17 @@ liste des champs de l'API (le collecteur les renvoie : lus s'ils sont là, sinon
 n'a pas de type fixé (nombre ou liste : les deux sont lus) ; (8) `/detections` renvoie une détection par domaine de menace et par jour : la phrase « a tenté de joindre
 3 domaines » n'existe que pour une preuve groupée (`domains`).
 
+**Ce que le verdict ne couvre pas (revue v1.2).** `detect.sms_abuse` et `detect.sensor_background` ne
+reposent que sur `app.ops`, collecteur expérimental et éteint par défaut : sans lui, une appli qui enverrait
+des milliers de SMS ne produit aucune détection, et « Rien à signaler » serait trompeur. Le bandeau de verdict
+(page Détections et vue d'ensemble) affiche donc une ligne « Non surveillé ici… » tant que le dernier battement
+de cœur du téléphone ne signale pas ce collecteur `running` (`opsBlindSpot` dans `src/lib/detections.ts`,
+testé). « En marche » ne prouve pas que des données arrivent : le vérifier dans Applications › Opérations
+sensibles. Noms d'applis et de paquets hostiles : rendus par React comme du texte (aucun `innerHTML`), API en
+`application/json` avec `nosniff` ; essai avec un libellé `<img onerror>` et des champs de mauvais type contre le
+vrai collecteur : renvoyé tel quel en JSON, aucune erreur serveur (le rendu dans un navigateur n'a pas été
+rejoué pendant la revue : conclusion tirée de la lecture du code).
+
 ## Pistage (page « Pistage »)
 
 Répartition avec **Réseau** : *Réseau* décrit le trafic observé (noms demandés, destinations, volumes, chronologie) et marche

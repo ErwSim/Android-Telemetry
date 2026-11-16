@@ -196,10 +196,14 @@ class CapabilityGuardsTest {
         gw.roles = gw.roles.copy(sms = signal)
         e.guards.reconcile()
         assertEquals(Dpm.GRANT_DEFAULT, state(signal, sendSms))
+        // Android's role grant stopped at the permission fixed by policy: the guard grants it when it lifts the denial.
+        assertTrue(gw.isPermissionGranted(signal, sendSms))
+        assertEquals("permission_granted", events.last { it.str("target") == signal }.str("action"))
         assertTrue(signal in e.guards.status().getValue(GuardKey.SMS).allowed)
         assertEquals(listOf(GuardKey.SMS to signal), followed)
         val notice = notices.single() as GuardNotice.RoleHolder
         assertEquals(listOf(sendSms), notice.lifted)
+        assertTrue(notice.joined)
         // The role moves back: Signal stays in the list (the owner removes it if he wants).
         gw.roles = gw.roles.copy(sms = samsungMessages)
         e.guards.reconcile()
@@ -387,7 +391,10 @@ class CapabilityGuardsTest {
             val after = gw.snapshot()
             assertEquals("$mask", initialWithInstalls.grantState, after.grantState.filterKeys { it.first != "com.later.app" })
             assertTrue("$mask", after.grantState.keys.none { it.first == "com.later.app" })
-            assertEquals("$mask", initial.granted, after.granted)
+            // Signal became the default SMS app while the SMS guard denied it: what Android's role grants and
+            // the denial made it skip was granted by the guard when it lifted the denial (kept, like a role grant).
+            val roleGrants = if (GuardKey.SMS in keys) setOf(signal to sendSms, signal to receiveSms) else emptySet()
+            assertEquals("$mask", initial.granted + roleGrants, after.granted)
             assertEquals("$mask", initial.permittedAccessibility, after.permittedAccessibility)
             assertEquals("$mask", initial.permittedImes, after.permittedImes)
             for (k in keys) assertFalse(engine().guards.isActive(k))
@@ -500,5 +507,159 @@ class CapabilityGuardsTest {
         e.apply(PolicySelection(Profile.BALANCED, mapOf("dns" to false, "backup" to false)))
         assertEquals(Dpm.GRANT_DENIED, state(malware, sendSms))
         assertTrue(GuardPermissions.ALL.containsAll(GuardPermissions.of(GuardKey.SMS, true) + GuardPermissions.of(GuardKey.CALLS, true)))
+    }
+
+    // ---------------------------------------------------------------- review v1.2: crash, then life goes on
+
+    @Test
+    fun `a crash while denying, then a re-application, leaves nothing that switching the guard off cannot undo`() {
+        for (dieAfter in 1..8) {
+            setUp()
+            gw.install("com.second.sender", sendSms, readSms)
+            gw.granted += "com.second.sender" to sendSms
+            val initial = gw.snapshot()
+            try {
+                engine(DyingGateway(dieAfter)).guards.set(GuardKey.SMS, true, extended = true)
+            } catch (_: ProcessDeath) {
+                // The app restarts with what is on disk.
+            }
+            // Restart: reconciliation at agent start, then the owner presses "Aperçu et réapplication", then switches off.
+            val e = engine()
+            e.guards.reconcile()
+            assertTrue("$dieAfter", e.guards.set(GuardKey.SMS, true, extended = true).allOk)
+            val off = e.guards.set(GuardKey.SMS, false)
+            assertTrue("$dieAfter ${off.failed}", off.allOk)
+            assertEquals("$dieAfter", initial, gw.snapshot())
+            assertTrue("$dieAfter", engine().state().records.isEmpty())
+        }
+    }
+
+    @Test
+    fun `a guard interrupted by a crash is completed at the next reconciliation`() {
+        for (dieAfter in 1..6) {
+            setUp()
+            gw.install("com.second.sender", sendSms, readSms)
+            try {
+                engine(DyingGateway(dieAfter)).guards.set(GuardKey.SMS, true, extended = true)
+            } catch (_: ProcessDeath) {
+            }
+            val e = engine()
+            e.guards.reconcile()
+            for ((pkg, perms) in mapOf(malware to listOf(sendSms, readSms, receiveSms), signal to listOf(sendSms, readSms, receiveSms), "com.second.sender" to listOf(sendSms, readSms))) {
+                for (p in perms) assertEquals("$dieAfter $pkg $p", Dpm.GRANT_DENIED, state(pkg, p))
+            }
+            assertFalse("$dieAfter", e.guards.status().getValue(GuardKey.SMS).pending)
+        }
+    }
+
+    @Test
+    fun `a quarantine interrupted by a crash denies the rest at the next reconciliation and release gives everything back`() {
+        for (dieAfter in 1..3) {
+            setUp()
+            val e0 = engine()
+            e0.guards.set(GuardKey.QUARANTINE, true)
+            gw.install("com.new.app", sendSms, callPhone, contacts, mic)
+            val initial = gw.snapshot()
+            try {
+                engine(DyingGateway(dieAfter)).guards.reconcile()
+            } catch (_: ProcessDeath) {
+            }
+            val e = engine()
+            e.guards.reconcile()
+            for (p in listOf(sendSms, callPhone, contacts, mic)) assertEquals("$dieAfter $p", Dpm.GRANT_DENIED, state("com.new.app", p))
+            assertTrue(e.guards.release("com.new.app").allOk)
+            assertEquals("$dieAfter", initial, gw.snapshot())
+        }
+    }
+
+    @Test
+    fun `a home screen or a keyboard is spared while it holds its role but never joins the SMS list`() {
+        val launcher = "com.evil.launcher"
+        gw.install(launcher, sendSms)
+        val e = engine()
+        e.guards.set(GuardKey.SMS, true, allowed = setOf(samsungMessages))
+        assertEquals(Dpm.GRANT_DENIED, state(launcher, sendSms))
+        // One tap on "always" in the home chooser.
+        gw.roles = gw.roles.copy(home = launcher)
+        e.guards.reconcile()
+        assertEquals("spared while it is the home screen (contract)", Dpm.GRANT_DEFAULT, state(launcher, sendSms))
+        assertFalse("the home role gives no SMS permission", gw.isPermissionGranted(launcher, sendSms))
+        assertFalse(launcher in e.guards.status().getValue(GuardKey.SMS).allowed)
+        assertTrue(followed.isEmpty())
+        val notice = notices.single() as GuardNotice.RoleHolder
+        assertFalse(notice.joined)
+        assertEquals(listOf(sendSms), notice.lifted)
+        // The owner puts his launcher back: the guard applies again.
+        gw.roles = gw.roles.copy(home = "com.sec.android.app.launcher")
+        e.guards.reconcile()
+        assertEquals(Dpm.GRANT_DENIED, state(launcher, sendSms))
+        assertTrue(e.guards.set(GuardKey.SMS, false).allOk)
+        assertEquals(Dpm.GRANT_DEFAULT, state(launcher, sendSms))
+    }
+
+    @Test
+    fun `an app uninstalled and reinstalled between two passes is denied again, and quarantined again`() {
+        val e = engine()
+        e.guards.set(GuardKey.SMS, true)
+        e.guards.set(GuardKey.QUARANTINE, true)
+        gw.install("com.new.app", sendSms, contacts)
+        e.guards.reconcile()
+        assertEquals(Dpm.GRANT_DENIED, state(malware, sendSms))
+        assertEquals(Dpm.GRANT_DENIED, state("com.new.app", contacts))
+        // Both are removed and installed again while the process is not running: the system forgets the policy state.
+        for (pkg in listOf(malware, "com.new.app")) {
+            val perms = gw.requested.getValue(pkg).toTypedArray()
+            gw.uninstall(pkg)
+            gw.clockMs = 30_000L
+            gw.install(pkg, *perms)
+        }
+        assertEquals(Dpm.GRANT_DEFAULT, state(malware, sendSms))
+        engine().guards.reconcile()
+        assertEquals(Dpm.GRANT_DENIED, state(malware, sendSms))
+        assertEquals(Dpm.GRANT_DENIED, state("com.new.app", sendSms))
+        assertEquals(Dpm.GRANT_DENIED, state("com.new.app", contacts))
+        // And the undo gives back the state of the reinstalled apps (nothing granted, nothing locked).
+        assertTrue(engine().revertAll().allOk)
+        assertEquals(Dpm.GRANT_DEFAULT, state(malware, sendSms))
+        assertFalse(gw.isPermissionGranted(malware, sendSms))
+        assertTrue(engine().state().records.isEmpty())
+    }
+
+    @Test
+    fun `a quarantined app chosen as default dialer is released with the permissions of the role`() {
+        val e = engine()
+        e.guards.set(GuardKey.QUARANTINE, true)
+        gw.install("com.new.dialer", callPhone, readCallLog, camera)
+        e.guards.reconcile()
+        assertEquals(Dpm.GRANT_DENIED, state("com.new.dialer", callPhone))
+        gw.roles = gw.roles.copy(dialer = "com.new.dialer")
+        e.guards.reconcile()
+        assertTrue(e.guards.quarantined().isEmpty())
+        assertTrue(gw.isPermissionGranted("com.new.dialer", callPhone))
+        assertTrue(gw.isPermissionGranted("com.new.dialer", readCallLog))
+        assertFalse("sensors are left to the usual prompt", gw.isPermissionGranted("com.new.dialer", camera))
+        assertEquals(Dpm.GRANT_DEFAULT, state("com.new.dialer", camera))
+    }
+
+    @Test
+    fun `a denial that took effect although it was reported as failed is still undone`() {
+        // The system answers "false" and the read-back fails once, yet the permission ends up denied.
+        var lie = true
+        val flaky = object : DevicePolicyGateway by gw {
+            override fun permissionGrantState(pkg: String, permission: String): Int =
+                if (lie && pkg == malware && permission == sendSms && gw.permissionGrantState(pkg, permission) == Dpm.GRANT_DENIED) {
+                    lie = false
+                    Dpm.GRANT_DEFAULT
+                } else {
+                    gw.permissionGrantState(pkg, permission)
+                }
+        }
+        val initial = gw.snapshot()
+        val e = engine(flaky)
+        e.guards.set(GuardKey.SMS, true)
+        assertEquals(Dpm.GRANT_DENIED, state(malware, sendSms))
+        assertTrue("recorded as a failure", e.guards.status().getValue(GuardKey.SMS).packages.any { r -> r.target == malware && r.permissions.any { !it.applied } })
+        assertTrue(engine().guards.set(GuardKey.SMS, false).allOk)
+        assertEquals(initial, gw.snapshot())
     }
 }

@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Normal permission: lets MainActivity hide other apps' overlay windows while it is shown (no tapjacking of "Libérer"). -->
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
     <!-- Permanent, visible foreground service (notification + icon: no stealth). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />

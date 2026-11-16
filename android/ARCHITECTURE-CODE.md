@@ -372,6 +372,15 @@ Invariants (ne pas les casser) :
 - Accessibilité/claviers : la liste posée = liste choisie ∪ services non système déjà activés (sinon la
   plateforme refuse). Retour : liste d'avant (`null` en pratique), relue.
 
+Ajouts de la revue v1.2 : `CapabilityGuards.settle` (appelé par `sync` et `retryFailed`) remet un enregistrement
+de paquet d'aplomb avec l'appareil avant de s'en servir — entrées non confirmées d'un enregistrement `PENDING`
+(plantage), refus qui ne sont plus en place (réinstallation, rôle de Device Owner perdu puis rendu) ;
+`GuardSafety.isOwnRole` (la liste d'une garde ne suit que **son** rôle) et `GuardSafety.roleGrants` (permissions
+accordées au nouveau détenteur du rôle SMS ou composeur, paramètre `grant` de `PolicyEngine.revertPermissions`) ;
+relecture des rôles toutes les 10 s dans `PolicyModule.startGuardWatch` ; `PolicyStore.state()` garde le dernier
+état décodé (clé : le texte lui-même), car les gardes cherchent un enregistrement par paquet à chaque passage.
+
+
 ## 12. Commandes à distance (contrat §8)
 
 Le seul flux serveur → téléphone. Liste fermée, rien d'autre : aucun code de ce chemin n'a accès en écriture

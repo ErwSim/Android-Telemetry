@@ -5,7 +5,9 @@ import { useEventStream } from '../../api/useEventStream.ts';
 import type { Detection } from '../../api/types.ts';
 import { Verdict } from './Verdict.tsx';
 import { Badge, Card, ErrorBox, Loading, SevBadge } from '../ui.tsx';
-import { detectionLabel, isDetectionType, observation } from '../../lib/detections.ts';
+import { detectionLabel, isDetectionType, observation, opsBlindSpot } from '../../lib/detections.ts';
+import { opsCollectorState } from '../apps/OpsView.tsx';
+import { useDevice } from '../../state/device.tsx';
 import { fmtRelative } from '../../lib/format.ts';
 import { cleanText } from '../../lib/text.ts';
 import { isUnsupported } from '../../state/appData.ts';
@@ -17,6 +19,7 @@ const MAX = 200;
  * Se met à jour quand le flux SSE apporte une détection.
  */
 export function DetectionsOverview({ deviceId, now }: { deviceId: string; now: Date }) {
+  const { device } = useDevice();
   // Fenêtre arrondie à 5 minutes : la clé ne change pas à chaque minute (pas de clignotement de chargement).
   const slot = Math.floor(now.getTime() / 300_000) * 300_000;
   const from = new Date(slot - 7 * 24 * 3600_000).toISOString();
@@ -52,7 +55,7 @@ export function DetectionsOverview({ deviceId, now }: { deviceId: string; now: D
   const recent = [...list].sort((a, b) => b.severity - a.severity || (a.ts < b.ts ? 1 : -1)).slice(0, 3);
   return (
     <div className="ov-det" data-testid="overview-detections">
-      <Verdict detections={list} truncated={!!state.data.next_cursor} periodLabel="les 7 derniers jours" linkToDetections />
+      <Verdict detections={list} truncated={!!state.data.next_cursor} periodLabel="les 7 derniers jours" linkToDetections blindSpot={opsBlindSpot(opsCollectorState(device))} />
       {recent.length > 0 && (
         <ul className="findings ov-det-list" aria-label="Détections les plus graves">
           {recent.map((d) => (

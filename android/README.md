@@ -977,6 +977,30 @@ ou clé de la garde ; `permission` pour une permission).
   l'aperçu les nomme (« gardés, Android l'exige ») : pour en exclure un, le désactiver d'abord dans les
   Paramètres, puis réappliquer. Le clavier Samsung (`honeyboard`) et les services d'accessibilité Samsung
   préinstallés sont des applis système : toujours permis.
+- **Où ces deux listes sont-elles appliquées ?** (revue v1.2, AOSP `android16-release`) Dans l'**écran des
+  Paramètres**, pas dans les services du système : la politique `PERMITTED_INPUT_METHODS` a pour exécuteur
+  `PolicyEnforcerCallbacks::noOp` (`PolicyDefinition.java`), `InputMethodManagerService` ne la lit jamais, et
+  `AccessibilityManagerService` ne la consulte que pour les raccourcis (`isAccessibilityTargetAllowed`) ; c'est
+  `RestrictedLockUtilsInternal.checkIfInputMethodDisallowed` / `checkIfAccessibilityServiceDisallowed` qui grise
+  l'interrupteur. Conséquences : (1) **aucun risque de se retrouver sans clavier** — un clavier déjà activé
+  continue de fonctionner quoi que dise la liste, le clavier du système reste toujours proposé, y compris pour le
+  code de déverrouillage après un redémarrage, et si le clavier approuvé est désinstallé Android rebascule
+  lui-même sur un clavier du système ; (2) la garde n'arrête que l'activation **par les Paramètres** (la seule
+  voie d'une appli sans `WRITE_SECURE_SETTINGS`), pas `adb shell ime enable` ; (3) l'écran Paramètres de One UI
+  est celui de Samsung : qu'il respecte ces listes est **à vérifier sur l'appareil**.
+- **Rôle et permission refusée** (`Permissions.grantSingleAsUser` du module Permission) : quand une appli devient
+  appli SMS ou composeur par défaut, Android lui accorde les permissions du rôle **sauf celles qu'une politique
+  a fixées à « refusé »**. Une appli que la garde refusait et qui devient l'appli SMS par défaut resterait donc
+  sans `SEND_SMS` (et, avec l'option, sans `RECEIVE_SMS` : les SMS entrants seraient perdus). Vigie accorde donc
+  elle-même ces permissions en levant son refus (voir « Rôle qui change »).
+- **Perte du rôle de Device Owner** (`clearUserPoliciesLocked`) : Android retire alors le drapeau « fixé par la
+  politique » de **toutes** les permissions et les deux listes disparaissent avec l'administrateur. Rien ne reste
+  verrouillé ; les permissions refusées restent non accordées mais l'utilisateur les gère de nouveau. Les
+  enregistrements de Vigie, eux, restent : si le rôle est rendu plus tard, les gardes encore notées actives se
+  **réappliquent** au premier passage (chaque refus qui n'est plus en place est refait, voir « Persistance »).
+- **Autres utilisateurs** : tout ceci ne vaut que pour l'utilisateur principal. Une appli installée dans le
+  Dossier sécurisé, un profil cloné (Dual Messenger) ou un second utilisateur n'est ni refusée ni mise en
+  quarantaine (un Device Owner empêche en principe de créer ces espaces : à vérifier).
 
 ### Garde-fous (codés en dur)
 
@@ -986,9 +1010,16 @@ ou clé de la garde ; `permission` pour une permission).
   détenteurs : ni toute appli capable d'être un lanceur (n'importe quelle appli peut déclarer une activité
   HOME), ni les administrateurs actifs (un logiciel malveillant peut le devenir).
 - **Rôle qui change** (contrôlé à chaque diffusion de paquet, au changement de composeur, à l'ouverture de
-  l'écran et toutes les 15 min) : le nouveau détenteur retrouve ses permissions, **entre dans la liste** de la
-  garde (« la liste suit », `agent.config_changed`) et une notification le dit (« si ce n'est pas vous,
-  vérifiez… »). Une appli en quarantaine choisie comme appli par défaut est libérée automatiquement (notifié).
+  l'écran, toutes les 15 min, et — depuis la revue v1.2 — par une relecture des détenteurs **toutes les 10 s**
+  tant qu'une garde par paquet est active et que le téléphone est éveillé : aucune diffusion n'annonce à une
+  appli tierce le changement d'appli SMS, de clavier ou d'accueil). Le nouveau détenteur voit ses refus levés.
+  S'il est l'appli SMS (garde SMS) ou le composeur (garde Appels), il **entre dans la liste** (« la liste suit »,
+  `agent.config_changed`) et les permissions SMS et d'appel que son rôle lui aurait données lui sont
+  **accordées** (`permission_granted`) ; micro, caméra et contacts restent à la demande habituelle. Un clavier
+  ou un écran d'accueil est seulement **épargné tant qu'il le reste** : il n'entre dans aucune liste, et la garde
+  le refuse de nouveau dès qu'il perd le rôle (« choisir une appli d'accueil » est un appui qu'un logiciel
+  malveillant peut demander). Dans tous les cas une notification le dit, avec le nom du paquet. Une appli en
+  quarantaine choisie comme appli par défaut est libérée automatiquement (notifié).
 - Un échec sur un paquet donne `permission_denied` `ok=false` et n'arrête pas les autres ; il n'est pas retenté à
   chaque passage (pas de rafale d'événements), mais à la prochaine « Aperçu et réapplication ».
 - Deux éléments qui refusent la même permission (garde SMS et quarantaine, ou une permission du catalogue) la
@@ -1001,6 +1032,19 @@ ou clé de la garde ; `permission` pour une permission).
   illisible : le balayage rend à l'utilisateur toute permission des gardes refusée sans enregistrement sur une
   appli non système (`DEFAULT` : elle n'est pas ré-accordée, l'appli la redemandera) et lève les listes
   d'accessibilité et de claviers.
+- **Remise d'aplomb à chaque passage** (`CapabilityGuards.settle`, revue v1.2) : avant de se servir d'un
+  enregistrement de paquet, Vigie le compare à l'appareil. (1) Enregistrement resté « en cours » après un
+  plantage : une permission refusée sur l'appareil sans avoir été confirmée est confirmée (son état d'avant est
+  noté, elle sera donc rétablie), celle qui n'avait pas été atteinte est refusée maintenant. Avant ce correctif,
+  une garde interrompue restait à moitié appliquée (quarantaine comprise) et une réapplication oubliait le refus
+  non confirmé : la permission restait refusée et verrouillée sans que « Rétablir » ni « Tout rétablir » la
+  rendent. (2) Refus noté mais qui n'est plus en place (appli désinstallée puis réinstallée entre deux passages,
+  rôle de Device Owner perdu puis rendu) : il est refait, avec l'état d'avant du moment. Avant, l'appli
+  réinstallée gardait la permission demandable alors que l'écran la disait refusée ou en quarantaine.
+- L'écran de Vigie masque les fenêtres superposées des autres applis (`setHideOverlayWindows`, permission normale
+  `HIDE_OVERLAY_WINDOWS`) : une superposition ne peut pas détourner un appui sur « Libérer » ou « Désactiver ».
+  Les noms d'applis (choisis par elles) sont affichés sur une ligne bornée, sans caractères de contrôle ni de
+  sens d'écriture, toujours avec le nom du paquet.
 - La liste choisie dans l'écran n'entre en vigueur qu'à « Aperçu et (ré)application » (l'écran signale une
   liste modifiée). Les listes sont des réglages « liste de paquets » (`policy.guard.<clé>.allowed`) : chaque
   modification émet `agent.config_changed`.
@@ -1020,8 +1064,20 @@ qu'elle n'est pas désinstallée.
   si son processus était arrêté. Une appli fraîchement installée ne peut pas s'exécuter avant d'être lancée
   (état « arrêté » d'Android), mais une appli qui en installe et lance une autre le peut.
 - **Applis système** et **appli SMS / composeur par défaut** : jamais touchées. Un logiciel malveillant qui se
-  fait choisir comme appli SMS par défaut (boîte de dialogue système) envoie des SMS : Vigie le **signale**
-  (notification, `app.role` côté collecteurs) mais ne le bloque pas.
+  fait choisir comme appli SMS par défaut (boîte de dialogue système, **un seul appui**) envoie des SMS : Vigie le
+  **signale** (notification, `app.role` côté collecteurs) mais ne le bloque pas, et l'ajoute à la liste. C'est la
+  voie classique des chevaux de Troie SMS : **la garde SMS ne ferme que la voie « demande de permission »**. Un
+  clavier ou un écran d'accueil choisi par l'utilisateur est épargné lui aussi tant qu'il le reste (contrat) ; il
+  doit encore obtenir la permission par la boîte de dialogue habituelle.
+- **Service d'accessibilité déjà activé** : il appuie à la place de l'utilisateur, y compris dans Vigie (éteindre
+  une garde, libérer une quarantaine, « Tout rétablir ») et dans l'appli SMS. L'écran de Vigie ne demande pas le
+  code de déverrouillage avant ces actions (piste v1.3).
+- **Groupe de permissions gelé** : refuser `SEND_SMS` ou `CALL_PHONE` à une appli empêche aussi l'utilisateur de
+  lui accorder ou retirer les autres permissions du même groupe (SMS ; Téléphone : état du téléphone, numéros) ;
+  elles gardent leur état du moment. La position en arrière-plan forme un sous-groupe distinct de la position
+  « pendant l'utilisation » dans le contrôleur de permissions d'AOSP (à vérifier sur One UI).
+- **Compter les SMS** : aucune garde ne limite le *nombre* de SMS d'une appli autorisée, et sans `app.ops`
+  (expérimental) rien ne les compte (voir `server/collector/README.md`, « Ce que les détections ne voient pas »).
 - **Autres voies** : SMS préparé par une appli et envoyé par l'appli SMS (il faut appuyer sur Envoyer… ou un
   service d'accessibilité le fait : d'où la garde Accessibilité) ; appel via le composeur ; VoIP, messageries
   par Internet ; exfiltration par le réseau (voir les détections du collecteur) ; superposition, écoute des
@@ -1046,13 +1102,19 @@ Rien de ceci n'a été exécuté sur un appareil. Avant tout : `rescue-revert` �
    Paramètres › Gestion globale › Clavier : un clavier non approuvé apparaît non activable.
 3. **Accessibilité** (liste vide) : services déjà activés gardés ; TalkBack/Voice Assistant Samsung toujours
    activables ; un service tiers non activé ne l'est plus (« désactivé par l'administrateur »).
-4. **Appels** sans option : aperçu (souvent vide) ; appeler depuis le composeur et depuis le carnet d'adresses
+4. **Appels** sans option : aperçu (**rarement vide** : `CALL_PHONE` est demandée par beaucoup d'applis —
+   messageries, banques, cartes, montre, voiture ; chaque appli qui l'avait obtenue est arrêtée au moment du
+   refus) ; appeler depuis le composeur et depuis le carnet d'adresses
    Samsung ; appel d'urgence (ne pas composer réellement : vérifier seulement que le composeur s'ouvre).
 5. **SMS** sans option : aperçu (applis tierces qui demandent `SEND_SMS`) ; envoyer un SMS depuis Samsung
    Messages ; SOS d'urgence intact (appli système) ; changer d'appli SMS par défaut et vérifier la notification
    « Appli par défaut changée » et la liste.
 6. Seulement ensuite les **options** (lecture des SMS : la saisie automatique des codes reçus par SMS dans les
    applis tierces cesse ; journal d'appels).
+   Avec une garde SMS ou Appels active : **changer d'appli SMS par défaut** pour une appli que la garde
+   refusait, vérifier dans les 10 à 20 s la notification, que l'appli envoie et reçoit sans rien redemander,
+   puis revenir à l'appli d'origine. Garde Quarantaine : appairer une montre ou des écouteurs dont l'appli vient
+   d'être installée échoue tant qu'elle n'est pas libérée.
 7. Après chaque étape : « Tout rétablir », vérifier que l'état d'avant revient (Autorisations de l'appli,
    claviers, accessibilité) ; puis `rescue-revert` avec une garde active, et `remove-device-owner` en dernier.
 
@@ -1062,6 +1124,17 @@ Vérifié dans l'environnement de développement (Linux, sans émulateur ni appa
 
 - `./gradlew lint test assembleDebug assembleRelease` réussit (lint : 0 erreur, avertissements de style
   `UseKtx`/versions seulement).
+- Décompte du 16/11/2026 après la **revue indépendante de la v1.2** : 389 tests JVM, 0 échec, 5 ignorés (essais
+  croisés) — `:core` 142, `:collectors` 144 (dont la robustesse de l'analyseur d'`appops` : 3 000 entrées
+  mutilées ou aléatoires, nombres hors limites, 100 000 entrées), `:policy` 92 (dont 25 pour les gardes : s'y
+  ajoutent plantage puis réapplication puis désactivation, garde et quarantaine interrompues terminées au
+  passage suivant, refus effectif mais rapporté en échec, désinstallation puis réinstallation entre deux
+  passages, écran d'accueil épargné sans entrer dans la liste, permissions du rôle accordées au nouveau
+  composeur), `:app` 11 (dont les noms d'applis hostiles). Essai croisé `CrossDetectionsTest` (ignoré sans
+  `VIGIE_CROSS_ENROLL` et `VIGIE_CROSS_URL`) : le vrai code de `app_risk`, `app_role`, `app_ops` (analyseur et
+  différences compris), `apps` et `special_access` raconte une fraude au SMS au vrai collecteur, qui accepte
+  tout et produit `detect.new_app_risky` (×2), `detect.sms_abuse` et `detect.sensor_background` (exécuté le
+  16/11/2026). Décompte précédent :
 - Décompte du 16/11/2026 après les gardes de capacités et les collecteurs de risque (v1.2) : 378 tests JVM,
   0 échec, 4 ignorés (essais croisés) — `:core` 142 (dont listes de paquets et précisions §8 de la revue v1.1),
   `:collectors` 142, `:policy` 85 (dont 18 pour les gardes : application, exceptions, nouvel arrivant, mise à
@@ -1087,7 +1160,8 @@ Vérifié dans l'environnement de développement (Linux, sans émulateur ni appa
 - Manifeste fusionné (`aapt2 dump permissions`) : aucune permission ni service d'écoute des notifications,
   d'accessibilité, de SMS, de journal d'appels ou de superposition ; chaque permission déclarée est utilisée
   par un module (les trois accordables seulement par ADB : `PACKAGE_USAGE_STATS`, `WRITE_SECURE_SETTINGS`,
-  `DUMP`).
+  `DUMP`). Depuis la revue v1.2 : `HIDE_OVERLAY_WINDOWS` (normale), pour masquer les superpositions des
+  autres applis pendant que l'écran de Vigie est affiché.
 - Scripts bash : syntaxe vérifiée (`bash -n`), relus contre le code (paquet, composants, action de l'issue de
   secours, option `-t`).
 

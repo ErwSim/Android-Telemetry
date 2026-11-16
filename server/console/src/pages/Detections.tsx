@@ -7,7 +7,8 @@ import { DetectionCard } from '../components/detections/DetectionCard.tsx';
 import { Verdict } from '../components/detections/Verdict.tsx';
 import { PeriodPicker, usePeriod } from '../components/PeriodPicker.tsx';
 import { Card, Empty, ErrorBox, Loading } from '../components/ui.tsx';
-import { DETECTION_TYPES, detectionFromEvent, detectionLabel, matchesDetection } from '../lib/detections.ts';
+import { DETECTION_TYPES, detectionFromEvent, detectionLabel, matchesDetection, opsBlindSpot } from '../lib/detections.ts';
+import { opsCollectorState } from '../components/apps/OpsView.tsx';
 import { GUARDS } from '../lib/guards.ts';
 import { PERIOD_LABELS, periodRange } from '../lib/period.ts';
 import { useNow } from '../lib/useNow.ts';
@@ -22,7 +23,7 @@ const SEV_OPTIONS = [
 ];
 
 export default function Detections() {
-  const { deviceId } = useDevice();
+  const { deviceId, device } = useDevice();
   const [sp] = useSearchParams();
   const ctl = usePeriod('7d');
   const initialType = sp.get('type') ?? '';
@@ -132,7 +133,12 @@ export default function Detections() {
           ) : (
             <>
               <div className="stack">
-                <Verdict detections={paged.detections} truncated={paged.hasMore} periodLabel={PERIOD_TEXT[ctl.key] ?? PERIOD_LABELS[ctl.key]} />
+                <Verdict
+                  detections={paged.detections}
+                  truncated={paged.hasMore}
+                  periodLabel={PERIOD_TEXT[ctl.key] ?? PERIOD_LABELS[ctl.key]}
+                  blindSpot={opsBlindSpot(opsCollectorState(device))}
+                />
                 {type !== '' && (
                   <p className="hint">
                     Le bandeau et les compteurs ne portent que sur le type « {detectionLabel(type)} ». Choisissez « Tous les types » pour la situation d'ensemble.

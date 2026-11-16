@@ -73,7 +73,8 @@ object AgentNotifications {
 
     /** Notification for a [GuardNotice]: tapping it opens the quarantine screen (or the policy screen). */
     fun guardNotice(context: Context, notice: GuardNotice) {
-        fun label(pkg: String) = Apps.label(context, pkg)
+        // The name is chosen by the app: the package name always goes with it.
+        fun label(pkg: String) = Apps.label(context, pkg).let { if (it == pkg) pkg else "$it ($pkg)" }
         fun perms(list: List<String>) = list.joinToString { CapabilityGuards.short(it) }
         fun guardTitle(key: GuardKey) = context.getString(
             when (key) {
@@ -98,10 +99,14 @@ object AgentNotifications {
             is GuardNotice.RoleHolder -> listOf(
                 notice.pkg,
                 context.getString(R.string.guard_notif_role_title),
-                context.getString(
-                    R.string.guard_notif_role_text, label(notice.pkg), notice.role, guardTitle(notice.key),
-                    if (notice.lifted.isEmpty()) "" else context.getString(R.string.guard_notif_role_lifted, perms(notice.lifted)),
-                ),
+                if (notice.joined) {
+                    context.getString(
+                        R.string.guard_notif_role_text, label(notice.pkg), notice.role, guardTitle(notice.key),
+                        if (notice.lifted.isEmpty()) "" else context.getString(R.string.guard_notif_role_lifted, perms(notice.lifted)),
+                    )
+                } else {
+                    context.getString(R.string.guard_notif_role_spared, label(notice.pkg), notice.role, guardTitle(notice.key), perms(notice.lifted))
+                },
                 Screen.Policy.name,
             )
             is GuardNotice.Released -> listOf(

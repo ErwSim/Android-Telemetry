@@ -159,6 +159,9 @@ data class JournalEntry(
 class PolicyStore(private val prefs: SharedPreferences) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false; explicitNulls = false }
 
+    @Volatile
+    private var cached: Pair<String, AppliedState>? = null
+
     /**
      * The applied state. A text that cannot be read as a whole is read record by record (a record
      * written by another version with a kind or a method this one does not know must not make
@@ -168,8 +171,12 @@ class PolicyStore(private val prefs: SharedPreferences) {
      */
     fun state(): AppliedState {
         val text = prefs.getString(K_STATE, null) ?: return AppliedState()
+        // The guards look records up package by package (several hundred lookups per pass): the text is
+        // decoded once, not at every lookup. The state is immutable; the text is the key, so a write by
+        // anyone (another instance on the same preferences included) is always seen.
+        cached?.let { (key, state) -> if (key == text) return state }
         try {
-            return json.decodeFromString(AppliedState.serializer(), text)
+            return json.decodeFromString(AppliedState.serializer(), text).also { cached = text to it }
         } catch (_: Exception) {
             // Fall through: salvage what can be read.
         }

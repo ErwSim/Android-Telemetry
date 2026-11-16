@@ -38,6 +38,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -276,7 +277,35 @@ object PolicyModule {
         // Default dialer changed (sent by Telecom; exported: a forged one only triggers a harmless, coalesced pass).
         context.registerReceiver(receiver, IntentFilter(TelecomManager.ACTION_DEFAULT_DIALER_CHANGED), Context.RECEIVER_EXPORTED)
         requestGuardReconcile()
+        // No broadcast tells a third-party app that the default SMS app, the keyboard or the home screen
+        // changed (`DEFAULT_SMS_PACKAGE_CHANGED` only goes to the old and new SMS apps). Until the next
+        // pass, a new default SMS app that a guard had denied can neither send nor (with the option)
+        // receive: Android's role grant skips a permission denied by policy. So the role holders are read
+        // again every few seconds while a per-package guard is on; a change triggers a pass. `delay` does
+        // not wake the device: this only runs while it is awake, which a change of default app requires.
+        scope.launch(Dispatchers.IO) {
+            val gateway = AndroidDevicePolicyGateway(context)
+            var last: io.github.erwsim.vigie.policy.engine.DeviceRoles? = null
+            while (true) {
+                delay(ROLE_POLL_MS)
+                try {
+                    val guards = engine(context).guards
+                    if (GuardKey.entries.none { it.perPackage && guards.isActive(it) }) {
+                        last = null
+                        continue
+                    }
+                    val now = gateway.roles()
+                    if (last != null && now != last) requestGuardReconcile()
+                    last = now
+                } catch (e: Exception) {
+                    Log.w(TAG, "role watch failed", e)
+                }
+            }
+        }
     }
+
+    /** Period of the role watch above (four binder reads; nothing when no per-package guard is on). */
+    private const val ROLE_POLL_MS = 10_000L
 
     /** Called once from `Application.onCreate`, after `Agent.init`. */
     fun install(agent: Agent) {

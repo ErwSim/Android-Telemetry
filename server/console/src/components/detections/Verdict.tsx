@@ -16,12 +16,15 @@ export function Verdict({
   truncated = false,
   periodLabel,
   linkToDetections = false,
+  blindSpot = null,
 }: {
   detections: readonly Detection[];
   truncated?: boolean;
   /** « les 7 derniers jours » */
   periodLabel: string;
   linkToDetections?: boolean;
+  /** Ce qui n'est pas surveillé sur ce téléphone (voir `opsBlindSpot`) : toujours affiché, verdict vert compris. */
+  blindSpot?: string | null;
 }) {
   const c = countBySeverity(detections);
   const h = headline(c, truncated);
@@ -50,6 +53,11 @@ export function Verdict({
             </>
           )}
         </p>
+        {blindSpot && (
+          <p className="verdict-blind" data-testid="verdict-blind">
+            {blindSpot}
+          </p>
+        )}
       </div>
       {c.total > 0 && (
         <div className="sev-counts" aria-label="Détections par gravité">

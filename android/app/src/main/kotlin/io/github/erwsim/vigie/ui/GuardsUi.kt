@@ -263,7 +263,7 @@ fun QuarantineScreen(agent: Agent, resumeTick: Int, modifier: Modifier) {
         AlertDialog(
             onDismissRequest = { confirm = null },
             title = { Text(stringResource(R.string.quarantine_release)) },
-            text = { Text(stringResource(R.string.quarantine_release_confirm, Apps.label(context, pkg), denied)) },
+            text = { Text(stringResource(R.string.quarantine_release_confirm, "${Apps.label(context, pkg)} ($pkg)", denied)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirm = null
