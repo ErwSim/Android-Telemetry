@@ -109,6 +109,18 @@ func TestLineUsageAndWifiScan(t *testing.T) {
 	if d.Type != "net.usage.app" || d.Data["from"] != "2026-11-15T20:00:00Z" || d.Data["to"] != "2026-11-15T21:00:00Z" || d.Data["rx_bytes"] != float64(10) {
 		t.Fatalf("usage derived %+v", d)
 	}
+	// app.ops (contract §11.2) is exploded like net.usage.
+	lines = Lines(stored("app.ops", 0, `{"from":"2026-11-15T20:00:00Z","to":"2026-11-15T21:00:00Z","apps":[{"package":"p","op":"send_sms","count":3,"background_count":3}]}`), "")
+	if d := parse(t, lines[1]).Vigie; len(lines) != 2 || d.Type != "app.ops.app" || d.Data["op"] != "send_sms" || d.Data["from"] != "2026-11-15T20:00:00Z" ||
+		parse(t, lines[0]).Vigie.Data["apps_count"] != float64(1) {
+		t.Fatalf("app.ops derived %d %+v", len(lines), d)
+	}
+	// A detection (event produced by the collector): evidence is a nested object, kept as is.
+	l := parse(t, Lines(store.StoredEvent{ID: "01JCQ8Z3K4M5N6P7Q8R9S0T1V2", Type: "detect.fanout", Source: "server",
+		Data: []byte(`{"package":"p","window_from":"2026-11-15T20:00:00.000Z","window_to":"2026-11-15T21:00:00.000Z","summary":"s","evidence":{"addresses":412,"sample":["192.0.2.1"]}}`)}, "")[0]).Vigie
+	if ev, _ := l.Data["evidence"].(map[string]any); ev["addresses"] != float64(412) || len(ev["sample"].([]any)) != 1 {
+		t.Fatalf("detection line %+v", l)
+	}
 	lines = Lines(stored("net.wifi_scan", 0, `{"aps":[{"ssid":"a"},{"ssid":"b"}]}`), "")
 	if len(lines) != 3 || parse(t, lines[2]).Vigie.Type != "net.wifi_scan.ap" || parse(t, lines[0]).Vigie.Data["aps_count"] != float64(2) {
 		t.Fatal("wifi scan")

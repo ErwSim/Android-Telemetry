@@ -1,0 +1,30 @@
+# Clients de messagerie connus, exclus de detect.mail_ports : ils se connectent légitimement aux ports
+# d'envoi de courriel (25, 465, 587). Une application absente de cette liste qui s'y connecte est signalée.
+# Compléter par VIGIE_DETECT_MAIL_CLIENTS (paquets séparés par des virgules) pour un client local.
+# Une ligne par paquet Android, « # » commence un commentaire.
+
+com.android.email
+com.samsung.android.email.provider
+com.google.android.gm
+com.google.android.gm.lite
+com.microsoft.office.outlook
+ch.protonmail.android
+com.fsck.k9
+net.thunderbird.android
+net.thunderbird.android.beta
+eu.faircode.email
+org.kman.AquaMail
+com.yahoo.mobile.client.android.mail
+com.readdle.spark
+me.bluemail.mail
+com.trtf.blue
+com.easilydo.mail
+com.ninefolders.hd3
+com.boxer.email
+com.zoho.mail
+com.my.mail
+ru.mail.mailapp
+de.gmx.mobile.android.mail
+de.web.mobile.android.mail
+com.mail.mobile.android.mail
+com.orange.mail.fr

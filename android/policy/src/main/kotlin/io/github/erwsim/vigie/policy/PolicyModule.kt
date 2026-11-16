@@ -1,7 +1,11 @@
 package io.github.erwsim.vigie.policy
 
 import android.annotation.SuppressLint
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.telecom.TelecomManager
 import android.util.Log
 import io.github.erwsim.vigie.core.Agent
 import io.github.erwsim.vigie.core.collector.Collector
@@ -12,6 +16,9 @@ import io.github.erwsim.vigie.policy.dns.DotProbe
 import io.github.erwsim.vigie.policy.dns.PrivateDnsGuard
 import io.github.erwsim.vigie.policy.engine.AndroidDevicePolicyGateway
 import io.github.erwsim.vigie.policy.engine.DevicePolicyGateway
+import io.github.erwsim.vigie.policy.engine.GuardKey
+import io.github.erwsim.vigie.policy.engine.GuardNotice
+import io.github.erwsim.vigie.policy.engine.GuardPermissions
 import io.github.erwsim.vigie.policy.engine.PolicyCatalog
 import io.github.erwsim.vigie.policy.engine.PolicyEngine
 import io.github.erwsim.vigie.policy.engine.PolicyStore
@@ -30,6 +37,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 
 /**
@@ -53,6 +61,40 @@ object PolicyModule {
     val DNS_FALLBACK = SettingKey.BoolKey("policy.dns_fallback", true)
     val DNS_FALLBACK_MIN = SettingKey.IntKey("policy.dns_fallback_min", 15, 5, 240)
     val DNS_AUTO_RESTORE = SettingKey.BoolKey("policy.dns_auto_restore", true)
+
+    /** Exception lists of the guards (contract §11.1): edited in the "Gardes" section, applied after a preview. */
+    val GUARD_LISTS: Map<GuardKey, SettingKey.PackageListKey> = listOf(GuardKey.SMS, GuardKey.CALLS, GuardKey.ACCESSIBILITY, GuardKey.INPUT_METHODS)
+        .associateWith { SettingKey.PackageListKey("policy.guard.${it.wire}.allowed") }
+
+    /** "Refuser aussi…" options of the SMS and calls guards (pending choice; the applied one is in the guard record). */
+    val GUARD_EXTENDED: Map<GuardKey, SettingKey.BoolKey> = listOf(GuardKey.SMS, GuardKey.CALLS)
+        .associateWith { SettingKey.BoolKey("policy.guard.${it.wire}.extended", false) }
+
+    /** How each list is edited (picker of installed apps, narrowed to the services for accessibility/keyboards). */
+    val GUARD_LIST_SPECS: Map<GuardKey, SettingSpec.PackageListSpec> = mapOf(
+        GuardKey.SMS to SettingSpec.PackageListSpec(GUARD_LISTS.getValue(GuardKey.SMS), R.string.guard_list_sms, R.string.guard_list_sms_summary, candidates = { requesting(it, GuardPermissions.of(GuardKey.SMS, true)) }),
+        GuardKey.CALLS to SettingSpec.PackageListSpec(GUARD_LISTS.getValue(GuardKey.CALLS), R.string.guard_list_calls, R.string.guard_list_calls_summary, candidates = { requesting(it, GuardPermissions.of(GuardKey.CALLS, true)) }),
+        GuardKey.ACCESSIBILITY to SettingSpec.PackageListSpec(GUARD_LISTS.getValue(GuardKey.ACCESSIBILITY), R.string.guard_list_accessibility, R.string.guard_list_accessibility_summary, candidates = { services(it, accessibility = true) }),
+        GuardKey.INPUT_METHODS to SettingSpec.PackageListSpec(GUARD_LISTS.getValue(GuardKey.INPUT_METHODS), R.string.guard_list_input_methods, R.string.guard_list_input_methods_summary, candidates = { services(it, accessibility = false) }),
+    )
+
+    private fun requesting(context: Context, permissions: List<String>): Collection<String> = try {
+        AndroidDevicePolicyGateway(context.applicationContext).installedApps()
+            .filter { !it.system && it.requested.any(permissions::contains) }.map { it.pkg }
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    private fun services(context: Context, accessibility: Boolean): Collection<String> = try {
+        val gw = AndroidDevicePolicyGateway(context.applicationContext)
+        (if (accessibility) gw.accessibilityServices() else gw.inputMethods()).filter { !it.system }.map { it.pkg }
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    /** Set by the app: shows what a guard did on its own (quarantine, role change) as a notification. */
+    @Volatile
+    var guardNoticeListener: ((GuardNotice) -> Unit)? = null
 
     val settings: List<SettingSpec> = listOf(
         SettingSpec.BoolSpec(FORCE_STOP_PROTECTION, R.string.setting_force_stop_protection, R.string.setting_force_stop_protection_summary),
@@ -115,6 +157,13 @@ object PolicyModule {
                     agent.sink.flushBlocking(2_000)
                 }
             },
+            onGuardNotice = { notice -> guardNoticeListener?.invoke(notice) },
+            // "La liste suit": the new default SMS app / dialer joins the exception list the owner edits.
+            onGuardListFollow = { key, pkg ->
+                val agent = Agent.getOrNull()
+                val listKey = GUARD_LISTS[key]
+                if (agent != null && listKey != null) agent.settings.set(listKey, agent.settings[listKey] + pkg)
+            },
             afterClearOwner = { cleared ->
                 Agent.getOrNull()?.let { agent ->
                     if (cleared) {
@@ -138,6 +187,7 @@ object PolicyModule {
             gateway = AndroidDevicePolicyGateway(agent.context),
             scope = scope,
             onApplied = { guard(agent).watch() },
+            settings = agent.settings,
         )
             .also { controllerInstance = it }
     }
@@ -190,9 +240,52 @@ object PolicyModule {
         false
     }
 
+    private val reconcileRequests = Channel<Unit>(Channel.CONFLATED)
+
+    /**
+     * Asks for a reconciliation of the guards (new install, update, role change…). Requests are coalesced:
+     * a burst of package broadcasts gives one pass. Nothing is done when no per-package guard is on.
+     */
+    fun requestGuardReconcile() {
+        reconcileRequests.trySend(Unit)
+    }
+
+    private fun startGuardWatch(agent: Agent) {
+        val context = agent.context
+        scope.launch(Dispatchers.IO) {
+            for (request in reconcileRequests) {
+                try {
+                    engine(context).guards.reconcile()
+                } catch (e: Exception) {
+                    Log.w(TAG, "guard reconciliation failed", e)
+                }
+            }
+        }
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context, intent: Intent) = requestGuardReconcile()
+        }
+        // Package broadcasts come from the system (uid 1000): a non-exported receiver gets them. They are
+        // delivered while the process lives (foreground service); the maintenance pass catches up otherwise.
+        val packages = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addDataScheme("package")
+        }
+        context.registerReceiver(receiver, packages, Context.RECEIVER_NOT_EXPORTED)
+        // Default dialer changed (sent by Telecom; exported: a forged one only triggers a harmless, coalesced pass).
+        context.registerReceiver(receiver, IntentFilter(TelecomManager.ACTION_DEFAULT_DIALER_CHANGED), Context.RECEIVER_EXPORTED)
+        requestGuardReconcile()
+    }
+
     /** Called once from `Application.onCreate`, after `Agent.init`. */
     fun install(agent: Agent) {
         registerCommandExecutors(agent)
+        try {
+            startGuardWatch(agent)
+        } catch (e: Exception) {
+            Log.w(TAG, "guard watch not started", e)
+        }
         scope.launch {
             agent.settings.changes.collect { key ->
                 when (key) {
@@ -239,6 +332,8 @@ object PolicyModule {
             agent.host.reconcile()
         }
         applyForceStopProtection(agent)
+        // Catch-up for installs, updates and role changes that happened while the process was not running.
+        requestGuardReconcile()
         scope.launch(Dispatchers.IO) {
             if (engine(agent.context).dnsRecord() != null) {
                 guard(agent).watch()

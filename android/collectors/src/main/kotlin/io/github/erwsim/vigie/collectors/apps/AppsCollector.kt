@@ -203,11 +203,7 @@ class AppsCollector : Collector {
         false
     }
 
-    private fun installerOf(pm: PackageManager, pkg: String): String? = try {
-        pm.getInstallSourceInfo(pkg).installingPackageName
-    } catch (_: Exception) {
-        null
-    }
+    private fun installerOf(pm: PackageManager, pkg: String): String? = PackageSupport.installerOf(pm, pkg)
 
     private fun signer(info: PackageInfo): String? {
         val si = info.signingInfo ?: return null

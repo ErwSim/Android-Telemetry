@@ -194,7 +194,7 @@ const levelsJSON = `{
   "version": 1,
   "lists": {
     "base": {"name": "Base", "url": "https://lists.example/base.txt"},
-    "samsung": {"name": "Samsung", "url": "https://lists.example/samsung.txt"},
+    "samsung": {"name": "Samsung", "url": "https://lists.example/samsung.txt", "category": "tracking"},
     "google": {"name": "Google", "url": "/opt/adguardhome/lists/google.txt"},
     "fcm": {"name": "Exceptions", "url": "https://lists.example/allow.txt", "allowlist": true}
   },
@@ -241,6 +241,21 @@ func TestLevels(t *testing.T) {
 	if _, err := l.Plan("max", after); err == nil {
 		t.Fatal("unknown level planned")
 	}
+	// Threat lists (detect.threat_domain): only the lists declared "category": "threat".
+	if got := l.ThreatURLs(); len(got) != 0 {
+		t.Fatalf("threat lists without category: %v", got)
+	}
+	withThreat, err := ParseLevels([]byte(strings.Replace(levelsJSON, `"url": "https://lists.example/base.txt"`,
+		`"url": "https://lists.example/base.txt", "category": "threat"`, 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := withThreat.ThreatURLs(); len(got) != 1 || !got["https://lists.example/base.txt"] {
+		t.Fatalf("threat lists %v", got)
+	}
+	if got := (*Levels)(nil).ThreatURLs(); len(got) != 0 {
+		t.Fatal("nil levels")
+	}
 	bad := []string{
 		strings.Replace(levelsJSON, `"version": 1`, `"version": 2`, 1),
 		strings.Replace(levelsJSON, `"strict"`, `"extreme"`, 1),
@@ -249,6 +264,8 @@ func TestLevels(t *testing.T) {
 		strings.Replace(levelsJSON, `/opt/adguardhome/lists/google.txt`, `lists/google.txt`, 1),
 		strings.Replace(levelsJSON, `"version": 1,`, `"version": 1, "extra": true,`, 1),
 		strings.Replace(levelsJSON, `"name": "Base"`, `"name": ""`, 1),
+		strings.Replace(levelsJSON, `"category": "tracking"`, `"category": "threats"`, 1),
+		strings.Replace(levelsJSON, `"allowlist": true`, `"allowlist": true, "category": "threat"`, 1),
 		strings.Replace(levelsJSON, `{"key": "permissif", "name": "Permissif", "description": "Publicité", "lists": ["base"]},`, ``, 1),
 	}
 	for i, b := range bad {

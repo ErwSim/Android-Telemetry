@@ -8,6 +8,7 @@ import { ErrorBox, Loading } from './ui.tsx';
 
 const NAV = [
   { to: '/', label: "Vue d'ensemble", end: true, icon: 'M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z' },
+  { to: '/detections', label: 'Détections', icon: 'M15.500 14h-.8l-.3-.3A6.500 6.500 0 1 0 14 15.500l.3.3v.8l5 5 1.500-1.500zm-6 0a4.500 4.500 0 1 1 0-9 4.500 4.500 0 0 1 0 9z' },
   { to: '/carte', label: 'Carte', icon: 'M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.500z' },
   { to: '/evenements', label: 'Événements', icon: 'M4 5h16v2H4zm0 6h16v2H4zm0 6h10v2H4z' },
   { to: '/reseau', label: 'Réseau', icon: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2c1 1.500 1.700 3.300 1.900 5h-3.800C10.300 8.300 11 6.500 12 5zM5.300 11h3c.1 1 .3 2 .6 3H6.200a7 7 0 0 1-.9-3zm3.600 5c.4 1.200.9 2.200 1.500 3a7 7 0 0 1-3.300-3zm6.200 0h1.800a7 7 0 0 1-3.300 3c.6-.8 1.100-1.800 1.500-3z' },

@@ -3,7 +3,13 @@ package io.github.erwsim.vigie.policy.ui
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import androidx.annotation.StringRes
+import io.github.erwsim.vigie.core.settings.AgentSettings
+import io.github.erwsim.vigie.policy.PolicyModule
 import io.github.erwsim.vigie.policy.R
+import io.github.erwsim.vigie.policy.engine.DeviceRoles
+import io.github.erwsim.vigie.policy.engine.GuardKey
+import io.github.erwsim.vigie.policy.engine.GuardPreview
+import io.github.erwsim.vigie.policy.engine.GuardStatus
 import io.github.erwsim.vigie.policy.engine.AndroidDevicePolicyGateway
 import io.github.erwsim.vigie.policy.engine.AppliedRecord
 import io.github.erwsim.vigie.policy.engine.CatalogItem
@@ -46,7 +52,17 @@ data class PolicyUiState(
     val vpnApps: List<String> = emptyList(),
     val vpnPackage: String? = null,
     val vpnLockdown: Boolean = false,
+    // ---- Capability guards (contract §11.1).
+    val guards: Map<GuardKey, GuardStatus> = emptyMap(),
+    /** Preview of the guard change the owner asked for, applied as is by [PolicyController.applyGuard]. */
+    val guardPreview: GuardPreview? = null,
+    val guardRequest: GuardRequest? = null,
+    val quarantined: List<AppliedRecord> = emptyList(),
+    val roles: DeviceRoles = DeviceRoles(),
 )
+
+/** A guard change exactly as previewed (key, on/off, option, exception list). */
+data class GuardRequest(val key: GuardKey, val enable: Boolean, val extended: Boolean, val allowed: Set<String>)
 
 /**
  * State holder of the "Politique" screen (no Compose here). Every engine operation runs on
@@ -60,6 +76,7 @@ class PolicyController(
     private val scope: CoroutineScope,
     private val dnsHost: () -> String? = { null },
     private val onApplied: () -> Unit = {},
+    private val settings: AgentSettings? = null,
 ) {
     val catalog: PolicyCatalog get() = engine.catalog
 
@@ -67,7 +84,14 @@ class PolicyController(
     val state: StateFlow<PolicyUiState> = _state.asStateFlow()
 
     fun refresh() {
-        scope.launch(Dispatchers.IO) { reload() }
+        scope.launch(Dispatchers.IO) {
+            // Opening the screen also catches up with installs and role changes (best effort).
+            try {
+                engine.guards.reconcile()
+            } catch (_: Exception) {
+            }
+            reload()
+        }
     }
 
     private fun reload(message: String? = _state.value.message) {
@@ -98,6 +122,9 @@ class PolicyController(
                 vpnApps = gateway.vpnApps(),
                 vpnPackage = read { gateway.alwaysOnVpnPackage() },
                 vpnLockdown = read { gateway.isAlwaysOnVpnLockdown() } ?: false,
+                guards = engine.guards.status(),
+                quarantined = engine.guards.quarantined(),
+                roles = read { gateway.roles() } ?: DeviceRoles(),
                 message = message,
             )
         }
@@ -146,6 +173,64 @@ class PolicyController(
     fun setVpn(pkg: String?, lockdown: Boolean) = run(R.string.policy_msg_applied) { engine.setAlwaysOnVpn(pkg, lockdown) }
 
     fun clearMessage() = _state.update { it.copy(message = null) }
+
+    // ---------------------------------------------------------------- guards
+
+    /** The exception list the owner is editing (pre-filled once with the default SMS app / dialer). */
+    fun guardList(key: GuardKey): Set<String> {
+        val listKey = PolicyModule.GUARD_LISTS[key] ?: return emptySet()
+        val s = settings ?: return emptySet()
+        return s[listKey]
+    }
+
+    fun guardExtended(key: GuardKey): Boolean = PolicyModule.GUARD_EXTENDED[key]?.let { k -> settings?.get(k) } ?: false
+
+    fun setGuardExtended(key: GuardKey, value: Boolean) {
+        PolicyModule.GUARD_EXTENDED[key]?.let { settings?.set(it, value) }
+        _state.update { it.copy(guardPreview = null, guardRequest = null) }
+    }
+
+    /** "Ce qui va changer" for switching [key] on (or re-applying it) or off. */
+    fun previewGuard(key: GuardKey, enable: Boolean) = run(null) {
+        prefill(key)
+        val request = GuardRequest(key, enable, guardExtended(key), guardList(key))
+        val preview = engine.guards.preview(key, enable, request.extended, request.allowed)
+        _state.update { it.copy(guardPreview = preview, guardRequest = request) }
+        null
+    }
+
+    /** The SMS list starts with the default SMS app, the calls list with the default dialer (contract §11.1). */
+    private fun prefill(key: GuardKey) {
+        val s = settings ?: return
+        val listKey = PolicyModule.GUARD_LISTS[key] ?: return
+        if (s.isSet(listKey)) return
+        val roles = try {
+            gateway.roles()
+        } catch (_: Exception) {
+            return
+        }
+        val initial = when (key) {
+            GuardKey.SMS -> setOfNotNull(roles.sms)
+            GuardKey.CALLS -> setOfNotNull(roles.dialer)
+            else -> emptySet()
+        }
+        s.set(listKey, initial)
+    }
+
+    fun dismissGuardPreview() = _state.update { it.copy(guardPreview = null, guardRequest = null) }
+
+    /** Applies exactly what was previewed. */
+    fun applyGuard() {
+        val request = _state.value.guardRequest ?: return
+        _state.update { it.copy(guardPreview = null, guardRequest = null) }
+        run(R.string.guard_msg_applied) { engine.guards.set(request.key, request.enable, request.extended, request.allowed) }
+    }
+
+    /** "Libérer" a quarantined application. */
+    fun release(pkg: String) = run(R.string.guard_msg_released) { engine.guards.release(pkg) }
+
+    /** Display name of a package (the package name if unknown). */
+    fun label(pkg: String): String = gateway.label(pkg)
 
     private fun run(@StringRes successMessage: Int?, op: () -> EngineReport?) {
         if (_state.value.busy) return

@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api/endpoints.ts';
 import { useApi } from '../api/useApi.ts';
 import { PeriodPicker, usePeriod } from '../components/PeriodPicker.tsx';
 import { Async, Card, Empty, LevelBadge, Stat } from '../components/ui.tsx';
 import { fmtDateTime, fmtNumber } from '../lib/format.ts';
 import { periodRange } from '../lib/period.ts';
+import { detectionLabel, isDetectionType } from '../lib/detections.ts';
 import { useDevice } from '../state/device.tsx';
 
 const LEVELS = [
@@ -29,6 +31,11 @@ export default function Alerts() {
       <div className="page-head">
         <h1>Alertes Wazuh</h1>
       </div>
+      <p className="hint net-intro">
+        Cette page montre ce que <strong>Wazuh</strong> a levé comme alertes (règles et niveaux de Wazuh, tous sujets confondus). Les comportements anormaux des applications calculés
+        par Vigie (SMS en masse, domaines de menaces, micro en arrière-plan…) sont <strong>expliqués et classés sur la page <Link to="/detections">Détections</Link></strong> : Wazuh les
+        reçoit aussi, d'où leur présence ici quand il est configuré.
+      </p>
       <div className="toolbar">
         <PeriodPicker ctl={ctl} />
         <label className="filter">
@@ -88,7 +95,15 @@ export default function Alerts() {
                               <LevelBadge level={a.level} />
                             </td>
                             <td className="mono">{a.rule_id ?? '—'}</td>
-                            <td className="break">{a.description ?? '—'}</td>
+                            <td className="break">
+                              {a.description ?? '—'}
+                              {a.type && isDetectionType(a.type) && (
+                                <>
+                                  {' '}
+                                  <Link to={`/detections?type=${encodeURIComponent(a.type)}`}>Voir la détection « {detectionLabel(a.type)} »</Link>
+                                </>
+                              )}
+                            </td>
                             <td className="hide-sm mono">{a.type ?? '—'}</td>
                             <td className="hide-sm">{nameOf(a.device_id)}</td>
                           </tr>

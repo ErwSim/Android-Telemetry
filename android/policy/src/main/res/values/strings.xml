@@ -42,4 +42,15 @@
 
     <string name="collector_posture_title">Posture de sécurité</string>
     <string name="collector_posture_desc">État de sécurité : correctif, chiffrement, verrouillage, débogage ADB (USB et sans fil), options développeur, sources inconnues, DNS privé, VPN permanent, Device Owner, démarrage vérifié, autorités de certification ajoutées, signal USB (Play Protect : aucune lecture fiable, omis). Au démarrage, une fois par jour et à chaque changement (un événement par champ modifié). Signale aussi l\'ajout ou le retrait d\'une autorité de certification et les échecs de déverrouillage. Un champ illisible est omis.</string>
+    <!-- Capability guards (contract §11.1): exception lists. -->
+    <string name="guard_list_sms">Applications autorisées à envoyer des SMS</string>
+    <string name="guard_list_sms_summary">En plus de l\'appli SMS par défaut et des applications du système, toujours épargnées. Pré-remplie avec l\'appli SMS par défaut.</string>
+    <string name="guard_list_calls">Applications autorisées à passer des appels</string>
+    <string name="guard_list_calls_summary">En plus du composeur par défaut et des applications du système, toujours épargnés. Pré-remplie avec le composeur par défaut.</string>
+    <string name="guard_list_accessibility">Services d\'accessibilité approuvés</string>
+    <string name="guard_list_accessibility_summary">Ceux du système restent toujours permis ; un service déjà activé est gardé (Android l\'exige).</string>
+    <string name="guard_list_input_methods">Claviers approuvés</string>
+    <string name="guard_list_input_methods_summary">Ceux du système (clavier Samsung) restent toujours permis ; un clavier déjà activé est gardé (Android l\'exige).</string>
+    <string name="guard_msg_applied">Garde appliquée : %1$d action(s) réussie(s).</string>
+    <string name="guard_msg_released">Application libérée.</string>
 </resources>

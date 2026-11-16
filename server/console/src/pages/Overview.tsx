@@ -6,6 +6,7 @@ import { usePagedEvents } from '../api/usePagedEvents.ts';
 import type { Device } from '../api/types.ts';
 import { Async, Badge, Card, Empty, LevelBadge, Loading, Stat, StatusPill } from '../components/ui.tsx';
 import { EventList } from '../components/EventList.tsx';
+import { DetectionsOverview } from '../components/detections/OverviewCard.tsx';
 import { channelState } from '../lib/commands.ts';
 import { blockedPct, hasStatusData, totalsOf } from '../lib/tracking.ts';
 import { attentionPoints, evaluatePosture, overallStatus } from '../lib/posture.ts';
@@ -44,6 +45,8 @@ export default function Overview() {
           {device.name} · <span className="mono">{device.device_id}</span>
         </span>
       </div>
+
+      <DetectionsOverview deviceId={device.device_id} now={now} />
 
       <div className="grid">
         <Card title="État de l'appareil" className="span-7">

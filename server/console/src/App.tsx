@@ -13,6 +13,8 @@ const Events = lazy(() => import('./pages/Events.tsx'));
 const EventDetail = lazy(() => import('./pages/EventDetail.tsx'));
 const Network = lazy(() => import('./pages/Network.tsx'));
 const Apps = lazy(() => import('./pages/Apps.tsx'));
+const AppSheet = lazy(() => import('./pages/AppSheet.tsx'));
+const Detections = lazy(() => import('./pages/Detections.tsx'));
 const Security = lazy(() => import('./pages/Security.tsx'));
 const Alerts = lazy(() => import('./pages/Alerts.tsx'));
 const Commands = lazy(() => import('./pages/Commands.tsx'));
@@ -51,12 +53,14 @@ export default function App() {
         <Route path="/connexion" element={<Login />} />
         <Route element={<Protected />}>
           <Route index element={<Overview />} />
+          <Route path="detections" element={<Detections />} />
           <Route path="carte" element={<MapPage />} />
           <Route path="evenements" element={<Events />} />
           <Route path="evenements/:id" element={<EventDetail />} />
           <Route path="reseau" element={<Network />} />
           <Route path="pistage" element={<Tracking />} />
           <Route path="applications" element={<Apps />} />
+          <Route path="applications/fiche" element={<AppSheet />} />
           <Route path="securite" element={<Security />} />
           <Route path="alertes" element={<Alerts />} />
           <Route path="commandes" element={<Commands />} />

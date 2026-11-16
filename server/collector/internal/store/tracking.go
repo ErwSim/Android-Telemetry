@@ -14,7 +14,10 @@ type TrackingRow struct {
 	Domain  string
 	Queries int64
 	Blocked int64
-	Reason  string // latest readable reason ("" when none)
+	// Threat counts the queries blocked due to a list of category "threat" (or AdGuard Home's safe
+	// browsing): they feed detect.threat_domain.
+	Threat int64
+	Reason string // latest readable reason ("" when none)
 }
 
 // ApplyTrackingPage adds a page of the AdGuard query log to the hourly aggregates and stores the reading
@@ -27,15 +30,25 @@ func (s *Store) ApplyTrackingPage(ctx context.Context, rows []TrackingRow, state
 	}
 	defer tx.Rollback()
 	if len(rows) > 0 {
-		st, err := tx.PrepareContext(ctx, `INSERT INTO tracking_counts(hour_ms, client, domain, queries, blocked, reason) VALUES(?,?,?,?,?,?)
+		st, err := tx.PrepareContext(ctx, `INSERT INTO tracking_counts(hour_ms, client, domain, queries, blocked, threat, reason) VALUES(?,?,?,?,?,?,?)
 			ON CONFLICT(hour_ms, client, domain) DO UPDATE SET queries = queries + excluded.queries, blocked = blocked + excluded.blocked,
-			reason = CASE WHEN excluded.reason <> '' THEN excluded.reason ELSE reason END`)
+			threat = threat + excluded.threat, reason = CASE WHEN excluded.reason <> '' THEN excluded.reason ELSE reason END`)
 		if err != nil {
 			return err
 		}
 		defer st.Close()
+		threatHours := map[int64]bool{}
 		for _, r := range rows {
-			if _, err := st.ExecContext(ctx, r.HourMS, r.Client, r.Domain, r.Queries, r.Blocked, r.Reason); err != nil {
+			if _, err := st.ExecContext(ctx, r.HourMS, r.Client, r.Domain, r.Queries, r.Blocked, r.Threat, r.Reason); err != nil {
+				return err
+			}
+			if r.Threat > 0 {
+				threatHours[r.HourMS] = true
+			}
+		}
+		// A block due to a threat list is crossed with the net.dns of each device by the detections.
+		for h := range threatHours {
+			if err := markDirtyAll(ctx, tx, h); err != nil {
 				return err
 			}
 		}

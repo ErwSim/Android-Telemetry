@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="fr">
+    <!-- app_risk : libellé court et explication de chaque code de raison de app.risk (contrat §11.2). -->
+    <string name="risk_reason_sideloaded">Installée hors boutique</string>
+    <string name="risk_reason_sideloaded_desc">L\'app a été installée à partir d\'un fichier (gestionnaire de fichiers, installateur de paquets, ADB) et non depuis une boutique (Play, Galaxy Store, F-Droid). Les logiciels malveillants passent presque tous par là, mais vous avez pu installer vous-même une app légitime.</string>
+    <string name="risk_reason_unknown_installer">Installée par une autre app</string>
+    <string name="risk_reason_unknown_installer_desc">L\'app a été installée par une app qui n\'est pas une boutique connue (navigateur, messagerie, autre app). C\'est la voie d\'un logiciel qui en dépose un autre ; certains installateurs alternatifs sont légitimes.</string>
+    <string name="risk_reason_no_launcher_icon">Aucune icône dans la liste des apps</string>
+    <string name="risk_reason_no_launcher_icon_desc">L\'app n\'a aucune icône de lancement active : elle n\'apparaît pas dans le tiroir d\'applications. Typique des logiciels espions ; les composants techniques en ont aussi.</string>
+    <string name="risk_reason_sms_send">Peut envoyer des SMS</string>
+    <string name="risk_reason_sms_send_desc">L\'app a l\'autorisation d\'envoyer des SMS (éventuellement surtaxés ou de hameçonnage) sans que votre application de messagerie n\'en garde trace.</string>
+    <string name="risk_reason_sms_read">Peut lire ou intercepter les SMS</string>
+    <string name="risk_reason_sms_read_desc">L\'app peut lire ou recevoir les SMS, donc voler les codes de validation à usage unique.</string>
+    <string name="risk_reason_calls">Accès aux appels</string>
+    <string name="risk_reason_calls_desc">L\'app peut passer des appels, répondre ou lire le journal d\'appels.</string>
+    <string name="risk_reason_accessibility_service">Service d\'accessibilité</string>
+    <string name="risk_reason_accessibility_service_desc">L\'app déclare un service d\'accessibilité : une fois activé, il peut lire l\'écran, cliquer à votre place et saisir du texte. C\'est le pouvoir le plus abusé par les chevaux de Troie bancaires.</string>
+    <string name="risk_reason_notification_listener">Lecture des notifications</string>
+    <string name="risk_reason_notification_listener_desc">L\'app déclare un écouteur de notifications : une fois activé, il lit toutes les notifications (messages, codes à usage unique).</string>
+    <string name="risk_reason_device_admin">Administrateur de l\'appareil</string>
+    <string name="risk_reason_device_admin_desc">L\'app déclare un récepteur d\'administration : elle peut empêcher sa propre désinstallation, verrouiller ou effacer l\'appareil.</string>
+    <string name="risk_reason_overlay">Superposition sur les autres apps</string>
+    <string name="risk_reason_overlay_desc">L\'app demande à s\'afficher par-dessus les autres : technique des faux écrans de connexion qui volent mots de passe et codes.</string>
+    <string name="risk_reason_install_packages">Peut installer d\'autres apps</string>
+    <string name="risk_reason_install_packages_desc">L\'app demande à installer des paquets : voie d\'un logiciel qui télécharge puis installe sa charge utile. Les boutiques alternatives et gestionnaires de fichiers la demandent légitimement.</string>
+    <string name="risk_reason_vpn_service">Service VPN</string>
+    <string name="risk_reason_vpn_service_desc">L\'app déclare un service VPN : elle peut voir et rediriger tout le trafic réseau du téléphone une fois activée.</string>
+    <string name="risk_reason_boot_receiver">Démarre avec l\'appareil</string>
+    <string name="risk_reason_boot_receiver_desc">L\'app se relance seule à chaque démarrage du téléphone.</string>
+    <string name="risk_reason_background_location">Position en arrière-plan</string>
+    <string name="risk_reason_background_location_desc">L\'app peut suivre votre position même quand vous ne l\'utilisez pas.</string>
+    <string name="risk_reason_mic_camera_background">Micro ou caméra en arrière-plan</string>
+    <string name="risk_reason_mic_camera_background_desc">L\'app a accès au micro ou à la caméra et peut s\'exécuter en service au premier plan de type micro ou caméra, donc enregistrer sans que l\'écran lui soit consacré. Les apps d\'appel vidéo en font autant.</string>
+    <string name="risk_reason_old_target_sdk">Conçue pour une ancienne version d\'Android</string>
+    <string name="risk_reason_old_target_sdk_desc">L\'app cible une version d\'Android antérieure à la 11 et échappe à plusieurs protections récentes (accès au stockage, lancement en arrière-plan…). Les logiciels malveillants le font exprès ; les apps abandonnées aussi.</string>
+    <string name="risk_reason_debuggable">Application de débogage</string>
+    <string name="risk_reason_debuggable_desc">L\'app est marquée « débogable » : on peut y injecter du code. Inhabituel hors développement.</string>
+    <string name="risk_reason_combo_banking_trojan">Profil de cheval de Troie bancaire</string>
+    <string name="risk_reason_combo_banking_trojan_desc">Combinaison service d\'accessibilité + superposition + lecture des SMS ou des notifications : tout ce qu\'il faut pour voler des identifiants bancaires et valider des virements à votre insu.</string>
+    <string name="risk_reason_combo_sms_fraud">Profil de fraude au SMS</string>
+    <string name="risk_reason_combo_sms_fraud_desc">Combinaison envoi de SMS + démarrage avec l\'appareil, pour une app qui n\'est pas votre appli SMS par défaut : le profil d\'un envoi massif de SMS en tâche de fond.</string>
+    <string name="risk_reason_combo_stalkerware">Profil de logiciel espion</string>
+    <string name="risk_reason_combo_stalkerware_desc">Combinaison sans icône + position ou micro + démarrage avec l\'appareil : le profil d\'un logiciel de surveillance caché.</string>
+
+    <string name="collector_app_risk_title">Profil de risque des applications</string>
+    <string name="collector_app_risk_desc">Note chaque application de 0 à 100 (faible, moyen, élevé) d\'après ce que le système dit d\'elle : source d\'installation, autorisations accordées, services d\'accessibilité, d\'écoute des notifications, VPN et d\'administration déclarés, démarrage avec l\'appareil, absence d\'icône, version d\'Android ciblée, mode débogage. Les apps du système et Vigie sont plafonnées à « faible ». Émis à chaque installation et mise à jour, puis chaque jour seulement si la note ou ses raisons ont changé (une centaine d\'événements au premier passage). Un parcours des paquets par jour. Aucun contenu d\'app n\'est lu.</string>
+
+    <string name="collector_app_role_title">Apps par défaut (changements)</string>
+    <string name="collector_app_role_desc">Chaque changement d\'application SMS, de composeur, de navigateur, d\'accueil, d\'assistant, de clavier ou de saisie automatique, avec l\'ancienne et la nouvelle app. Seul ce que le système laisse lire à une app tierce est suivi (Android ne donne pas la liste des détenteurs de rôle à une app, même Device Owner) : filtrage d\'appels, notes, portefeuille et redirection d\'appels ne sont pas visibles. L\'état courant reste dans « Accès spéciaux ». Quelques appels système, vérifiés après un changement et au plus toutes les 15 minutes à l\'extinction de l\'écran.</string>
+
+    <string name="collector_app_ops_title">Usage des opérations sensibles (expérimental)</string>
+    <string name="collector_app_ops_desc">Chaque heure : combien de fois chaque application a envoyé ou lu des SMS, passé des appels, lu les contacts ou le journal d\'appels, enregistré le son, utilisé la caméra, lu la position précise ou la liste des comptes, dont la part en arrière-plan. Lu dans l\'historique des opérations du système (« dumpsys appops »), dont le format n\'est pas garanti et n\'a jamais été observé sur ce téléphone. Désactivé par défaut ; exige les permissions DUMP et PACKAGE_USAGE_STATS accordées par ADB. Le premier relevé ne sert que de référence. Dix lectures bornées en temps et en taille par heure, 300 lignes au plus. Si le format n\'est pas reconnu, le collecteur se déclare indisponible avec la raison au lieu d\'insister.</string>
+    <string name="collector_app_ops_reason_dump">Permission DUMP non accordée : scripts/grant-adb-permissions.sh (ou adb shell pm grant io.github.erwsim.vigie android.permission.DUMP)</string>
+    <string name="collector_app_ops_reason_usage_stats">Permission PACKAGE_USAGE_STATS non accordée (le service des opérations l\'exige en plus de DUMP) : scripts/grant-adb-permissions.sh</string>
+    <string name="collector_app_ops_reason_permission_denied">Le système refuse la lecture de l\'état des opérations : DUMP et PACKAGE_USAGE_STATS doivent être accordées par ADB (scripts/grant-adb-permissions.sh).</string>
+    <string name="collector_app_ops_reason_unknown_option">Cette version d\'Android ne reconnaît pas les options de « dumpsys appops » utilisées : format inconnu.</string>
+    <string name="collector_app_ops_reason_empty_output">« dumpsys appops » n\'a rien renvoyé (lecture refusée par SELinux ou service absent).</string>
+    <string name="collector_app_ops_reason_no_history">La sortie ne contient pas l\'historique des opérations (désactivé, ou stocké ailleurs sur cette version d\'Android) : aucun compteur n\'est disponible.</string>
+    <string name="collector_app_ops_reason_history_disabled">L\'historique des opérations est désactivé par le système.</string>
+    <string name="collector_app_ops_reason_unrecognized">Le format de la sortie de « dumpsys appops » n\'est pas reconnu (version d\'Android ou de One UI inconnue).</string>
+    <string name="collector_app_ops_reason_truncated">La sortie de « dumpsys appops » dépasse la taille permise : relevé abandonné.</string>
+    <string name="collector_app_ops_reason_timeout">« dumpsys appops » n\'a pas répondu à temps.</string>
+    <string name="collector_app_ops_reason_dump_failed">Le système a refusé ou n\'a pas pu exécuter la lecture (Debug.dumpService a échoué : SELinux ?).</string>
+</resources>

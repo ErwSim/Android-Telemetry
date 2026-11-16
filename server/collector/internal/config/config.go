@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/erwsim/android-telemetry/server/collector/internal/detect"
 )
 
 // Config is the collector configuration.
@@ -47,6 +49,11 @@ type Config struct {
 	AdGuardLevelsFile string
 	AdGuardPoll       time.Duration       // VIGIE_ADGUARD_POLL_S
 	AdGuardClients    map[string][]string // VIGIE_ADGUARD_CLIENTS: device_id -> AdGuard clients (ClientID or IP)
+
+	// Behavioral detections (contract §11.3).
+	DetectEnabled  bool              // VIGIE_DETECT_ENABLED
+	DetectInterval time.Duration     // VIGIE_DETECT_INTERVAL_S
+	Detect         detect.Thresholds // VIGIE_DETECT_* thresholds
 }
 
 // DBPath returns the SQLite database path.
@@ -144,6 +151,14 @@ func FromLookup(lookup func(string) (string, bool)) (*Config, error) {
 	} else {
 		c.AdGuardClients = clients
 	}
+	c.DetectEnabled = boolVar("VIGIE_DETECT_ENABLED", true)
+	c.DetectInterval = time.Duration(intVar("VIGIE_DETECT_INTERVAL_S", 300, 10)) * time.Second
+	if c.DetectInterval > 24*time.Hour {
+		errs = append(errs, "VIGIE_DETECT_INTERVAL_S : 86400 au plus")
+	}
+	th, derrs := detect.ParseEnv(func(k string) string { return get(k, "") })
+	c.Detect = th
+	errs = append(errs, derrs...)
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("configuration invalide : %s", strings.Join(errs, " ; "))
 	}

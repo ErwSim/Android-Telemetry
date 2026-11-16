@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/endpoints.ts';
 import { useApi } from '../api/useApi.ts';
 import { usePagedDomains } from '../api/usePagedDomains.ts';
@@ -34,15 +34,17 @@ interface Notice {
 
 export default function Tracking() {
   const { deviceId } = useDevice();
-  const ctl = usePeriod('24h');
+  const [sp] = useSearchParams();
+  const ctl = usePeriod((['24h', '7d', '30d'] as const).find((k) => k === sp.get('period')) ?? '24h');
   const range = periodRange(ctl.period);
   const labelOf = useAppLabels();
-  const [tab, setTab] = useState<Tab>('domains');
+  // Liens depuis les détections et les fiches d'applications : `?q=<domaine>` ou `?app=<paquet>`, `&period=7d`.
+  const [tab, setTab] = useState<Tab>(sp.get('app') ? 'apps' : 'domains');
   const [publisher, setPublisher] = useState<string | undefined>();
   const [status, setStatus] = useState<StatusFilter>('all');
-  const [qInput, setQInput] = useState('');
+  const [qInput, setQInput] = useState(sp.get('q') ?? '');
   const q = useDebounced(qInput, 400);
-  const [openApp, setOpenApp] = useState<string | undefined>();
+  const [openApp, setOpenApp] = useState<string | undefined>(sp.get('app') || undefined);
   const [notice, setNotice] = useState<Notice | undefined>();
 
   const summary = useApi(deviceId ? `trk-sum:${deviceId}:${range.from}:${range.to}` : null, (s) => api.trackingSummary({ device_id: deviceId, ...range }, s));

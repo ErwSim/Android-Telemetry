@@ -1,12 +1,14 @@
 import { Fragment, useState } from 'react';
 import type { RemoteCommand } from '../../api/types.ts';
-import { commandLabel, paramsSummary, refusalInfo, statusInfo } from '../../lib/commands.ts';
+import { commandLabel, isSensitive, paramsSummary, refusalInfo, statusInfo } from '../../lib/commands.ts';
 import { fmtDateTime, fmtDateTimeShort, fmtRelative } from '../../lib/format.ts';
 import { cleanText } from '../../lib/text.ts';
 import { Badge } from '../ui.tsx';
 
+const isSigned = (c: RemoteCommand): boolean => c.signed ?? isSensitive(c.type);
+
 function Detail({ c }: { c: RemoteCommand }) {
-  const st = statusInfo(c.status, !!c.delivered_at);
+  const st = statusInfo(c.status, !!c.delivered_at, isSigned(c));
   if (c.status === 'refused') {
     const r = refusalInfo(c.detail);
     return (
@@ -53,7 +55,7 @@ export function CommandHistory({
         </thead>
         <tbody>
           {commands.map((c) => {
-            const st = statusInfo(c.status, !!c.delivered_at);
+            const st = statusInfo(c.status, !!c.delivered_at, isSigned(c));
             const sum = paramsSummary(c.type, c.params);
             const alert = c.status === 'refused' && (c.detail === 'bad_signature' || c.detail === 'locked_out');
             const isOpen = open === c.id;
@@ -101,7 +103,13 @@ export function CommandHistory({
                   </td>
                   <td className="c-act">
                     {c.status === 'pending' && (
-                      <button type="button" className="btn btn-sm" onClick={() => onCancel(c.id)} disabled={cancelling === c.id}>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => onCancel(c.id)}
+                        disabled={cancelling === c.id}
+                        title={isSigned(c) ? "Annule côté serveur seulement : une commande signée reste exécutable jusqu'à son expiration si une copie existe" : undefined}
+                      >
                         {cancelling === c.id ? 'Annulation…' : 'Annuler'}
                       </button>
                     )}

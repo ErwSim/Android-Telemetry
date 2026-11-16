@@ -3,6 +3,10 @@ import { fmtBytes, fmtDuration, fmtNumber, fmtValue } from './format.ts';
 import { bool, list, num, obj, str, strList } from './data.ts';
 import { cleanText } from './text.ts';
 import { commandLabel, refusalInfo } from './commands.ts';
+import { detectionFromEvent, detectionLabel, isDetectionType, observation } from './detections.ts';
+import { levelInfo } from './risk.ts';
+import { roleLabel } from './roles.ts';
+import { LEVEL_FALLBACK } from './tracking.ts';
 
 export const SEV_LABELS = ['Info', 'Notable', 'Avertissement', 'Critique'] as const;
 
@@ -24,6 +28,8 @@ export const DOMAIN_LABELS: Record<string, string> = {
   sensor: 'Capteurs',
   security: 'Sécurité',
   command: 'Commandes',
+  detect: 'Détections',
+  tracking: 'Pistage',
 };
 
 export function domainLabel(d: string): string {
@@ -94,6 +100,19 @@ export const TYPE_LABELS: Record<string, string> = {
   'command.result': 'Résultat de commande',
   'command.issued': 'Commande émise',
   'command.cancelled': 'Commande annulée',
+  'app.risk': 'Profil de risque',
+  'app.role': 'Rôle par défaut modifié',
+  'app.ops': 'Opérations sensibles',
+  'detect.threat_domain': 'Détection : domaine de menace',
+  'detect.upload_spike': 'Détection : envoi inhabituel',
+  'detect.fanout': 'Détection : connexions multiples',
+  'detect.mail_ports': 'Détection : ports de courrier',
+  'detect.dns_bypass': 'Détection : DNS contourné',
+  'detect.sms_abuse': 'Détection : SMS anormaux',
+  'detect.sensor_background': 'Détection : micro ou caméra',
+  'detect.new_app_risky': 'Détection : application à risque',
+  'tracking.level_changed': 'Niveau de blocage modifié',
+  'tracking.override': 'Règle de blocage modifiée',
 };
 
 export function typeLabel(type: string): string {
@@ -205,6 +224,22 @@ export function describeEvent(ev: VigieEvent): string {
       case 'command.issued':
       case 'command.cancelled':
         return `${commandLabel(str(d, 'type') ?? '?')}${str(d, 'command_id') ? ` · ${str(d, 'command_id')}` : ''}`;
+      case 'app.risk': {
+        const lv = levelInfo(str(d, 'level'), num(d, 'score'));
+        const n = strList(d, 'reasons').length;
+        return `${str(d, 'label') ? `${cleanText(str(d, 'label'), 80)} · ` : ''}${cleanText(str(d, 'package'), 120) || '?'} · risque ${lv.label.toLowerCase()}${num(d, 'score') !== undefined ? ` (${num(d, 'score')}/100)` : ''} · ${n} raison${n > 1 ? 's' : ''}`;
+      }
+      case 'app.role':
+        return `${roleLabel(str(d, 'role') ?? '?')} : ${cleanText(str(d, 'old'), 120) || 'aucune'} → ${cleanText(str(d, 'new'), 120) || 'aucune'}`;
+      case 'app.ops': {
+        const rows = list<Record<string, unknown>>(d, 'apps');
+        const total = rows.reduce((a, x) => a + (typeof x['count'] === 'number' ? x['count'] : 0), 0);
+        return `${rows.length} usage${rows.length > 1 ? 's' : ''} d'opérations sensibles · ${fmtNumber(total)} appel${total > 1 ? 's' : ''}`;
+      }
+      case 'tracking.level_changed':
+        return describeLevelChange(d);
+      case 'tracking.override':
+        return describeOverride(d);
       case 'sensor.camera':
         return `${bool(d, 'in_use') ? 'utilisée' : 'libérée'} · caméra ${str(d, 'camera_id') ?? (num(d, 'camera_id') ?? '?')}${str(d, 'package') ? ` · ${str(d, 'package')}` : ''}`;
       case 'sensor.microphone':
@@ -228,11 +263,34 @@ export function describeEvent(ev: VigieEvent): string {
       case 'security.policy':
         return `${str(d, 'action') ?? '?'}${str(d, 'target') ? ` · ${str(d, 'target')}` : ''}${bool(d, 'ok') === false ? ` · ÉCHEC${str(d, 'error') ? ` (${str(d, 'error')})` : ''}` : ''}`;
       default:
+        if (isDetectionType(ev.type)) {
+          const det = detectionFromEvent(ev);
+          return det ? observation(det) : `${detectionLabel(ev.type)}`;
+        }
         return genericSummary(d);
     }
   } catch {
     return genericSummary(d);
   }
+}
+
+const levelName = (k: string | undefined): string => (k ? (LEVEL_FALLBACK[k]?.name ?? cleanText(k, 40)) : 'inconnu');
+const ACTION_NAMES: Record<string, string> = { block: 'blocage', allow: 'autorisation', default: 'retour au réglage par défaut' };
+
+/** `tracking.level_changed` (contrat §9) : `old` (absent si l'état ne correspondait à aucun niveau), `new`, `changes`, `user`. */
+function describeLevelChange(d: Record<string, unknown>): string {
+  const by = str(d, 'user') ? ` · par ${cleanText(str(d, 'user'), 60)}` : '';
+  const ch = Array.isArray(d['changes']) ? d['changes'].length : num(d, 'changes');
+  return `Niveau de blocage : ${levelName(str(d, 'old'))} → ${levelName(str(d, 'new'))}${ch ? ` · ${ch} liste${ch > 1 ? 's' : ''} modifiée${ch > 1 ? 's' : ''}` : ''}${by}`;
+}
+
+/** `tracking.override` (contrat §9) : `domain`, `action`, `forced`, `previous`, `user`. */
+function describeOverride(d: Record<string, unknown>): string {
+  const action = str(d, 'action') ?? '?';
+  const prev = str(d, 'previous');
+  const by = str(d, 'user') ? ` · par ${cleanText(str(d, 'user'), 60)}` : '';
+  const head = ACTION_NAMES[action] ?? cleanText(action, 40);
+  return `${head.charAt(0).toUpperCase()}${head.slice(1)} de « ${cleanText(str(d, 'domain'), 255) || '?'} »${bool(d, 'forced') ? ' · forcé (domaine indispensable)' : ''}${prev ? ` · règle précédente : ${ACTION_NAMES[prev] ?? cleanText(prev, 40)}` : ''}${by}`;
 }
 
 const NOTIFICATION_EVENTS: Record<string, string> = { posted: 'publiée', removed: 'retirée' };

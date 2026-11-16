@@ -243,7 +243,7 @@ func TestTrackingWithAdGuard(t *testing.T) {
 	if rec := e.put(c, "level", map[string]any{"level": "strict"}, true); rec.Code != http.StatusNoContent {
 		t.Fatalf("level: %d %s", rec.Code, rec.Body)
 	}
-	if got := fake.EnabledLists(); len(got) != 5 {
+	if got := fake.EnabledLists(); len(got) != 6 { // with the threat list, enabled at every level
 		t.Fatalf("enabled lists %v", got)
 	}
 	if lv := e.get(c, "/api/console/tracking/level", nil); !strings.Contains(lv.Body.String(), `"level":"strict"`) {
@@ -252,7 +252,7 @@ func TestTrackingWithAdGuard(t *testing.T) {
 	if rec := e.put(c, "level", map[string]any{"level": "permissif"}, true); rec.Code != http.StatusNoContent {
 		t.Fatal(rec.Code)
 	}
-	if got := fake.EnabledLists(); len(got) != 1 {
+	if got := fake.EnabledLists(); len(got) != 2 {
 		t.Fatalf("enabled lists after permissif %v", got)
 	}
 }

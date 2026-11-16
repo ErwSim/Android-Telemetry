@@ -16,3 +16,12 @@ export function cleanText(v: unknown, max = 512): string {
   const chars = Array.from(s);
   return chars.length > max ? `${chars.slice(0, max).join('')}…` : s;
 }
+
+/**
+ * Chemin de la fiche d'une application. Le nom du paquet est en paramètre de requête et non dans le chemin : il
+ * contient des points, et le serveur répond 404 (pas `index.html`) à un chemin dont la fin ressemble à une extension
+ * de fichier (contrat §6, fichiers statiques), ce qui casserait l'ouverture directe et le rechargement de la page.
+ */
+export function appSheetPath(pkg: string): string {
+  return `/applications/fiche?pkg=${encodeURIComponent(pkg)}`;
+}

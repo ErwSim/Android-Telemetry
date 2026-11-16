@@ -1,9 +1,15 @@
 import { request, type Query } from './client.ts';
+import { parseDetectionsResponse } from '../lib/detections.ts';
+import { parseOpsResponse } from '../lib/ops.ts';
+import { parseRiskResponse } from '../lib/risk.ts';
 import type {
   AlertsResponse,
+  AppOpsResponse,
+  AppRiskResponse,
   AppsResponse,
   Bucket,
   CommandsResponse,
+  DetectionsResponse,
   DevicesResponse,
   EventsResponse,
   LevelResponse,
@@ -59,6 +65,16 @@ export const api = {
     request<PostureResponse>('/posture', { device_id }, signal ? { signal } : {}),
   alerts: (q: { from?: string; to?: string; level_min?: number; limit?: number }, signal?: AbortSignal) =>
     request<AlertsResponse>('/alerts', q as Query, signal ? { signal } : {}),
+  // Profil de risque, usage des opérations sensibles, détections (§11). Les réponses sont lues avec tolérance :
+  // le contrat fixe les champs mais pas l'enveloppe exacte, et `app.ops` peut être absent.
+  appsRisk: async (device_id?: string, signal?: AbortSignal): Promise<AppRiskResponse> =>
+    parseRiskResponse(await request<unknown>('/apps/risk', { device_id }, signal ? { signal } : {})),
+  appsOps: async (q: Range & { device_id?: string }, signal?: AbortSignal): Promise<AppOpsResponse> =>
+    parseOpsResponse(await request<unknown>('/apps/ops', q as unknown as Query, signal ? { signal } : {})),
+  detections: async (
+    q: Range & { device_id?: string; type?: string; package?: string; limit?: number; cursor?: string },
+    signal?: AbortSignal,
+  ): Promise<DetectionsResponse> => parseDetectionsResponse(await request<unknown>('/detections', q as unknown as Query, signal ? { signal } : {})),
   // Commandes à distance (§8)
   commands: (q: { device_id?: string; limit?: number }, signal?: AbortSignal) =>
     request<CommandsResponse>('/commands', q as Query, signal ? { signal } : {}),

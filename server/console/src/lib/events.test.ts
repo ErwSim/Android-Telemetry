@@ -118,3 +118,33 @@ describe('configuration et périodes', () => {
     expect(chooseBucket(new Date(0), new Date(60 * 86_400_000))).toBe('day');
   });
 });
+
+describe('événements de la v1.2 et du pistage lisibles dans le journal', () => {
+  it('tracking.level_changed : ancien et nouveau niveau, qui, combien de listes', () => {
+    expect(describeEvent(ev('tracking.level_changed', { old: 'equilibre', new: 'strict', changes: ['a', 'b'], user: 'admin' }, 1))).toBe(
+      'Niveau de blocage : Équilibré → Strict · 2 listes modifiées · par admin',
+    );
+    expect(describeEvent(ev('tracking.level_changed', { new: 'permissif', user: 'admin' }, 2))).toBe('Niveau de blocage : inconnu → Permissif · par admin');
+    expect(describeEvent(ev('tracking.level_changed', { old: 'x', new: 'y', changes: 1 }))).toBe('Niveau de blocage : x → y · 1 liste modifiée');
+  });
+  it('tracking.override : action, domaine, forcé, règle précédente', () => {
+    expect(describeEvent(ev('tracking.override', { domain: 'ads.exemple.top', action: 'block', forced: false, user: 'admin' }))).toBe("Blocage de « ads.exemple.top » · par admin");
+    expect(describeEvent(ev('tracking.override', { domain: 'mtalk.google.com', action: 'block', forced: true, previous: 'allow', user: 'admin' }, 2))).toBe(
+      'Blocage de « mtalk.google.com » · forcé (domaine indispensable) · règle précédente : autorisation · par admin',
+    );
+    expect(describeEvent(ev('tracking.override', { domain: 'x.fr', action: 'default' }))).toBe('Retour au réglage par défaut de « x.fr »');
+  });
+  it('app.risk, app.role, app.ops', () => {
+    expect(describeEvent(ev('app.risk', { package: 'p', label: 'Appli', level: 'high', score: 91, reasons: ['sms_send', 'combo_sms_fraud'] }))).toBe('Appli · p · risque élevé (91/100) · 2 raisons');
+    expect(describeEvent(ev('app.role', { role: 'sms', old: 'a', new: 'b' }))).toBe('Application SMS : a → b');
+    expect(describeEvent(ev('app.role', { role: 'home', new: 'b' }))).toBe("Écran d'accueil : aucune → b");
+    expect(describeEvent(ev('app.ops', { apps: [{ package: 'a', op: 'send_sms', count: 3 }, { package: 'b', op: 'camera', count: 1 }] }))).toContain('2 usages');
+  });
+  it('ne plante pas sur data partiel ou hostile', () => {
+    for (const t of ['tracking.level_changed', 'tracking.override', 'app.risk', 'app.role', 'app.ops', 'detect.fanout', 'detect.inconnue']) {
+      expect(() => describeEvent(ev(t, {}))).not.toThrow();
+      expect(() => describeEvent(ev(t, { apps: 7, reasons: 'x', evidence: 3, changes: {}, domain: 4, user: ['a'] }))).not.toThrow();
+    }
+    expect(describeEvent(ev('tracking.override', { domain: '<img src=x onerror=alert(1)>‮', action: 'block' }))).not.toContain('‮');
+  });
+});

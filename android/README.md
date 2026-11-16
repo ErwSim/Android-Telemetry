@@ -298,6 +298,156 @@ Détails et limites :
 - **Non écrits** (choix) : écoute des notifications, accessibilité, SMS/appels (principe 4) ; tout ce qui exige
   le Device Owner (journaux réseau et sécurité, posture, politique : module `:policy`).
 
+## Profil de risque et usage
+
+Trois collecteurs de `:collectors` répondent à une question : **quelle application est capable de, ou est en
+train de, faire ce que faisait le logiciel malveillant de l'ancien téléphone** (2 000 SMS d'hameçonnage par jour
+que l'appli SMS ne montrait pas), quel que soit le vecteur. Spécification : `docs/contrat/contrat.md` §11.2.
+Rien n'a tourné sur un appareil : tout ce qui suit est testé sur la JVM (logique, banc partagé), pas sur le Galaxy S25+.
+
+| Collecteur (id) | Émet | Capacité requise | Coût |
+|---|---|---|---|
+| Profil de risque (`app_risk`) | `app.risk` | — (QUERY_ALL_PACKAGES) | à chaque installation et mise à jour, puis quotidien (6 requêtes de composants + 1 parcours des paquets) ; une centaine d'événements au premier passage, ensuite seulement les changements |
+| Apps par défaut (`app_role`) | `app.role` | — | au changement (paquets, réglages, extinction d'écran ≤ 1/15 min) + WorkManager 1 h ; quelques appels système |
+| Usage des opérations (`app_ops`, **expérimental, désactivé par défaut**) | `app.ops` | `DUMP` **et** `PACKAGE_USAGE_STATS` accordées par ADB | WorkManager 1 h : 10 lectures bornées (8 s, 3 Mo chacune), 300 lignes au plus |
+
+### `app.risk` : la note, ses raisons, sa pondération
+
+La note est la fonction **pure** `RiskScorer.score(AppFacts)` (`collectors/…/risk/RiskModel.kt`) : elle ne lit que ce
+que `PackageManager` expose (installateur, permissions demandées et accordées, composants déclarés, icône de
+lanceur, `targetSdk`, drapeau débogable), jamais le contenu d'une app. Les points s'additionnent, la note est
+bornée à 100. **Niveaux** : `low` 0 à 29, `medium` 30 à 59, `high` 60 à 100. Les apps du système (`FLAG_SYSTEM`) et
+Vigie sont notées mais **plafonnées à 29** (`low`) ; leurs raisons restent listées, sauf celles qui n'ont pas de sens
+pour une app préinstallée (installateur, icône, version cible, débogage). Chaque code a un libellé et une
+explication en français (`collectors/src/main/res/values/strings_risk.xml`, clés `risk_reason_<code>` et
+`risk_reason_<code>_desc`, accessibles par `RiskReason.fromCode(code)?.labelRes`). Un test vérifie que ce tableau
+et le code disent la même chose.
+
+| Code | Points | Condition (sur ce que le système expose) |
+|---|---|---|
+| `sideloaded` | 15 | app utilisateur dont l'installateur est absent, un installateur de paquets, un gestionnaire de fichiers ou le shell ADB (et non Play, Galaxy Store, F-Droid) |
+| `unknown_installer` | 12 | app utilisateur installée par une autre app qui n'est pas une boutique (exclut `sideloaded`) |
+| `no_launcher_icon` | 12 | app utilisateur sans activité `MAIN`/`LAUNCHER` activée (une icône désactivée compte comme absente) |
+| `sms_send` | 20 | `SEND_SMS` accordée |
+| `sms_read` | 12 | `READ_SMS`, `RECEIVE_SMS`, `RECEIVE_MMS` ou `RECEIVE_WAP_PUSH` accordée |
+| `calls` | 10 | `CALL_PHONE`, `READ_CALL_LOG`, `WRITE_CALL_LOG`, `ANSWER_PHONE_CALLS` ou `PROCESS_OUTGOING_CALLS` accordée |
+| `accessibility_service` | 25 | déclare un service d'accessibilité (protégé par `BIND_ACCESSIBILITY_SERVICE`), activé ou non |
+| `notification_listener` | 15 | déclare un écouteur de notifications (`BIND_NOTIFICATION_LISTENER_SERVICE`) |
+| `device_admin` | 15 | déclare un récepteur d'administration (`BIND_DEVICE_ADMIN`) |
+| `overlay` | 12 | demande `SYSTEM_ALERT_WINDOW` (la demande compte : l'état « accordé » des accès spéciaux n'est pas fiable dans les drapeaux de paquet) |
+| `install_packages` | 20 | demande `REQUEST_INSTALL_PACKAGES` ou `INSTALL_PACKAGES` |
+| `vpn_service` | 10 | déclare un `VpnService` (`BIND_VPN_SERVICE`) |
+| `boot_receiver` | 5 | déclare un récepteur de `BOOT_COMPLETED` **et** demande `RECEIVE_BOOT_COMPLETED` |
+| `background_location` | 10 | `ACCESS_BACKGROUND_LOCATION` accordée |
+| `mic_camera_background` | 8 | micro ou caméra accordés **et** permission de service de type micro/caméra demandée (ou, avant Android 14, service de premier plan) |
+| `old_target_sdk` | 8 | app utilisateur dont `targetSdk` < 30 |
+| `debuggable` | 10 | app utilisateur marquée `FLAG_DEBUGGABLE` |
+| `combo_banking_trojan` | 30 | `accessibility_service` + `overlay` + (`sms_read` ou `notification_listener`) |
+| `combo_sms_fraud` | 25 | `sms_send` + `boot_receiver`, sans être l'appli SMS par défaut |
+| `combo_stalkerware` | 30 | `no_launcher_icon` + (position accordée, y compris approximative, ou micro) + `boot_receiver` |
+
+Une combinaison s'ajoute aux points des raisons qu'elle combine : c'est ce qui sépare un trojan d'une app qui n'a
+qu'un seul de ces pouvoirs. Une lecture qui échoue ne dégrade jamais une app (icône inconnue = présente,
+composants inconnus = absents) ; une liste de paquets vide est une lecture ratée, pas « aucune app ».
+
+**Émission.** À chaque `PACKAGE_ADDED` / `PACKAGE_REPLACED` (toujours), puis chaque jour pour les seules apps dont la
+note, les raisons ou la version ont changé depuis la dernière émission (état persistant `risk_state`) ; le premier
+passage les émet toutes une fois. Sévérité : `low` 0, `medium` 1, `high` 2. Champs : `package`, `label`,
+`version_code`, `installer` (absent si inconnu), `from_store`, `score`, `level`, `reasons`.
+
+**Ce que la note classe mal** (jeu de test `RiskCorpus` : 21 apps légitimes et 12 profils malveillants, bâtis
+d'après les fonctions et permissions habituelles de chaque famille, **pas extraits d'APK réels**) :
+
+- *Faux positifs « élevé »* (4 sur 21) : contrôle parental, suite antivirus, app d'automatisation (type Tasker) et
+  identification d'appelant avec droits SMS. Leurs pouvoirs sont ceux d'un logiciel espion ou d'un trojan, par
+  construction : aucune note fondée sur les capacités ne les sépare. Seul « qui l'a installé et pourquoi » le
+  fait, et ni le système ni cet agent ne le savent.
+- *Faux positifs « moyen »* (4) : gestionnaire de mots de passe et remappage de boutons (accessibilité +
+  superposition), lanceur qui verrouille par l'accessibilité, appli SMS tierce choisie par défaut (elle doit
+  avoir tous les droits SMS : seule la combinaison fraude au SMS lui est épargnée).
+- *Aucune alerte* sur : messagerie, banque, clavier, navigateur, lanceur simple, VPN, composeur, authentificateur,
+  gestionnaire de fichiers, navigation (tous sous 30).
+- *Faux négatifs* : un dropper publié sur la boutique (seule la demande d'installation le trahit : 20, « faible »),
+  un espion qui garde une icône anodine et n'a ni accessibilité ni notification (20 : seul « hors boutique »
+  pèse). Sous-estimés mais « moyen » : fraude au SMS sans démarrage au boot (35, déclenchée par push, donc pas de
+  combinaison) ou distribuée par la boutique (50), dropper hors boutique (35), verrouilleur de rançon (47),
+  adware d'accessibilité (52).
+- Limite de fond : la note juge des **capacités déclarées**, pas des actes. Une app qui obtient ses droits après
+  l'installation (autorisation accordée plus tard, service d'accessibilité activé plus tard) est renotée au
+  prochain passage quotidien (ou à sa mise à jour), pas à l'instant (de même pour une icône que l'app désactive
+  après coup). `app.ops` mesure l'usage réel.
+
+### `app.role` : les apps par défaut
+
+Lu **sans privilège système**, d'après `android.jar` de l'API 37 : `RoleManager` ne donne à une app que
+`isRoleAvailable`, `isRoleHeld` (pour elle-même) et `createRequestRoleIntent`. `getRoleHolders` est une API système
+(`OBSERVE_ROLE_HOLDERS`, niveau signature) : un Device Owner n'a pas plus de droits ici. Sont donc suivis, par les
+API publiques correspondantes (`DefaultApps`, une seule implémentation) :
+
+| Rôle | Lecture | Fiabilité |
+|---|---|---|
+| `sms` | `Telephony.Sms.getDefaultSmsPackage` | fiable |
+| `dialer` | `TelecomManager.getDefaultDialerPackage` | fiable |
+| `browser`, `home` | app qui résout l'intention par défaut (`MATCH_DEFAULT_ONLY`) | fiable |
+| `keyboard` | réglage sécurisé `default_input_method` (constante publique) | fiable |
+| `assistant`, `autofill` | réglages sécurisés cachés `assistant`, `autofill_service` | **non garantie** : certains systèmes refusent la lecture ; une valeur absente veut dire « inconnue », jamais « retirée » |
+
+**Non lisibles, donc omis** (jamais devinés) : `call_screening`, `call_redirection`, `emergency`, `notes`, `wallet`
+(aucun accesseur public pour une autre app). `keyboard` et `autofill` ne sont pas des rôles Android mais des
+réglages : ils sont ajoutés parce qu'un clavier ou un service de saisie malveillant lit tout ce qui est tapé ;
+le contrat ne les nomme pas (à y ajouter).
+
+**Articulation avec `app.special_access`** : les deux utilisent la même lecture. `special_access.default_apps` dit
+l'**état courant** (quotidien et à chaque changement) ; `app.role` dit la **transition** datée (`old` → `new`, le
+premier relevé n'étant qu'une référence, sans événement). Une valeur n'est donc jamais dite deux fois de façon
+contradictoire ; seul l'instant de lecture peut différer de quelques secondes. Sévérité 2 pour `sms`, `dialer`,
+`assistant`, `keyboard`, `autofill`, 1 pour `browser` et `home`. `old` est absent s'il n'y avait pas de valeur,
+`new` absent si le rôle n'est plus attribué.
+
+### `app.ops` : l'usage réel (expérimental)
+
+Désactivé par défaut (carte « Usage des opérations sensibles (expérimental) »). Pour chacune des dix opérations du
+contrat, il compte **combien d'accès le système a autorisés** à chaque app pendant la dernière heure, dont ceux en
+arrière-plan (états `bg` et `cch` du système ; `fgsvc` compte comme premier plan). Un événement par heure, seulement
+pour les apps qui ont utilisé une opération, 300 lignes au plus (coupées en parties de 12 Kio), `from`/`to` = les
+deux relevés. **Le premier relevé n'est qu'une référence** (aucun événement).
+
+- **Prérequis** : `DUMP` **et** `PACKAGE_USAGE_STATS`, par `scripts/grant-adb-permissions.sh`. Le code source du
+  service (`AppOpsService.dump` → `DumpUtils.checkDumpAndUsageStatsPermission`) exige les deux : `DUMP` seule est
+  refusée. Les attributions caméra/micro expérimentales (`AppOpsDump`) ont la même exigence.
+- **Source** : `Debug.dumpService("appops", fd, ["--history", "--op", OP])`, soit le texte de
+  `adb shell dumpsys appops --history --op SEND_SMS`. Seul l'**historique** donne des compteurs (`[bg-s] =
+  access=37`) ; l'état courant ne donne que la date du dernier accès, lue (une lecture par opération utilisée)
+  pour remplir `last_ts`. Un compteur est la **différence** entre deux relevés des sommes de l'historique
+  (les dates des instantanés de l'historique ne sont pas fiables : relatives à un « début d'époque »). Une somme
+  qui baisse (anciens instantanés expirés) vaut 0 : c'est une borne basse. Un relevé espacé de plus de 24 h est
+  une nouvelle référence.
+- **Ce qui est compté** : les accès autorisés (`access=`) : un envoi de SMS = une demande d'envoi, pas un nombre
+  de parties ; en mode d'historique « passif » ou désactivé le système ne compte rien (le collecteur s'en déclare
+  indisponible). Les refus (`reject=`, ce que produirait une garde `sms`
+  du module `:policy`) ne le sont pas : le contrat n'a pas de champ pour eux. Les apps qui partagent un même
+  UID apparaissent sous chacun de leurs paquets.
+- **Échec propre** : permission refusée, option inconnue, sortie vide, historique absent (dont le magasin SQLite
+  d'Android 16 derrière un indicateur, dont le dump n'imprime alors aucune section `History:`) ou désactivé, format non
+  reconnu, sortie trop grosse, délai dépassé, `dumpService` refusé : si **aucune** des dix opérations n'est lisible,
+  le collecteur devient « indisponible » avec la raison en français, émet **un seul** `agent.collector_error`
+  (`<code>: <raison>`, un nouveau seulement si la raison change), ne réessaie qu'après 6 h. Si seules quelques
+  opérations échouent, les autres continuent et l'opération en échec garde sa référence.
+- **Sobriété** : 10 lectures par heure (8 s et 3 Mo au plus chacune, 60 s au total), plus une lecture d'état par
+  opération utilisée (4 s). Le service tient ses verrous d'historique le temps d'écrire la sortie (effet non mesuré, sans doute de quelques millisecondes).
+- **Format** : relevé dans les sources AOSP d'Android 14, 15 et 16 (`AppOpsService`, `HistoricalRegistry` et
+  `LegacyHistoricalRegistry`, `AppOpsManager.keyToString`, `TimeUtils.formatDuration`), identique sur les trois ;
+  **jamais observé sur le Samsung**. Les tests lisent des extraits écrits d'après ces sources, pas des
+  captures.
+
+**À vérifier sur le téléphone** : (1) `adb shell dumpsys appops --history --op SEND_SMS` produit bien des lignes
+`[bg-s] = access=N` sur One UI (sinon `app.ops` se déclarera indisponible, sans dommage) ; (2) `Debug.dumpService`
+n'est pas refusé par SELinux pour l'app (et la sortie arrive jusqu'à l'agent) ; (3) la taille d'une lecture
+(un `--history --op` imprime les en-têtes de tous les paquets, quelques centaines de Kio) ; (4) qu'envoyer un SMS
+depuis une app incrémente bien `SEND_SMS` pour *son* paquet ; (5) la liste de `RoleManager` : `app.special_access`
+et `app.role` après un changement de navigateur, de clavier et d'appli SMS ; (6) quelques notes au hasard contre la
+réalité, surtout les apps de contrôle parental ou d'automatisation si vous en avez.
+
 ## Notifications (APK compagnon)
 
 Le collecteur `notifications` de l'agent dit **quelles apps affichent des notifications**. La lecture des

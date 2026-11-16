@@ -119,7 +119,7 @@ func TestParseAccepts(t *testing.T) {
 		payload(`"type":"clear_lock_message","params":{}`),
 		payload(`"type":"wipe","params":{}`),
 		strings.Replace(payload(`"type":"wipe","params":{}`), `2026-11-16T11:00:00.000Z`, `2026-11-17T10:00:00.000Z`, 1), // 24 h exactly
-		strings.Replace(payload(`"type":"lock","params":{}`), `2026-11-16T11:00:00.000Z`, `2026-12-16T10:00:00.000Z`, 1),  // 30 days
+		strings.Replace(payload(`"type":"lock","params":{}`), `2026-11-16T11:00:00.000Z`, `2026-12-16T10:00:00.000Z`, 1), // 30 days
 		" " + payload(`"type":"ring","params":{}`) + "\n",
 	}
 	for _, p := range ok {

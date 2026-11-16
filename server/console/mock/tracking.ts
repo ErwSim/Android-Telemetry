@@ -43,6 +43,9 @@ interface Rule {
 }
 const EXACT_RULES: Record<string, Rule> = {
   'cfg.fastcleaner-cdn.top': { min: 'permissif', list: 'Vigie : domaines suspects' },
+  'cfg.wallpapers-hd.xyz': { min: 'permissif', list: 'Vigie : domaines suspects' },
+  'sms-relay.cheap-gw.top': { min: 'permissif', list: 'Vigie : domaines suspects' },
+  'api.smsbomber-gw.cc': { min: 'permissif', list: 'Vigie : domaines suspects' },
   'ads.unknown-cdn.biz': { min: 'permissif', list: 'Vigie : domaines suspects' },
   'track.sdkmetrics.cc': { min: 'permissif', list: 'Vigie : domaines suspects' },
   'app-measurement.com': { min: 'equilibre', list: 'Vigie : télémétrie Google' },
@@ -175,7 +178,7 @@ function aggregate(events: MockEvent[], st: TrackState, r: Range): Map<string, D
   return m;
 }
 
-const labelOf = new Map(ALL_APPS.map((a) => [a.package, a.label]));
+const labelOf = { get: (pkg: string): string | undefined => ALL_APPS.find((a) => a.package === pkg)?.label };
 
 function usageByApp(events: MockEvent[], r: Range): Map<string, { tx: number; rx: number }> {
   const m = new Map<string, { tx: number; rx: number }>();

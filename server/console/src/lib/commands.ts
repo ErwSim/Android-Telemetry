@@ -44,10 +44,13 @@ export const LIMITS = {
   vibrateMax: 60,
   messageMax: 200,
   codeMin: 12,
-  /** durée de validité par défaut : 1 h (simple), 7 jours (sensible) */
+  /** durée de validité par défaut : 1 h (simple), 7 jours (verrouillage), 15 min (effacement) */
   validitySimpleMs: HOUR_MS,
   validitySensitiveMs: 7 * DAY_MS,
   validityMaxMs: 30 * DAY_MS,
+  /** effacement : 15 min par défaut et 24 h au plus (contrat §8, revue de sécurité de la v1.1) */
+  validityWipeMs: 15 * 60_000,
+  validityWipeMaxMs: DAY_MS,
 } as const;
 
 export interface CommandParams {
@@ -88,7 +91,13 @@ export function validateParams(type: CommandType, p: CommandParams): string | un
 }
 
 export function defaultValidityMs(type: CommandType): number {
+  if (type === 'wipe') return LIMITS.validityWipeMs;
   return isSensitive(type) ? LIMITS.validitySensitiveMs : LIMITS.validitySimpleMs;
+}
+
+/** Validité maximale : 24 h pour un effacement, 30 jours pour les autres. */
+export function maxValidityMs(type: CommandType): number {
+  return type === 'wipe' ? LIMITS.validityWipeMaxMs : LIMITS.validityMaxMs;
 }
 
 export interface PayloadInput {
@@ -108,8 +117,8 @@ export function buildPayload(i: PayloadInput): string {
   const params = i.params ?? {};
   const err = validateParams(i.type, params);
   if (err) throw new Error(err);
-  if (!Number.isFinite(i.validityMs) || i.validityMs <= 0 || i.validityMs > LIMITS.validityMaxMs) {
-    throw new Error('La durée de validité doit être comprise entre 1 ms et 30 jours.');
+  if (!Number.isFinite(i.validityMs) || i.validityMs <= 0 || i.validityMs > maxValidityMs(i.type)) {
+    throw new Error(i.type === 'wipe' ? "La validité d'un effacement ne peut pas dépasser 24 heures." : 'La durée de validité doit être comprise entre 1 ms et 30 jours.');
   }
   const out: Record<string, unknown> = {};
   switch (i.type) {
@@ -208,8 +217,15 @@ export interface StatusInfo {
   help: string;
 }
 
-/** `delivered` : la commande avait été remise au téléphone (`delivered_at` renseigné). */
-export function statusInfo(status: string, delivered = false): StatusInfo {
+/** Réserve sur une commande signée : le serveur n'est pas le seul à détenir la commande. */
+export const SIGNED_CAVEAT =
+  "Cela n'engage que le serveur : une commande signée reste exécutable par le téléphone jusqu'à sa date d'expiration si une copie existe (serveur compromis, copie conservée). Seul le changement du code de commande dans l'application du téléphone la rend caduque.";
+
+/**
+ * `delivered` : la commande avait été remise au téléphone (`delivered_at` renseigné). `signed` : commande sensible,
+ * dont « annulée » et « expirée » ne sont que l'état du serveur (contrat §8, revue de sécurité de la v1.1).
+ */
+export function statusInfo(status: string, delivered = false, signed = false): StatusInfo {
   if (status === 'expired' && delivered) {
     // Remise puis aucun compte rendu : on ne sait pas ce que le téléphone en a fait. Un effacement, notamment,
     // éteint le téléphone dix secondes après avoir tenté d'envoyer son résultat.
@@ -237,9 +253,13 @@ export function statusInfo(status: string, delivered = false): StatusInfo {
     case 'refused':
       return { label: 'Refusée', tone: 'warn', active: false, help: 'Le téléphone a refusé la commande (motif ci-dessous).' };
     case 'expired':
-      return { label: 'Expirée', tone: 'neutral', active: false, help: "Le téléphone ne l'a pas récupérée avant son expiration : elle ne sera jamais exécutée." };
+      return signed
+        ? { label: 'Expirée (côté serveur)', tone: 'neutral', active: false, help: `Le serveur ne la remet plus. ${SIGNED_CAVEAT}` }
+        : { label: 'Expirée', tone: 'neutral', active: false, help: "Le téléphone ne l'a pas récupérée avant son expiration : elle ne sera jamais exécutée." };
     case 'cancelled':
-      return { label: 'Annulée', tone: 'neutral', active: false, help: "Annulée avant d'être remise : elle ne sera jamais exécutée." };
+      return signed
+        ? { label: 'Annulée (côté serveur)', tone: 'neutral', active: false, help: `Annulée avant d'être remise : le serveur ne la remettra plus. ${SIGNED_CAVEAT}` }
+        : { label: 'Annulée', tone: 'neutral', active: false, help: "Annulée avant d'être remise : elle ne sera jamais exécutée." };
     default:
       return { label: status, tone: 'neutral', active: false, help: 'État inconnu de cette version de la console.' };
   }

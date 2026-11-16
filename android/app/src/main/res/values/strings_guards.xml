@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings of the "Gardes" section (GuardsUi.kt), the quarantine screen and the package picker. Contract §11.1. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="fr">
+    <string name="guards_title">Gardes</string>
+    <string name="guards_intro">Les gardes verrouillent les capacités dont un logiciel malveillant a besoin (envoyer des SMS, appeler, lire l\'écran, voir ce que vous tapez, accéder aux contacts, au micro…), quel que soit le moyen par lequel il est arrivé. Toutes sont éteintes par défaut ; activez-les une par une, après l\'aperçu. Elles n\'agissent jamais sur l\'appli SMS par défaut, le composeur par défaut, le clavier en service, l\'écran d\'accueil, les applications et services du système, Vigie ni son compagnon. « Tout rétablir » et l\'issue de secours ADB les défont aussi.</string>
+    <string name="guards_order">Ordre conseillé pour un premier essai : Quarantaine, Claviers, Accessibilité, Appels, SMS, puis seulement les options « aussi… ».</string>
+
+    <string name="guard_sms_title">SMS</string>
+    <string name="guard_sms_blocks">Refuse l\'envoi de SMS (SEND_SMS) à toute application qui le demande, sauf la liste ci-dessous ; s\'applique aussi aux applications installées ou mises à jour ensuite. Une permission déjà accordée est retirée.</string>
+    <string name="guard_sms_breaks">Envoi de SMS par une appli tierce (messagerie qui envoie aussi des SMS, sauvegarde, domotique, appli qui vérifie votre numéro). Avec l\'option : lecture automatique des codes reçus par SMS dans les applis tierces.</string>
+    <string name="guard_sms_limits">Ne peut pas empêcher : un envoi par une application du système ou par l\'appli SMS par défaut (si une appli le devient, Vigie vous prévient) ; un SMS préparé par une appli et envoyé par l\'appli SMS (vous devez appuyer sur Envoyer, sauf si un service d\'accessibilité le fait : voir la garde Accessibilité) ; les quelques secondes entre une installation et le refus (jusqu\'à 15 min si Vigie ne tournait pas) ; ce qui a été envoyé avant l\'activation.</string>
+    <string name="guard_sms_extended">Refuser aussi la lecture et la réception des SMS</string>
+    <string name="guard_sms_extended_desc">READ_SMS, RECEIVE_SMS, RECEIVE_MMS, RECEIVE_WAP_PUSH : empêche aussi le vol des codes reçus par SMS.</string>
+
+    <string name="guard_calls_title">Appels</string>
+    <string name="guard_calls_blocks">Refuse de passer des appels (CALL_PHONE) à toute application qui le demande, sauf la liste ; aussi aux applications installées ensuite.</string>
+    <string name="guard_calls_breaks">Appel direct depuis une appli tierce (carnet d\'adresses, domotique, appli de taxi qui appelle sans passer par le composeur). Ouvrir le composeur avec un numéro prérempli reste possible. Avec l\'option : décrocher par une appli tierce (montre, voiture via une appli), journal d\'appels dans une appli tierce.</string>
+    <string name="guard_calls_limits">Ne peut pas empêcher : un appel par une application du système ou par le composeur par défaut ; un appel préparé dans le composeur puis validé (par vous, ou par un service d\'accessibilité) ; un appel via Internet (VoIP) qui n\'a pas besoin de cette permission.</string>
+    <string name="guard_calls_extended">Refuser aussi de décrocher et le journal d\'appels</string>
+    <string name="guard_calls_extended_desc">ANSWER_PHONE_CALLS, READ_CALL_LOG, WRITE_CALL_LOG.</string>
+
+    <string name="guard_accessibility_title">Accessibilité</string>
+    <string name="guard_accessibility_blocks">Seuls les services d\'accessibilité approuvés, et ceux du système, peuvent être activés. C\'est la porte d\'entrée des chevaux de Troie bancaires : un service d\'accessibilité lit l\'écran et appuie à votre place.</string>
+    <string name="guard_accessibility_breaks">Activer un nouveau gestionnaire de mots de passe, une appli d\'automatisation (Tasker, MacroDroid), un bloqueur ou un lanceur qui utilise l\'accessibilité, s\'il n\'est pas dans la liste (Paramètres affiche « désactivé par l\'administrateur »).</string>
+    <string name="guard_accessibility_limits">Ne peut pas empêcher : un service déjà activé (Android exige de le garder dans la liste : désactivez-le dans les Paramètres d\'abord, puis réappliquez) ; un service d\'une application du système ; une appli de la liste qui serait compromise.</string>
+
+    <string name="guard_input_methods_title">Claviers</string>
+    <string name="guard_input_methods_blocks">Seuls les claviers approuvés, et ceux du système (clavier Samsung), peuvent être activés. Un clavier voit tout ce que vous tapez, mots de passe compris.</string>
+    <string name="guard_input_methods_breaks">Activer un nouveau clavier (Gboard, SwiftKey…) sans l\'avoir ajouté à la liste.</string>
+    <string name="guard_input_methods_limits">Ne peut pas empêcher : un clavier déjà activé (gardé, Android l\'exige) ; un clavier du système ; ce que voit un clavier approuvé.</string>
+
+    <string name="guard_quarantine_title">Quarantaine des nouvelles applications</string>
+    <string name="guard_quarantine_blocks">Chaque application non système installée après l\'activation se voit refuser SMS, appels, journal d\'appels, contacts, micro, caméra, position en arrière-plan et appareils à proximité, jusqu\'à ce que vous la libériez. Une notification vous le dit à chaque fois. Les applications déjà présentes ne sont pas touchées ; une mise à jour d\'une application libérée ne la remet pas en quarantaine.</string>
+    <string name="guard_quarantine_breaks">Une appli que vous venez d\'installer ne peut pas utiliser ces fonctions (visio : micro et caméra ; messagerie : contacts) avant d\'être libérée.</string>
+    <string name="guard_quarantine_limits">Ne peut pas empêcher : ce qui ne demande aucune permission (Internet, superposition, accessibilité, notifications : voir les autres gardes) ; une appli du système ou mise à jour par le magasin du constructeur ; les quelques secondes après l\'installation (jusqu\'à 15 min si Vigie ne tournait pas). Une appli choisie comme appli SMS par défaut, composeur, clavier ou écran d\'accueil est libérée automatiquement (notification).</string>
+
+    <string name="guard_blocks">Bloque : %1$s</string>
+    <string name="guard_breaks">Peut casser : %1$s</string>
+    <string name="guard_state_on">Active depuis le %1$s</string>
+    <string name="guard_state_off">Éteinte</string>
+    <string name="guard_state_pending">Application interrompue : elle sera terminée au prochain passage (ou « Désactiver »)</string>
+    <string name="guard_apps_count">Applications concernées : %1$d</string>
+    <string name="guard_failures">Non refusé (échec) : %1$s</string>
+    <string name="guard_changed">Liste ou option modifiée depuis l\'application : « Aperçu et réapplication » pour la mettre en vigueur.</string>
+    <string name="guard_permitted">Liste en vigueur : %1$s</string>
+    <string name="guard_enable">Aperçu et activation</string>
+    <string name="guard_reapply">Aperçu et réapplication</string>
+    <string name="guard_disable">Aperçu et désactivation</string>
+    <string name="guard_open_quarantine">Applications en quarantaine (%1$d)</string>
+    <string name="guard_leftovers">%1$d élément(s) de cette garde restent à rétablir.</string>
+
+    <string name="guard_preview_title_on">Activer la garde « %1$s »</string>
+    <string name="guard_preview_title_off">Désactiver la garde « %1$s »</string>
+    <string name="guard_preview_loses">perd : %1$s</string>
+    <string name="guard_preview_regains">retrouve : %1$s</string>
+    <string name="guard_preview_nobody">Aucune application installée ne perd quoi que ce soit maintenant.</string>
+    <string name="guard_preview_exempt">Épargnées : %1$s</string>
+    <string name="guard_preview_kept">Gardés (déjà activés, Android l\'exige) : %1$s</string>
+    <string name="guard_preview_blocked">Ne pourront plus être activés : %1$s</string>
+    <string name="guard_preview_permitted">Liste qui sera posée : %1$s</string>
+    <string name="guard_preview_no_list">aucune restriction</string>
+    <string name="guard_preview_system_only">services du système seulement</string>
+    <string name="guard_confirm">Appliquer</string>
+
+    <string name="screen_quarantine">Applications en quarantaine</string>
+    <string name="quarantine_intro">Ces applications ont été installées après l\'activation de la quarantaine. Les permissions listées leur sont refusées. « Libérer » les remet dans leur état d\'avant la quarantaine : « à demander » pour une application qui vient d\'être installée (elle vous les demandera).</string>
+    <string name="quarantine_empty">Aucune application en quarantaine.</string>
+    <string name="quarantine_denied">Refusé : %1$s</string>
+    <string name="quarantine_nothing">Aucune permission à risque demandée pour l\'instant (une mise à jour qui en demanderait serait refusée).</string>
+    <string name="quarantine_since">En quarantaine depuis le %1$s</string>
+    <string name="quarantine_release">Libérer</string>
+    <string name="quarantine_release_confirm">Libérer « %1$s » ? Elle pourra de nouveau vous demander : %2$s.</string>
+    <string name="quarantine_absent">désinstallée</string>
+    <string name="quarantine_off">La garde Quarantaine est éteinte : activez-la dans Politique › Gardes.</string>
+
+    <string name="guard_channel_name">Gardes</string>
+    <string name="guard_channel_description">Mise en quarantaine d\'une nouvelle application, changement d\'appli SMS ou de composeur par défaut.</string>
+    <string name="guard_notif_quarantined_title">Nouvelle application en quarantaine</string>
+    <string name="guard_notif_quarantined_text">%1$s : %2$s refusé(s) jusqu\'à ce que vous la libériez dans Vigie.</string>
+    <string name="guard_notif_quarantined_nothing">%1$s : aucune permission à risque demandée pour l\'instant ; elle reste surveillée jusqu\'à ce que vous la libériez.</string>
+    <string name="guard_notif_role_title">Appli par défaut changée</string>
+    <string name="guard_notif_role_text">%1$s est désormais %2$s : ajoutée à la liste de la garde « %3$s »%4$s. Si ce n\'est pas vous, vérifiez dans Paramètres › Applications › Applications par défaut.</string>
+    <string name="guard_notif_role_lifted">, refus levés (%1$s)</string>
+    <string name="guard_notif_released_title">Application libérée automatiquement</string>
+    <string name="guard_notif_released_text">%1$s est sortie de quarantaine : %2$s.</string>
+
+    <string name="packages_count">%1$d application(s)</string>
+    <string name="packages_none">Aucune</string>
+    <string name="packages_edit">Modifier</string>
+    <string name="packages_search">Rechercher</string>
+    <string name="packages_show_all">Montrer toutes les applications</string>
+    <string name="packages_absent">non installée</string>
+    <string name="packages_locked">toujours épargnée</string>
+</resources>

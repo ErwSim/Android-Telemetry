@@ -92,6 +92,7 @@ func cmdServe(args []string) error {
 	go srv.RunRetention(bg, time.Hour)
 	go srv.RunCommands(bg)
 	srv.StartTracking(bg)
+	srv.StartDetections(bg)
 
 	// Requests keep their own context until Shutdown has drained them.
 	reqCtx, cancelReq := context.WithCancel(ctx)

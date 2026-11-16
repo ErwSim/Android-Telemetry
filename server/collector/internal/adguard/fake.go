@@ -62,6 +62,9 @@ var FakeLists = map[string]struct {
 		"firebaselogging-pa.googleapis.com", "tiqcdn.com", "privacy-mgmt.com"}},
 	"https://adguardteam.github.io/HostlistsRegistry/assets/filter_2.txt": {"AdAway Default Blocklist", []string{
 		"doubleclick.net", "scorecardresearch.com", "googleadservices.com"}},
+	// Threat list ("category": "threat" in the levels file): the command servers and phishing domains of the
+	// attack scenarios of the simulator (sim --scenario).
+	ThreatListURL: {"HaGeZi - Threat Intelligence Feeds (medium)", ThreatDomains},
 	"https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/native.samsung.txt": {"HaGeZi - Native Tracker Samsung", []string{
 		"dqa.samsungdm.com", "dc.samsungdm.com", "samsungads.com", "gos-api.gos-gsp.io", "samsungqbe.com"}},
 	"https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/native.tiktok.txt": {"HaGeZi - Native Tracker TikTok", []string{
@@ -74,12 +77,23 @@ var FakeLists = map[string]struct {
 		"sb.scorecardresearch.com", "dqa.samsungdm.com", "dc.samsungdm.com", "cdn.privacy-mgmt.com"}},
 }
 
-// NewFake returns a fake with AdGuard Home's two default lists enabled and one rule entered by hand.
+// ThreatListURL is the threat list of the example levels file, enabled in the fake from the start (the Vigie
+// installation enables its threat list at every level).
+const ThreatListURL = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.medium.txt"
+
+// ThreatDomains are the domains blocked by the threat list of the fake: command servers and phishing sites
+// of the attack scenarios of the simulator (reserved .example names, never real hosts).
+var ThreatDomains = []string{"api.secure-bank-sync.example", "gate.cdn-update-check.example", "panel.sms-gateway-pay.example",
+	"login-banque-verification.example", "relay.proxy-earn.example"}
+
+// NewFake returns a fake with AdGuard Home's two default lists (the first one enabled), the threat list of
+// the example levels file enabled, and one rule entered by hand.
 func NewFake(user, password string) *Fake {
 	f := &Fake{User: user, Password: password, maxLog: 500000, requests: map[string]int{},
 		userRules: []string{"! règle saisie à la main dans AdGuard Home", "||tracker.example^"}}
 	f.addFilter("https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt", "AdGuard DNS filter", false, true)
 	f.addFilter("https://adguardteam.github.io/HostlistsRegistry/assets/filter_2.txt", "AdAway Default Blocklist", false, false)
+	f.addFilter(ThreatListURL, FakeLists[ThreatListURL].Name, false, true)
 	return f
 }
 

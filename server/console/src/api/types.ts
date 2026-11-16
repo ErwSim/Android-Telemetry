@@ -275,3 +275,65 @@ export interface TrackingAppsResponse {
 export interface LevelResponse {
   level: string;
 }
+
+// ---------------------------------------------------------------- Profil de risque, usage, détections (contrat §11)
+
+export type RiskLevel = 'low' | 'medium' | 'high';
+
+/** `app.risk` : dernier profil de risque d'une application (contrat §11.2). */
+export interface AppRisk {
+  package: string;
+  label?: string;
+  version_code?: number;
+  installer?: string;
+  from_store?: boolean;
+  /** 0 à 100 */
+  score: number;
+  /** `low`, `medium`, `high`, ou une valeur inconnue (repli : déduit du score) */
+  level: string;
+  /** codes de la liste fermée du §11.2 ; un code inconnu est affiché tel quel */
+  reasons: string[];
+  ts?: string;
+}
+
+export interface AppRiskResponse {
+  ts?: string;
+  apps: AppRisk[];
+}
+
+/** Ligne agrégée de `app.ops` : une application, une opération (contrat §11.2). */
+export interface AppOpsRow {
+  package: string;
+  label?: string;
+  op: string;
+  count: number;
+  background_count?: number;
+  last_ts?: string;
+}
+
+export interface AppOpsResponse {
+  from?: string;
+  to?: string;
+  rows: AppOpsRow[];
+}
+
+/** Détection calculée par le collecteur (contrat §11.3). */
+export interface Detection {
+  id: string;
+  ts: string;
+  type: string;
+  package?: string;
+  label?: string;
+  /** 0 à 3, même échelle que `sev` des événements */
+  severity: number;
+  summary?: string;
+  evidence: DataObject;
+  window_from?: string;
+  window_to?: string;
+  device_id?: string;
+}
+
+export interface DetectionsResponse {
+  detections: Detection[];
+  next_cursor?: string;
+}

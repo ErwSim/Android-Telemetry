@@ -386,6 +386,93 @@ SELECT h, device_id, pkg, min(SUM(rx), 9007199254740991), min(SUM(tx), 900719925
 	WHERE e.type = 'net.usage' AND a.type = 'object' AND json_type(a.value, '$.package') = 'text' AND json_extract(a.value, '$.package') <> '')
 GROUP BY h, device_id, pkg;
 `,
+	// 6: behavioral detections (contract §11.3). AdGuard Home blocks due to a threat list are counted apart
+	// (tracking_counts.threat); app.ops is aggregated per hour, application and operation; the latest app.risk
+	// of each application and the latest app.role of each role are kept; detections are stored once per
+	// device, type, subject and window; detect_dirty lists the hours whose aggregates changed since the
+	// detections last looked at them (late batches included). Rebuilt from the stored events, reading them
+	// per device through the (device_id, type, ts_ms) index; the hours of the last two days already stored
+	// are marked for a first evaluation.
+	`
+ALTER TABLE tracking_counts ADD COLUMN threat INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE ops_counts (
+	device_id TEXT NOT NULL,
+	hour_ms   INTEGER NOT NULL,
+	package   TEXT NOT NULL,
+	op        TEXT NOT NULL,
+	count     INTEGER NOT NULL,
+	bg_count  INTEGER NOT NULL,
+	last_ms   INTEGER,
+	PRIMARY KEY (device_id, hour_ms, package, op)
+) WITHOUT ROWID;
+
+INSERT INTO ops_counts(device_id, hour_ms, package, op, count, bg_count, last_ms)
+SELECT device_id, h, pkg, op, min(SUM(c), 9007199254740991), min(SUM(b), 9007199254740991), MAX(l) FROM (
+	SELECT e.device_id, e.ts_ms - (e.ts_ms % 3600000) AS h,
+		substr(json_extract(a.value, '$.package'), 1, 255) AS pkg, substr(json_extract(a.value, '$.op'), 1, 32) AS op,
+		min(max(COALESCE(CASE WHEN json_type(a.value, '$.count') = 'integer' THEN json_extract(a.value, '$.count') END, 0), 0), 1000000000) AS c,
+		min(max(COALESCE(CASE WHEN json_type(a.value, '$.background_count') = 'integer' THEN json_extract(a.value, '$.background_count') END, 0), 0), 1000000000) AS b,
+		CASE WHEN json_type(a.value, '$.last_ts') = 'text' THEN CAST((julianday(json_extract(a.value, '$.last_ts')) - 2440587.5) * 86400000 AS INTEGER) END AS l
+	FROM devices d JOIN events e INDEXED BY events_dev_type_ts ON e.device_id = d.device_id AND e.type = 'app.ops',
+		json_each(e.data, '$.apps') a
+	WHERE a.type = 'object' AND json_type(a.value, '$.package') = 'text' AND json_extract(a.value, '$.package') <> ''
+		AND json_type(a.value, '$.op') = 'text' AND json_extract(a.value, '$.op') <> '')
+GROUP BY device_id, h, pkg, op;
+
+CREATE TABLE app_latest (
+	device_id TEXT NOT NULL,
+	kind      TEXT NOT NULL,
+	key       TEXT NOT NULL,
+	ts_ms     INTEGER NOT NULL,
+	data      TEXT NOT NULL,
+	PRIMARY KEY (device_id, kind, key)
+) WITHOUT ROWID;
+
+INSERT INTO app_latest(device_id, kind, key, ts_ms, data)
+SELECT device_id, kind, k, ts_ms, data FROM (
+	SELECT e.device_id, CASE e.type WHEN 'app.risk' THEN 'risk' ELSE 'role' END AS kind,
+		substr(json_extract(e.data, CASE e.type WHEN 'app.risk' THEN '$.package' ELSE '$.role' END), 1, 255) AS k,
+		e.ts_ms, e.data,
+		ROW_NUMBER() OVER (PARTITION BY e.device_id, e.type, json_extract(e.data, CASE e.type WHEN 'app.risk' THEN '$.package' ELSE '$.role' END)
+			ORDER BY e.ts_ms DESC, e.pk DESC) AS rn
+	FROM devices d JOIN events e INDEXED BY events_dev_type_ts ON e.device_id = d.device_id AND e.type IN ('app.risk', 'app.role')
+	WHERE json_type(e.data, CASE e.type WHEN 'app.risk' THEN '$.package' ELSE '$.role' END) = 'text')
+WHERE rn = 1 AND k <> '';
+
+CREATE TABLE detections (
+	pk             INTEGER PRIMARY KEY AUTOINCREMENT,
+	id             TEXT NOT NULL UNIQUE,
+	device_id      TEXT NOT NULL,
+	type           TEXT NOT NULL,
+	subject        TEXT NOT NULL,
+	window_from_ms INTEGER NOT NULL,
+	window_to_ms   INTEGER NOT NULL,
+	ts_ms          INTEGER NOT NULL,
+	package        TEXT NOT NULL,
+	label          TEXT NOT NULL,
+	sev            INTEGER NOT NULL,
+	summary        TEXT NOT NULL,
+	evidence       TEXT NOT NULL,
+	UNIQUE (device_id, type, subject, window_from_ms)
+);
+CREATE INDEX detections_ts ON detections(ts_ms);
+CREATE INDEX detections_dev_ts ON detections(device_id, ts_ms);
+
+CREATE TABLE detect_dirty (
+	device_id TEXT NOT NULL,
+	hour_ms   INTEGER NOT NULL,
+	gen       INTEGER NOT NULL,
+	PRIMARY KEY (device_id, hour_ms)
+) WITHOUT ROWID;
+
+INSERT OR IGNORE INTO detect_dirty(device_id, hour_ms, gen)
+SELECT device_id, hour_ms, 0 FROM event_counts
+WHERE hour_ms >= (SELECT COALESCE(MAX(hour_ms), 0) FROM event_counts) - 172800000
+	AND type IN ('net.dns', 'net.connect', 'net.usage', 'app.ops', 'app.risk', 'app.installed', 'app.permission_changed',
+		'app.special_access', 'app.role')
+GROUP BY device_id, hour_ms;
+`,
 }
 
 // SchemaVersion is the schema version this binary expects.

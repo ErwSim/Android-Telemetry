@@ -1,4 +1,6 @@
 import { Fragment, useMemo, useState } from 'react';
+import { appSheetPath } from '../lib/text.ts';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/endpoints.ts';
 import { useApi } from '../api/useApi.ts';
 import { usePagedEvents } from '../api/usePagedEvents.ts';
@@ -6,7 +8,10 @@ import type { AppInfo, VigieEvent } from '../api/types.ts';
 import { AppName } from '../components/AppName.tsx';
 import { EventList } from '../components/EventList.tsx';
 import { PeriodPicker, usePeriod } from '../components/PeriodPicker.tsx';
-import { Async, Badge, Card, Empty, KV, Stat, Tabs } from '../components/ui.tsx';
+import { Async, Badge, Card, Empty, ErrorBox, KV, Loading, Stat, Tabs } from '../components/ui.tsx';
+import { OpsEmpty, OpsView, opsCollectorState } from '../components/apps/OpsView.tsx';
+import { RiskView } from '../components/apps/RiskView.tsx';
+import { RiskBadge } from '../components/risk/Risk.tsx';
 import { Ranking } from '../components/Ranking.tsx';
 import { summarizeNotifications } from '../lib/notifications.ts';
 import { countByInstaller, groupPermissions } from '../lib/agg.ts';
@@ -16,13 +21,20 @@ import { fmtDate, fmtDateTime, fmtNumber, parseTs } from '../lib/format.ts';
 import { periodRange } from '../lib/period.ts';
 import { useNow } from '../lib/useNow.ts';
 import { useDevice } from '../state/device.tsx';
+import { isUnsupported, useAppOps, useAppRisk } from '../state/appData.ts';
+import type { AppRisk } from '../api/types.ts';
+import { levelInfo } from '../lib/risk.ts';
 
-type Tab = 'inventory' | 'permissions' | 'special' | 'notifications' | 'history';
+type Tab = 'risk' | 'inventory' | 'ops' | 'permissions' | 'special' | 'notifications' | 'history';
+const TABS: Tab[] = ['risk', 'inventory', 'ops', 'permissions', 'special', 'notifications', 'history'];
 
 export default function Apps() {
   const { deviceId } = useDevice();
-  const [tab, setTab] = useState<Tab>('inventory');
+  const [sp] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => TABS.find((t) => t === sp.get('tab')) ?? 'risk');
   const apps = useApi(deviceId ? `apps:${deviceId}` : null, (s) => api.apps(deviceId, s));
+  const risk = useAppRisk();
+  const riskMap = useMemo(() => new Map((risk.data?.apps ?? []).map((r) => [r.package, r])), [risk.data]);
   const labelMap = useMemo(() => {
     const m = new Map<string, string>();
     for (const a of apps.data?.apps ?? []) if (a.label) m.set(a.package, a.label);
@@ -40,18 +52,22 @@ export default function Apps() {
         value={tab}
         onChange={setTab}
         tabs={[
+          { key: 'risk', label: 'Risque' },
           { key: 'inventory', label: 'Inventaire' },
+          { key: 'ops', label: 'Opérations sensibles' },
           { key: 'permissions', label: 'Permissions dangereuses' },
           { key: 'special', label: 'Accès spéciaux' },
           { key: 'notifications', label: 'Notifications' },
           { key: 'history', label: 'Historique' },
         ]}
       />
+      {tab === 'risk' && <RiskTab risk={risk} inventory={apps.data?.apps ?? []} />}
       {tab === 'inventory' && (
         <Async state={apps} isEmpty={(d) => d.apps.length === 0} empty="Aucun inventaire d'applications reçu pour cet appareil.">
-          {(d) => <Inventory apps={d.apps} />}
+          {(d) => <Inventory apps={d.apps} riskMap={riskMap} />}
         </Async>
       )}
+      {tab === 'ops' && <OpsTab />}
       {tab === 'permissions' && (
         <Async state={apps} isEmpty={(d) => d.apps.length === 0} empty="Aucun inventaire d'applications reçu.">
           {(d) => <Permissions apps={d.apps} />}
@@ -96,7 +112,7 @@ function inCat(a: AppInfo, c: Cat): boolean {
 
 type Sort = 'label' | 'update' | 'perms';
 
-function Inventory({ apps }: { apps: AppInfo[] }) {
+function Inventory({ apps, riskMap }: { apps: AppInfo[]; riskMap: Map<string, AppRisk> }) {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<Cat>('all');
   const [installer, setInstaller] = useState('');
@@ -210,6 +226,7 @@ function Inventory({ apps }: { apps: AppInfo[] }) {
                               {a.suspended && <Badge tone="warn">suspendue</Badge>}
                               {a.hidden && <Badge>masquée</Badge>}
                               {isSideloaded(a) && <Badge tone="warn">hors store</Badge>}
+                              {riskMap.has(a.package) && levelInfo(riskMap.get(a.package)?.level, riskMap.get(a.package)?.score).key !== 'low' && <RiskBadge risk={riskMap.get(a.package) as AppRisk} />}
                             </span>
                           </td>
                           <td className="right">{perms.length ? perms.length : <span className="muted">0</span>}</td>
@@ -218,7 +235,7 @@ function Inventory({ apps }: { apps: AppInfo[] }) {
                         {isOpen && (
                           <tr>
                             <td colSpan={6} className="detail-cell">
-                              <AppDetail app={a} />
+                              <AppDetail app={a} risk={riskMap.get(a.package)} />
                             </td>
                           </tr>
                         )}
@@ -245,7 +262,7 @@ function Inventory({ apps }: { apps: AppInfo[] }) {
   );
 }
 
-function AppDetail({ app }: { app: AppInfo }) {
+function AppDetail({ app, risk }: { app: AppInfo; risk: AppRisk | undefined }) {
   const perms = app.granted_dangerous ?? [];
   return (
     <div className="two-col">
@@ -258,6 +275,8 @@ function AppDetail({ app }: { app: AppInfo }) {
           { k: 'Première installation', v: fmtDateTime(app.first_install) },
           { k: 'Dernière mise à jour', v: fmtDateTime(app.last_update) },
           { k: 'Signature SHA-256', v: app.signer_sha256 ? <code className="break">{app.signer_sha256}</code> : '—' },
+          { k: 'Risque', v: risk ? <RiskBadge risk={risk} /> : 'non noté' },
+          { k: 'Fiche', v: <Link to={appSheetPath(app.package)}>Ouvrir la fiche de l'application</Link> },
         ]}
       />
       <div>
@@ -275,6 +294,48 @@ function AppDetail({ app }: { app: AppInfo }) {
         )}
       </div>
     </div>
+  );
+}
+
+function RiskTab({ risk, inventory }: { risk: ReturnType<typeof useAppRisk>; inventory: AppInfo[] }) {
+  if (isUnsupported(risk.error)) {
+    return <Empty>Ce collecteur ne fournit pas encore le profil de risque (contrat v1.2, GET /apps/risk).</Empty>;
+  }
+  return (
+    <Async
+      state={risk}
+      isEmpty={(d) => d.apps.length === 0}
+      empty="Aucun profil de risque reçu pour cet appareil. L'agent v1.2 en envoie un à chaque installation et mise à jour d'application, puis chaque jour si le score ou les raisons changent."
+    >
+      {(d) => <RiskView risks={d.apps} inventory={inventory} ts={d.ts} />}
+    </Async>
+  );
+}
+
+function OpsTab() {
+  const { device } = useDevice();
+  const ctl = usePeriod('7d');
+  const range = periodRange(ctl.period);
+  const ops = useAppOps(range.from, range.to);
+  const unsupported = isUnsupported(ops.error);
+  const running = opsCollectorState(device) === 'running';
+  return (
+    <>
+      <div className="toolbar">
+        <PeriodPicker ctl={ctl} />
+      </div>
+      {ops.error && !unsupported ? (
+        <ErrorBox message={ops.error.message} onRetry={ops.reload} />
+      ) : !ops.data && !unsupported ? (
+        <Loading label="Chargement…" />
+      ) : unsupported || !ops.data ? (
+        <OpsEmpty device={device} reason="absent" />
+      ) : ops.data.rows.length === 0 ? (
+        <OpsEmpty device={device} reason={running ? 'empty' : 'absent'} />
+      ) : (
+        <OpsView rows={ops.data.rows} from={ops.data.from ?? range.from} to={ops.data.to ?? range.to} device={device} />
+      )}
+    </>
   );
 }
 

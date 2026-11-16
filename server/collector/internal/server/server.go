@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/erwsim/android-telemetry/server/collector/internal/config"
+	"github.com/erwsim/android-telemetry/server/collector/internal/detect"
 	"github.com/erwsim/android-telemetry/server/collector/internal/export"
 	"github.com/erwsim/android-telemetry/server/collector/internal/ratelimit"
 	"github.com/erwsim/android-telemetry/server/collector/internal/store"
@@ -26,6 +27,7 @@ type Server struct {
 	broker   *Broker
 	cmdHub   *cmdHub
 	tracking *trackingService
+	detector *detect.Engine
 	alerts   *AlertsClient
 	static   http.Handler
 	csp      string
@@ -72,6 +74,7 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger, opt Options) (*S
 	if s.tracking, err = newTrackingService(s); err != nil {
 		return nil, err
 	}
+	s.detector = s.newDetector()
 	if opt.ConsoleFS != nil {
 		s.static = newStaticHandler(opt.ConsoleFS)
 	} else {
@@ -109,6 +112,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/console/stats/timeline", s.auth(s.handleTimeline))
 	mux.HandleFunc("GET /api/console/stats/top", s.auth(s.handleTop))
 	mux.HandleFunc("GET /api/console/apps", s.auth(s.handleApps))
+	mux.HandleFunc("GET /api/console/apps/risk", s.auth(s.handleAppsRisk))
+	mux.HandleFunc("GET /api/console/apps/ops", s.auth(s.handleAppsOps))
+	mux.HandleFunc("GET /api/console/detections", s.auth(s.handleDetections))
 	mux.HandleFunc("GET /api/console/posture", s.auth(s.handlePosture))
 	mux.HandleFunc("GET /api/console/alerts", s.auth(s.handleAlerts))
 	mux.HandleFunc("GET /api/console/stream", s.auth(s.handleStream))

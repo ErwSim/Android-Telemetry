@@ -54,6 +54,12 @@ func (s *Store) Purge(ctx context.Context, cutoff, now time.Time, idle time.Dura
 		`DELETE FROM top_counts WHERE hour_ms < ?`,
 		`DELETE FROM usage_counts WHERE hour_ms < ?`,
 		`DELETE FROM tracking_counts WHERE hour_ms < ?`,
+		`DELETE FROM ops_counts WHERE hour_ms < ?`,
+		`DELETE FROM detect_dirty WHERE hour_ms < ?`,
+		// A detection is kept as long as its window or the moment it was found is within the retention.
+		`DELETE FROM detections WHERE window_to_ms < ?1 AND ts_ms < ?1`,
+		// The latest app.risk and app.role are copies of events: they follow the same retention.
+		`DELETE FROM app_latest WHERE ts_ms < ?`,
 		// A command is kept at least until it expires, so that its id cannot be reused while it is valid.
 		`DELETE FROM commands WHERE expires_ms < ?`,
 	} {

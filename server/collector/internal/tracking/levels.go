@@ -21,6 +21,37 @@ type ListDef struct {
 	Name      string `json:"name"`
 	URL       string `json:"url"`
 	Allowlist bool   `json:"allowlist,omitempty"`
+	// Category says what the list blocks (optional): CategoryThreat marks the lists of threats (phishing,
+	// malware, command servers) whose blocks feed detect.threat_domain; the other values are descriptive.
+	Category string `json:"category,omitempty"`
+}
+
+// List categories of the levels file ("category"). Only CategoryThreat changes the behavior of the
+// collector; an unknown value is refused, so that a typo cannot silently disable detect.threat_domain.
+const (
+	CategoryThreat    = "threat"    // phishing, malware, command and control servers, scams
+	CategoryAds       = "ads"       // advertising
+	CategoryTracking  = "tracking"  // trackers, analytics, telemetry
+	CategoryMixed     = "mixed"     // general-purpose lists mixing ads, tracking and some threats
+	CategoryCustom    = "custom"    // rules written for this installation
+	CategoryAllowlist = "allowlist" // exceptions
+)
+
+var listCategories = map[string]bool{CategoryThreat: true, CategoryAds: true, CategoryTracking: true, CategoryMixed: true,
+	CategoryCustom: true, CategoryAllowlist: true}
+
+// ThreatURLs returns the URLs of the lists of category "threat" (nil receiver: none).
+func (l *Levels) ThreatURLs() map[string]bool {
+	out := map[string]bool{}
+	if l == nil {
+		return out
+	}
+	for _, def := range l.Lists {
+		if def.Category == CategoryThreat && !def.Allowlist {
+			out[def.URL] = true
+		}
+	}
+	return out
 }
 
 // Level is one blocking level.
@@ -89,6 +120,12 @@ func ParseLevels(b []byte) (*Levels, error) {
 		}
 		if !validListURL(def.URL) {
 			return nil, fmt.Errorf("liste %q : URL http(s):// ou chemin absolu attendu", id)
+		}
+		if def.Category != "" && !listCategories[def.Category] {
+			return nil, fmt.Errorf("liste %q : catégorie %q inconnue (threat, ads, tracking, mixed, custom ou allowlist)", id, def.Category)
+		}
+		if def.Category == CategoryThreat && def.Allowlist {
+			return nil, fmt.Errorf("liste %q : une liste d'autorisation ne peut pas être de catégorie threat", id)
 		}
 		if prev, dup := urls[def.URL]; dup {
 			return nil, fmt.Errorf("listes %q et %q : même URL", prev, id)

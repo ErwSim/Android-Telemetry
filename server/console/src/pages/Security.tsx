@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/endpoints.ts';
 import { useApi } from '../api/useApi.ts';
 import { usePagedEvents } from '../api/usePagedEvents.ts';
@@ -7,17 +8,21 @@ import { EventList } from '../components/EventList.tsx';
 import { PeriodPicker, usePeriod } from '../components/PeriodPicker.tsx';
 import { Async, Badge, Card, Empty, StatusPill, Tabs } from '../components/ui.tsx';
 import { countKeys } from '../lib/agg.ts';
-import { bool, str } from '../lib/data.ts';
+import { bool, isRecord, str } from '../lib/data.ts';
+import { roleChanges, roleLabel, roleWhy } from '../lib/roles.ts';
+import { appSheetPath, cleanText } from '../lib/text.ts';
 import { fmtDateTime, fmtValue } from '../lib/format.ts';
 import { evaluatePosture, overallStatus, POSTURE_LABELS } from '../lib/posture.ts';
 import { periodRange, type PeriodKey } from '../lib/period.ts';
 import { useAppLabels } from '../state/appLabels.ts';
 import { useDevice } from '../state/device.tsx';
 
-type Tab = 'posture' | 'log' | 'sensors' | 'keyguard' | 'certs' | 'radio' | 'policy';
+type Tab = 'posture' | 'roles' | 'log' | 'sensors' | 'keyguard' | 'certs' | 'radio' | 'policy';
+const TABS: Tab[] = ['posture', 'roles', 'log', 'sensors', 'keyguard', 'certs', 'radio', 'policy'];
 
 export default function Security() {
-  const [tab, setTab] = useState<Tab>('posture');
+  const [sp] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => TABS.find((t) => t === sp.get('tab')) ?? 'posture');
   return (
     <>
       <div className="page-head">
@@ -29,6 +34,7 @@ export default function Security() {
         onChange={setTab}
         tabs={[
           { key: 'posture', label: 'Posture' },
+          { key: 'roles', label: 'Rôles par défaut' },
           { key: 'log', label: 'Journal système' },
           { key: 'sensors', label: 'Caméra et micro' },
           { key: 'keyguard', label: 'Déverrouillages' },
@@ -38,6 +44,7 @@ export default function Security() {
         ]}
       />
       {tab === 'posture' && <PostureTab />}
+      {tab === 'roles' && <RolesTab />}
       {tab === 'log' && (
         <EventSection title="Journal de sécurité système (security.log)" types="security.log" searchable hint="Journal natif Android (Device Owner) : authentification, installation d'APK, injection de clés, etc." />
       )}
@@ -57,6 +64,90 @@ export default function Security() {
       {tab === 'policy' && (
         <EventSection title="Actions de politique appliquées (security.policy)" types="security.policy" hint="Chaque action effectuée localement par l'agent (DNS privé, paquets désactivés, permissions refusées…)." defaultPeriod="30d" />
       )}
+    </>
+  );
+}
+
+/**
+ * Rôles par défaut (SMS, téléphone, navigateur, assistant, accueil, filtrage d'appels) : qui les tient et
+ * l'historique des changements (`app.role`). Un logiciel malveillant cherche souvent à devenir l'application SMS
+ * ou le filtre d'appels : un changement que vous n'avez pas fait mérite d'être regardé.
+ */
+function RolesTab() {
+  const labelOf = useAppLabels();
+  const { deviceId } = useDevice();
+  const ctl = usePeriod('30d');
+  const range = periodRange(ctl.period);
+  const paged = usePagedEvents(deviceId ? { device_id: deviceId, type: 'app.role', ...range } : null, 200);
+  const special = usePagedEvents(deviceId ? { device_id: deviceId, type: 'app.special_access', ...range } : null, 1);
+  const changes = useMemo(() => roleChanges(paged.events), [paged.events]);
+  const defaults = special.events[0]?.data['default_apps'];
+  const current = isRecord(defaults) ? Object.entries(defaults).filter(([, v]) => typeof v === 'string' && v !== '') : [];
+  const pkgName = (p: string | undefined) => {
+    if (!p) return <span className="muted">aucune</span>;
+    const l = labelOf(p);
+    return (
+      <Link className="role-pkg" to={appSheetPath(p)}>
+        {l ? `${cleanText(l, 80)} (${cleanText(p, 160)})` : cleanText(p, 160)}
+      </Link>
+    );
+  };
+  return (
+    <>
+      <div className="toolbar">
+        <PeriodPicker ctl={ctl} />
+      </div>
+      <div className="grid grid-start">
+        <Card title="Rôles actuels" className="span-5">
+          {special.loading && !special.events[0] ? (
+            <Empty>Chargement…</Empty>
+          ) : current.length === 0 ? (
+            <Empty>Aucun relevé des applications par défaut sur cette période.</Empty>
+          ) : (
+            <ul className="role-list">
+              {current.map(([role, p]) => (
+                <li key={role}>
+                  <strong>{roleLabel(role)}</strong> : {pkgName(p as string)}
+                  {roleWhy(role) && <p className="hint">{roleWhy(role)}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+        <Card title="Historique des changements" className="span-7">
+          {changes.length === 0 && !paged.loading ? (
+            <Empty>Aucun changement de rôle par défaut sur cette période.</Empty>
+          ) : (
+            <div className="flush">
+              <div className="table-wrap">
+                <table className="tbl" data-testid="roles-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Date</th>
+                      <th scope="col">Rôle</th>
+                      <th scope="col">Changement</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {changes.map((c) => (
+                      <tr key={c.id} className={c.role === 'sms' || c.role === 'call_screening' ? 'sev-2' : ''}>
+                        <td className="nowrap">{fmtDateTime(c.ts)}</td>
+                        <td>{roleLabel(c.role)}</td>
+                        <td className="break">
+                          {pkgName(c.old)} <span className="role-arrow">→</span> <strong>{pkgName(c.new)}</strong>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          <p className="hint">
+            Un changement que vous n'avez pas fait vous-même (surtout l'application SMS ou le filtrage d'appels) est à vérifier dans la fiche de la nouvelle application.
+          </p>
+        </Card>
+      </div>
     </>
   );
 }

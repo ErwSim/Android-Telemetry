@@ -1,0 +1,107 @@
+import { describe, expect, it } from 'vitest';
+import {
+  COMBO_CODES,
+  REASON_CODES,
+  combosOf,
+  filterRisk,
+  levelInfo,
+  normalizeRisk,
+  orderReasons,
+  parseRiskResponse,
+  reasonInfo,
+  riskCounts,
+  sortByScore,
+} from './risk.ts';
+
+describe('codes de raison (liste fermée du contrat §11.2)', () => {
+  it('traduit chacun des 20 codes en français, avec une explication', () => {
+    expect(REASON_CODES).toHaveLength(20);
+    for (const code of REASON_CODES) {
+      const r = reasonInfo(code);
+      expect(r.known).toBe(true);
+      expect(r.label).not.toBe(code);
+      expect(r.explain.length).toBeGreaterThan(30);
+    }
+    expect(reasonInfo('sms_send').label).toBe('Peut envoyer des SMS');
+  });
+
+  it('les trois combinaisons sont repérées et en tête', () => {
+    expect(COMBO_CODES).toEqual(['combo_banking_trojan', 'combo_sms_fraud', 'combo_stalkerware']);
+    for (const c of COMBO_CODES) expect(reasonInfo(c).combo).toBe(true);
+    expect(reasonInfo('overlay').combo).toBe(false);
+    const ordered = orderReasons(['boot_receiver', 'sms_send', 'combo_sms_fraud', 'sideloaded']).map((r) => r.code);
+    expect(ordered[0]).toBe('combo_sms_fraud');
+    expect(ordered).toHaveLength(4);
+  });
+
+  it('un code inconnu est affiché tel quel, sans explication inventée', () => {
+    const r = reasonInfo('quantum_overlay');
+    expect(r.known).toBe(false);
+    expect(r.label).toBe('quantum_overlay');
+    expect(r.tone).toBe('neutral');
+    // et ne tombe pas sur un nom hérité d'Object
+    expect(reasonInfo('constructor').known).toBe(false);
+    expect(reasonInfo('__proto__').label).toBe('__proto__');
+    expect(orderReasons(['zzz', 'sms_send']).map((x) => x.code)).toEqual(['sms_send', 'zzz']);
+  });
+
+  it('dédoublonne et repère les combinaisons dans l’ordre du contrat', () => {
+    expect(combosOf(['combo_stalkerware', 'x', 'combo_banking_trojan'])).toEqual(['combo_banking_trojan', 'combo_stalkerware']);
+    expect(combosOf([])).toEqual([]);
+    expect(orderReasons(['sms_send', 'sms_send'])).toHaveLength(1);
+  });
+});
+
+describe('niveaux', () => {
+  it('reprend le niveau annoncé, sinon le déduit du score', () => {
+    expect(levelInfo('high', 3).label).toBe('Élevé');
+    expect(levelInfo('low', 99).tone).toBe('ok');
+    expect(levelInfo('mystère', 70).key).toBe('high');
+    expect(levelInfo(undefined, 40).key).toBe('medium');
+    expect(levelInfo('', 10).key).toBe('low');
+  });
+});
+
+describe('lecture de /apps/risk', () => {
+  const raw = {
+    apps: [
+      { package: 'a', score: 40, level: 'medium', reasons: ['sideloaded'] },
+      { package: 'b', score: 95, level: 'high', reasons: ['combo_sms_fraud', 'sms_send', 'boot_receiver'], label: 'B', from_store: false, installer: 'x' },
+      { package: 'c', score: 40, level: 'medium', reasons: ['sideloaded', 'boot_receiver'] },
+      { package: 'd', score: 2, level: 'low', reasons: [] },
+    ],
+  };
+
+  it('trie par score décroissant puis par nombre de raisons', () => {
+    expect(parseRiskResponse(raw).apps.map((a) => a.package)).toEqual(['b', 'c', 'a', 'd']);
+  });
+
+  it('accepte un tableau nu, les champs sous data, et ignore les éléments invalides', () => {
+    expect(parseRiskResponse([{ package: 'x', score: 10, level: 'low', reasons: [] }]).apps).toHaveLength(1);
+    const n = normalizeRisk({ ts: '2026-11-16T10:00:00Z', data: { package: 'p', score: 300, level: 'high', reasons: ['a', 3, ''] } });
+    expect(n).toMatchObject({ package: 'p', score: 100, reasons: ['a'], ts: '2026-11-16T10:00:00Z' });
+    expect(parseRiskResponse({ apps: [null, 5, { score: 3 }, { package: '' }] }).apps).toEqual([]);
+    expect(parseRiskResponse(null).apps).toEqual([]);
+    expect(parseRiskResponse({}).apps).toEqual([]);
+  });
+
+  it('compte par niveau et par combinaison', () => {
+    const apps = parseRiskResponse(raw).apps;
+    expect(riskCounts(apps)).toEqual({ high: 1, medium: 2, low: 1, total: 4, withCombo: 1 });
+    expect(riskCounts([])).toEqual({ high: 0, medium: 0, low: 0, total: 0, withCombo: 0 });
+  });
+
+  it('filtre par niveau, combinaison et texte', () => {
+    const apps = parseRiskResponse(raw).apps;
+    expect(filterRisk(apps, { level: 'medium', comboOnly: false, q: '' }).map((a) => a.package)).toEqual(['b', 'c', 'a']);
+    expect(filterRisk(apps, { level: 'all', comboOnly: true, q: '' }).map((a) => a.package)).toEqual(['b']);
+    expect(filterRisk(apps, { level: 'all', comboOnly: false, q: ' B ' }).map((a) => a.package)).toEqual(['b']);
+  });
+
+  it('sortByScore ne modifie pas son entrée', () => {
+    const l = parseRiskResponse(raw).apps;
+    const copy = [...l].reverse();
+    sortByScore(copy);
+    expect(copy[0]?.package).toBe('d');
+  });
+});

@@ -47,6 +47,8 @@ type trackingService struct {
 	lastOK    time.Time
 	lastErr   string
 	names     map[int64]string // filter list id -> name
+	urls      map[int64]string // blocking filter list id -> URL
+	threats   map[string]bool  // URLs of the lists of category "threat" (levels file)
 	filters   []tracking.FilterState
 	overrides map[string]string
 	overErr   error // managed block unreadable
@@ -72,6 +74,7 @@ func newTrackingService(s *Server) (*trackingService, error) {
 		}
 		t.levels = l
 	}
+	t.threats = t.levels.ThreatURLs()
 	if cfg.AdGuardURL != "" {
 		c, err := adguard.New(cfg.AdGuardURL, cfg.AdGuardUser, cfg.AdGuardPassword)
 		if err != nil {
@@ -155,9 +158,11 @@ func (t *trackingService) refreshStatus(ctx context.Context) error {
 
 func (t *trackingService) setStatus(st *adguard.FilterStatus) {
 	names := map[int64]string{}
+	urls := map[int64]string{}
 	var filters []tracking.FilterState
 	for _, f := range st.Filters {
 		names[f.ID] = f.Name
+		urls[f.ID] = f.URL
 		filters = append(filters, tracking.FilterState{URL: f.URL, Name: f.Name, Enabled: f.Enabled})
 	}
 	for _, f := range st.WhitelistFilters {
@@ -168,7 +173,7 @@ func (t *trackingService) setStatus(st *adguard.FilterStatus) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.lastOK = t.s.now()
-	t.names, t.filters, t.overrides, t.overErr = names, filters, ov, oerr
+	t.names, t.urls, t.filters, t.overrides, t.overErr = names, urls, filters, ov, oerr
 }
 
 // logGap is a range of the query log still to read: the entries older than the record at Hi, down to Lo.
@@ -374,7 +379,7 @@ type pageResult struct {
 // are counted (up zero: no upper limit).
 func (t *trackingService) aggregate(items []adguard.QueryLogItem, lo, up, bound time.Time) pageResult {
 	t.mu.Lock()
-	names := t.names
+	names, urls := t.names, t.urls
 	t.mu.Unlock()
 	acc := map[trackKey]*store.TrackingRow{}
 	var order []trackKey
@@ -424,6 +429,9 @@ func (t *trackingService) aggregate(items []adguard.QueryLogItem, lo, up, bound 
 		blocked, reason := classifyReason(it, names)
 		if blocked {
 			r.Blocked++
+			if threatBlock(it, urls, t.threats) {
+				r.Threat++
+			}
 		}
 		if reason != "" && r.Reason == "" { // newest first: keep the most recent reason
 			r.Reason = reason
@@ -495,6 +503,25 @@ func classifyReason(it *adguard.QueryLogItem, names map[int64]string) (bool, str
 		return false, "Réécriture DNS"
 	}
 	return false, ""
+}
+
+// threatBlock tells whether a blocked entry was blocked due to a threat: a list of category "threat" of the
+// levels file (recognized by its URL, like the levels themselves), or AdGuard Home's safe browsing service
+// (phishing and malware). A block by a general-purpose list, a user rule or a blocked service is not one.
+func threatBlock(it *adguard.QueryLogItem, urls map[int64]string, threats map[string]bool) bool {
+	if it.Reason == "FilteredSafeBrowsing" {
+		return true
+	}
+	if it.Reason != "FilteredBlackList" || len(threats) == 0 {
+		return false
+	}
+	listID := int64(-1)
+	if len(it.Rules) > 0 {
+		listID = it.Rules[0].FilterListID
+	} else if it.FilterID != nil {
+		listID = *it.FilterID
+	}
+	return listID > 0 && threats[urls[listID]]
 }
 
 func clipText(s string, n int) string {

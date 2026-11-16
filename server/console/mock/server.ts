@@ -2,7 +2,8 @@
 //   --port 8787        port d'écoute (défaut 8787, ou MOCK_PORT)
 //   --static dist      sert aussi la console construite, avec une CSP stricte et le repli SPA
 // Identifiants : admin / vigie (MOCK_USER, MOCK_PASSWORD).
-// Contrôle de test : POST /__mock/control { wazuh?, expire?, fail?, latency_ms?,
+//   --scenario mixed|healthy|fraud  (défaut mixed, ou MOCK_SCENARIO) : détections, profils de risque, app.ops, rôles (voir scenario.ts)
+// Contrôle de test : POST /__mock/control { ops_mode?: "normal"|"empty"|"404", more_detections? (nombre à ajouter), emit_detection? (détection en direct),  wazuh?, expire?, fail?, latency_ms?,
 //   clock_skew_ms? (horloge du serveur décalée), adguard?, stored? (adguard=false mais agrégats stockés servis), channel?: "stream"|"poll"|"offline", agent?: { disabled, wipe_allowed, code_configured, device_owner,
 //   locate_fail, deliver_ms, exec_ms }, quiet? (plus d'événements aléatoires en direct) } ; GET /__mock/requests : corps des requêtes modifiantes reçues.
 // Code de commande du mock (celui de l'« app » simulée) : MOCK_COMMAND_CODE, défaut « correct horse battery staple ».
@@ -14,6 +15,9 @@ import { DEVICE_MAIN, DEVICE_OLD, generate, liveEvent, type MockEvent } from './
 import { makeRng, ulid } from './rng.ts';
 import * as cmd from './commands.ts';
 import * as trk from './tracking.ts';
+import * as det from './detect.ts';
+import { ALL_APPS } from './catalog.ts';
+import { applyScenario, detectionData, fillerDetections, parseScenario } from './scenario.ts';
 
 const args = process.argv.slice(2);
 const argVal = (name: string): string | undefined => {
@@ -42,10 +46,14 @@ const CSP =
     "frame-ancestors 'none'",
   ].join('; ');
 
+const SCENARIO = parseScenario(argVal('--scenario') ?? process.env['MOCK_SCENARIO']);
 const NOW = Date.now();
 const gen = generate(NOW);
 const events: MockEvent[] = gen.events;
+ALL_APPS.push(...applyScenario(events, SCENARIO, NOW, DEVICE_MAIN.device_id));
 const byId = new Map(events.map((e) => [e.id, e]));
+/** `app.ops` : « normal » (selon le scénario), « empty » (collecteur actif, rien d'utilisé) ou « 404 » (route absente). */
+let opsMode: 'normal' | 'empty' | '404' = 'normal';
 const sessions = new Map<string, string>();
 const control: { wazuh: boolean; fail: string[]; latency_ms: number; quiet: boolean } = {
   quiet: false,
@@ -413,7 +421,24 @@ const server = http.createServer((req, res) => {
         reset_lockout?: boolean;
         quiet?: boolean;
         clock_skew_ms?: number;
+        ops_mode?: typeof opsMode;
+        more_detections?: number;
+        emit_detection?: { type: string; package?: string; label?: string; severity?: number; evidence?: Record<string, unknown>; summary?: string };
       };
+      if (b.ops_mode === 'normal' || b.ops_mode === 'empty' || b.ops_mode === '404') opsMode = b.ops_mode;
+      if (typeof b.more_detections === 'number' && b.more_detections > 0) {
+        for (const e of fillerDetections({ rng: liveRng, now: Date.now(), device: DEVICE_MAIN.device_id }, Math.min(500, b.more_detections))) {
+          const full: MockEvent = { ...e, seq: seqCounter++, boot_id: liveBoot, elapsed_ms: 123456789 };
+          events.push(full);
+          byId.set(full.id, full);
+        }
+        events.sort((x, y) => x.t - y.t || (x.id < y.id ? -1 : 1));
+      }
+      if (b.emit_detection) {
+        const d = b.emit_detection;
+        const now = Date.now();
+        emitAgentEvent(d.type, d.severity ?? 3, detectionData({ ...(d.package ? { package: d.package } : {}), ...(d.label ? { label: d.label } : {}) }, now - 60_000, 3_600_000, d.evidence ?? {}, d.summary ?? 'Détection simulée'));
+      }
       if (typeof b.clock_skew_ms === 'number') cmd.clock.skew_ms = b.clock_skew_ms;
       if (typeof b.quiet === 'boolean') control.quiet = b.quiet;
       if (typeof b.adguard === 'boolean') track.adguard = b.adguard;
@@ -492,6 +517,14 @@ const server = http.createServer((req, res) => {
     if (route === '/stats/timeline') return sendJson(res, 200, timeline(u));
     if (route === '/stats/top') return sendJson(res, 200, top(u));
     if (route === '/apps') return sendJson(res, 200, apps(u.searchParams.get('device_id')));
+    if (route === '/apps/risk') return sendJson(res, 200, det.risk(deviceEvents(u.searchParams.get('device_id'))));
+    if (route === '/apps/ops') {
+      if (opsMode === '404') return err(res, 404, 'not_found', 'Route inconnue : /apps/ops');
+      const labels = new Map(ALL_APPS.map((a) => [a.package, a.label]));
+      const r = det.ops(opsMode === 'empty' ? [] : deviceEvents(u.searchParams.get('device_id')), u, labels);
+      return sendJson(res, 200, r);
+    }
+    if (route === '/detections') return sendJson(res, 200, det.detections(deviceEvents(u.searchParams.get('device_id')), u));
     if (route === '/posture') return sendJson(res, 200, postureHistory(u.searchParams.get('device_id')));
     if (route === '/alerts') return sendJson(res, 200, alerts(u));
     if (route === '/commands' && method === 'GET') {
@@ -581,6 +614,6 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   const n = events.length;
-  console.log(`[mock] API console sur http://127.0.0.1:${PORT}/api/console (${n} événements, ${gen.appCount} apps)`);
+  console.log(`[mock] API console sur http://127.0.0.1:${PORT}/api/console (${n} événements, ${ALL_APPS.length} apps, scénario ${SCENARIO})`);
   console.log(`[mock] connexion : ${USER} / ${PASSWORD}${STATIC_DIR ? ` — console statique : ${STATIC_DIR}` : ''}`);
 });

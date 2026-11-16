@@ -3,43 +3,53 @@
   "lists": {
     "adguard_dns": {
       "name": "AdGuard DNS filter",
-      "url": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"
+      "url": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt",
+      "category": "mixed"
+    },
+    "hagezi_tif": {
+      "name": "HaGeZi - Threat Intelligence Feeds (medium)",
+      "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.medium.txt",
+      "category": "threat"
     },
     "hagezi_samsung": {
       "name": "HaGeZi - Native Tracker Samsung",
-      "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/native.samsung.txt"
+      "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/native.samsung.txt",
+      "category": "tracking"
     },
     "hagezi_tiktok": {
       "name": "HaGeZi - Native Tracker TikTok",
-      "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/native.tiktok.txt"
+      "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/native.tiktok.txt",
+      "category": "tracking"
     },
     "hagezi_microsoft": {
       "name": "HaGeZi - Native Tracker Microsoft",
-      "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/native.winoffice.txt"
+      "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/native.winoffice.txt",
+      "category": "tracking"
     },
     "hagezi_pro_plus": {
       "name": "HaGeZi - Multi PRO++",
-      "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.plus.txt"
+      "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.plus.txt",
+      "category": "mixed"
     }
   },
   "levels": [
     {
       "key": "permissif",
       "name": "Permissif",
-      "description": "Publicité et pisteurs courants seulement. Tout fonctionne.",
-      "lists": ["adguard_dns"]
+      "description": "Menaces (hameçonnage, maliciels, serveurs de commande), publicité et pisteurs courants seulement. Tout fonctionne.",
+      "lists": ["adguard_dns", "hagezi_tif"]
     },
     {
       "key": "equilibre",
       "name": "Équilibré",
       "description": "Ajoute la télémétrie Samsung, TikTok et Microsoft. Play Services, Play Store, notifications push et applications bancaires restent fonctionnels.",
-      "lists": ["adguard_dns", "hagezi_samsung", "hagezi_tiktok", "hagezi_microsoft"]
+      "lists": ["adguard_dns", "hagezi_tif", "hagezi_samsung", "hagezi_tiktok", "hagezi_microsoft"]
     },
     {
       "key": "strict",
       "name": "Strict",
       "description": "Ajoute une liste étendue (télémétrie Google comprise). Certaines applications peuvent mal fonctionner.",
-      "lists": ["adguard_dns", "hagezi_samsung", "hagezi_tiktok", "hagezi_microsoft", "hagezi_pro_plus"]
+      "lists": ["adguard_dns", "hagezi_tif", "hagezi_samsung", "hagezi_tiktok", "hagezi_microsoft", "hagezi_pro_plus"]
     }
   ]
 }

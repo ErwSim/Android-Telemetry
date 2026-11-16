@@ -38,7 +38,7 @@ const (
 const (
 	MaxPayloadBytes   = 4096
 	MaxValidity       = 30 * 24 * time.Hour
-	MaxWipeValidity   = 24 * time.Hour // contract §8, security review of v1.1: wipe is valid 24 h at most
+	MaxWipeValidity   = 24 * time.Hour   // contract §8, security review of v1.1: wipe is valid 24 h at most
 	MaxIssueSkew      = 10 * time.Minute // |issued_at - server time| accepted at creation
 	MaxMessageUnits   = 200              // lock message, in UTF-16 code units (JavaScript and Kotlin String.length)
 	PBKDF2Iterations  = 600000

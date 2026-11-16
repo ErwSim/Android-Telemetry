@@ -10,6 +10,7 @@ import {
   defaultValidityMs,
   deriveKeyBytes,
   isSensitive,
+  maxValidityMs,
   issueTime,
   paramsSummary,
   prepareCommand,
@@ -84,13 +85,38 @@ describe('construction du payload', () => {
     expect(p.params).toEqual({});
   });
 
-  it('validité : 1 h (simple), 7 jours (sensible), 30 jours au plus', () => {
+  it('validité : 1 h (simple), 7 jours (verrouillage), 15 min (effacement) ; 30 jours au plus, 24 h pour un effacement', () => {
     expect(defaultValidityMs('locate')).toBe(3_600_000);
-    expect(defaultValidityMs('wipe')).toBe(7 * 86_400_000);
+    expect(defaultValidityMs('lock')).toBe(7 * 86_400_000);
+    expect(defaultValidityMs('clear_lock_message')).toBe(7 * 86_400_000);
+    expect(defaultValidityMs('wipe')).toBe(15 * 60_000);
+    expect(maxValidityMs('wipe')).toBe(86_400_000);
+    expect(maxValidityMs('lock')).toBe(30 * 86_400_000);
     expect(() => buildPayload({ ...base, type: 'locate', validityMs: 31 * 86_400_000 })).toThrow();
     expect(() => buildPayload({ ...base, type: 'locate', validityMs: 0 })).toThrow();
-    const ok = JSON.parse(buildPayload({ ...base, type: 'wipe', validityMs: 30 * 86_400_000 })) as { expires_at: string };
+    const ok = JSON.parse(buildPayload({ ...base, type: 'lock', validityMs: 30 * 86_400_000 })) as { expires_at: string };
     expect(ok.expires_at).toBe('2026-12-16T10:00:00.000Z');
+    // Effacement : 24 h au plus (contrat §8, revue de sécurité de la v1.1)
+    const wipe24 = JSON.parse(buildPayload({ ...base, type: 'wipe', validityMs: 86_400_000 })) as { expires_at: string };
+    expect(wipe24.expires_at).toBe('2026-11-17T10:00:00.000Z');
+    expect(() => buildPayload({ ...base, type: 'wipe', validityMs: 86_400_001 })).toThrow(/24 heures/);
+    expect(() => buildPayload({ ...base, type: 'wipe', validityMs: 7 * 86_400_000 })).toThrow();
+    const wipe15 = JSON.parse(buildPayload({ ...base, type: 'wipe', validityMs: defaultValidityMs('wipe') })) as { expires_at: string };
+    expect(wipe15.expires_at).toBe('2026-11-16T10:15:00.000Z');
+  });
+
+  it("« annulée » et « expirée » d'une commande signée n'engagent que le serveur (contrat §8)", () => {
+    for (const s of ['cancelled', 'expired']) {
+      const signed = statusInfo(s, false, true);
+      expect(signed.label).toContain('côté serveur');
+      expect(signed.help).toContain("n'engage que le serveur");
+      expect(signed.help).toContain('changement du code de commande');
+      expect(signed.help).not.toContain('jamais exécutée');
+      // une commande simple garde l'affirmation d'origine
+      expect(statusInfo(s, false, false).help).toContain('jamais exécutée');
+    }
+    // remise puis expirée : toujours « sans réponse », signée ou non
+    expect(statusInfo('expired', true, true).label).toBe('Expirée sans réponse');
   });
 
   it('refuse les paramètres hors bornes', () => {

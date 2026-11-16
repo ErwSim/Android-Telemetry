@@ -18,8 +18,10 @@ import {
   commandErrorMessage,
   commandLabel,
   defaultValidityMs,
+  isSensitive,
   issueTime,
   prepareCommand,
+  SIGNED_CAVEAT,
   type CommandParams,
   type CommandType,
 } from '../lib/commands.ts';
@@ -119,7 +121,14 @@ export default function Commands() {
     setCancelling(id);
     try {
       await api.cancelCommand(id);
-      setNotice({ tone: 'ok', text: 'Commande annulée : elle ne sera jamais exécutée.' });
+      const cancelled = cmds.find((c) => c.id === id);
+      const signed = cancelled ? (cancelled.signed ?? isSensitive(cancelled.type)) : false;
+      setNotice({
+        tone: signed ? 'warn' : 'ok',
+        text: signed
+          ? `Commande annulée côté serveur : il ne la remettra plus. ${SIGNED_CAVEAT}`
+          : 'Commande annulée : elle ne sera jamais exécutée.',
+      });
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) setNotice({ tone: 'warn', text: "Trop tard : la commande n'est plus « En attente » (le téléphone l'a déjà reçue)." });
       else fail(e);
@@ -219,7 +228,7 @@ export default function Commands() {
               <strong>Effacer le téléphone</strong>
               <span className="hint">
                 Réinitialisation d'usine, irréversible. Exige que l'effacement soit autorisé dans l'application du téléphone ; confirmation en trois
-                étapes (explication, nom de l'appareil, code).
+                étapes (explication, nom de l'appareil, code). La commande n'est valable que 15 minutes par défaut (24 heures au plus).
               </span>
             </div>
             <div className="cmd-ctl">

@@ -6,6 +6,7 @@ import {
   canSign,
   codeProblem,
   commandErrorMessage,
+  defaultValidityMs,
   issueTime,
   validateParams,
   DAY_MS,
@@ -21,12 +22,31 @@ import { ServerLimits } from './ServerLimits.tsx';
 
 export type SensitiveKind = Extract<CommandType, 'lock' | 'clear_lock_message' | 'wipe'>;
 
-const VALIDITIES = [
-  { ms: HOUR_MS, label: '1 heure' },
-  { ms: DAY_MS, label: '24 heures' },
-  { ms: 7 * DAY_MS, label: '7 jours (par défaut)' },
-  { ms: 30 * DAY_MS, label: '30 jours (maximum)' },
-];
+const MIN_MS = 60_000;
+
+/** Choix de validité : un effacement vaut 15 min par défaut et 24 h au plus ; verrouillage 7 jours par défaut, 30 au plus (contrat §8). */
+const VALIDITIES: Record<SensitiveKind, { ms: number; label: string }[]> = {
+  wipe: [
+    { ms: 5 * MIN_MS, label: '5 minutes' },
+    { ms: 15 * MIN_MS, label: '15 minutes (par défaut)' },
+    { ms: HOUR_MS, label: '1 heure' },
+    { ms: 6 * HOUR_MS, label: '6 heures' },
+    { ms: DAY_MS, label: '24 heures (maximum)' },
+  ],
+  lock: [
+    { ms: HOUR_MS, label: '1 heure' },
+    { ms: DAY_MS, label: '24 heures' },
+    { ms: 7 * DAY_MS, label: '7 jours (par défaut)' },
+    { ms: 30 * DAY_MS, label: '30 jours (maximum)' },
+  ],
+  clear_lock_message: [
+    { ms: HOUR_MS, label: '1 heure' },
+    { ms: DAY_MS, label: '24 heures' },
+    { ms: 7 * DAY_MS, label: '7 jours (par défaut)' },
+    { ms: 30 * DAY_MS, label: '30 jours (maximum)' },
+  ],
+};
+
 
 type Phase = 'idle' | 'signing' | 'sending';
 
@@ -52,7 +72,7 @@ export function SensitiveDialog({
   const deviceName = device.name || device.device_id;
   const [step, setStep] = useState<1 | 2 | 3>(isWipe ? 1 : 3);
   const [message, setMessage] = useState('');
-  const [validityMs, setValidityMs] = useState<number>(LIMITS.validitySensitiveMs);
+  const [validityMs, setValidityMs] = useState<number>(defaultValidityMs(kind));
   const [confirmed, setConfirmed] = useState(false);
   const [typedName, setTypedName] = useState('');
   const [codeLen, setCodeLen] = useState(0);
@@ -116,7 +136,7 @@ export function SensitiveDialog({
   const codeField = (
     <div className="field">
       <label htmlFor="cmd-code">
-        <strong>Code de commande</strong> <span className="muted">(12 caractères au moins, à ressaisir à chaque fois)</span>
+        <strong>Code de commande</strong> <span className="muted">(12 caractères au moins, à ressaisir à chaque fois ; idéalement cinq mots tirés au hasard, réservés à cet usage)</span>
       </label>
       <div className="code-row">
         <input
@@ -142,8 +162,8 @@ export function SensitiveDialog({
           ? `${codeLen} caractère${codeLen > 1 ? 's' : ''} sur ${LIMITS.codeMin} au moins. `
           : ''}
         Le code est utilisé ici, dans ce navigateur, pour calculer la signature, puis effacé. Il n'est ni envoyé au serveur ni enregistré.
-        Les espaces comptent. Cette page est toutefois servie par votre serveur : si vous le pensez compromis, ne saisissez pas le code ici et
-        changez-le dans l'application du téléphone.
+        Les espaces comptent. <strong>Cette page est servie par votre serveur</strong> : un serveur compromis pourrait lire le code à la saisie. Si vous le
+        soupçonnez, <strong>ne saisissez plus le code ici</strong> et changez-le dans l'application du téléphone.
       </p>
     </div>
   );
@@ -154,16 +174,18 @@ export function SensitiveDialog({
         <strong>Validité de la commande</strong>
       </span>
       <select value={validityMs} onChange={(e) => setValidityMs(Number(e.target.value))} disabled={busy}>
-        {VALIDITIES.map((v) => (
+        {VALIDITIES[kind].map((v) => (
           <option key={v.ms} value={v.ms}>
             {v.label}
           </option>
         ))}
       </select>
       <span className="hint">
-        Si le téléphone est éteint ou hors ligne, la commande l'attend jusqu'au {fmtDateTime(new Date(openedAt + validityMs))} ; passé ce délai elle
-        expire sans jamais s'exécuter. Vous pouvez l'annuler tant qu'elle est « En attente » ; l'annulation est faite par le serveur : une
-        commande signée reste exécutable par le téléphone jusqu'à cette date, sauf si vous changez le code de commande dans l'application.
+        Si le téléphone est éteint ou hors ligne, la commande l'attend jusqu'au {fmtDateTime(new Date(openedAt + validityMs))}.
+        {isWipe ? " Un effacement n'est valable que 15 minutes par défaut et 24 heures au plus : plus la durée est courte, moins il reste exposé. " : ' '}
+        Vous pouvez l'annuler tant qu'elle est « En attente », mais <strong>« annulée » et « expirée » n'engagent que le serveur</strong> : le téléphone, lui,
+        exécute toute commande correctement signée jusqu'à cette date s'il en détient une copie. <strong>Seul le changement du code de commande dans
+        l'application du téléphone rend caduque une commande déjà signée.</strong>
       </span>
     </label>
   );

@@ -5,6 +5,7 @@ import App from './App.tsx';
 import { ThemeProvider } from './state/theme.tsx';
 import { AuthProvider } from './state/auth.tsx';
 import './styles/app.css';
+import './styles/v12.css';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root introuvable');

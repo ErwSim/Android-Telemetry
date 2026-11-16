@@ -14,11 +14,8 @@ import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.net.VpnService
 import android.provider.Settings
-import android.provider.Telephony
-import android.telecom.TelecomManager
 import android.view.accessibility.AccessibilityManager
 import androidx.core.content.edit
-import androidx.core.net.toUri
 import io.github.erwsim.vigie.collectors.R
 import io.github.erwsim.vigie.core.collector.CollectReason
 import io.github.erwsim.vigie.core.collector.Collector
@@ -170,15 +167,11 @@ class SpecialAccessCollector : Collector {
             } catch (_: Exception) {
                 null
             },
-            defaultApps = defaultApps(context, pm),
+            defaultApps = DefaultApps.read(context, pm),
         )
     }
 
-    private fun granted(p: PackageInfo, permission: String): Boolean {
-        val i = p.requestedPermissions?.indexOf(permission) ?: return false
-        val flags = p.requestedPermissionsFlags ?: return false
-        return i in flags.indices && flags[i] and PackageInfo.REQUESTED_PERMISSION_GRANTED != 0
-    }
+    private fun granted(p: PackageInfo, permission: String): Boolean = PackageSupport.isGranted(p, permission)
 
     /** Colon-separated flattened components in a secure setting; null if unreadable. */
     private fun secureComponents(context: Context, key: String): List<String>? = try {
@@ -186,38 +179,6 @@ class SpecialAccessCollector : Collector {
         SpecialAccessSnapshot.splitComponents(raw)
     } catch (_: Exception) {
         null
-    }
-
-    private fun defaultApps(context: Context, pm: PackageManager): Map<String, String> {
-        fun resolve(intent: Intent): String? = try {
-            pm.resolveActivity(intent, PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong()))
-                ?.activityInfo?.packageName?.takeIf { it != "android" } // "android" = chooser, no default.
-        } catch (_: Exception) {
-            null
-        }
-        fun secureComponentPackage(key: String): String? = try {
-            Settings.Secure.getString(context.contentResolver, key)
-                ?.let { ComponentName.unflattenFromString(it)?.packageName ?: it.substringBefore('/').takeIf { p -> p.isNotBlank() } }
-        } catch (_: Exception) {
-            null
-        }
-        return linkedMapOf(
-            "browser" to resolve(Intent(Intent.ACTION_VIEW, "https://example.org".toUri()).addCategory(Intent.CATEGORY_BROWSABLE)),
-            "home" to resolve(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)),
-            "dialer" to try {
-                context.getSystemService(TelecomManager::class.java)?.defaultDialerPackage
-            } catch (_: Exception) {
-                null
-            },
-            "sms" to try {
-                Telephony.Sms.getDefaultSmsPackage(context)
-            } catch (_: Exception) {
-                null
-            },
-            "keyboard" to secureComponentPackage(Settings.Secure.DEFAULT_INPUT_METHOD),
-            "assistant" to secureComponentPackage("assistant"),
-            "autofill" to secureComponentPackage("autofill_service"),
-        ).mapNotNull { (role, pkg) -> pkg?.let { role to it } }.toMap()
     }
 
     companion object {

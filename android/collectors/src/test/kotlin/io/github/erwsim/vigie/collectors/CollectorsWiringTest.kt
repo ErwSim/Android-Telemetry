@@ -42,8 +42,8 @@ class CollectorsWiringTest {
         // No type is produced by two collectors.
         val types = all.flatMap { it.eventTypes }
         assertEquals(types.size, types.toSet().size)
-        // Opt-in only for the collector recording third parties' networks.
-        assertEquals(listOf("wifi_scan"), all.filterNot { it.defaultEnabled }.map { it.id })
+        // Opt-in only for the collector recording third parties' networks and the experimental per-app usage counter.
+        assertEquals(listOf("wifi_scan", "app_ops"), all.filterNot { it.defaultEnabled }.map { it.id })
     }
 
     @Test

@@ -153,6 +153,9 @@ func (s *Store) Ingest(ctx context.Context, deviceID, agentVersion string, evs [
 	latest := map[string]StoredEvent{}
 	var locs []locationRow
 	usage := map[usageKey]*usageVal{}
+	ops := map[opsKey]*opsVal{}
+	apps := map[appKey]StoredEvent{}
+	dirty := map[int64]bool{}
 
 	add := func(k countKey, n, bytes int64) {
 		v := counts[k]
@@ -199,6 +202,17 @@ func (s *Store) Ingest(ctx context.Context, deviceID, agentVersion string, evs [
 		if ev.Type == "net.usage" {
 			addUsage(usage, hour, ev.Decoded)
 		}
+		if ev.Type == "app.ops" {
+			addOps(ops, hour, ev.Decoded)
+		}
+		if k, ok := appLatestKey(ev); ok {
+			if cur, seen := apps[k]; !seen || tsMS >= cur.TSms {
+				apps[k] = se
+			}
+		}
+		if DetectionInput(ev.Type) {
+			dirty[hour] = true
+		}
 		if kind := latestKind(ev.Type); kind != "" {
 			if cur, ok := latest[kind]; !ok || tsMS >= cur.TSms {
 				latest[kind] = se
@@ -216,6 +230,9 @@ func (s *Store) Ingest(ctx context.Context, deviceID, agentVersion string, evs [
 			return res, err
 		}
 		if err := writeUsage(ctx, tx, deviceID, usage); err != nil {
+			return res, err
+		}
+		if err := writeDetectInputs(ctx, tx, deviceID, ops, apps, dirty); err != nil {
 			return res, err
 		}
 	}

@@ -19,6 +19,7 @@ var derivedTypes = map[string]struct{ key, derived string }{
 	"app.inventory": {"apps", "app.inventory.app"},
 	"net.usage":     {"apps", "net.usage.app"},
 	"net.wifi_scan": {"aps", "net.wifi_scan.ap"},
+	"app.ops":       {"apps", "app.ops.app"}, // contract §11.2
 }
 
 type lineBody struct {
@@ -85,7 +86,7 @@ func Lines(ev store.StoredEvent, deviceName string) [][]byte {
 			}
 			flat := sanitize(m, 0)
 			delete(flat, "location")
-			if ev.Type == "net.usage" {
+			if ev.Type == "net.usage" || ev.Type == "app.ops" {
 				for _, k := range []string{"from", "to"} {
 					if v, ok := data[k]; ok && isScalar(v) {
 						flat[k] = v
