@@ -1,6 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Upload to the enrolled ingest server only. -->
+    <!-- Upload to the enrolled ingest server only (and the command channel to the same server, contract §8). -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!--
+        Command channel: bounded partial wake locks (while a command is handled, around a poll or a
+        reconnection after an alarm), never a permanent one. Normal permission (also declared by WorkManager).
+    -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application>
+        <!-- Wake-up of the command channel by this app's own inexact alarm (setAndAllowWhileIdle). Not exported. -->
+        <receiver
+            android:name=".command.CommandAlarmReceiver"
+            android:exported="false" />
+    </application>
 </manifest>

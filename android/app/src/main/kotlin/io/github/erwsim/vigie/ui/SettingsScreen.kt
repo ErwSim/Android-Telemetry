@@ -9,12 +9,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.erwsim.vigie.BuildConfig
@@ -116,6 +120,30 @@ fun SettingRow(settings: AgentSettings, spec: SettingSpec, tick: Int) {
                 IntSettingDialog(spec, value, onDismiss = { editing = false }) {
                     settings.set(spec.key, it)
                     editing = false
+                }
+            }
+        }
+        is SettingSpec.ChoiceSpec -> {
+            var value by remember(tick) { mutableStateOf(settings[spec.key]) }
+            Column(Modifier.fillMaxWidth().selectableGroup()) {
+                SettingTexts(spec, Modifier.fillMaxWidth())
+                spec.options.forEach { option ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .selectable(selected = value == option.value, role = Role.RadioButton) {
+                                value = option.value
+                                settings.set(spec.key, option.value)
+                            }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        RadioButton(selected = value == option.value, onClick = null)
+                        Column(Modifier.padding(start = 8.dp)) {
+                            Text(stringResource(option.labelRes), style = MaterialTheme.typography.bodyMedium)
+                            option.descriptionRes?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall) }
+                        }
+                    }
                 }
             }
         }

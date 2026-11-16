@@ -13,6 +13,13 @@ import kotlinx.coroutines.flow.asSharedFlow
 sealed class SettingKey<T : Any>(val name: String, val default: T) {
     class IntKey(name: String, default: Int, val min: Int, val max: Int) : SettingKey<Int>(name, default)
     class BoolKey(name: String, default: Boolean) : SettingKey<Boolean>(name, default)
+
+    /** One value of a closed list of strings (stored as is; an unknown stored value reads as [default]). */
+    class ChoiceKey(name: String, default: String, val values: List<String>) : SettingKey<String>(name, default) {
+        init {
+            require(default in values) { "default $default not in $values" }
+        }
+    }
 }
 
 /**
@@ -42,6 +49,17 @@ sealed class SettingSpec(
         @StringRes override val summaryRes: Int? = null,
         override val experimental: Boolean = false,
     ) : SettingSpec(key, titleRes, summaryRes, experimental)
+
+    /** A closed list of choices, each with its label and an explanation shown under it. */
+    data class ChoiceSpec(
+        override val key: SettingKey.ChoiceKey,
+        @StringRes override val titleRes: Int,
+        @StringRes override val summaryRes: Int? = null,
+        val options: List<Option>,
+        override val experimental: Boolean = false,
+    ) : SettingSpec(key, titleRes, summaryRes, experimental) {
+        data class Option(val value: String, @StringRes val labelRes: Int, @StringRes val descriptionRes: Int? = null)
+    }
 }
 
 /**
@@ -63,6 +81,9 @@ class AgentSettings(private val prefs: SharedPreferences) {
 
     operator fun get(key: SettingKey.BoolKey): Boolean = prefs.getBoolean(key.name, key.default)
 
+    operator fun get(key: SettingKey.ChoiceKey): String =
+        prefs.getString(key.name, null)?.takeIf { it in key.values } ?: key.default
+
     fun set(key: SettingKey.IntKey, value: Int) {
         val clamped = value.coerceIn(key.min, key.max)
         val old = get(key)
@@ -76,6 +97,15 @@ class AgentSettings(private val prefs: SharedPreferences) {
         if (old == value && prefs.contains(key.name)) return
         prefs.edit().putBoolean(key.name, value).apply()
         changed(key.name, old.toString(), value.toString(), old != value)
+    }
+
+    /** A value outside [SettingKey.ChoiceKey.values] is ignored (never stored). */
+    fun set(key: SettingKey.ChoiceKey, value: String) {
+        if (value !in key.values) return
+        val old = get(key)
+        if (old == value && prefs.contains(key.name)) return
+        prefs.edit().putString(key.name, value).apply()
+        changed(key.name, old, value, old != value)
     }
 
     fun collectorEnabledKey(collectorId: String, default: Boolean) =

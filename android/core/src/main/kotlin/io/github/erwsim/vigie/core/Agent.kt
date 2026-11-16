@@ -14,6 +14,16 @@ import io.github.erwsim.vigie.core.collector.BootInfo
 import io.github.erwsim.vigie.core.collector.Collector
 import io.github.erwsim.vigie.core.collector.CollectorHost
 import io.github.erwsim.vigie.core.collector.CollectorRunState
+import io.github.erwsim.vigie.core.command.AndroidChannelPlatform
+import io.github.erwsim.vigie.core.command.CommandChannel
+import io.github.erwsim.vigie.core.command.CommandHistoryEntry
+import io.github.erwsim.vigie.core.command.CommandKeyStore
+import io.github.erwsim.vigie.core.command.CommandProcessor
+import io.github.erwsim.vigie.core.command.CommandSettings
+import io.github.erwsim.vigie.core.command.CommandStateStore
+import io.github.erwsim.vigie.core.command.CommandTypes
+import io.github.erwsim.vigie.core.command.LocateExecutor
+import io.github.erwsim.vigie.core.command.RemoteCommands
 import io.github.erwsim.vigie.core.enroll.AndroidKeystoreCredentials
 import io.github.erwsim.vigie.core.enroll.AndroidKeystoreSecretBox
 import io.github.erwsim.vigie.core.enroll.EnrollmentChange
@@ -52,6 +62,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Process-wide wiring of the agent (no DI framework). Created once in `Application.onCreate`
@@ -109,6 +120,51 @@ class Agent private constructor(
         periodicScheduler = WorkPeriodicScheduler(context),
     )
 
+    // The command channel blocks on network reads: its own I/O scope, failures logged, never fatal.
+    private val commandScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e -> Log.e(TAG, "command channel task failed", e) },
+    )
+
+    /** Set by the app: shown to the user after each processed remote command (no stealth). */
+    @Volatile
+    var onCommandProcessed: ((CommandHistoryEntry) -> Unit)? = null
+
+    /** Remote commands (contract §8): settings, command key, verification, channel. Executors are registered by the modules. */
+    val commands: RemoteCommands = RemoteCommands(
+        settings = settings,
+        clock = clock,
+        sink = sink,
+        keys = CommandKeyStore(prefs(PREFS_COMMAND_KEY), AndroidKeystoreSecretBox(COMMAND_KEY_ALIAS)),
+        state = CommandStateStore(prefs(PREFS_COMMANDS)),
+        deviceId = { enrollment.state.value?.deviceId },
+        isDeviceOwner = { capabilities.isDeviceOwner() },
+        hooks = object : CommandProcessor.Hooks {
+            override suspend fun beforeIrreversible(timeoutMs: Long) = sendNowBounded(timeoutMs)
+
+            override fun onProcessed(entry: CommandHistoryEntry) {
+                // locate: the fix and the result leave together, at once.
+                if (entry.type == CommandTypes.LOCATE) {
+                    scope.launch {
+                        sink.flushNow()
+                        requestUpload(force = true)
+                    }
+                }
+                onCommandProcessed?.invoke(entry)
+            }
+        },
+        channelFactory = { rc ->
+            CommandChannel(
+                scope = commandScope,
+                clock = clock,
+                target = enrollment::target,
+                config = rc::channelConfig,
+                processor = rc.processor,
+                state = rc.state,
+                platform = AndroidChannelPlatform(context),
+            )
+        },
+    )
+
     /** Set by the app: makes sure the foreground service runs (called by the maintenance worker). */
     @Volatile
     var maintenanceHook: (() -> Unit)? = null
@@ -122,8 +178,10 @@ class Agent private constructor(
         sink.listener = FlushListener { onFlushed(it) }
         sink.start()
         scope.launch { outbox.refreshTotals() }
+        commands.register(CommandTypes.LOCATE, LocateExecutor({ host }))
         scope.launch {
             settings.changes.collect { key ->
+                if (key in CommandSettings.KEYS) commands.channel.onConfigChanged()
                 when (key) {
                     CoreSettings.UPLOAD_INTERVAL_MIN.name -> uploadScheduler.ensurePeriodic(settings[CoreSettings.UPLOAD_INTERVAL_MIN])
                     CoreSettings.BUFFER_MAX_MB.name, CoreSettings.BUFFER_MAX_AGE_DAYS.name -> enforceBufferLimits()
@@ -180,7 +238,21 @@ class Agent private constructor(
         if (!force && uploader.isRunning) uploader.requestRerun() else uploadScheduler.requestNow(force)
     }
 
+    /**
+     * Before a factory reset (remote `wipe`): writes the pending events, uploads them and posts the
+     * pending command results, waiting at most [timeoutMs]. The work is not waited for beyond that.
+     */
+    suspend fun sendNowBounded(timeoutMs: Long) {
+        val job = commandScope.launch {
+            sink.flushNow()
+            uploader.run(force = true)
+            enrollment.target()?.let { commands.channel.flushResults(it, force = true) }
+        }
+        withTimeoutOrNull(timeoutMs) { job.join() }
+    }
+
     fun handleUploadOutcome(outcome: UploadOutcome, fromRetryWorker: Boolean) {
+        if (outcome != UploadOutcome.NotEnrolled) commands.channel.onUploadCycle()
         val now = clock.nowMillis()
         when (outcome) {
             UploadOutcome.NotEnrolled -> Unit
@@ -195,6 +267,7 @@ class Agent private constructor(
         enforceBufferLimits()
         integrity.checkPermissionsAndOwnership()
         host.reconcile()
+        commands.channel.tick()
         maintenanceHook?.invoke()
     }
 
@@ -204,6 +277,7 @@ class Agent private constructor(
         val cm = context.getSystemService(ConnectivityManager::class.java) ?: return
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
+                commands.channel.onNetworkAvailable()
                 val status = uploadStatus.status.value
                 if (status.lastError?.startsWith("network") == true && status.nextAttemptAtMs > clock.nowMillis()) {
                     uploadStatus.update { it.copy(nextAttemptAtMs = 0) }
@@ -243,6 +317,8 @@ class Agent private constructor(
         uploadStatus.update { it.copy(lastError = null, consecutiveFailures = 0, nextAttemptAtMs = 0) }
         uploadScheduler.ensurePeriodic(settings[CoreSettings.UPLOAD_INTERVAL_MIN])
         requestUpload(force = true)
+        // New credentials: a channel stopped by a 401 may try again.
+        commands.channel.onConfigChanged()
         return change
     }
 
@@ -253,6 +329,7 @@ class Agent private constructor(
         uploadStatus.update { UploadStatus() }
         scope.launch { outbox.clear() }
         uploadScheduler.ensurePeriodic(settings[CoreSettings.UPLOAD_INTERVAL_MIN])
+        commands.channel.onConfigChanged()
     }
 
     private fun netState(): NetState {
@@ -290,6 +367,9 @@ class Agent private constructor(
         private const val PREFS_ENROLLMENT = "vigie_enrollment"
         private const val PREFS_INTEGRITY = "vigie_integrity"
         private const val PREFS_AGE = "vigie_age_horizon"
+        private const val PREFS_COMMANDS = "vigie_commands"
+        private const val PREFS_COMMAND_KEY = "vigie_command_key"
+        private const val COMMAND_KEY_ALIAS = "vigie_command_key"
         private const val BULK_REQUEST_INTERVAL_MS = 5 * 60_000L
 
         // Holds only the application context (never an Activity): not a leak.

@@ -7,7 +7,7 @@
     <string name="collector_device_desc">Écran allumé, éteint ou déverrouillé ; batterie ; économie d\'énergie ; démarrage et arrêt ; inventaire (modèle, version d\'Android et de One UI, correctif de sécurité, état du démarrage vérifié) ; stockage libre ; changements d\'heure et de fuseau ; mode avion ; état thermique.</string>
 
     <string name="collector_location_title">Localisation</string>
-    <string name="collector_location_desc">Positions GPS et positions obtenues passivement par les autres apps, sans aucun service Google. Cadence rapide en mouvement, ralentie à l\'arrêt. Signale les positions fictives et l\'activation ou la désactivation du GPS.</string>
+    <string name="collector_location_desc">Positions GPS et positions obtenues passivement par les autres apps ; par défaut sans aucun service Google (les modes « GPS + réseau » et « fusionné », au choix ci-dessous, passent par les Services Google Play). Cadence rapide en mouvement, ralentie à l\'arrêt. Signale les positions fictives et l\'activation ou la désactivation des fournisseurs de position.</string>
     <string name="collector_location_no_gps">Pas de récepteur GPS sur cet appareil</string>
     <string name="setting_location_moving_interval">Intervalle GPS en mouvement</string>
     <string name="setting_location_moving_interval_summary">Délai entre deux positions GPS quand l\'appareil se déplace.</string>
