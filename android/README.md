@@ -221,7 +221,7 @@ Replis, du plus au moins recommandé :
 
 ## Collecteurs
 
-L'onglet Collecteurs liste les 21 collecteurs (18 de `:collectors` puis les 3 de `:policy`) : interrupteur,
+L'onglet Collecteurs liste les 22 collecteurs (19 de `:collectors` puis les 3 de `:policy`) : interrupteur,
 état (actif, désactivé, activé mais agent arrêté, indisponible avec la raison), permissions manquantes,
 types émis et **réglages propres** au collecteur. Y sont signalés « Désactivé par défaut » (`wifi_scan`),
 « Device Owner requis » (journaux) et « Réglage expérimental » (attribution caméra/micro). Permissions « ADB » :
@@ -246,6 +246,7 @@ types émis et **réglages propres** au collecteur. Y sont signalés « Désacti
 | Applications (`apps`) | `app.inventory` (parties < 16 Kio, `inventory_id`), `app.installed/updated/removed`, `app.permission_changed` | — (QUERY_ALL_PACKAGES) | diffusions + parcours des paquets toutes les heures, libellés une fois par jour |
 | Accès spéciaux (`special_access`) | `app.special_access` | — | au changement (paquets, réglages, extinction d'écran ≤ 1/15 min) + quotidien |
 | App au premier plan (`foreground`) | `app.foreground` (changements d'app seulement) | accès à l'utilisation (ADB ou Paramètres) | relevé 60 s écran allumé uniquement + WorkManager 15 min ; 100 à 400/jour |
+| Notifications (`notifications`) | `app.notification` (titre et texte seulement sur option) | APK compagnon « Vigie Notifications » installé, même clé, accès aux notifications (voir « Notifications ») | relayé par le compagnon ; ≤ 20 / app / 10 min, quelques dizaines par jour |
 | Caméra (`camera`) | `sensor.camera` (+ `screen_on`, `locked`) | — | rappel système, ≤ 120/h |
 | Microphone (`microphone`) | `sensor.microphone` (+ `screen_on`, `locked`) | — | rappel système, ≤ 120/h |
 
@@ -277,6 +278,145 @@ Détails et limites :
   type au contrat).
 - **Non écrits** (choix) : écoute des notifications, accessibilité, SMS/appels (principe 4) ; tout ce qui exige
   le Device Owner (journaux réseau et sécurité, posture, politique : module `:policy`).
+
+## Notifications (APK compagnon)
+
+Le collecteur `notifications` de l'agent dit **quelles apps affichent des notifications**. La lecture des
+notifications n'est **pas** dans l'APK Device Owner : elle vit dans un APK séparé et optionnel, **Vigie
+Notifications** (`io.github.erwsim.vigie.notifier`, module `:notifier`), qui contient le seul
+`NotificationListenerService` du projet (principe 4 ; un DPC qui écoute aussi les notifications a déjà été
+bloqué par Play Protect, voir `../docs/research/android-plateforme.md` §2.4 et §9 : si le compagnon l'est, l'agent
+n'est pas touché). Le compagnon n'a **ni** la permission `INTERNET` **ni** aucune permission sensible, n'embarque
+aucune bibliothèque (ni AndroidX, ni réseau, ni Google), a une icône et un écran qui expliquent ce qu'il fait,
+son état et comment le retirer. Il ne garde rien : ni historique, ni contenu, ni fichier (état en mémoire).
+
+### Ce qui est transmis (`app.notification`, contrat §10)
+
+| Toujours | Seulement si « Contenu des notifications » est activé (désactivé par défaut) |
+|---|---|
+| `package`, `event` (`posted`/`removed`), `category`, `channel`, `ongoing`, `importance` (`none`, `min`, `low`, `default`, `high`, `max`) | `title`, `text` (512 caractères au plus, comptés en points de code), `redacted` (vrai si un code a été masqué ; absent si le masquage est désactivé) |
+
+- **Contenu éteint** (défaut) : le titre et le texte ne quittent jamais le processus du compagnon (le filtrage
+  se fait chez lui, avant le canal, d'après les réglages lus chez l'agent ; l'agent applique la même règle une
+  seconde fois à la réception).
+- **Masquage des codes** (activé par défaut) : toute suite de 4 à 8 chiffres est remplacée par `••••` avant la
+  troncature (un code n'est jamais coupé en deux). Détail de la règle et de ses limites ci-dessous.
+- **Apps exclues du contenu** (seul le nom de l'app part) : pré-remplie avec des banques et apps de paiement
+  courantes en France, authentificateurs, gestionnaires de mots de passe, **SMS et téléphone** (pas de contenu
+  de SMS ni de journal d'appels, principe 4). C'est une liste de **noms de paquet** : une app n'est reconnue que
+  par son nom exact, la liste est donc forcément incomplète (autre banque, variante régionale, app renommée) ;
+  noms non vérifiés un par un sur un appareil. Ajoutez vos apps sensibles.
+- **Apps ignorées** (rien ne part) : vide par défaut.
+- **Jamais transmis** : les notifications de Vigie et du compagnon ; les mises à jour d'une notification qui
+  n'ont rien changé ; plus d'une mise à jour par notification toutes les 30 s ; les mises à jour des
+  notifications **permanentes** (`ongoing`, service de premier plan, musique, téléchargement, minuteur, appel,
+  navigation, entraînement : seuls le premier affichage et le retrait partent ; « Téléchargement terminé », qui
+  n'est plus permanent, part une fois) ; les résumés de groupe (chaque notification du groupe part, pas le
+  résumé) ; le retrait d'une notification qui n'a pas été transmise ; au-delà de **20 événements par app et par
+  10 minutes** (les retraits de notifications transmises passent toujours). Les notifications déjà affichées
+  quand le compagnon démarre ne sont pas transmises. Volume typique : quelques dizaines d'événements par jour.
+- Android 15+ masque déjà le contenu des notifications qu'il reconnaît comme codes à usage unique aux écouteurs
+  « non fiables » comme le compagnon : le masquage de Vigie est une seconde couche.
+
+**Règle de masquage** (`notifier/protocol/…/CodeRedactor.kt`, testée par `CodeRedactorTest`) : une suite de chiffres
+(toutes écritures) dont les groupes sont séparés par **une** espace, espace insécable ou un tiret (`123456`,
+`123 456`, `123-456`, `G-123456`, `code123456`) est masquée en entier si elle compte 4 à 8 chiffres ; plus
+longue (téléphone, IBAN, carte), seuls ses groupes de 4 à 8 chiffres le sont. Une partie de nombre décimal
+(`1234,56`) ou de date à barres obliques (`16/11/2026`) est laissée.
+- **Masqué à tort** : années (`2026`), montants sans décimales (`1500 €`, `1 500 €`), dates ISO (`2026-11-16`),
+  codes postaux (`75011`), blocs de 4 chiffres de numéros de téléphone écrits par blocs de 4 (`+44 20 7946 0958`),
+  blocs d'IBAN, numéros de commande ou de suivi de 4 à 8 chiffres.
+- **Laissé passer** : codes de 3 chiffres ou de 9 et plus, codes alphanumériques (`A1B2C3`), codes écrits avec un
+  point ou une virgule (`123.456`, `1234.5678`), avec deux séparateurs ou une barre oblique entre les groupes,
+  code en petits groupes collé par une espace à un autre nombre (`123 456 2026` : seul `2026` est masqué),
+  codes écrits en lettres. Les numéros de téléphone en blocs de 2 chiffres (`06 12 34 56 78`) ne sont pas masqués.
+
+### Installer et activer
+
+1. Construire avec **le même keystore** que l'agent (même construction) : `./gradlew :notifier:assembleRelease`
+   → `notifier/build/outputs/apk/release/notifier-release.apk` (même configuration de signature que `:app`,
+   lue dans `keystore.properties` ou les variables `VIGIE_*` ; `-Pvigie.testOnly`, `-Pvigie.versionCode`
+   et `-Pvigie.versionName` s'appliquent aussi). Un compagnon signé par une autre clé est refusé à
+   l'installation à côté de l'agent (`INSTALL_FAILED_DUPLICATE_PERMISSION`) et ne pourrait de toute façon
+   rien lui remettre. Débogage avec débogage, release avec release.
+2. `./scripts/install-notifier.sh [notifier.apk]` (`adb install -r -t`, compare ensuite les clés de signature
+   de l'agent et du compagnon). L'ordre d'installation agent/compagnon est indifférent.
+3. Accès aux notifications : `./scripts/notifier-access.sh` (`adb shell cmd notification allow_listener
+   io.github.erwsim.vigie.notifier/io.github.erwsim.vigie.notifier.NotifierListenerService`, puis vérification
+   dans `settings get secure enabled_notification_listeners`). Sans ADB : bouton « Réglage d'accès aux
+   notifications » du compagnon, ou Paramètres › Notifications › … › Accès aux notifications (le chemin varie
+   selon la version de One UI). Une app installée hors magasin d'apps peut y apparaître grisée
+   (**« Paramètre restreint »**) : Paramètres › Applications › Vigie Notifications › ⋮ › « Autoriser les
+   paramètres restreints », puis accorder l'accès ; la commande ADB n'est pas concernée par ce blocage.
+4. Ouvrir « Vigie Notifications » : accès accordé, service d'écoute connecté, agent présent (même clé), collecte
+   active, contenu activé ou non d'après l'agent, dernière notification relayée et compteurs.
+5. Dans Vigie, onglet Collecteurs › Notifications : le collecteur passe de « indisponible » (compagnon absent,
+   signé par une autre clé ou sans accès, raison affichée) à « actif » (au plus tard au prochain passage de
+   maintenance, 15 min ; aussitôt si le compagnon signale son service d'écoute).
+
+### Régler
+
+- **Dans Vigie** (Collecteurs › Notifications) : l'interrupteur du collecteur (désactivé : le compagnon ne
+  transmet plus rien), « Contenu des notifications » (désactivé par défaut), « Masquer les codes numériques »
+  (activé par défaut). Chaque changement émet `agent.config_changed` et prévient le compagnon.
+- **Dans le compagnon** : les deux listes d'apps (un nom de paquet par ligne, `#` pour un commentaire),
+  « Enregistrer dans Vigie » ou « Rétablir les listes par défaut ». Elles sont **stockées dans l'agent** (clés
+  `notifications.content_excluded_packages` et `notifications.ignored_packages` de ses réglages ; le cadre de
+  réglages de l'agent n'a pas de type « liste » éditable), chaque changement émet `agent.config_changed`
+  (`old`/`new` : noms séparés par des virgules, 1 000 caractères au plus). Entrées invalides refusées et
+  affichées ; 500 apps au plus par liste.
+
+### Canal local (sécurité)
+
+- Le compagnon appelle un **fournisseur de contenu** de l'agent (`ContentResolver.call`, autorité
+  `io.github.erwsim.vigie.notifications`) : appel synchrone, qui démarre le processus de l'agent s'il ne tourne
+  pas (pas de démarrage de service en arrière-plan, donc pas de restriction Android 12+), sans liaison à gérer.
+  Visibilité entre paquets : `<queries>` sur le paquet de l'agent côté compagnon ; l'agent voit tout
+  (`QUERY_ALL_PACKAGES`).
+- Protégé par la permission **`io.github.erwsim.vigie.permission.NOTIFICATION_RELAY`** de niveau `signature`,
+  **déclarée par les deux APK** (même clé : pas de conflit, et l'ordre d'installation ou la désinstallation de
+  l'un ne la fait pas disparaître). L'agent vérifie en plus, à chaque appel, que l'appelant détient la
+  permission, que son uid et son paquet attribué sont ceux du compagnon et que sa clé de signature est la sienne.
+- Dans l'autre sens, l'agent n'envoie qu'une diffusion vide « réglages modifiés » au récepteur du compagnon
+  (protégé par la même permission) ; le compagnon relit alors les réglages. Il les relit aussi au plus toutes les
+  minutes et dès que l'agent répond avec une autre version. Tant qu'il n'a pas pu les lire, il ne transmet rien.
+- Tailles bornées des deux côtés : titre et texte 512 points de code, catégorie 64, canal 128, paquet 255
+  caractères, 32 clés par appel ; au-delà, l'agent refuse l'appel (rien n'est enregistré). 300 appels par minute
+  au plus côté agent ; file de 256 notifications au plus côté compagnon.
+- Agent absent, arrêté, en cours de mise à jour ou collecteur désactivé : le compagnon **abandonne** les
+  notifications de ce moment (il ne les garde pas pour plus tard) et le compte (« non remises ») ; après un échec
+  il ne réessaie pas pendant 10 s. Si le processus de l'agent a été relancé par l'appel avant que son service ne
+  redémarre les collecteurs, l'événement est écrit directement dans le tampon de l'agent.
+
+### Retirer
+
+- Couper la collecte en gardant le compagnon : désactiver le collecteur « Notifications » dans Vigie.
+- Retirer l'accès : `./scripts/notifier-access.sh --revoke` (`cmd notification disallow_listener …`), ou le
+  réglage d'accès aux notifications.
+- Désinstaller : `./scripts/uninstall-notifier.sh` (retire l'accès puis `adb uninstall`), ou depuis les
+  Paramètres. L'agent continue sans lui ; les listes restent dans les réglages de l'agent.
+
+### Ce qui est vérifié, ce qui ne l'est pas
+
+- **Vérifié dans l'environnement de développement** : compilation, lint (aucun avertissement sur le
+  compagnon), APK debug et release (R8) ; le manifeste du compagnon ne demande que la permission du canal (pas
+  d'`INTERNET`), son code release ne contient que le sien ; l'APK de l'agent ne contient aucun
+  `NotificationListenerService`, déclare la permission de signature et l'exige sur son fournisseur ; tests JVM
+  du masquage, des listes, de la troncature, de la réduction du bruit, de la validation côté agent (charges
+  hostiles) et de la conformité de `app.notification` ; scripts bash essayés contre un faux `adb` (les `.ps1`
+  n'ont pas été exécutés).
+- **Rien n'a été exécuté sur un téléphone.** À vérifier sur le S25+, par ordre de risque :
+  1. réaction de **Play Protect** à l'installation du compagnon (et éventuelle analyse de l'agent ensuite) ;
+  2. accès accordé par `cmd notification allow_listener` sur One UI 8/9, et l'affichage « paramètre
+     restreint » dans les Paramètres ;
+  3. **survie du service d'écoute** (gestion de la batterie Samsung : au besoin, Vigie Notifications dans
+     « Applications jamais en veille ») et reconnexion après redémarrage, mise à jour ou arrêt forcé ;
+  4. canal quand l'agent est tué, en cours de mise à jour ou arrêté (« non remises » doit augmenter, aucune
+     erreur) et démarrage de l'agent par l'appel du compagnon ;
+  5. lecture de `enabled_notification_listeners` par l'agent (sinon le collecteur se fie à ce que dit le
+     compagnon) ; diffusion « réglages modifiés » reçue par le compagnon ;
+  6. contenu réel des notifications des apps courantes (messageries, codes reçus par SMS déjà masqués par
+     Android 15+, notifications groupées) et volume quotidien.
 
 ## Politique Device Owner
 
