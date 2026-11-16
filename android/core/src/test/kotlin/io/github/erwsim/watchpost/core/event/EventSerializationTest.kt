@@ -130,7 +130,7 @@ class EventSerializationTest {
     fun uploadPayloadWrapsStoredEventsVerbatim() {
         val stored = WatchpostJson.encodeToString(Event.serializer(), event)
         val rows = listOf(OutboxEntity(event.seq, event.id, event.type, event.sev, 0, stored, stored.length))
-        val target = IngestTarget("https://ingest.exemple.fr".toHttpUrl(), "dev_8f3a", "tok", "1.0.0")
+        val target = IngestTarget("https://ingest.example.org".toHttpUrl(), "dev_8f3a", "tok", "1.0.0")
         val body = UploadPayload.json(target, rows, 1_794_779_100_000L)
         val parsed = WatchpostJson.parseToJsonElement(body).jsonObject
         assertEquals(listOf("device_id", "agent_version", "sent_at", "events"), parsed.keys.toList())
@@ -140,13 +140,13 @@ class EventSerializationTest {
         val sent = parsed["events"]!!.jsonArray.single() as JsonObject
         assertEquals(18234L, sent["seq"]!!.jsonPrimitive.long)
         assertEquals(WatchpostJson.parseToJsonElement(stored), sent)
-        assertEquals("https://ingest.exemple.fr/api/v1/ingest", target.ingestUrl.toString())
-        assertEquals("https://ingest.exemple.fr/api/v1/ping", target.pingUrl.toString())
+        assertEquals("https://ingest.example.org/api/v1/ingest", target.ingestUrl.toString())
+        assertEquals("https://ingest.example.org/api/v1/ping", target.pingUrl.toString())
     }
 
     @Test
     fun ingestUrlKeepsAPathPrefix() {
-        val target = IngestTarget("https://exemple.fr/watchpost/".toHttpUrl(), "d", "t", "v")
-        assertEquals("https://exemple.fr/watchpost/api/v1/ingest", target.ingestUrl.toString())
+        val target = IngestTarget("https://example.org/watchpost/".toHttpUrl(), "d", "t", "v")
+        assertEquals("https://example.org/watchpost/api/v1/ingest", target.ingestUrl.toString())
     }
 }

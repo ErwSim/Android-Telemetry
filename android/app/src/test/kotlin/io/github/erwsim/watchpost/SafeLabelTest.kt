@@ -10,7 +10,7 @@ class SafeLabelTest {
     @Test
     fun `a name cannot push the package name away, hide behind control characters or run for ever`() {
         assertEquals("Messages", safeLabel("Messages"))
-        assertEquals("Mise à jour du système", safeLabel("  Mise à jour\n\n\n\tdu   système \u0000"))
+        assertEquals("System update now", safeLabel("  System\n\n\n\tupdate   now \u0000"))
         // Right-to-left override and zero-width characters (format characters) are dropped.
         assertEquals("Samsung Messages", safeLabel("\u202ESamsung\u200B Messages\u2066"))
         assertEquals("a b", safeLabel("a\u2028\u2029b"))

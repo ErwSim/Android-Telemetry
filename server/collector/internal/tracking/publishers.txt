@@ -1,15 +1,15 @@
-# Watchpost — rattachement des domaines aux éditeurs (vue « pistage », contrat §9).
-# Version 1 (16/11/2026). Fichier versionné avec le collecteur et embarqué dans le binaire.
+# Watchpost - mapping of domains to publishers (Tracking page, contract §9).
+# Version 1 (2026-11-16). Versioned with the collector and embedded in the binary.
 #
-# Format :
-#   [clé] Nom affiché     ouvre un éditeur (clé : [a-z0-9_]+, dans l'ordre d'affichage) ;
-#   suffixe.de.domaine    chaque ligne suivante rattache ce domaine ET ses sous-domaines à cet éditeur ;
-#   # …                   commentaire (ligne entière).
-# Le suffixe le plus long l'emporte (un sous-domaine listé ailleurs prime sur son parent), sur des
-# frontières de labels : « google.com » couvre « www.google.com » mais pas « notgoogle.com ».
-# Un domaine qui ne correspond à rien est rattaché à « other ». Un suffixe ne peut apparaître qu'une fois.
-# Règle de rattachement : l'entreprise qui exploite le domaine (DoubleClick et AdMob sont Google) ;
-# « ads » regroupe les régies publicitaires et outils de mesure d'audience des autres sociétés.
+# Format:
+#   [key] Display name    opens a publisher (key: [a-z0-9_]+, in display order);
+#   domain.suffix         each following line attaches this domain AND its subdomains to that publisher;
+#   # ...                 comment (whole line).
+# The longest suffix wins (a subdomain listed elsewhere takes precedence over its parent), on label
+# boundaries: "google.com" covers "www.google.com" but not "notgoogle.com".
+# A domain that matches nothing is attached to "other". A suffix can appear only once.
+# Attachment rule: the company that operates the domain (DoubleClick and AdMob are Google);
+# "ads" groups the advertising networks and audience measurement tools of the other companies.
 
 [google] Google
 google.com
@@ -180,7 +180,7 @@ pangleglobal.com
 capcut.com
 lemon8-app.com
 
-[ads] Publicité et mesure d'audience
+[ads] Advertising and audience measurement
 criteo.com
 criteo.net
 appsflyer.com
@@ -259,4 +259,4 @@ privacy-mgmt.com
 didomi.io
 cookielaw.org
 
-[other] Autres
+[other] Others

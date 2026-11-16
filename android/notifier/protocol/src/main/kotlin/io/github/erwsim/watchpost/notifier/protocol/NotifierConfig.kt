@@ -12,7 +12,7 @@ import io.github.erwsim.watchpost.notifier.protocol.NotifierProtocol as P
 data class NotifierConfig(
     /** The agent runs and the `notifications` collector is enabled. */
     val accepting: Boolean,
-    /** "Contenu des notifications" (off by default): title and text are relayed. */
+    /** "Notification content" (off by default): title and text are relayed. */
     val contentEnabled: Boolean,
     /** Masking of 4-to-8-digit codes (on by default). */
     val redactCodes: Boolean,

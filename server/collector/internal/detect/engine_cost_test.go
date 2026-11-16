@@ -26,7 +26,7 @@ import (
 func TestDetectionCost(t *testing.T) {
 	days, _ := strconv.Atoi(os.Getenv("WATCHPOST_DETECT_COST"))
 	if days <= 0 {
-		t.Skip("WATCHPOST_DETECT_COST=<jours> pour mesurer le coût des détections")
+		t.Skip("WATCHPOST_DETECT_COST=<days> to measure the cost of the detections")
 	}
 	rate := 2.0
 	if v, err := strconv.ParseFloat(os.Getenv("WATCHPOST_DETECT_COST_RATE"), 64); err == nil && v > 0 {
@@ -47,7 +47,7 @@ func TestDetectionCost(t *testing.T) {
 	const dev = "dev_cost"
 	now := time.Now().UTC()
 	if os.IsNotExist(statErr) {
-		if err := st.CreateDevice(ctx, &store.Device{DeviceID: dev, Name: "s25", TokenHash: []byte("x"), CertSHA256: "x", CertPEM: "x", EnrolledAt: now}); err != nil {
+		if err := st.CreateDevice(ctx, &store.Device{DeviceID: dev, Name: "phone", TokenHash: []byte("x"), CertSHA256: "x", CertPEM: "x", EnrolledAt: now}); err != nil {
 			t.Fatal(err)
 		}
 		all, _ := sim.ParseScenarios(sim.ScenarioAll)
@@ -85,7 +85,7 @@ func TestDetectionCost(t *testing.T) {
 			at = next
 		}
 		put(g.Drain())
-		t.Logf("base : %d événements en %s (%.0f/s)", total, time.Since(began).Round(time.Second), float64(total)/time.Since(began).Seconds())
+		t.Logf("database: %d events in %s (%.0f/s)", total, time.Since(began).Round(time.Second), float64(total)/time.Since(began).Seconds())
 	}
 	events, err := st.MaxEventPK(ctx)
 	if err != nil {
@@ -95,7 +95,7 @@ func TestDetectionCost(t *testing.T) {
 	if dirty, err = st.DirtyCount(ctx); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("base : %d événements, %d heures à évaluer", events, dirty)
+	t.Logf("database: %d events, %d hours to evaluate", events, dirty)
 
 	e := NewEngine(st, Defaults(), Options{ThreatLists: false, Budget: time.Hour, Retention: 90 * 24 * time.Hour})
 	var peak atomic.Uint64
@@ -170,9 +170,9 @@ func TestDetectionCost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("arriéré complet : %d heures en %s (%d tours, %d détections), tas max %d Mio (au repos %d Mio)",
+	t.Logf("full backlog: %d hours in %s (%d rounds, %d detections), max heap %d MiB (idle %d MiB)",
 		stats.Hours, full.Round(time.Millisecond), stats.Rounds, stats.Findings, peak.Load()>>20, base.HeapInuse>>20)
-	t.Logf("ingestion (lots de 500) sans le travail : %s ; pendant : %s", pct(baseline), pct(during))
+	t.Logf("ingestion (batches of 500) without the work: %s; during: %s", pct(baseline), pct(during))
 
 	// 2. Steady state: one late batch (two hours of net.connect and net.dns) re-marks two hours.
 	g := sim.New(sim.Options{Start: now.Add(-30 * time.Hour), Seed: 5, Rate: rate, SeqBase: 1 << 41, AppOps: true})
@@ -198,7 +198,7 @@ func TestDetectionCost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("passage courant après un lot tardif : %d heures en %s", stats.Hours, time.Since(t0).Round(time.Millisecond))
+	t.Logf("regular run after a late batch: %d hours in %s", stats.Hours, time.Since(t0).Round(time.Millisecond))
 }
 
 func drain(c chan time.Duration) []time.Duration {
@@ -215,9 +215,9 @@ func drain(c chan time.Duration) []time.Duration {
 
 func pct(v []time.Duration) string {
 	if len(v) == 0 {
-		return "aucun lot"
+		return "no batch"
 	}
 	sort.Slice(v, func(i, j int) bool { return v[i] < v[j] })
-	return strconv.Itoa(len(v)) + " lots, médiane " + v[len(v)/2].Round(time.Millisecond).String() +
+	return strconv.Itoa(len(v)) + " batches, median " + v[len(v)/2].Round(time.Millisecond).String() +
 		", p99 " + v[len(v)*99/100].Round(time.Millisecond).String() + ", max " + v[len(v)-1].Round(time.Millisecond).String()
 }

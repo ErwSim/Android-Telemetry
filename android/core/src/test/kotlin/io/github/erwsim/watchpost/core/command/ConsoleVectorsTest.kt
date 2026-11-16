@@ -24,7 +24,7 @@ import java.io.File
  * verifier: `server/console/src/lib/fixtures/command-vectors.json` is produced by
  * `server/console/scripts/command-vectors.ts` and pinned on the console side by `commandVectors.test.ts`.
  * Hard cases, not only the contract vector: accents, emojis, quotes, line feeds, bidirectional text in the
- * lock message; non-ASCII, decomposed (NFD) or space-padded command codes.
+ * lock message; non-ASCII, decomposed (NFD) or space-padded command passphrases.
  */
 class ConsoleVectorsTest {
     private fun fixture(): File {
@@ -86,6 +86,6 @@ class ConsoleVectorsTest {
             }
         }
         assertTrue("signed vectors: $signed", signed >= 9)
-        assertNotNull(keys.keys.firstOrNull { k -> k.any { it.code > 0x7f } }) // a non-ASCII command code was exercised
+        assertNotNull(keys.keys.firstOrNull { k -> k.any { it.code > 0x7f } }) // a non-ASCII command passphrase was exercised
     }
 }

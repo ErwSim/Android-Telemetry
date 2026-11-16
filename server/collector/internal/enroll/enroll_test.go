@@ -29,10 +29,10 @@ func TestCreateWriteRead(t *testing.T) {
 	if _, err := Create(ctx, st, ca, Params{Name: "", IngestURL: "https://x"}, time.Now()); err == nil {
 		t.Fatal("empty name accepted")
 	}
-	if _, err := Create(ctx, st, ca, Params{Name: "s25", IngestURL: "ftp://x"}, time.Now()); err == nil {
+	if _, err := Create(ctx, st, ca, Params{Name: "phone", IngestURL: "ftp://x"}, time.Now()); err == nil {
 		t.Fatal("bad URL accepted")
 	}
-	f, err := Create(ctx, st, ca, Params{Name: "Galaxy S25+", IngestURL: "https://ingest.example.org/", PrivateDNSHost: "dns.example.org"}, time.Now())
+	f, err := Create(ctx, st, ca, Params{Name: "Test phone+", IngestURL: "https://ingest.example.org/", PrivateDNSHost: "dns.example.org"}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestCreateWriteRead(t *testing.T) {
 	if dev.CertSHA256 != fp {
 		t.Fatal("fingerprint not stored")
 	}
-	path := filepath.Join(dir, "s25.watchpost")
+	path := filepath.Join(dir, "phone.watchpost")
 	if err := f.Write(path, false); err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestCreateWriteRead(t *testing.T) {
 // Regression: --force rewrote an existing file in place and kept its mode, so
 // the device token and private key could land in a world-readable file.
 func TestWriteForceKeepsSecretsPrivate(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "s25.watchpost")
+	path := filepath.Join(t.TempDir(), "phone.watchpost")
 	if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestGeneratedFormats(t *testing.T) {
 			t.Errorf("%q refused", ok)
 		}
 	}
-	for _, bad := range []string{"", "dev_", "DEV_a", "dev_A", "dev_a-b", "dev_a b", "dev_é", "x_abc", "dev_" + strings.Repeat("a", 61)} {
+	for _, bad := range []string{"", "dev_", "DEV_a", "dev_A", "dev_a-b", "dev_a b", "dev_ö", "x_abc", "dev_" + strings.Repeat("a", 61)} {
 		if ValidDeviceID(bad) {
 			t.Errorf("%q accepted", bad)
 		}
@@ -143,7 +143,7 @@ func TestGeneratedFormats(t *testing.T) {
 			t.Errorf("%q refused", ok)
 		}
 	}
-	for _, bad := range []string{"", "a b", "a+b", "a/b", "a=b", "é", "a\n", strings.Repeat("a", 129)} {
+	for _, bad := range []string{"", "a b", "a+b", "a/b", "a=b", "ö", "a\n", strings.Repeat("a", 129)} {
 		if ValidToken(bad) {
 			t.Errorf("%q accepted", bad)
 		}
@@ -161,7 +161,7 @@ func TestRenew(t *testing.T) {
 	if _, err := Renew(ctx, st, ca, "../etc", p, now); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("bad id: %v", err)
 	}
-	f, err := Create(ctx, st, ca, Params{Name: "Galaxy S25+", IngestURL: "https://ingest.example.org"}, now)
+	f, err := Create(ctx, st, ca, Params{Name: "Test phone+", IngestURL: "https://ingest.example.org"}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestRenew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.DeviceID != f.DeviceID || r.DeviceName != "Galaxy S25+" || r.DeviceToken == f.DeviceToken ||
+	if r.DeviceID != f.DeviceID || r.DeviceName != "Test phone+" || r.DeviceToken == f.DeviceToken ||
 		r.ClientCertPEM == f.ClientCertPEM || r.ClientKeyPEM == f.ClientKeyPEM || r.IngestURL != "https://ingest.example.org" || r.PrivateDNSHost != "dns.example.org" {
 		t.Fatalf("renewed file: %+v", r)
 	}

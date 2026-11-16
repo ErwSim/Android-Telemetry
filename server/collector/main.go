@@ -13,23 +13,23 @@ import (
 // version is set at build time with -ldflags "-X main.version=…".
 var version = "dev"
 
-const usage = `watchpost-collector : collecteur de télémétrie Watchpost
+const usage = `watchpost-collector: Watchpost telemetry collector
 
-Utilisation :
-  watchpost-collector serve                                   démarre le serveur HTTP
-  watchpost-collector enroll --name <nom> --out <fichier.watchpost> [--ingest-url URL] [--force]
-  watchpost-collector devices [--json]                        liste les appareils (expiration des certificats)
-  watchpost-collector renew <device_id> --out <fichier.watchpost> [--ingest-url URL] [--force]
-                                                          nouveau jeton et certificat, même appareil
-  watchpost-collector revoke <device_id>                      révoque un appareil
-  watchpost-collector user set-password <nom>                 crée ou modifie un compte console
-                                                          (mot de passe lu sur l'entrée standard)
-  watchpost-collector sim --enroll <fichier.watchpost> [--url URL] [--backfill 24h] [--follow] [--rate 1]
-                      [--commands stream|poll|off] [--command-code CODE] [--fake-adguard 127.0.0.1:3001]
-  watchpost-collector healthcheck [--url URL]                 vérifie /healthz (HEALTHCHECK Docker)
+Usage:
+  watchpost-collector serve                                   start the HTTP server
+  watchpost-collector enroll --name <name> --out <file.watchpost> [--ingest-url URL] [--force]
+  watchpost-collector devices [--json]                        list devices (certificate expiry)
+  watchpost-collector renew <device_id> --out <file.watchpost> [--ingest-url URL] [--force]
+                                                          new token and certificate, same device
+  watchpost-collector revoke <device_id>                      revoke a device
+  watchpost-collector user set-password <name>                create or change a console account
+                                                          (password read from standard input)
+  watchpost-collector sim --enroll <file.watchpost> [--url URL] [--backfill 24h] [--follow] [--rate 1]
+                      [--commands stream|poll|off] [--command-code PASSPHRASE] [--fake-adguard 127.0.0.1:3001]
+  watchpost-collector healthcheck [--url URL]                 check /healthz (Docker HEALTHCHECK)
   watchpost-collector version
 
-Configuration par variables d'environnement (WATCHPOST_DATA_DIR, WATCHPOST_LISTEN, …) : voir README.md.
+Configuration through environment variables (WATCHPOST_DATA_DIR, WATCHPOST_LISTEN, ...): see README.md.
 `
 
 func main() {
@@ -61,11 +61,11 @@ func main() {
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 	default:
-		fmt.Fprintf(os.Stderr, "commande inconnue : %q\n\n%s", cmd, usage)
+		fmt.Fprintf(os.Stderr, "unknown command: %q\n\n%s", cmd, usage)
 		os.Exit(2)
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "erreur : %v\n", err)
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 }

@@ -186,7 +186,7 @@ fun HomeScreen(agent: Agent, resumeTick: Int, modifier: Modifier, navigate: (Scr
     }
 }
 
-@SuppressLint("BatteryLife") // Personal agent that must run 24/7: the exemption is explained to the owner.
+@SuppressLint("BatteryLife") // Agent that must run 24/7: the exemption is explained to the user.
 private fun requestBatteryExemption(context: android.content.Context) {
     try {
         context.startActivity(

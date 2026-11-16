@@ -1,51 +1,51 @@
-# 02 — Compiler l'APK
+# 02 — Build the APK
 
-Vigie Agent se compile sur votre PC (Windows, Linux ou macOS). Ce guide installe les outils, crée la **clé de
-signature** (à conserver à vie), construit l'APK et le vérifie. La référence technique reste
+The Watchpost Agent is built on your PC (Windows, Linux or macOS). This guide installs the tools, creates the
+**signing key** (to be kept for life), builds the APK and checks it. The technical reference remains
 [`android/README.md`](../../android/README.md).
 
-Durée : 30 à 60 minutes, dont le téléchargement de Gradle et des dépendances au premier build.
-Suite : [03 — le téléphone](03-telephone.md).
+Time: 30 to 60 minutes, including the download of Gradle and the dependencies at the first build.
+Next: [03 — the phone](03-phone.md).
 
-> **Statut de vérification.** Le build `./gradlew lint test assembleDebug assembleRelease` réussit dans
-> l'environnement de développement (Linux, JDK 21) et l'APK release obtenu a été inspecté (commandes de la section 6,
-> exécutées pour ce guide). **Le build sous Windows n'a jamais été exécuté**, pas plus que les scripts PowerShell.
+> **Verification status.** The build `./gradlew lint test assembleDebug assembleRelease` succeeds in the development
+> environment (Linux, JDK 21) and the release APK obtained was inspected (commands of section 6, run for this
+> guide). **The build on Windows has never been run**, and neither have the PowerShell scripts.
 
-## 1. Ce que le projet exige
+## 1. What the project requires
 
-| Élément | Version | Remarque |
+| Item | Version | Remark |
 |---|---|---|
-| JDK | 17 minimum ; 21 vérifié | fourni aussi par Android Studio |
-| Gradle | 9.9.1 | téléchargé automatiquement par le wrapper (`gradlew`), rien à installer |
-| Plugin Android Gradle (AGP) | 9.5.1 | Kotlin 2.4.21 intégré ; rien à installer |
-| `compileSdk` / `targetSdk` / `minSdk` | 37 / 37 / 36 | **le téléphone doit être sous Android 16 ou plus** (One UI 8 ou plus) |
-| SDK Android | plateforme `android-37.0`, `build-tools;36.0.0`, `platform-tools` | |
-| Accès Internet | oui, au premier build | Maven Central et Google |
+| JDK | 17 minimum; 21 verified | also provided by Android Studio |
+| Gradle | 9.9.1 | downloaded automatically by the wrapper (`gradlew`), nothing to install |
+| Android Gradle Plugin (AGP) | 9.5.1 | Kotlin 2.4.21 built in; nothing to install |
+| `compileSdk` / `targetSdk` / `minSdk` | 37 / 37 / 36 | **the phone must run Android 16 or later** (One UI 8 or later) |
+| Android SDK | platform `android-37.0`, `build-tools;36.0.0`, `platform-tools` | |
+| Internet access | yes, at the first build | Maven Central and Google |
 
-Le paquet de l'application est `io.github.erwsim.vigie`. Vous n'avez besoin ni d'un compte développeur, ni de Google
-Play, ni de Firebase.
+The application package is `io.github.erwsim.watchpost`. You need no developer account, no Google Play and no
+Firebase.
 
-## 2. Installer les outils
+## 2. Install the tools
 
-Deux voies : **Android Studio** (graphique, installe le SDK pour vous) ou le **SDK en ligne de commande** (plus
-léger, suffisant pour compiler). Les deux fonctionnent ; la ligne de commande est la voie décrite ici.
+Two routes: **Android Studio** (graphical, installs the SDK for you) or the **command-line SDK** (lighter,
+enough to build). Both work; the command line is the route described here.
 
 ### 2.1 Windows
 
-1. **JDK** : installez un JDK 17 ou 21 (par exemple Temurin, <https://adoptium.net>), ou utilisez celui d'Android
-   Studio si vous l'installez. Vérifiez, dans un nouveau PowerShell :
+1. **JDK**: install a JDK 17 or 21 (for example Temurin, <https://adoptium.net>), or use the one from Android
+   Studio if you install it. Check, in a new PowerShell:
 
    ```powershell
    java -version
    keytool -help | Select-Object -First 1
    ```
 
-   Si `keytool` est introuvable, ajoutez le dossier `bin` du JDK au `PATH` (nécessaire pour la clé de signature) et
-   définissez `JAVA_HOME` (dossier du JDK, sans `bin`).
+   If `keytool` is not found, add the JDK's `bin` folder to the `PATH` (needed for the signing key) and set
+   `JAVA_HOME` (the JDK folder, without `bin`).
 
-2. **Outils de ligne de commande Android** : téléchargez « Command line tools only » sur
-   <https://developer.android.com/studio#command-line-tools-only>. Dézippez de façon que le résultat soit
-   `C:\Android\cmdline-tools\latest\bin\sdkmanager.bat` (le sous-dossier `latest` est obligatoire). Puis :
+2. **Android command-line tools**: download "Command line tools only" from
+   <https://developer.android.com/studio#command-line-tools-only>. Unzip so that the result is
+   `C:\Android\cmdline-tools\latest\bin\sdkmanager.bat` (the `latest` sub-folder is mandatory). Then:
 
    ```powershell
    [Environment]::SetEnvironmentVariable('ANDROID_HOME', 'C:\Android', 'User')
@@ -54,38 +54,38 @@ léger, suffisant pour compiler). Les deux fonctionnent ; la ligne de commande e
    & 'C:\Android\cmdline-tools\latest\bin\sdkmanager.bat' "platform-tools" "platforms;android-37.0" "build-tools;36.0.0"
    ```
 
-   Acceptez les licences (`y`). `platform-tools` contient **`adb`**, dont vous aurez besoin au guide 03 : ajoutez
-   `C:\Android\platform-tools` au `PATH` (Paramètres Windows, « variables d'environnement »), puis rouvrez PowerShell
-   et vérifiez `adb version`.
+   Accept the licences (`y`). `platform-tools` contains **`adb`**, which you will need in guide 03: add
+   `C:\Android\platform-tools` to the `PATH` (Windows Settings, "environment variables"), then reopen PowerShell and
+   check `adb version`.
 
-   Variante Android Studio : installez-le, ouvrez le dossier `android/` du dépôt, laissez-le synchroniser ; dans le
-   SDK Manager, cochez Android SDK Platform 37.0, Build-Tools 36.0.0 et Platform-Tools. Si Android Studio signale une
-   incompatibilité avec le plugin Android Gradle 9.5.1, mettez-le à jour (compatibilité non vérifiée ici).
+   Android Studio variant: install it, open the repository's `android/` folder, let it synchronise; in the SDK
+   Manager, tick Android SDK Platform 37.0, Build-Tools 36.0.0 and Platform-Tools. If Android Studio reports an
+   incompatibility with Android Gradle Plugin 9.5.1, update it (compatibility not verified here).
 
-3. **Si Gradle ne trouve pas le SDK** (« SDK location not found ») : créez `android\local.properties` avec une ligne
-   `sdk.dir=C\:\\Android` (les `\` s'écrivent doublés et le `:` précédé d'un `\`). Android Studio crée ce fichier
-   tout seul. Il n'est pas versionné.
+3. **If Gradle cannot find the SDK** ("SDK location not found"): create `android\local.properties` with a line
+   `sdk.dir=C\:\\Android` (`\` is written doubled and the `:` is preceded by a `\`). Android Studio creates this
+   file by itself. It is not versioned.
 
-4. **Scripts PowerShell** : les `.ps1` du dépôt ne sont pas signés et Windows les refuse avec sa politique d'exécution par
-   défaut. Lancez-les toujours ainsi, sans rien changer à la configuration de la machine (la dérogation ne vaut que pour ce
-   processus) :
+4. **PowerShell scripts**: the repository's `.ps1` files are not signed and Windows refuses them under its default
+   execution policy. Always run them like this, without changing the machine's configuration (the exemption applies
+   only to that process):
 
    ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\<nom>.ps1 [options]
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\<name>.ps1 [options]
    ```
 
-   C'est la forme donnée dans tous les guides. Elle est celle que documentent les scripts eux-mêmes ; elle n'a jamais été
-   exécutée sous Windows.
+   This is the form given in all the guides. It is the one the scripts themselves document; it has never been run
+   on Windows.
 
-### 2.2 Linux et macOS
+### 2.2 Linux and macOS
 
 ```bash
-# JDK : installez le paquet de votre distribution (par exemple openjdk-17-jdk ou openjdk-21-jdk sous Debian/Ubuntu,
-# Temurin sous macOS), puis :
+# JDK: install your distribution's package (for example openjdk-17-jdk or openjdk-21-jdk on Debian/Ubuntu,
+# Temurin on macOS), then:
 java -version && keytool -help | head -1
 
-# SDK en ligne de commande : télécharger « Command line tools only »
-# (https://developer.android.com/studio#command-line-tools-only), le dézipper de façon que le résultat soit
+# Command-line SDK: download "Command line tools only"
+# (https://developer.android.com/studio#command-line-tools-only), unzip it so that the result is
 # ~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager
 export ANDROID_HOME=$HOME/Android/Sdk
 "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
@@ -94,33 +94,32 @@ export PATH="$ANDROID_HOME/platform-tools:$PATH"
 adb version
 ```
 
-Placez les deux `export` dans votre profil (`~/.bashrc`, `~/.zshrc`) pour les conserver. Les scripts `.sh` sont
-exécutables dans le dépôt (`./scripts/…`).
+Put the two `export` lines in your profile (`~/.bashrc`, `~/.zshrc`) to keep them. The `.sh` scripts are executable
+in the repository (`./scripts/…`).
 
-## 3. Cloner le dépôt
+## 3. Clone the repository
 
 ```bash
-git clone <adresse du dépôt> Android-Telemetry
-cd Android-Telemetry/android
+git clone <repository address> watchpost
+cd watchpost/android
 ```
 
-Les commandes suivantes se lancent depuis le dossier `android/` (dans PowerShell comme en bash).
+The following commands are run from the `android/` folder (in PowerShell as in bash).
 
-## 4. La clé de signature : à créer une fois, à conserver toujours
+## 4. The signing key: create it once, keep it forever
 
-### Pourquoi la signature doit rester la même
+### Why the signature must stay the same
 
-Android n'accepte une mise à jour d'une application que si elle est signée par **la même clé** que la version
-installée. Pour une application Device Owner, **il n'y a pas de contournement** : si vous perdez la clé, la seule
-issue est de retirer le Device Owner (ce qui défait la politique et demande de repasser par le guide 03, comptes
-retirés) ou de réinitialiser le téléphone. Dans les deux cas : plus de mise à jour tant que la clé d'origine
-manque.
+Android accepts an update to an application only if it is signed by **the same key** as the installed version. For a
+Device Owner application, **there is no workaround**: if you lose the key, the only way out is to remove the Device
+Owner (which undoes the policy and means going through guide 03 again, with the accounts removed) or to reset the
+phone. In both cases: no more updates as long as the original key is missing.
 
-Un APK de débogage (`assembleDebug`) est signé avec une clé de débogage propre à votre PC ; ne l'installez **jamais**
-sur le téléphone de tous les jours (sa signature ne serait ni stable, ni reproductible). N'utilisez que l'APK
-*release* signé avec votre clé.
+A debug APK (`assembleDebug`) is signed with a debug key specific to your PC; **never** install it on the phone you
+use every day (its signature would be neither stable nor reproducible). Use only the *release* APK signed with your
+key.
 
-### Créer la clé
+### Create the key
 
 ```bash
 ./scripts/generate-keystore.sh
@@ -130,36 +129,35 @@ sur le téléphone de tous les jours (sa signature ne serait ni stable, ni repro
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\generate-keystore.ps1
 ```
 
-Le script crée :
+The script creates:
 
-- `android/keystore/vigie-release.jks` : le keystore (RSA 4096, validité d'environ 50 ans, alias `vigie`) ;
-- `android/keystore.properties` : le mot de passe (aléatoire, 32 caractères, ou celui de la variable d'environnement
-  `VIGIE_KEYSTORE_PASSWORD`, 12 caractères au minimum) et le chemin, lus par Gradle.
+- `android/keystore/watchpost-release.jks`: the keystore (RSA 4096, valid for about 50 years, alias `watchpost`);
+- `android/keystore.properties`: the password (random, 32 characters, or the one from the environment variable
+  `WATCHPOST_KEYSTORE_PASSWORD`, 12 characters minimum) and the path, read by Gradle.
 
-et affiche l'**empreinte SHA-256** du certificat de signature. Notez-la : elle sert à contrôler l'APK (section 6).
-Les deux fichiers sont ignorés par git (vérifié : `.gitignore` couvre `*.jks` et `keystore.properties`). Le script
-**refuse d'écraser** un keystore existant ; ne le contournez pas.
+and prints the **SHA-256 fingerprint** of the signing certificate. Write it down: it is used to check the APK
+(section 6). Both files are ignored by git (verified: `.gitignore` covers `*.jks` and `keystore.properties`). The
+script **refuses to overwrite** an existing keystore; do not get around that.
 
-### La sauvegarder
+### Back it up
 
-Copiez **ensemble** `android/keystore/vigie-release.jks` et `android/keystore.properties` (le mot de passe y est en
-clair) :
+Copy **together** `android/keystore/watchpost-release.jks` and `android/keystore.properties` (the password is in it
+in clear text):
 
-- dans un gestionnaire de mots de passe qui accepte les pièces jointes, ou sur une clé USB / un disque **chiffré** ;
-- en au moins **deux** endroits distincts, hors de ce PC ;
-- jamais dans un dépôt git, ni dans un nuage non chiffré, ni sur le VPS non chiffré.
+- into a password manager that accepts attachments, or onto a USB drive / disk that is **encrypted**;
+- in at least **two** separate places, off this PC;
+- never in a git repository, nor in an unencrypted cloud, nor on the VPS unencrypted.
 
-Puisque le mot de passe est dans `keystore.properties`, c'est le chiffrement du support qui protège la clé. Notez
-aussi l'empreinte affichée par le script. Vous pouvez la relire à tout moment :
+Since the password is in `keystore.properties`, it is the encryption of the medium that protects the key. Also note
+the fingerprint printed by the script. You can read it again at any time:
 
 ```bash
-keytool -list -v -keystore keystore/vigie-release.jks -alias vigie
+keytool -list -v -keystore keystore/watchpost-release.jks -alias watchpost
 ```
 
-(le mot de passe est dans `keystore.properties`). La clé de signature n'est **pas** incluse dans les sauvegardes du
-serveur (guide 01).
+(the password is in `keystore.properties`). The signing key is **not** included in the server backups (guide 01).
 
-## 5. Construire
+## 5. Build
 
 ```bash
 ./gradlew assembleRelease
@@ -169,44 +167,44 @@ serveur (guide 01).
 .\gradlew.bat assembleRelease
 ```
 
-Le premier lancement télécharge Gradle 9.9.1 puis les dépendances ; il peut durer plusieurs minutes (la configuration
-du dépôt limite Gradle à 2 Go de mémoire et à 2 processus : lent mais sûr ; vous pouvez augmenter ces valeurs dans
-`android/gradle.properties`). Résultat :
+The first run downloads Gradle 9.9.1 and then the dependencies; it can take several minutes (the repository's
+configuration limits Gradle to 2 GB of memory and 2 processes: slow but safe; you can raise these values in
+`android/gradle.properties`). Result:
 
 ```
 android/app/build/outputs/apk/release/app-release.apk
 ```
 
-Paramètres facultatifs (`-P…` sur la ligne de commande) :
+Optional parameters (`-P…` on the command line):
 
-| Paramètre | Défaut | Rôle |
+| Parameter | Default | Purpose |
 |---|---|---|
-| `-Pvigie.versionCode=N` | `1` | entier, **à augmenter à chaque mise à jour** (sinon Android refuse : `VERSION_DOWNGRADE`) |
-| `-Pvigie.versionName=x.y.z` | `0.1.0` | version affichée et envoyée au serveur |
-| `-Pvigie.testOnly=true\|false` | `true` | voir section 7 |
+| `-Pwatchpost.versionCode=N` | `1` | integer, **to be increased at every update** (otherwise Android refuses: `VERSION_DOWNGRADE`) |
+| `-Pwatchpost.versionName=x.y.z` | `0.1.0` | version displayed and sent to the server |
+| `-Pwatchpost.testOnly=true\|false` | `true` | see section 7 |
 
-Pièges :
+Pitfalls:
 
-- **Sans keystore**, `assembleRelease` réussit mais produit `app-release-unsigned.apk`, qui n'est **pas installable**.
-  Le script `install-apk` le détecte (« L'APK release n'est pas signé ») et refuse ; sans argument il cherche sinon
-  `app-release.apk` puis l'APK *debug* (confirmation demandée avant de l'installer). Donnez toujours son chemin
-  explicitement au guide 03 et lisez le fichier annoncé (« Installation de … »).
-- Vérifications facultatives avant d'installer : `./gradlew lint test` (lint Android et tests JVM, 392 au dernier décompte de
-  `android/README.md` ; compter plusieurs minutes).
+- **Without a keystore**, `assembleRelease` succeeds but produces `app-release-unsigned.apk`, which is **not
+  installable**. The `install-apk` script detects it ("The release APK is not signed") and refuses; with no argument
+  it otherwise looks for `app-release.apk` and then the *debug* APK (confirmation requested before installing it).
+  Always give its path explicitly in guide 03 and read the announced file ("Installing …").
+- Optional checks before installing: `./gradlew lint test` (Android lint and JVM tests, 392 at the last count in
+  `android/README.md`; allow several minutes).
 
-Erreurs fréquentes du build :
+Common build errors:
 
-| Message | Cause et remède |
+| Message | Cause and remedy |
 |---|---|
-| `SDK location not found` | créer `local.properties` ou définir `ANDROID_HOME` (§2) |
-| licences non acceptées / composant manquant | `sdkmanager --licenses` puis installer `platforms;android-37.0` et `build-tools;36.0.0` |
-| version de Java insuffisante | utiliser un JDK 17 ou 21 (`java -version`, `JAVA_HOME`) |
-| `keytool` introuvable (script de clé) | ajouter le `bin` du JDK au `PATH` |
-| téléchargement impossible | accès Internet, proxy d'entreprise : réglages proxy de Gradle |
+| `SDK location not found` | create `local.properties` or set `ANDROID_HOME` (§2) |
+| licences not accepted / missing component | `sdkmanager --licenses` then install `platforms;android-37.0` and `build-tools;36.0.0` |
+| Java version too old | use a JDK 17 or 21 (`java -version`, `JAVA_HOME`) |
+| `keytool` not found (key script) | add the JDK's `bin` to the `PATH` |
+| download impossible | Internet access, corporate proxy: Gradle's proxy settings |
 
-## 6. Vérifier l'APK
+## 6. Check the APK
 
-Les outils sont dans `build-tools/36.0.0/` du SDK (sous Windows : `apksigner.bat` et `aapt2.exe`).
+The tools are in the SDK's `build-tools/36.0.0/` (on Windows: `apksigner.bat` and `aapt2.exe`).
 
 ```bash
 "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
@@ -218,26 +216,28 @@ Les outils sont dans `build-tools/36.0.0/` du SDK (sous Windows : `apksigner.bat
 & "$env:ANDROID_HOME\build-tools\36.0.0\aapt2.exe" dump badging app\build\outputs\apk\release\app-release.apk | Select-String 'package:|testOnly|targetSdkVersion'
 ```
 
-Résultat attendu (observé sur l'APK construit pour ce guide) :
+Expected result (observed on the APK built for this guide):
 
-- `apksigner` : `Verifies`, **`Verified using v3 scheme (APK Signature Scheme v3): true`** (les schémas v1 et v2 sont
-  à `false`, c'est normal : avec `minSdk 36`, seule la signature v3 est écrite, ce qui permet une rotation de clé
-  future), un seul signataire (`CN=Vigie Agent, O=Vigie (personnel)`) et un **« certificate SHA-256 digest » égal à
-  l'empreinte notée à la création de la clé**. S'il est différent, ce n'est pas votre clé : n'installez pas.
-- `aapt2` : `package: name='io.github.erwsim.vigie'`, le `versionCode` et le `versionName` attendus,
-  `targetSdkVersion:'37'` et, pour la variante par défaut, **`testOnly='-1'`**.
+- `apksigner`: `Verifies`, **`Verified using v3 scheme (APK Signature Scheme v3): true`** (the v1 and v2 schemes are
+  `false`, which is normal: with `minSdk 36`, only the v3 signature is written, which allows a future key rotation),
+  a single signer (`CN=Watchpost Agent, O=Watchpost`) and a **"certificate SHA-256 digest" equal to the fingerprint
+  noted when the key was created**. If it is different, it is not your key: do not install.
+- `aapt2`: `package: name='io.github.erwsim.watchpost'`, the expected `versionCode` and `versionName`,
+  `targetSdkVersion:'37'` and, for the default variant, **`testOnly='-1'`**.
 
-Une fois installé, le téléphone confirme : `adb shell dumpsys package io.github.erwsim.vigie | grep -E "versionName|TEST_ONLY"`
-(sous PowerShell : `adb shell dumpsys package io.github.erwsim.vigie | Select-String 'versionName|TEST_ONLY'`).
+Once installed, the phone confirms:
+`adb shell dumpsys package io.github.erwsim.watchpost | grep -E "versionName|TEST_ONLY"`
+(in PowerShell: `adb shell dumpsys package io.github.erwsim.watchpost | Select-String 'versionName|TEST_ONLY'`).
 
-### 6.1 Le second APK : le compagnon de notifications (facultatif)
+### 6.1 The second APK: the notification companion (optional)
 
-Lire le titre et le texte des notifications demande un **second APK**, **Vigie Notifications**
-(`io.github.erwsim.vigie.notifier`, module `:notifier`), séparé de l'agent pour ne pas exposer l'APK Device Owner à Play Protect
-(guide 03, §17). **Il doit être signé par la même clé que l'agent** : le même `keystore.properties` (ou les mêmes variables
-`VIGIE_*`), donc **le même keystore à conserver** ; un compagnon signé autrement est refusé à l'installation
-(`INSTALL_FAILED_DUPLICATE_PERMISSION`, les deux APK déclarant la permission du canal local) et ne pourrait de toute façon rien
-remettre à l'agent. Même construction, même variante : release avec release, débogage avec débogage.
+Reading the title and text of notifications requires a **second APK**, **Watchpost Notifications**
+(`io.github.erwsim.watchpost.notifier`, module `:notifier`), separate from the agent so as not to expose the Device
+Owner APK to Play Protect (guide 03, §17). **It must be signed by the same key as the agent**: the same
+`keystore.properties` (or the same `WATCHPOST_*` variables), hence **the same keystore to keep**; a companion signed
+otherwise is refused at installation (`INSTALL_FAILED_DUPLICATE_PERMISSION`, both APKs declaring the local-channel
+permission) and could not hand anything to the agent anyway. Same build, same variant: release with release, debug
+with debug.
 
 ```bash
 ./gradlew :notifier:assembleRelease          # notifier/build/outputs/apk/release/notifier-release.apk
@@ -247,12 +247,12 @@ remettre à l'agent. Même construction, même variante : release avec release, 
 .\gradlew.bat :notifier:assembleRelease
 ```
 
-Les paramètres `-Pvigie.testOnly`, `-Pvigie.versionCode` et `-Pvigie.versionName` s'appliquent aussi. Vérification (mêmes outils
-qu'ci-dessus) : le **« certificate SHA-256 digest » doit être identique** à celui de l'agent ; `aapt2 dump badging` doit montrer
-`package: name='io.github.erwsim.vigie.notifier'` et, parmi les permissions, **seulement**
-`io.github.erwsim.vigie.permission.NOTIFICATION_RELAY` (aucune permission `INTERNET`). Constat sur les APK construits pour ce guide :
-mêmes empreintes de signature pour l'agent et le compagnon, `testOnly='-1'` pour les deux, et le compagnon ne déclare que la
-permission du canal.
+The parameters `-Pwatchpost.testOnly`, `-Pwatchpost.versionCode` and `-Pwatchpost.versionName` apply here too.
+Check (same tools as above): the **"certificate SHA-256 digest" must be identical** to the agent's;
+`aapt2 dump badging` must show `package: name='io.github.erwsim.watchpost.notifier'` and, among the permissions,
+**only** `io.github.erwsim.watchpost.permission.NOTIFICATION_RELAY` (no `INTERNET` permission). Finding on the APKs
+built for this guide: same signing fingerprints for the agent and the companion, `testOnly='-1'` for both, and the
+companion declares only the channel permission.
 
 ```bash
 "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs notifier/build/outputs/apk/release/notifier-release.apk | grep "SHA-256 digest"
@@ -264,43 +264,43 @@ permission du canal.
 & "$env:ANDROID_HOME\build-tools\36.0.0\aapt2.exe" dump badging notifier\build\outputs\apk\release\notifier-release.apk | Select-String 'package:|uses-permission'
 ```
 
-Sans keystore, `:notifier:assembleRelease` produit un `notifier-release-unsigned.apk` non installable (`install-notifier` refuse
-alors et le dit). L'installation se fait avec `install-notifier` (guide 03, §17), jamais avec un autre moyen.
+Without a keystore, `:notifier:assembleRelease` produces a `notifier-release-unsigned.apk` that cannot be installed
+(`install-notifier` then refuses and says so). Installation is done with `install-notifier` (guide 03, §17), never
+by any other means.
 
-## 7. L'option `testOnly`
+## 7. The `testOnly` option
 
-`-Pvigie.testOnly=true` (**par défaut**) pose `android:testOnly="true"` dans le manifeste. Conséquences :
+`-Pwatchpost.testOnly=true` (**the default**) sets `android:testOnly="true"` in the manifest. Consequences:
 
-- **L'installation exige `adb install -t`** : les scripts du dépôt le font. Impossible d'installer cet APK en le
-  touchant depuis le téléphone.
-- **Une porte de sortie de dernier recours** : `adb shell dpm remove-active-admin` retire le Device Owner même si
-  l'application ne démarre plus. Sans `testOnly`, Android refuse (`Attempt to remove non-test admin`).
-- **Contrepartie** : quiconque contrôle un accès ADB autorisé sur le téléphone déverrouillé peut aussi retirer le
-  Device Owner. Un tel retrait est vu par l'agent comme `agent.tamper` (alerte Wazuh de niveau 12 sur l'agent, 10 pour la
-  perte du Device Owner), ce qui est le comportement voulu. L'écran Réglages › À propos affiche « APK testOnly : Oui ».
-- Comportement de Play Protect face à un APK `testOnly` : **non vérifié**.
+- **Installation requires `adb install -t`**: the repository's scripts do it. It is impossible to install this APK by
+  tapping it on the phone.
+- **A last-resort exit door**: `adb shell dpm remove-active-admin` removes the Device Owner even if the application
+  no longer starts. Without `testOnly`, Android refuses (`Attempt to remove non-test admin`).
+- **Downside**: anyone who controls an authorised ADB access on the unlocked phone can also remove the Device
+  Owner. Such a removal is seen by the agent as `agent.tamper` (Wazuh alert of level 12 on the agent, 10 for the
+  loss of the Device Owner), which is the intended behaviour. The Settings › About screen shows "testOnly APK: Yes".
+- Play Protect's behaviour towards a `testOnly` APK: **unverified**.
 
-Avec `-Pvigie.testOnly=false`, seuls l'application (écran Politique, « Retirer le Device Owner »), le script
-`remove-device-owner` (qui passe par l'issue de secours de l'application) ou une réinitialisation du téléphone
-retirent le rôle. Si l'application ne démarre plus, il n'y a plus que la réinitialisation. **Recommandation :** gardez
-`true` pendant toute la phase d'essai (guide 06) ; décidez plus tard. Le passage d'une variante à l'autre sur un
-téléphone où le Device Owner est actif n'a pas été vérifié : choisissez la variante **avant** l'activation du Device
-Owner.
+With `-Pwatchpost.testOnly=false`, only the application (Policy screen, "Remove Device Owner"), the
+`remove-device-owner` script (which goes through the application's rescue) or a reset of the phone remove the role.
+If the application no longer starts, only the reset remains. **Recommendation:** keep `true` during the whole trial
+phase (guide 06); decide later. Switching from one variant to the other on a phone where the Device Owner is active
+has not been verified: choose the variant **before** activating the Device Owner.
 
-## 8. Mettre à jour l'application plus tard
+## 8. Updating the application later
 
-Reconstruisez avec **la même clé** (le même `keystore.properties`) et un `versionCode` plus grand, puis réinstallez :
+Rebuild with **the same key** (the same `keystore.properties`) and a larger `versionCode`, then reinstall:
 
 ```bash
-./gradlew assembleRelease -Pvigie.versionCode=2 -Pvigie.versionName=0.2.0
+./gradlew assembleRelease -Pwatchpost.versionCode=2 -Pwatchpost.versionName=0.2.0
 ./scripts/install-apk.sh
 ```
 
 ```powershell
-.\gradlew.bat assembleRelease -Pvigie.versionCode=2 -Pvigie.versionName=0.2.0
+.\gradlew.bat assembleRelease -Pwatchpost.versionCode=2 -Pwatchpost.versionName=0.2.0
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-apk.ps1
 ```
 
-Les données (tampon, enrôlement, réglages) sont conservées. Le compagnon se met à jour de la même façon, avec la même clé
-(`:notifier:assembleRelease` puis `install-notifier`). Le détail et les contrôles à faire au premier essai :
-[guide 05](05-exploitation.md) et [guide 06](06-verifications-sur-appareil.md).
+The data (buffer, enrollment, settings) is kept. The companion is updated the same way, with the same key
+(`:notifier:assembleRelease` then `install-notifier`). Details and the checks to make at the first trial:
+[guide 05](05-operations.md) and [guide 06](06-on-device-checks.md).

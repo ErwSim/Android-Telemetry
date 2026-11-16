@@ -418,7 +418,7 @@ func flood(ctx context.Context, tx *sql.Tx, deviceID string, day int64, now time
 }
 
 func floodSummary(n int64) string {
-	return fmt.Sprintf("Plus de %d détections dans la journée pour cet appareil : %d de plus non enregistrées. L'appareil envoie des données incohérentes ou est compromis.",
+	return fmt.Sprintf("More than %d detections during the day for this device: %d more not recorded. The device is sending inconsistent data or is compromised.",
 		MaxDetectionsPerDay, n)
 }
 

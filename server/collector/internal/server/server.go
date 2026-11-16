@@ -98,7 +98,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/commands", s.handleCommandPoll)
 	mux.HandleFunc("POST /api/v1/commands/{id}/result", s.handleCommandResult)
 	mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {
-		writeError(w, http.StatusNotFound, "not_found", "point d'API inconnu")
+		writeError(w, http.StatusNotFound, "not_found", "unknown API endpoint")
 	})
 
 	// Console API.
@@ -131,10 +131,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/console/tracking/level", s.auth(s.handleTrackingLevelGet))
 	mux.HandleFunc("PUT /api/console/tracking/level", s.auth(s.handleTrackingLevelPut))
 	mux.HandleFunc("/api/console/", func(w http.ResponseWriter, r *http.Request) {
-		writeError(w, http.StatusNotFound, "not_found", "point d'API inconnu")
+		writeError(w, http.StatusNotFound, "not_found", "unknown API endpoint")
 	})
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
-		writeError(w, http.StatusNotFound, "not_found", "point d'API inconnu")
+		writeError(w, http.StatusNotFound, "not_found", "unknown API endpoint")
 	})
 
 	mux.HandleFunc("GET /healthz", s.handleHealth)
@@ -145,7 +145,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")
-			http.Error(w, "méthode non autorisée", http.StatusMethodNotAllowed)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		s.static.ServeHTTP(w, r)
@@ -197,9 +197,9 @@ func (s *Server) RunRetention(ctx context.Context, interval time.Duration) {
 		res, err := s.st.Purge(ctx, cutoff, now, sessionIdle)
 		switch {
 		case err != nil && !errors.Is(err, context.Canceled):
-			s.log.Error("purge de rétention en échec", "err", err)
+			s.log.Error("retention purge failed", "err", err)
 		case res.Events > 0:
-			s.log.Info("purge de rétention", "events", res.Events, "cutoff", cutoff.UTC().Format(time.RFC3339))
+			s.log.Info("retention purge", "events", res.Events, "cutoff", cutoff.UTC().Format(time.RFC3339))
 		}
 		t.Reset(interval)
 	}

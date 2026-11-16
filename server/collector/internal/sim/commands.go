@@ -36,7 +36,7 @@ func (c *Client) PollCommands(ctx context.Context) ([]AgentCommand, error) {
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("commandes : HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		return nil, fmt.Errorf("commands: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
 	var r struct {
 		Commands []AgentCommand `json:"commands"`
@@ -63,7 +63,7 @@ func (c *Client) StreamCommands(ctx context.Context, fn func(AgentCommand)) erro
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("flux de commandes : HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		return fmt.Errorf("command stream: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
 	// A dead connection is detected by the missing keep-alive comments.
 	alive := make(chan struct{}, 1)
@@ -94,7 +94,7 @@ func (c *Client) StreamCommands(ctx context.Context, fn func(AgentCommand)) erro
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			return fmt.Errorf("flux de commandes fermé : %w", err)
+			return fmt.Errorf("command stream closed: %w", err)
 		}
 		select {
 		case alive <- struct{}{}:
@@ -136,7 +136,7 @@ func (c *Client) PostResult(ctx context.Context, id, status, detail string, at t
 			if resp.StatusCode == http.StatusNoContent {
 				return nil
 			}
-			last = fmt.Errorf("résultat : HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(b)))
+			last = fmt.Errorf("result: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(b)))
 			if resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
 				return last
 			}
@@ -155,8 +155,8 @@ func (c *Client) PostResult(ctx context.Context, id, status, detail string, at t
 // AgentOptions configure the simulated command handling of the agent.
 type AgentOptions struct {
 	DeviceID  string
-	Code      string        // command code ("" : no code configured, sensitive commands refused)
-	AllowWipe bool          // "Autoriser l'effacement à distance" (off by default, as in the app)
+	Code      string        // command passphrase ("": none configured, sensitive commands refused)
+	AllowWipe bool          // "Allow remote erase" (off by default, as in the app)
 	ClockSkew time.Duration // offset of the phone clock (to provoke "expired" refusals)
 	Log       io.Writer
 }
@@ -191,7 +191,7 @@ func NewCommandAgent(c *Client, opts AgentOptions, out chan<- Injection) (*Comma
 	}
 	if opts.Code != "" {
 		if len([]rune(opts.Code)) < 12 {
-			return nil, errors.New("--command-code : 12 caractères au moins (contrat §8)")
+			return nil, errors.New("--command-code: 12 characters at least (contract §8)")
 		}
 		k, err := command.DeriveKey(opts.Code, opts.DeviceID)
 		if err != nil {
@@ -286,7 +286,7 @@ func (a *CommandAgent) Handle(ctx context.Context, cmd AgentCommand) {
 	now := time.Now()
 	if reason != "" {
 		status, detail = command.StatusRefused, reason
-		fmt.Fprintf(a.opts.Log, "\ncommande %s (%s) refusée : %s\n", cmd.ID, typ, reason)
+		fmt.Fprintf(a.opts.Log, "\ncommand %s (%s) refused: %s\n", cmd.ID, typ, reason)
 	} else {
 		p, _ := command.Parse(cmd.Payload)
 		detail = a.execute(p, now)
@@ -303,7 +303,7 @@ func (a *CommandAgent) Handle(ctx context.Context, cmd AgentCommand) {
 	}
 	a.out <- Injection{At: now, Type: "command.result", Sev: command.ResultSeverity(typ, status, detail), Data: data}
 	if err := a.client.PostResult(ctx, cmd.ID, status, detail, now); err != nil {
-		fmt.Fprintf(a.opts.Log, "\nrésultat de %s non transmis : %v\n", cmd.ID, err)
+		fmt.Fprintf(a.opts.Log, "\nresult of %s not delivered: %v\n", cmd.ID, err)
 	}
 }
 
@@ -315,21 +315,21 @@ func (a *CommandAgent) execute(p *command.Payload, now time.Time) string {
 		if d == 0 {
 			d = 60
 		}
-		fmt.Fprintf(w, "\n[simulé] sonnerie à plein volume pendant %d s (commande %s)\n", d, p.ID)
+		fmt.Fprintf(w, "\n[simulated] ringing at full volume for %d s (command %s)\n", d, p.ID)
 	case command.TypeVibrate:
-		fmt.Fprintf(w, "\n[simulé] vibration (commande %s)\n", p.ID)
+		fmt.Fprintf(w, "\n[simulated] vibration (command %s)\n", p.ID)
 	case command.TypeStopRing:
-		fmt.Fprintf(w, "\n[simulé] arrêt de la sonnerie (commande %s)\n", p.ID)
+		fmt.Fprintf(w, "\n[simulated] ringing stopped (command %s)\n", p.ID)
 	case command.TypeLocate:
-		fmt.Fprintf(w, "\n[simulé] position précise demandée (commande %s)\n", p.ID)
+		fmt.Fprintf(w, "\n[simulated] precise location requested (command %s)\n", p.ID)
 		a.out <- Injection{At: now, Locate: true}
 	case command.TypeLock:
 		msg, _ := p.Params["message"].(string)
-		fmt.Fprintf(w, "\n[simulé] verrouillage, message affiché : %q (commande %s)\n", msg, p.ID)
+		fmt.Fprintf(w, "\n[simulated] lock, message shown: %q (command %s)\n", msg, p.ID)
 	case command.TypeClearLockMessage:
-		fmt.Fprintf(w, "\n[simulé] message d'écran de verrouillage effacé (commande %s)\n", p.ID)
+		fmt.Fprintf(w, "\n[simulated] lock screen message cleared (command %s)\n", p.ID)
 	case command.TypeWipe:
-		fmt.Fprintf(w, "\n[simulé] RÉINITIALISATION D'USINE (simulée : rien n'est effacé) (commande %s)\n", p.ID)
+		fmt.Fprintf(w, "\n[simulated] FACTORY RESET (simulated: nothing is erased) (command %s)\n", p.ID)
 	}
 	return ""
 }
@@ -346,7 +346,7 @@ func (a *CommandAgent) RunStream(ctx context.Context) {
 		if time.Since(start) > time.Minute {
 			backoff = time.Second
 		}
-		fmt.Fprintf(a.opts.Log, "\nflux de commandes interrompu (%v), reconnexion dans %s\n", err, backoff)
+		fmt.Fprintf(a.opts.Log, "\ncommand stream interrupted (%v), reconnecting in %s\n", err, backoff)
 		select {
 		case <-ctx.Done():
 			return
@@ -363,7 +363,7 @@ func (a *CommandAgent) RunPoll(ctx context.Context, every time.Duration) {
 	for {
 		if cmds, err := a.client.PollCommands(ctx); err != nil {
 			if ctx.Err() == nil {
-				fmt.Fprintf(a.opts.Log, "\ninterrogation des commandes en échec : %v\n", err)
+				fmt.Fprintf(a.opts.Log, "\ncommand polling failed: %v\n", err)
 			}
 		} else {
 			for _, c := range cmds {

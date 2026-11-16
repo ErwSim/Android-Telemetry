@@ -56,7 +56,7 @@ class OwnerResolver(
     }
 }
 
-/** [tsMs]: time of the (first) request, the event's `ts` (contract §2 "Précisions"). */
+/** [tsMs]: time of the (first) request, the event's `ts` (contract §2, event timestamps). */
 data class NetOutput(val type: String, val data: JsonObject, val tsMs: Long)
 
 /**

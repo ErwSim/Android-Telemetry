@@ -27,7 +27,7 @@ class DeviceOwnerManager(
      * a later revocation is reported as `agent.tamper`.
      *
      * [alreadyGrantedOnce]: permissions this app already granted to itself. They are not granted
-     * again: if the owner revokes one in the Settings, that choice holds (the collector shows
+     * again: if the user revokes one in the Settings, that choice holds (the collector shows
      * "indisponible" and the Collecteurs screen offers to grant it back). Without this, the
      * 15-minute maintenance pass would silently undo the revocation.
      */

@@ -82,23 +82,23 @@ func (s *Server) authenticateDevice(r *http.Request) (*store.Device, error) {
 func (s *Server) deviceAuth(w http.ResponseWriter, r *http.Request) (*store.Device, bool) {
 	ip := s.clientIP(r)
 	if blocked, wait := s.ingestAuthFail.Blocked(ip); blocked {
-		writeRetry(w, wait, "trop d'échecs d'authentification")
+		writeRetry(w, wait, "too many authentication failures")
 		return nil, false
 	}
 	dev, err := s.authenticateDevice(r)
 	if err != nil {
 		if errors.Is(err, errUnauthorized) {
 			s.ingestAuthFail.Consume(ip)
-			writeError(w, http.StatusUnauthorized, "unauthorized", "jeton, certificat ou appareil invalide")
+			writeError(w, http.StatusUnauthorized, "unauthorized", "invalid token, certificate or device")
 			return nil, false
 		}
-		s.log.Error("authentification d'appareil : erreur de base", "err", err)
+		s.log.Error("device authentication: database error", "err", err)
 		w.Header().Set("Retry-After", "30")
-		writeError(w, http.StatusServiceUnavailable, "unavailable", "service momentanément indisponible")
+		writeError(w, http.StatusServiceUnavailable, "unavailable", "service temporarily unavailable")
 		return nil, false
 	}
 	if ok, wait := s.ingestDevice.Allow(dev.DeviceID); !ok {
-		writeRetry(w, wait, "débit maximal atteint pour cet appareil")
+		writeRetry(w, wait, "maximum rate reached for this device")
 		return nil, false
 	}
 	return dev, true
@@ -114,11 +114,11 @@ func (s *Server) commitRenewal(ctx context.Context, dev *store.Device) {
 	ctx = context.WithoutCancel(ctx)
 	switched, err := s.st.PromotePending(ctx, dev.DeviceID, dev.NextTokenHash)
 	if err != nil {
-		s.log.Warn("renouvellement : bascule impossible, réessayée au prochain envoi", "device_id", dev.DeviceID, "err", err)
+		s.log.Warn("renewal: switch failed, will be retried at the next upload", "device_id", dev.DeviceID, "err", err)
 		return
 	}
 	if switched {
-		s.log.Info("renouvellement : nouveau jeton et nouveau certificat en service, anciens refusés", "device_id", dev.DeviceID)
+		s.log.Info("renewal: new token and new certificate in service, old ones refused", "device_id", dev.DeviceID)
 	}
 }
 
@@ -148,7 +148,7 @@ type ingestResponse struct {
 func parseBatch(raw []byte) (*ingestRequest, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
-		return nil, errors.New("lot : objet JSON attendu")
+		return nil, errors.New("batch: JSON object expected")
 	}
 	var req ingestRequest
 	for dec.More() {
@@ -173,10 +173,10 @@ func parseBatch(raw []byte) (*ingestRequest, error) {
 		}
 	}
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('}') {
-		return nil, errors.New("lot : objet JSON mal terminé")
+		return nil, errors.New("batch: JSON object not properly terminated")
 	}
 	if _, err := dec.Token(); err != io.EOF {
-		return nil, errors.New("lot : données après l'objet JSON")
+		return nil, errors.New("batch: data after the JSON object")
 	}
 	return &req, nil
 }
@@ -191,7 +191,7 @@ func parseEvents(dec *json.Decoder, raw []byte) ([]json.RawMessage, error) {
 		return nil, nil
 	}
 	if tok != json.Delim('[') {
-		return nil, errors.New("lot : events doit être un tableau")
+		return nil, errors.New("batch: events must be an array")
 	}
 	evs := []json.RawMessage{}
 	for dec.More() {
@@ -204,7 +204,7 @@ func parseEvents(dec *json.Decoder, raw []byte) ([]json.RawMessage, error) {
 		evs = append(evs, json.RawMessage(el))
 	}
 	if tok, err := dec.Token(); err != nil || tok != json.Delim(']') {
-		return nil, errors.New("lot : tableau events mal terminé")
+		return nil, errors.New("batch: events array not properly terminated")
 	}
 	return evs, nil
 }
@@ -218,12 +218,12 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	case s.ingestSlots <- struct{}{}:
 		defer func() { <-s.ingestSlots }()
 	default:
-		writeRetry(w, 2*time.Second, "serveur occupé")
+		writeRetry(w, 2*time.Second, "server busy")
 		return
 	}
 
 	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "application/json" {
-		writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "Content-Type application/json attendu")
+		writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "Content-Type application/json expected")
 		return
 	}
 	var body io.Reader
@@ -234,10 +234,10 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		zr, err := gzip.NewReader(wire)
 		if err != nil {
 			if wire.tooLarge() {
-				writeError(w, http.StatusRequestEntityTooLarge, "too_large", "lot compressé supérieur à 1 Mio")
+				writeError(w, http.StatusRequestEntityTooLarge, "too_large", "compressed batch larger than 1 MiB")
 				return
 			}
-			writeError(w, http.StatusBadRequest, "invalid_gzip", "flux gzip invalide")
+			writeError(w, http.StatusBadRequest, "invalid_gzip", "invalid gzip stream")
 			return
 		}
 		defer zr.Close()
@@ -245,40 +245,40 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	case "", "identity":
 		body = http.MaxBytesReader(w, r.Body, MaxDecodedBytes)
 	default:
-		writeError(w, http.StatusUnsupportedMediaType, "unsupported_encoding", "Content-Encoding gzip ou absent attendu")
+		writeError(w, http.StatusUnsupportedMediaType, "unsupported_encoding", "Content-Encoding gzip or absent expected")
 		return
 	}
 	raw, err := io.ReadAll(body)
 	if err != nil {
 		if tooLarge(err) || (wire != nil && wire.tooLarge()) {
-			writeError(w, http.StatusRequestEntityTooLarge, "too_large", "lot trop volumineux")
+			writeError(w, http.StatusRequestEntityTooLarge, "too_large", "batch too large")
 			return
 		}
-		writeError(w, http.StatusBadRequest, "invalid_body", "corps illisible ou gzip invalide")
+		writeError(w, http.StatusBadRequest, "invalid_body", "unreadable body or invalid gzip")
 		return
 	}
 	if len(raw) > MaxDecodedBytes {
-		writeError(w, http.StatusRequestEntityTooLarge, "too_large", "lot décompressé supérieur à 8 Mio")
+		writeError(w, http.StatusRequestEntityTooLarge, "too_large", "decompressed batch larger than 8 MiB")
 		return
 	}
 
 	req, err := parseBatch(raw)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_json", "lot JSON invalide")
+		writeError(w, http.StatusBadRequest, "invalid_json", "invalid JSON batch")
 		return
 	}
 	if subtle.ConstantTimeCompare([]byte(req.DeviceID), []byte(dev.DeviceID)) != 1 {
 		s.ingestAuthFail.Consume(s.clientIP(r))
-		writeError(w, http.StatusUnauthorized, "unauthorized", "device_id ne correspond pas au jeton")
+		writeError(w, http.StatusUnauthorized, "unauthorized", "device_id does not match the token")
 		return
 	}
 	s.commitRenewal(r.Context(), dev)
 	if req.Events == nil {
-		writeError(w, http.StatusBadRequest, "invalid_batch", "champ events manquant")
+		writeError(w, http.StatusBadRequest, "invalid_batch", "field events missing")
 		return
 	}
 	if len(req.Events) > MaxBatchEvents {
-		writeError(w, http.StatusRequestEntityTooLarge, "too_many_events", "500 événements au plus par lot")
+		writeError(w, http.StatusRequestEntityTooLarge, "too_many_events", "500 events at most per batch")
 		return
 	}
 
@@ -303,9 +303,9 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	res, err := s.st.Ingest(ctx, dev.DeviceID, cleanVersion(req.AgentVersion), valid, now)
 	if err != nil {
-		s.log.Error("ingestion : écriture en base impossible", "device_id", dev.DeviceID, "err", err)
+		s.log.Error("ingestion: cannot write to the database", "device_id", dev.DeviceID, "err", err)
 		w.Header().Set("Retry-After", "30")
-		writeError(w, http.StatusServiceUnavailable, "storage_error", "stockage momentanément indisponible")
+		writeError(w, http.StatusServiceUnavailable, "storage_error", "storage temporarily unavailable")
 		return
 	}
 	stored := res.Stored
@@ -322,9 +322,9 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		}
 		s.broker.Publish(stored)
 	}
-	s.log.Debug("lot reçu", "device_id", dev.DeviceID, "accepted", resp.Accepted, "expired", res.Expired, "duplicates", res.Duplicates, "rejected", len(resp.Rejected))
+	s.log.Debug("batch received", "device_id", dev.DeviceID, "accepted", resp.Accepted, "expired", res.Expired, "duplicates", res.Duplicates, "rejected", len(resp.Rejected))
 	if len(resp.Rejected) > 0 {
-		s.log.Warn("événements rejetés", "device_id", dev.DeviceID, "count", len(resp.Rejected), "first_reason", resp.Rejected[0].Reason)
+		s.log.Warn("events rejected", "device_id", dev.DeviceID, "count", len(resp.Rejected), "first_reason", resp.Rejected[0].Reason)
 	}
 }
 
@@ -335,7 +335,7 @@ func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 	}
 	s.commitRenewal(r.Context(), dev)
 	if err := s.st.TouchDevice(r.Context(), dev.DeviceID, "", s.now()); err != nil {
-		s.log.Warn("ping : mise à jour de last_seen impossible", "err", err)
+		s.log.Warn("ping: cannot update last_seen", "err", err)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"server_time": model.FormatTS(s.now()), "device_id": dev.DeviceID})
 }

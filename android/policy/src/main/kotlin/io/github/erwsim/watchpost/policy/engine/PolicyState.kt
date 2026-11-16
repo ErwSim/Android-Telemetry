@@ -96,7 +96,7 @@ data class AppliedState(
     val records: List<AppliedRecord> = emptyList(),
 )
 
-/** What the owner chose on the screen (persisted; nothing is applied until "Appliquer"). */
+/** What the user chose on the screen (persisted; nothing is applied until "Apply"). */
 @Serializable
 data class PolicySelection(
     val profile: Profile = Profile.BALANCED,
@@ -108,7 +108,7 @@ data class PolicySelection(
     val privateDns: Boolean get() = overrides[ID_DNS] ?: true
 
     /**
-     * Off unless asked for: the lock (`disallow_config_private_dns`) removes the owner's own way out
+     * Off unless asked for: the lock (`disallow_config_private_dns`) removes the user's own way out
      * through the Settings if the DNS host stops answering. First impose the DNS without it, watch
      * it work, then lock.
      */
@@ -137,9 +137,9 @@ data class PolicySelection(
     }
 }
 
-/** One line of the local action journal (shown on the screen; the same facts go out as `security.policy`). */
+/** One line of the local action log (shown on the screen; the same facts go out as `security.policy`). */
 @Serializable
-data class JournalEntry(
+data class ActionLogEntry(
     @SerialName("ts_ms") val tsMs: Long,
     val action: String,
     val target: String,
@@ -151,7 +151,7 @@ data class JournalEntry(
 )
 
 /**
- * Persistence of the applied state, the journal and the selection in SharedPreferences, written
+ * Persistence of the applied state, the action log and the selection in SharedPreferences, written
  * with `commit()` (synchronous) so that the write-ahead record is on disk before the device is
  * changed. SharedPreferences survive app updates and reboots.
  */
@@ -166,7 +166,7 @@ class PolicyStore(private val prefs: SharedPreferences) {
      * The applied state. A text that cannot be read as a whole is read record by record (a record
      * written by another version with a kind or a method this one does not know must not make
      * every other record disappear); what is unreadable is kept aside under [K_STATE_CORRUPT] and
-     * reported by [stateWasUnreadable], so that "Tout rétablir" falls back on a catalog sweep
+     * reported by [stateWasUnreadable], so that "Restore everything" falls back on a catalog sweep
      * ([PolicyEngine.sweepCatalog]) instead of silently forgetting what was applied.
      */
     fun state(): AppliedState {
@@ -220,25 +220,25 @@ class PolicyStore(private val prefs: SharedPreferences) {
         prefs.edit().putString(K_SELECTION, json.encodeToString(PolicySelection.serializer(), selection)).commit()
     }
 
-    fun journal(): List<JournalEntry> = prefs.getString(K_JOURNAL, null)?.let {
+    fun actionLog(): List<ActionLogEntry> = prefs.getString(K_ACTION_LOG, null)?.let {
         try {
-            json.decodeFromString(JOURNAL_SERIALIZER, it)
+            json.decodeFromString(ACTION_LOG_SERIALIZER, it)
         } catch (_: Exception) {
             null
         }
     } ?: emptyList()
 
-    fun appendJournal(entry: JournalEntry) {
-        val list = (journal() + entry).takeLast(MAX_JOURNAL)
-        prefs.edit().putString(K_JOURNAL, json.encodeToString(JOURNAL_SERIALIZER, list)).commit()
+    fun appendActionLog(entry: ActionLogEntry) {
+        val list = (actionLog() + entry).takeLast(MAX_ACTION_LOG)
+        prefs.edit().putString(K_ACTION_LOG, json.encodeToString(ACTION_LOG_SERIALIZER, list)).commit()
     }
 
     private companion object {
         const val K_STATE = "applied_state"
         const val K_STATE_CORRUPT = "applied_state_corrupt"
         const val K_SELECTION = "selection"
-        const val K_JOURNAL = "journal"
-        const val MAX_JOURNAL = 200
-        val JOURNAL_SERIALIZER = kotlinx.serialization.builtins.ListSerializer(JournalEntry.serializer())
+        const val K_ACTION_LOG = "action_log"
+        const val MAX_ACTION_LOG = 200
+        val ACTION_LOG_SERIALIZER = kotlinx.serialization.builtins.ListSerializer(ActionLogEntry.serializer())
     }
 }

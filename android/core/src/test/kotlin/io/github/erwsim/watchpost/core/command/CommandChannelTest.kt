@@ -222,11 +222,11 @@ class CommandChannelTest {
     @Test
     fun pollModeFetchesPendingCommandsAtItsInterval() {
         config = config.copy(mode = ChannelMode.POLL, pollIntervalMin = 2)
-        val lock = kit.signed("lock", """{"message":"Rendez-le moi"}""")
+        val lock = kit.signed("lock", """{"message":"Please return it"}""")
         fake.pollBody = """{"commands":[${kit.json(lock)}]}"""
         channel.start()
         eventually("polled and executed") { executed.size == 1 }
-        assertEquals(CommandParams.Lock("Rendez-le moi"), executed.single().params)
+        assertEquals(CommandParams.Lock("Please return it"), executed.single().params)
         eventually("idle until the next poll") {
             channel.channelState.value.phase == ChannelPhase.POLL_IDLE && channel.channelState.value.nextAttemptAtMs - kit.clock.now == 2 * 60_000L
         }

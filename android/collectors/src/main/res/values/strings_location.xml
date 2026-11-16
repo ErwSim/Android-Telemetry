@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Location modes (contract §10). Kept apart from strings.xml: owned by the location collector. -->
 <resources>
-    <string name="setting_location_mode">Mode de localisation</string>
-    <string name="setting_location_mode_summary">Choisit les sources de position. Seul le GPS ne transmet rien à Google par Watchpost.</string>
+    <string name="setting_location_mode">Location mode</string>
+    <string name="setting_location_mode_summary">Chooses the position sources. Only GPS sends nothing to Google through Watchpost.</string>
 
-    <string name="location_mode_gps">GPS seul (par défaut)</string>
-    <string name="location_mode_gps_desc">Positions calculées par la puce GNSS du téléphone, plus les positions passives des autres apps. Watchpost ne demande rien aux Services Google Play. En intérieur ou en sous-sol, souvent aucune position ; premier point parfois long à obtenir.</string>
+    <string name="location_mode_gps">GPS only (default)</string>
+    <string name="location_mode_gps_desc">Positions computed by the phone\'s GNSS chip, plus the passive positions of other apps. Watchpost asks nothing from Google Play services. Indoors or underground, often no position; the first fix can take a long time.</string>
 
-    <string name="location_mode_gps_network">GPS + réseau</string>
-    <string name="location_mode_gps_network_desc">Ajoute le fournisseur « réseau ». Sur ce téléphone, il est fourni par les Services Google Play : les réseaux Wi-Fi et les antennes relais alentour sont envoyés à Google, et seulement si « Précision de la localisation Google » est activée. Gain : une position approximative en intérieur, en quelques secondes. Consommation : un peu plus (deux sources interrogées à chaque intervalle).</string>
+    <string name="location_mode_gps_network">GPS + network</string>
+    <string name="location_mode_gps_network_desc">Adds the "network" provider. On this phone, it is provided by Google Play services: the surrounding Wi-Fi networks and cell towers are sent to Google, and only if "Google Location Accuracy" is enabled. Gain: an approximate position indoors, within seconds. Cost: slightly more power (two sources queried at every interval).</string>
 
-    <string name="location_mode_fused">Fusionné</string>
-    <string name="location_mode_fused_desc">Utilise le fournisseur « fusionné » des Services Google Play : GPS, Wi-Fi, antennes relais et capteurs combinés. Google reçoit les réseaux Wi-Fi et antennes alentour comme en mode réseau. Gain : position rapide et souvent précise en intérieur, moins de temps GPS donc en général moins de consommation. Si le fournisseur est absent ou désactivé, Watchpost revient au GPS seul.</string>
+    <string name="location_mode_fused">Fused</string>
+    <string name="location_mode_fused_desc">Uses the "fused" provider of Google Play services: GPS, Wi-Fi, cell towers and sensors combined. Google receives the surrounding Wi-Fi networks and cell towers as in network mode. Gain: a fast and often precise position indoors, less GPS time and therefore generally less power. If the provider is absent or disabled, Watchpost falls back to GPS only.</string>
 </resources>

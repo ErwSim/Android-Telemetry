@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Configure l'indexeur Wazuh pour Vigie (appelé par install.sh, rejouable) :
-#  - modèle d'index « vigie » (ordre 1, complète le modèle « wazuh » de Filebeat) :
-#      * 1 shard, 0 réplique (nœud unique) ;
-#      * data.vigie.data.location en geo_point (carte) ;
-#      * champs de data.vigie.data.* en keyword par défaut : les types d'événements partagent cet
-#        espace de noms et un même nom de champ peut y porter un nombre, un booléen ou un texte
-#        selon le type ; sans cela, le premier type vu fixe le mapping et les suivants sont REJETÉS
-#        par l'indexeur (événements perdus dans wazuh-archives-*). Les champs numériques connus sont
-#        typés explicitement (avec ignore_malformed) pour les graphiques.
-#  - politiques ISM de rétention (WAZUH_ALERTS_RETENTION_DAYS, WAZUH_ARCHIVES_RETENTION_DAYS).
-# Authentification par le certificat admin dans le conteneur (aucun mot de passe en clair).
+# Configures the Wazuh indexer for Watchpost (called by install.sh, safe to rerun):
+#  - "watchpost" index template (order 1, complements Filebeat's "wazuh" template):
+#      * 1 shard, 0 replicas (single node);
+#      * data.watchpost.data.location as geo_point (map);
+#      * fields of data.watchpost.data.* as keyword by default: the event types share this
+#        namespace and the same field name can hold a number, a boolean or a text depending on
+#        the type; without this, the first type seen sets the mapping and the next ones are
+#        REJECTED by the indexer (events lost in wazuh-archives-*). The known numeric fields are
+#        typed explicitly (with ignore_malformed) for the charts.
+#  - ISM retention policies (WAZUH_ALERTS_RETENTION_DAYS, WAZUH_ARCHIVES_RETENTION_DAYS).
+# Authentication with the admin certificate inside the container (no password in clear).
 set -Eeuo pipefail
 INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -17,7 +17,7 @@ source "$INFRA_DIR/lib/common.sh"
 
 ALERTS_DAYS="$(env_get WAZUH_ALERTS_RETENTION_DAYS)"; ALERTS_DAYS="${ALERTS_DAYS:-180}"
 ARCHIVES_DAYS="$(env_get WAZUH_ARCHIVES_RETENTION_DAYS)"; ARCHIVES_DAYS="${ARCHIVES_DAYS:-90}"
-[[ "$ALERTS_DAYS" =~ ^[0-9]+$ && "$ARCHIVES_DAYS" =~ ^[0-9]+$ ]] || die "durées de rétention invalides"
+[[ "$ALERTS_DAYS" =~ ^[0-9]+$ && "$ARCHIVES_DAYS" =~ ^[0-9]+$ ]] || die "invalid retention periods"
 
 es() { es_admin "$@"; }
 
@@ -36,12 +36,12 @@ NUMERIC="$(
   echo "${f[*]}"
 )"
 
-# Feuilles de data.vigie.data.* et data.vigie_watch.* en keyword, quel que soit leur type JSON. Les
-# objets (security.log « fields », heartbeat « collectors »…) restent des objets : un modèle
-# « match_mapping_type: * » les capturerait aussi et ferait rejeter le document (constaté).
+# Leaves of data.watchpost.data.* and data.watchpost_watch.* as keyword, whatever their JSON type. The
+# objects (security.log "fields", heartbeat "collectors"…) stay objects: a "match_mapping_type: *"
+# template would capture them too and get the document rejected (observed).
 DYN="$(
   sep=""
-  for path in data.vigie.data data.vigie_watch; do
+  for path in data.watchpost.data data.watchpost_watch; do
     for t in string long double boolean; do
       printf '%s{ "%s_%s_kw": { "path_match": "%s.*", "match_mapping_type": "%s", "mapping": { "type": "keyword", "ignore_above": 1024 } } }' \
         "$sep" "${path//./_}" "$t" "$path" "$t"
@@ -50,8 +50,8 @@ DYN="$(
   done
 )"
 
-info "Modèle d'index vigie (geo_point, keyword par défaut, 1 shard)"
-es PUT /_template/vigie body <<EOF | grep -q '"acknowledged":true' || die "échec du modèle d'index vigie"
+info "watchpost index template (geo_point, keyword by default, 1 shard)"
+es PUT /_template/watchpost body <<EOF | grep -q '"acknowledged":true' || die "watchpost index template failed"
 {
   "order": 1,
   "index_patterns": ["wazuh-alerts-4.x-*", "wazuh-archives-4.x-*"],
@@ -68,7 +68,7 @@ es PUT /_template/vigie body <<EOF | grep -q '"acknowledged":true' || die "éche
     "properties": {
       "data": {
         "properties": {
-          "vigie": {
+          "watchpost": {
             "properties": {
               "seq": { "type": "long" },
               "sev": { "type": "integer" },
@@ -91,7 +91,7 @@ es PUT /_template/vigie body <<EOF | grep -q '"acknowledged":true' || die "éche
 }
 EOF
 
-# policy <id> <jours> <motif1,motif2> <description>
+# policy <id> <days> <pattern1,pattern2> <description>
 policy() {
   local id="$1" days="$2" patterns="$3" desc="$4" body cur seq term q=""
   patterns="\"${patterns//,/\",\"}\""
@@ -114,17 +114,17 @@ EOF
     seq="$(grep -oE '"_seq_no":[0-9]+' <<<"$cur" | cut -d: -f2)"
     term="$(grep -oE '"_primary_term":[0-9]+' <<<"$cur" | cut -d: -f2)"
     if grep -q "\"min_index_age\":\"${days}d\"" <<<"${cur// /}"; then
-      info "Politique $id inchangée (${days} j)"
+      info "Policy $id unchanged (${days} d)"
     else
       q="?if_seq_no=$seq&if_primary_term=$term"
-      es PUT "/_plugins/_ism/policies/$id$q" body <<<"$body" | grep -q '"_id"' || die "échec de la mise à jour de $id"
-      info "Politique $id mise à jour (${days} j)"
+      es PUT "/_plugins/_ism/policies/$id$q" body <<<"$body" | grep -q '"_id"' || die "update of $id failed"
+      info "Policy $id updated (${days} d)"
     fi
   else
-    es PUT "/_plugins/_ism/policies/$id" body <<<"$body" | grep -q '"_id"' || die "échec de la création de $id"
-    info "Politique $id créée (${days} j)"
+    es PUT "/_plugins/_ism/policies/$id" body <<<"$body" | grep -q '"_id"' || die "creation of $id failed"
+    info "Policy $id created (${days} d)"
   fi
-  # Index déjà existants : rattachement (sans politique) puis passage à la dernière version.
+  # Already existing indices: attach (those without a policy), then switch to the latest version.
   local p
   for p in ${patterns//,/ }; do
     p="${p//\"/}"
@@ -133,6 +133,6 @@ EOF
   done
 }
 
-policy vigie-alerts-retention "$ALERTS_DAYS" "wazuh-alerts-*" "Vigie : suppression des alertes Wazuh après $ALERTS_DAYS jours"
-policy vigie-archives-retention "$ARCHIVES_DAYS" "wazuh-archives-*" "Vigie : suppression des archives (tous les événements) après $ARCHIVES_DAYS jours"
-policy vigie-monitoring-retention 30 "wazuh-monitoring-*,wazuh-statistics-*" "Vigie : suppression des index de supervision Wazuh après 30 jours"
+policy watchpost-alerts-retention "$ALERTS_DAYS" "wazuh-alerts-*" "Watchpost: deletion of the Wazuh alerts after $ALERTS_DAYS days"
+policy watchpost-archives-retention "$ARCHIVES_DAYS" "wazuh-archives-*" "Watchpost: deletion of the archives (all events) after $ARCHIVES_DAYS days"
+policy watchpost-monitoring-retention 30 "wazuh-monitoring-*,wazuh-statistics-*" "Watchpost: deletion of the Wazuh monitoring indices after 30 days"

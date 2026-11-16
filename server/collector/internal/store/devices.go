@@ -95,7 +95,7 @@ func (s *Store) DeviceByTokenHash(ctx context.Context, hash []byte) (*Device, er
 }
 
 // ErrRevoked is returned when an operation is refused because the device is revoked.
-var ErrRevoked = errors.New("appareil révoqué")
+var ErrRevoked = errors.New("device revoked")
 
 // SetPendingCredentials stores a new credential pair for a device, replacing any pending one (the current
 // pair stays valid). It returns ErrNotFound for an unknown device and ErrRevoked for a revoked one.

@@ -33,17 +33,17 @@ func NewAlertsClient(cfg *config.Config) (*AlertsClient, error) {
 	}
 	u, err := url.Parse(strings.TrimRight(cfg.WazuhIndexerURL, "/"))
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return nil, fmt.Errorf("WATCHPOST_WAZUH_INDEXER_URL invalide")
+		return nil, fmt.Errorf("invalid WATCHPOST_WAZUH_INDEXER_URL")
 	}
 	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
 	if cfg.WazuhIndexerCAFile != "" {
 		pem, err := os.ReadFile(cfg.WazuhIndexerCAFile)
 		if err != nil {
-			return nil, fmt.Errorf("WATCHPOST_WAZUH_INDEXER_CA_FILE : %w", err)
+			return nil, fmt.Errorf("WATCHPOST_WAZUH_INDEXER_CA_FILE: %w", err)
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("WATCHPOST_WAZUH_INDEXER_CA_FILE : aucun certificat PEM")
+			return nil, fmt.Errorf("WATCHPOST_WAZUH_INDEXER_CA_FILE: no PEM certificate")
 		}
 		tlsCfg.RootCAs = pool
 	}
@@ -141,18 +141,18 @@ func (c *AlertsClient) Search(ctx context.Context, log *slog.Logger, fromMS, toM
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		log.Warn("indexeur Wazuh injoignable", "err", err)
+		log.Warn("Wazuh indexer unreachable", "err", err)
 		return AlertsAnswer{Alerts: []Alert{}, Reason: "unreachable"}
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil || resp.StatusCode != http.StatusOK {
-		log.Warn("indexeur Wazuh : réponse inattendue", "status", resp.StatusCode)
+		log.Warn("Wazuh indexer: unexpected response", "status", resp.StatusCode)
 		return AlertsAnswer{Alerts: []Alert{}, Reason: "unreachable"}
 	}
 	var res searchResult
 	if err := json.Unmarshal(raw, &res); err != nil {
-		log.Warn("indexeur Wazuh : réponse illisible", "err", err)
+		log.Warn("Wazuh indexer: unreadable response", "err", err)
 		return AlertsAnswer{Alerts: []Alert{}, Reason: "unreachable"}
 	}
 	ans := AlertsAnswer{Wazuh: true, Alerts: make([]Alert, 0, len(res.Hits.Hits))}

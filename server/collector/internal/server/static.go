@@ -25,13 +25,13 @@ func newStaticHandler(fsys fs.FS) http.Handler {
 				return
 			}
 			if path.Ext(name) != "" {
-				http.Error(w, "404 introuvable", http.StatusNotFound)
+				http.Error(w, "404 not found", http.StatusNotFound)
 				return
 			}
 		}
 		index, err := fs.ReadFile(fsys, "index.html")
 		if err != nil {
-			http.Error(w, "console indisponible", http.StatusNotFound)
+			http.Error(w, "console unavailable", http.StatusNotFound)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

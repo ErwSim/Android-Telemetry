@@ -1,207 +1,208 @@
-# 04 — Retour en arrière
+# 04 — Rollback
 
-Tout ce que Vigie fait est réversible. Ce guide va du geste le plus doux au plus radical : **arrêtez-vous au premier
-qui règle votre problème**. Respirez : vous avez presque toujours une issue sans réinitialisation.
+Everything Watchpost does is reversible. This guide goes from the gentlest gesture to the most radical: **stop at
+the first one that solves your problem**. Breathe: you almost always have a way out without a reset.
 
-Les commandes se lancent depuis le dossier `android/` du dépôt, téléphone branché en USB, débogage USB actif. Sous
-Windows, chaque script `.ps1` se lance par `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\<nom>.ps1 [options]`
-(forme donnée plus bas).
+Commands are run from the repository's `android/` folder, with the phone plugged in over USB and USB debugging on.
+On Windows, each `.ps1` script is run with
+`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\<name>.ps1 [options]` (form given below).
 
-> **Statut de vérification.** Aucun de ces gestes n'a jamais été exécuté sur un téléphone ; les scripts PowerShell n'ont
-> jamais été lancés. Les messages cités viennent des scripts. Le [guide 06](06-verifications-sur-appareil.md) vous fait
-> tester les niveaux 3 à 5 **à vide**, avant d'en avoir besoin.
+> **Verification status.** None of these gestures has ever been run on a phone; the PowerShell scripts have never been
+> launched. The messages quoted come from the scripts. [Guide 06](06-on-device-checks.md) has you test levels 3 to 5
+> **empty**, before you need them.
 
-## À avoir fait **avant** d'en avoir besoin
+## To have done **before** you need it
 
-1. L'APK installé est un build **release** avec `testOnly` et la **même clé de signature** que les mises à jour (guide 02).
-2. **Débogage USB actif**, PC autorisé, Auto Blocker désactivé (il peut couper l'USB) : sans ADB, les niveaux 3 à 5 sont
-   inaccessibles.
-3. **`rescue-revert` lancé à vide** avec succès avant toute politique (guide 03, §12).
-4. Rappel : l'issue de secours ne répond **qu'après le premier déverrouillage suivant un redémarrage**.
-5. **Toujours « Tout rétablir » (ou `rescue-revert --sweep`) avant de retirer le rôle de Device Owner.**
-6. Pas d'utilisateur invité ni de mode maintenance Samsung tant que le DNS privé est imposé.
-7. AdGuard ne doit pas bloquer les domaines de test de connectivité (ne retirez pas les exceptions de `vigie-base.txt`).
-8. Sans Internet à cause du DNS, le repli n'agit qu'après **15 minutes** (par défaut).
+1. The installed APK is a **release** build with `testOnly` and the **same signing key** as the updates (guide 02).
+2. **USB debugging on**, PC authorised, Auto Blocker off (it can cut USB): without ADB, levels 3 to 5 are out of
+   reach.
+3. **`rescue-revert` run empty** successfully before any policy (guide 03, §12).
+4. Reminder: the rescue answers **only after the first unlock following a reboot**.
+5. **Always "Restore everything" (or `rescue-revert --sweep`) before removing the Device Owner role.**
+6. No guest user and no Samsung maintenance mode while private DNS is enforced.
+7. AdGuard must not block the connectivity-check domains (do not remove the exceptions in `watchpost-base.txt`).
+8. With no Internet because of the DNS, the fallback acts only after **15 minutes** (by default).
 
-## Symptôme, puis geste
+## Symptom, then gesture
 
-| Symptôme | Premier geste | Si ça ne suffit pas |
+| Symptom | First gesture | If that is not enough |
 |---|---|---|
-| **Plus d'Internet** (depuis le DNS privé) | cas A ci-dessous | niveau 2, puis 3 |
-| **Une application indispensable a disparu ou est grisée** | cas B ci-dessous | niveau 2 (« Tout rétablir »), puis 3 |
-| **Plus de notifications** (push) | cas C ci-dessous | niveau 2, puis 3 |
-| Application bancaire ou paiement sans contact en échec | niveau 2 : « Rétablir » le dernier élément appliqué, puis « Tout rétablir » pour comparer | niveau 3 |
-| Plus de réseau mobile dans une zone | « Rétablir » la restriction « Interdire la 2G » | |
-| Impossible d'installer ou de mettre à jour un APK | « Rétablir » la restriction « Interdire les sources inconnues » ; à défaut, niveau 3 | |
-| L'application Vigie ne s'ouvre plus, plante, ou affiche « Vigie n'a pas pu démarrer » | niveau 3 (issue de secours ; elle reste joignable dans ce cas) | niveau 4 puis 5 |
-| Le téléphone chauffe ou se vide | niveau 1 (couper des collecteurs) | niveau 2 |
-| **Une application n'obtient plus une permission** (SMS, appels, contacts, micro, caméra ; Paramètres affiche « contrôlé par l'administrateur ») | cas D ci-dessous (garde ou quarantaine) | niveau 2, puis 3 |
-| **Un clavier ou un service d'accessibilité ne s'active pas** (« désactivé par l'administrateur ») | cas D : l'ajouter à la liste de la garde, ou « Aperçu et désactivation » | niveau 2, puis 3 |
-| **L'appairage d'une montre, d'écouteurs, d'une voiture ou d'une serrure échoue sans message** | cas D : l'application est en quarantaine, « Libérer » | niveau 2 |
-| Les codes reçus par SMS ne se remplissent plus tout seuls ; un appel direct depuis une appli ne passe plus | cas D : option « aussi la lecture » de la garde SMS, garde Appels | niveau 2 |
-| **Une application est devenue l'appli SMS par défaut sans que vous l'ayez choisi** | cas E ci-dessous | |
-| **Le téléphone a sonné ou s'est verrouillé sans que vous l'ayez demandé** ; commande à distance inconnue | cas F ci-dessous | |
-| **Téléphone perdu ou volé** | cas G ci-dessous | |
-| Je veux tout arrêter d'un coup | niveau 4 (retirer le Device Owner) | |
-| Rien ne marche et le téléphone est inutilisable | niveaux 3, 4, 5 dans l'ordre | niveau 6 (dernier recours) |
+| **No more Internet** (since private DNS) | case A below | level 2, then 3 |
+| **An essential application has disappeared or is greyed out** | case B below | level 2 ("Restore everything"), then 3 |
+| **No more notifications** (push) | case C below | level 2, then 3 |
+| Banking application or contactless payment failing | level 2: "Restore" the last applied item, then "Restore everything" to compare | level 3 |
+| No mobile network in an area | "Restore" the "Forbid 2G" restriction | |
+| Cannot install or update an APK | "Restore" the "Forbid unknown sources" restriction; failing that, level 3 | |
+| The Watchpost application no longer opens, crashes, or shows "Watchpost could not start" | level 3 (rescue; it remains reachable in this case) | level 4 then 5 |
+| The phone gets hot or drains | level 1 (turn off collectors) | level 2 |
+| **An application no longer gets a permission** (SMS, calls, contacts, microphone, camera; Settings shows "controlled by the administrator") | case D below (guard or quarantine) | level 2, then 3 |
+| **A keyboard or an accessibility service will not turn on** ("disabled by the administrator") | case D: add it to the guard's list, or "Preview and disable" | level 2, then 3 |
+| **Pairing a watch, earbuds, car or lock fails without a message** | case D: the application is in quarantine, "Release" | level 2 |
+| Codes received by SMS no longer fill in by themselves; a direct call from an app no longer goes through | case D: the SMS guard's "also reading" option, the Calls guard | level 2 |
+| **An application became the default SMS app without your choosing it** | case E below | |
+| **The phone rang or locked without your asking**; unknown remote command | case F below | |
+| **Phone lost or stolen** | case G below | |
+| I want to stop everything at once | level 4 (remove the Device Owner) | |
+| Nothing works and the phone is unusable | levels 3, 4, 5 in order | level 6 (last resort) |
 
-## Cas A — Plus d'Internet après le DNS privé
+## Case A — No Internet after private DNS
 
-Le DNS privé est imposé par Vigie ; si votre serveur ne répond plus (VPS arrêté, AdGuard planté, port 853 bloqué par le
-réseau où vous êtes), le téléphone n'a plus de DNS. C'est voulu (pas de fuite en clair). Dans l'ordre :
+Private DNS is enforced by Watchpost; if your server no longer answers (VPS stopped, AdGuard crashed, port 853
+blocked by the network you are on), the phone has no DNS. This is intended (no cleartext leak). In order:
 
-1. **Changez de réseau** : Wi-Fi ↔ données mobiles. Certains réseaux filtrent le port 853.
-2. **Dans Vigie** (l'application s'ouvre sans Internet) : Réglages › Device Owner › Politique › carte « DNS privé imposé »
-   › **Rétablir**. Le téléphone retrouve son DNS d'avant.
-3. **Si le verrou était actif** (« Verrouiller le réglage » : il est éteint par défaut, et le réglage Android est grisé
-   quand il est actif), la solution 2 reste valable : « Rétablir » lève aussi le verrou. Si le verrou est *éteint*, vous pouvez
-   aussi passer le DNS privé en « Automatique » dans Paramètres › Connexions › Plus de paramètres de connexion › DNS privé (chemin habituel).
-4. **Depuis le PC** : niveau 3 plus bas (`rescue-revert`).
-5. **Attendre** : si le repli est actif (par défaut), Vigie repasse seul en DNS automatique après 15 minutes
-   d'injoignabilité (réglable de 5 à 240 minutes ; `security.policy` de sévérité 2). Jamais testé sur appareil.
-6. **Côté serveur** (dossier `infra` du VPS) :
+1. **Change network**: Wi-Fi ↔ mobile data. Some networks filter port 853.
+2. **In Watchpost** (the application opens without Internet): Settings › Device Owner › Policy › "Enforced private
+   DNS" card › **Restore**. The phone gets its previous DNS back.
+3. **If the lock was on** ("Lock the setting": it is off by default, and the Android setting is greyed out when it is
+   on), solution 2 remains valid: "Restore" also lifts the lock. If the lock is *off*, you can also set private DNS to
+   "Automatic" in Settings › Connections › More connection settings › Private DNS (usual path).
+4. **From the PC**: level 3 below (`rescue-revert`).
+5. **Wait**: if the fallback is active (by default), Watchpost goes back to automatic DNS by itself after 15 minutes
+   of unreachability (adjustable from 5 to 240 minutes; severity-2 `security.policy`). Never tested on a device.
+6. **Server side** (`infra` folder on the VPS):
 
    ```bash
    sudo docker compose ps
    sudo docker compose restart adguardhome
-   python3 tools/dot-query.py dns.vigie.exemple.fr example.org
+   python3 tools/dot-query.py dns.watchpost.example.org example.org
    ```
 
-   La dernière commande doit renvoyer une adresse (guide 01).
+   The last command must return an address (guide 01).
 
-## Cas B — Une application a disparu ou est grisée
+## Case B — An application has disappeared or is greyed out
 
-Une application « masquée » disparaît ; une application « suspendue » reste affichée, grisée.
+A "hidden" application disappears; a "suspended" application stays displayed, greyed out.
 
-1. Dans Vigie › Politique : cherchez-la dans « Applications désactivées » (ou lisez le « Journal des actions ») et touchez
-   **Rétablir**.
-2. À défaut, niveau 2 « Tout rétablir ».
-3. Depuis le PC : `rescue-revert` puis, si un paquet reste masqué ou suspendu, `rescue-revert --sweep` (rétablit aussi ce dont
-   Vigie a perdu la trace). **Ne comptez pas sur `adb shell pm unhide <paquet>` / `pm unsuspend <paquet>`** : `pm unhide`
-   exige une permission (`MANAGE_USERS`) que le shell ADB n'a probablement pas, et un paquet suspendu par un administrateur ne
-   l'est pas par le shell (signalé par la revue, **à vérifier sur l'appareil**). Tant que Vigie est Device Owner, c'est elle
-   qui peut réafficher ses paquets.
+1. In Watchpost › Policy: look for it in "Disabled apps" (or read the "Action log") and tap **Restore**.
+2. Failing that, level 2 "Restore everything".
+3. From the PC: `rescue-revert` and then, if a package remains hidden or suspended, `rescue-revert --sweep` (also
+   restores what Watchpost has lost track of). **Do not count on `adb shell pm unhide <package>` /
+   `pm unsuspend <package>`**: `pm unhide` requires a permission (`MANAGE_USERS`) that the ADB shell probably does not
+   have, and a package suspended by an administrator is not suspended by the shell (flagged by the review, **to be
+   verified on the device**). As long as Watchpost is Device Owner, it is the one that can show its packages again.
 
-## Cas C — Plus de notifications
+## Case C — No more notifications
 
-Causes possibles : un lot de la politique, un domaine de notification bloqué par AdGuard, le réseau (certains Wi-Fi
-filtrent le port des notifications Google, 5228), ou la batterie de l'application concernée.
+Possible causes: a batch of the policy, a notification domain blocked by AdGuard, the network (some Wi-Fi networks
+filter the Google notification port, 5228), or the battery settings of the application concerned.
 
-1. Testez en **données mobiles** puis en Wi-Fi.
-2. Regardez le journal des requêtes d'AdGuard (`https://adguard.…`) : un domaine `mtalk…google.com` ou `fcm…` y est-il
-   bloqué ? Par défaut ils sont autorisés par des exceptions (guide 05 pour en ajouter).
-3. « Rétablir » le dernier élément appliqué ; puis « Tout rétablir » (niveau 2) pour trancher.
+1. Test on **mobile data** and then on Wi-Fi.
+2. Look at AdGuard's query log (`https://adguard.…`): is an `mtalk…google.com` or `fcm…` domain blocked there? By
+   default they are allowed by exceptions (guide 05 to add some).
+3. "Restore" the last applied item; then "Restore everything" (level 2) to settle it.
 
-## Cas D — Une garde ou la quarantaine bloque quelque chose
+## Case D — A guard or the quarantine blocks something
 
-Les gardes (Politique › Gardes) refusent des permissions ou des activations ; la quarantaine refuse un jeu de permissions aux
-applications installées après son activation. Dans l'ordre :
+The guards (Policy › Guards) deny permissions or activations; the quarantine denies a set of permissions to the
+applications installed after it was turned on. In order:
 
-1. **Quarantaine** : Politique › Gardes › « Applications en quarantaine (N) » › **Libérer** l'application : elle retrouve l'état
-   d'avant (« à demander » : elle redemandera les permissions). C'est la cause habituelle d'un appairage de montre ou
-   d'écouteurs qui échoue sans message (Bluetooth et appareils à proximité refusés) ou d'une visio sans micro.
-2. **Une liste** : ajoutez l'application à la liste de la garde (SMS ou Appels : « applis autorisées » ; Accessibilité ou
-   Claviers : « services » ou « claviers approuvés »), puis **« Aperçu et réapplication »** : la modification n'entre en vigueur
-   qu'à ce moment.
-3. **Désactiver la garde** : « **Aperçu et désactivation** » sous la garde : les permissions refusées sont rendues dans leur état
-   d'avant. Les listes d'accessibilité et de claviers sont levées.
-4. **« Tout rétablir »** (niveau 2) : éteint **d'abord toutes les gardes**, puis défait le reste. L'**issue de secours ADB**
-   (niveau 3) fait de même, avec `--sweep` si l'état de Vigie est douteux (il rend aussi toute permission des gardes refusée sans
-   enregistrement). **Le retrait du Device Owner** (niveau 4) les défait avec le reste ; si vous cédez le rôle sans
-   « Tout rétablir » (niveau 5), Android lève lui-même les listes et le verrouillage des permissions (affirmation tirée du code
-   AOSP, **à vérifier**), mais les permissions refusées restent non accordées : les applications les redemanderont.
+1. **Quarantine**: Policy › Guards › "Quarantined apps (N)" › **Release** the application: it gets its previous state
+   back ("ask": it will ask for the permissions again). This is the usual cause of a watch or earbud pairing that
+   fails without a message (Bluetooth and nearby devices denied) or of a video call with no microphone.
+2. **A list**: add the application to the guard's list (SMS or Calls: "allowed apps"; Accessibility or Keyboards:
+   "services" or "approved keyboards"), then **"Preview and re-apply"**: the change takes effect only then.
+3. **Disable the guard**: "**Preview and disable**" under the guard: the denied permissions are given back in their
+   previous state. The accessibility and keyboard lists are lifted.
+4. **"Restore everything"** (level 2): switches off **all the guards first**, then undoes the rest. The **ADB rescue**
+   (level 3) does the same, with `--sweep` if Watchpost's state is doubtful (it also gives back any permission denied
+   by the guards without a record). **Removing the Device Owner** (level 4) undoes them along with the rest; if you
+   give up the role without "Restore everything" (level 5), Android itself lifts the lists and the locking of
+   permissions (claim taken from the AOSP code, **to be verified**), but the denied permissions stay ungranted: the
+   applications will ask for them again.
 
-Les gardes SMS et Appels gèlent aussi le groupe de permissions de l'application refusée dans les Paramètres : c'est normal,
-cela cesse à la désactivation.
+The SMS and Calls guards also freeze the permission group of the denied application in Settings: this is normal and
+stops when the guard is disabled.
 
-## Cas E — Une application est devenue l'appli SMS par défaut sans que vous l'ayez choisi
+## Case E — An application became the default SMS app without your choosing it
 
-C'est la voie classique des chevaux de Troie SMS : Vigie ne la bloque pas, il vous prévient (notification prioritaire
-« Attention : appli par défaut changée », alerte Wazuh, détection `default_app_changed`).
+This is the classic route of SMS trojans: Watchpost does not block it, it warns you (priority notification "Warning:
+default app changed", Wazuh alert, `default_app_changed` detection).
 
-1. Paramètres › Applications › Applications par défaut (chemin habituel) : remettez votre application SMS (Messages).
-2. Dans Vigie › Politique › Gardes : retirez l'intruse de la liste de la garde SMS (Vigie l'y avait ajoutée), puis
-   « Aperçu et réapplication ».
-3. Désinstallez-la (si elle est administrateur de l'appareil ou service d'accessibilité, retirez d'abord ce droit dans les
-   Paramètres). Contrôlez la facture de l'opérateur (guide 08).
+1. Settings › Apps › Default apps (usual path): put your SMS application (Messages) back.
+2. In Watchpost › Policy › Guards: remove the intruder from the SMS guard's list (Watchpost had added it), then
+   "Preview and re-apply".
+3. Uninstall it (if it is a device administrator or accessibility service, first remove that right in Settings).
+   Check the carrier bill (guide 08).
 
-## Cas F — Une commande à distance que vous n'avez pas émise, ou un serveur suspect
+## Case F — A remote command you did not issue, or a suspect server
 
-Le serveur ne peut transmettre que des commandes d'une liste fermée, et les commandes sensibles (verrouiller, effacer)
-exigent une signature qu'il ne peut pas produire sans votre code de commande. **Mais** cette garantie a des limites (guide 03,
-§15) : un serveur compromis peut faire sonner ou localiser le téléphone, et lire votre code à la prochaine saisie dans la console.
-Une commande signée **reste exécutable jusqu'à son expiration**, quoi qu'en dise la console.
+The server can send only commands from a closed list, and the sensitive commands (lock, erase) require a signature
+that it cannot produce without your command passphrase. **But** this guarantee has limits (guide 03, §15): a
+compromised server can make the phone ring or locate it, and read your passphrase the next time it is typed into the
+console. A signed command **remains executable until it expires**, whatever the console says.
 
-Si vous doutez du serveur, ou si une commande inconnue apparaît (notification « Commande à distance » sur le téléphone, historique de
-Vigie › Réglages › Commandes à distance, alerte Wazuh de niveau 10 ou 12) :
+If you doubt the server, or if an unknown command appears (a "Remote command" notification on the phone, the history
+in Watchpost › Settings › Remote commands, a Wazuh alert of level 10 or 12):
 
-1. **Changez le code de commande sur le téléphone** : Réglages › Commandes à distance › « Changer le code » (cinq nouveaux mots
-   tirés au hasard). C'est **le seul geste qui rend caduques toutes les commandes déjà signées**, y compris celles que le serveur
-   détiendrait encore. Ne tapez jamais l'ancien ni le nouveau code dans une console douteuse.
-2. **Coupez le canal** : « Recevoir les commandes à distance » éteint (le téléphone ne contacte plus le serveur pour les commandes), et
-   **éteignez « Autoriser l'effacement à distance »**.
-3. Révoquez l'appareil et reprenez la main sur le serveur : `sudo ./enroll.sh --revoke <nom>`, changez les mots de passe
-   (`sudo ./install.sh --rotate-passwords`, guide 05), puis réenrôlez quand le serveur est sain.
-4. Cinq signatures invalides en une heure bloquent les commandes sensibles pendant une heure (`locked_out`) : c'est une
-   protection, pas une panne.
+1. **Change the command passphrase on the phone**: Settings › Remote commands › "Change the passphrase" (five new
+   randomly drawn words). This is **the only gesture that invalidates every command already signed**, including those
+   the server may still hold. Never type the old or the new passphrase into a doubtful console.
+2. **Turn off the channel**: "Receive remote commands" off (the phone no longer contacts the server for commands), and
+   **switch off "Allow remote erase"**.
+3. Revoke the device and take back control of the server: `sudo ./enroll.sh --revoke <name>`, change the passwords
+   (`sudo ./install.sh --rotate-passwords`, guide 05), then enroll again when the server is healthy.
+4. Five invalid signatures within an hour block the sensitive commands for an hour (`locked_out`): this is a
+   protection, not a failure.
 
-## Cas G — Le téléphone est perdu ou volé
+## Case G — The phone is lost or stolen
 
-Vigie ne remplace ni un antivol ni votre opérateur. Dans l'ordre :
+Watchpost replaces neither an anti-theft service nor your carrier. In order:
 
-1. **Sonner** (console › Commandes › « Actions simples ») si vous le cherchez à proximité ; **Localiser maintenant** : la position
-   précise arrive si le téléphone a du réseau, le canal de commandes est activé et le collecteur de localisation actif. En
-   « GPS seul », une position intérieure peut manquer. Le canal et ces commandes n'ont **jamais été essayés sur un téléphone**.
-2. **Verrouiller avec un message** (« Actions sensibles », il faut le code de commande) : un numéro où vous joindre. Valable 7 jours :
-   la commande attend que le téléphone se reconnecte. **Cela suffit dans la plupart des cas de perte.**
-3. **L'effacement à distance n'est à envisager que si** : vous l'aviez **autorisé à l'avance** dans l'application (il est interdit par
-   défaut), vous l'aviez **essayé sur un appareil sacrifiable**, votre téléphone est **sauvegardé**, vous ne le reverrez pas, et
-   vous faites confiance à votre serveur et à votre code. Une commande d'effacement n'est valable que 15 minutes par défaut :
-   le téléphone doit se reconnecter dans ce délai (sinon, réémettez). L'effacement est **irréversible** ; la protection contre la
-   réinitialisation (compte Google) et les eSIM sont conservées.
-4. **Quoi qu'il arrive** : verrouillage et effacement par vos comptes Google ou Samsung, appelez votre **opérateur** pour bloquer la
-   ligne, changez les mots de passe de vos comptes, puis `sudo ./enroll.sh --revoke <nom>` pour fermer l'ingestion (la console garde
-   l'historique, dernières positions comprises).
+1. **Ring** (console › Commands › "Simple actions") if you are looking for it nearby; **Locate now**: the precise
+   position arrives if the phone has network, the command channel is on and the location collector is active. In
+   "GPS only", an indoor position may be missing. The channel and these commands have **never been tried on a
+   phone**.
+2. **Lock with a message** ("Sensitive actions", the command passphrase is needed): a number where you can be
+   reached. Valid for 7 days: the command waits for the phone to reconnect. **This is enough in most cases of
+   loss.**
+3. **Remote erase is to be considered only if**: you had **allowed it in advance** in the application (it is forbidden
+   by default), you had **tried it on a sacrificial device**, your phone is **backed up**, you will not see it
+   again, and you trust your server and your passphrase. An erase command is valid for only 15 minutes by default:
+   the phone must reconnect within that time (otherwise, issue it again). Erasing is **irreversible**; reset
+   protection (Google account) and eSIMs are kept.
+4. **Whatever happens**: lock and erase through your Google or Samsung accounts, call your **carrier** to block the
+   line, change your account passwords, then `sudo ./enroll.sh --revoke <name>` to close ingestion (the console
+   keeps the history, last positions included).
 
-## Niveau 0 — Je veux juste que ça arrête d'envoyer
+## Level 0 — I just want it to stop sending
 
-Dans Vigie › Accueil : interrupteur **« Collecte active »**. Rien ne part, rien n'est collecté. Les politiques déjà
-appliquées restent en place (niveau 2 pour les défaire).
+In Watchpost › Home: the **"Collection active"** switch. Nothing is sent, nothing is collected. Policies already
+applied stay in place (level 2 to undo them).
 
-## Niveau 1 — Interrupteurs dans l'application
+## Level 1 — Switches in the application
 
-- **Onglet Collecteurs** : chaque collecteur a son interrupteur ; coupez celui qui chauffe ou gêne. Couper « Journal réseau »
-  ou « Journal de sécurité » coupe aussi la journalisation du système. Couper « Notifications » : le compagnon ne transmet plus rien.
-- **Réglages › Commandes à distance** : « Recevoir les commandes à distance » coupe le canal ; « Autoriser l'effacement à
-  distance » le retire ; « Supprimer le code » aussi (et remet l'effacement à « interdit »).
-- **Compagnon de notifications** : `./scripts/notifier-access.sh --revoke` retire son accès ; `./scripts/uninstall-notifier.sh`
-  le désinstalle (l'agent continue sans lui).
-- **Réglages › Enrôlement › Désenrôler** : efface la clé, le certificat, le jeton **et les événements encore en attente
-  d'envoi** ; la collecte continue localement. À éviter si vous voulez conserver ce qui n'est pas encore parti (utilisez
-  d'abord « Envoyer maintenant »).
+- **Collectors tab**: each collector has its switch; turn off the one that heats up or gets in the way. Turning off
+  "System network log" or "System security log" also turns off the system's logging. Turning off "Notifications": the
+  companion no longer passes anything on.
+- **Settings › Remote commands**: "Receive remote commands" turns off the channel; "Allow remote erase" removes it;
+  "Delete the passphrase" does too (and sets erase back to "forbidden").
+- **Notification companion**: `./scripts/notifier-access.sh --revoke` removes its access;
+  `./scripts/uninstall-notifier.sh` uninstalls it (the agent continues without it).
+- **Settings › Enrollment › Unenroll**: erases the key, the certificate, the token **and the events still waiting to
+  be sent**; collection continues locally. To be avoided if you want to keep what has not left yet (use "Upload now"
+  first).
 
-## Niveau 2 — Politique : Rétablir et « Tout rétablir »
+## Level 2 — Policy: Restore and "Restore everything"
 
-Dans Vigie › Réglages › Device Owner › Politique :
+In Watchpost › Settings › Device Owner › Policy:
 
-- **Rétablir** sous chaque élément appliqué (application, permission, restriction, DNS, réglage) : remet exactement
-  l'état d'avant.
-- **Gardes** (Politique › Gardes) : « Aperçu et désactivation » défait une garde ; « Libérer » défait une mise en quarantaine.
-- **Tout rétablir** (bas de l'écran, confirmation) : défait tout ce que Vigie a appliqué (gardes et quarantaine comprises, qu'il
-  éteint d'abord), du plus récent au plus ancien. Un
-  élément qui résiste reste listé avec son erreur : réessayez. Les journaux réseau et de sécurité restent actifs ;
-  Vigie reste Device Owner.
+- **Restore** under each applied item (application, permission, restriction, DNS, setting): puts back exactly the
+  previous state.
+- **Guards** (Policy › Guards): "Preview and disable" undoes a guard; "Release" undoes a quarantine.
+- **Restore everything** (bottom of the screen, with confirmation): undoes everything Watchpost applied (guards and
+  quarantine included, which it switches off first), from the most recent to the oldest. An item that resists stays
+  listed with its error: try again. The system network and security logs stay on; Watchpost remains Device Owner.
 
-Le « Journal des actions » de l'écran, et la console (Sécurité › Politique appliquée), disent ce qui a réussi ou échoué.
+The "Action log" of the screen, and the console (Security › Applied policy), say what succeeded or failed.
 
-## Niveau 3 — L'issue de secours par ADB (l'application n'est pas utilisable)
+## Level 3 — The ADB rescue (the application is not usable)
 
-Équivalent de « Tout rétablir », envoyé depuis le PC. Seul le shell ADB (ou le système) peut envoyer cet ordre ; aucune
-autre application ne le peut. Il ne fait que **défaire**.
+Equivalent of "Restore everything", sent from the PC. Only the ADB shell (or the system) can send this order; no other
+application can. It only **undoes**.
 
 ```bash
 ./scripts/rescue-revert.sh
-./scripts/rescue-revert.sh --sweep      # en plus : rétablit tout ce que le catalogue a pu modifier, même sans trace dans l'état de Vigie
+./scripts/rescue-revert.sh --sweep      # in addition: restores everything the catalogue may have changed, even with no trace in Watchpost's state
 ```
 
 ```powershell
@@ -209,93 +210,95 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\rescue-revert.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\rescue-revert.ps1 -Sweep
 ```
 
-**Limite :** l'application n'est pas démarrable avant le premier déverrouillage ; l'issue de secours ne répond donc
-qu'**après avoir déverrouillé le téléphone au moins une fois depuis son dernier redémarrage**.
+**Limit:** the application cannot start before the first unlock; the rescue therefore answers only **after the phone
+has been unlocked at least once since its last reboot**.
 
-| Résultat | Signification | Que faire |
+| Result | Meaning | What to do |
 |---|---|---|
-| `Tout est rétabli (reverted=…)`, code 0 | c'est fait | vérifier l'Internet et les applications |
-| code 2, « Rétablissement partiel » | un élément résiste | relancer, puis `--sweep` (`-Sweep`) ; sinon niveau 4 |
-| code 3, « Vigie n'est plus Device Owner » | Vigie ne peut plus rien défaire elle-même | le script contrôle l'état réel des paquets qu'elle avait masqués ou suspendus et tente `pm unhide` / `pm unsuspend` pour ceux qui le sont encore (niveau 5 pour la suite) |
-| code 4, délai dépassé | l'opération continue sur le téléphone | relancer dans une minute |
-| code 5, « Pas de réponse exploitable de Vigie » | téléphone pas déverrouillé depuis le redémarrage, application qui ne démarre pas, ou version sans issue de secours | déverrouiller et relancer ; sinon niveau 4 |
+| `Everything is restored (reverted=…)`, code 0 | done | check Internet and the applications |
+| code 2, "Partial restore" | an item resists | run again, then `--sweep` (`-Sweep`); otherwise level 4 |
+| code 3, "Watchpost is no longer Device Owner" | Watchpost can no longer undo anything itself | the script checks the real state of the packages it had hidden or suspended and tries `pm unhide` / `pm unsuspend` for those that still are (level 5 for what follows) |
+| code 4, "did not finish in time" | the operation continues on the phone | run again in a minute |
+| code 5, "No usable answer from Watchpost" | phone not unlocked since the reboot, an application that does not start, or a version without a rescue | unlock and run again; otherwise level 4 |
 
-Si `adb devices` ne voit plus le téléphone : Blocage automatique (Auto Blocker) réactivé ou câble ; débloquez le
-téléphone, désactivez Auto Blocker, rebranchez.
+If `adb devices` no longer sees the phone: Auto Blocker turned back on, or the cable; unlock the phone, turn Auto
+Blocker off, plug it in again.
 
-## Niveau 4 — Retirer le Device Owner
+## Level 4 — Remove the Device Owner
 
-À faire quand vous voulez tout arrêter. **Faites d'abord « Tout rétablir »** (niveau 2, ou `rescue-revert --sweep`) et
-contrôlez le résultat. Vigie défait sa politique, coupe les journaux, retire la protection contre
-l'arrêt forcé, puis abandonne le rôle. Le retrait est annoncé : **pas de fausse alerte `agent.tamper`**.
+To be done when you want to stop everything. **First "Restore everything"** (level 2, or `rescue-revert --sweep`) and
+check the result. Watchpost undoes its policy, turns off the logs, removes force-stop protection, then gives up the
+role. The removal is announced: **no false `agent.tamper` alert**.
 
-- **Par l'application** (si elle répond) : Réglages › Device Owner › Politique › **Retirer le Device Owner** ; cochez
-  « J'ai compris » et confirmez. Si quelque chose n'a pas pu être rétabli, l'application s'arrête avant le retrait et
-  propose « Retirer quand même ».
-- **Par le script** (sans interface) :
+- **Through the application** (if it answers): Settings › Device Owner › Policy › **Remove Device Owner**; tick "I
+  understand" and confirm. If something could not be restored, the application stops before the removal and offers
+  "Remove anyway".
+- **Through the script** (no interface):
 
   ```bash
-  ./scripts/remove-device-owner.sh              # ajoutez --uninstall pour aussi désinstaller Vigie
+  ./scripts/remove-device-owner.sh              # add --uninstall to also uninstall Watchpost
   ```
 
   ```powershell
-  powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\remove-device-owner.ps1             # ajoutez -Uninstall pour aussi désinstaller Vigie
+  powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\remove-device-owner.ps1             # add -Uninstall to also uninstall Watchpost
   ```
 
-  Répondez `oui` à la confirmation. Attendu : `Vigie n'est plus Device Owner`. Équivalent : `rescue-revert.sh --remove-owner`
-  (PowerShell : `rescue-revert.ps1 -RemoveOwner`). **Si un élément n'a pas pu être défait, Vigie garde le rôle** (elle seule peut
-  réessayer) : le script vous le dit et vous propose de **forcer** le retrait. Forcer laisse ces éléments en place ; selon la
-  version d'Android, un paquet resté masqué ou suspendu ne peut ensuite plus être rétabli que par un Device Owner. Préférez
-  d'abord `rescue-revert` puis `rescue-revert --sweep`.
+  Answer `yes` at the confirmation. Expected: `Watchpost is no longer Device Owner`. Equivalent:
+  `rescue-revert.sh --remove-owner` (PowerShell: `rescue-revert.ps1 -RemoveOwner`). **If an item could not be undone,
+  Watchpost keeps the role** (only it can try again): the script tells you and offers to **force** the removal.
+  Forcing leaves those items in place; depending on the Android version, a package left hidden or suspended can then
+  only be restored by a Device Owner. Prefer `rescue-revert` first and then `rescue-revert --sweep`.
 
-Ensuite : Paramètres › Comptes et sauvegarde : réactivez la **sauvegarde Android** que le mode Device Owner avait coupée ;
-vous pouvez désinstaller Vigie normalement ; côté serveur, révoquez l'appareil : `sudo ./enroll.sh --revoke dev_xxx`
-(`sudo ./enroll.sh --list` donne l'identifiant). Vérification : `adb shell dpm list-owners` ne doit plus citer Vigie.
+Afterwards: Settings › Accounts and backup: turn **Android backup** back on, which Device Owner mode had turned off;
+you can uninstall Watchpost normally; on the server side, revoke the device: `sudo ./enroll.sh --revoke dev_xxx`
+(`sudo ./enroll.sh --list` gives the identifier). Check: `adb shell dpm list-owners` must no longer mention
+Watchpost.
 
-## Niveau 5 — `dpm remove-active-admin` (APK « testOnly » seulement)
+## Level 5 — `dpm remove-active-admin` ("testOnly" APK only)
 
-Si l'application ne répond plus du tout (le script a affiché « Pas de réponse exploitable ») **et** que l'APK est
-`testOnly` (la variante par défaut, guide 02), `remove-device-owner` vous propose ce repli ; répondez `oui`. Équivalent manuel :
+If the application no longer answers at all (the script printed "No usable answer from Watchpost") **and** the APK is
+`testOnly` (the default variant, guide 02), `remove-device-owner` offers this fallback; answer `yes`. Manual
+equivalent:
 
 ```bash
-adb shell dpm remove-active-admin --user 0 io.github.erwsim.vigie/io.github.erwsim.vigie.policy.VigieAdminReceiver
+adb shell dpm remove-active-admin --user 0 io.github.erwsim.watchpost/io.github.erwsim.watchpost.policy.WatchpostAdminReceiver
 ```
 
 ```powershell
-adb shell dpm remove-active-admin --user 0 io.github.erwsim.vigie/io.github.erwsim.vigie.policy.VigieAdminReceiver
+adb shell dpm remove-active-admin --user 0 io.github.erwsim.watchpost/io.github.erwsim.watchpost.policy.WatchpostAdminReceiver
 ```
 
-Attention : dans ce cas **Vigie ne défait rien elle-même**. Android lève en principe de lui-même les politiques d'un Device
-Owner retiré, paquets masqués ou suspendus compris (affirmation des scripts, **non vérifiée**) ; le script contrôle l'état réel
-de chaque paquet que Vigie avait masqué ou suspendu et ne tente `pm unhide` / `pm unsuspend` que pour ceux qui le sont encore.
-Ces commandes peuvent être **refusées** au shell ADB : le recours est alors de **redonner le rôle à Vigie**
-(`enable-device-owner`, comptes retirés, guide 03 étape 7) puis de lancer `rescue-revert` (Vigie a gardé la liste de ce qu'elle
-avait appliqué). Contrôlez aussi le DNS privé (Paramètres › Connexions › Plus de paramètres de connexion › DNS privé) et que vos
-applications marchent. Le retrait sera signalé par `agent.tamper` (`admin_disabled`, `device_owner_lost`) : c'est attendu.
-C'est la raison pour laquelle il faut essayer les niveaux 2 à 4 **avant** celui-ci.
+Warning: in this case **Watchpost undoes nothing itself**. Android in principle lifts a removed Device Owner's
+policies by itself, hidden or suspended packages included (claim made by the scripts, **not verified**); the script
+checks the real state of every package Watchpost had hidden or suspended and tries `pm unhide` / `pm unsuspend` only
+for those that still are. These commands may be **refused** to the ADB shell: the recourse is then to **give the role
+back to Watchpost** (`enable-device-owner`, accounts removed, guide 03 step 7) and then run `rescue-revert` (Watchpost
+kept the list of what it had applied). Also check private DNS (Settings › Connections › More connection settings ›
+Private DNS) and that your applications work. The removal will be reported by `agent.tamper` (`admin_disabled`,
+`device_owner_lost`): this is expected. This is why levels 2 to 4 must be tried **before** this one.
 
-Avec un APK **non** testOnly, Android refuse cette commande (« Attempt to remove non-test admin »).
+With a **non**-testOnly APK, Android refuses this command ("Attempt to remove non-test admin").
 
-Pour vérifier chaque étape : `adb shell dpm list-owners` (ne doit plus citer Vigie).
+To check each step: `adb shell dpm list-owners` (must no longer mention Watchpost).
 
-## Niveau 6 — Réinitialisation d'usine (dernier recours)
+## Level 6 — Factory reset (last resort)
 
-Seulement si : l'APK n'est **pas** testOnly et l'application est inutilisable, ou si aucun des niveaux 3 à 5 ne vous rend un
-téléphone utilisable.
+Only if: the APK is **not** testOnly and the application is unusable, or if none of levels 3 to 5 gives you a usable
+phone.
 
-- **Avant**, si le téléphone démarre encore : sauvegardez (Smart Switch, photos). Retirez votre compte Google (et Samsung)
-  du téléphone avant la réinitialisation pour éviter le blocage antivol : sinon, Android exigera ensuite les identifiants
-  du dernier compte Google (et éventuellement Samsung) enregistré. Ayez-les.
-- **Comment** : Paramètres › Gestion globale › Réinitialisation › Rétablir la configuration d'usine (chemin habituel) ; si
-  le téléphone ne démarre plus correctement, par le mode de récupération (combinaison de touches propre au modèle,
-  indiquée par Samsung).
-- **Effet** : tout est effacé, le Device Owner aussi. Vous repartirez de zéro : réinstallez, ou non, selon le guide 03.
+- **Before**, if the phone still starts: back up (Smart Switch, photos). Remove your Google (and Samsung) account from
+  the phone before the reset to avoid the anti-theft lock: otherwise Android will then require the credentials of the
+  last Google (and possibly Samsung) account registered. Have them.
+- **How**: Settings › General management › Reset › Factory data reset (usual path); if the phone no longer starts
+  properly, through recovery mode (key combination specific to the model, given by Samsung).
+- **Effect**: everything is erased, the Device Owner too. You start again from zero: reinstall, or not, following
+  guide 03.
 
-Aucune de ces étapes n'est vérifiée sur ce téléphone ; la réinitialisation est le seul geste qui ne dépend pas de Vigie.
+None of these steps is verified on a device; the reset is the only gesture that does not depend on Watchpost.
 
-## Après un retour en arrière
+## After a rollback
 
-- Notez ce qui s'est passé (le symptôme, le dernier élément appliqué, les messages) et reportez-le : c'est ce que le
-  [guide 06](06-verifications-sur-appareil.md) et Claude Code ([guide 07](07-reprise-developpement.md)) utilisent
-  pour corriger.
-- Pour **revenir au Device Owner** après un retrait : retirez vos comptes, puis `enable-device-owner` (guide 03, étape 7).
+- Note what happened (the symptom, the last applied item, the messages) and report it: it is what
+  [guide 06](06-on-device-checks.md) and [guide 07](07-development.md) use to fix things.
+- To **go back to Device Owner** after a removal: remove your accounts, then `enable-device-owner` (guide 03, step
+  7).

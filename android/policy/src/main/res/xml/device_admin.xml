@@ -5,7 +5,7 @@
     getCurrentFailedPasswordAttempts.
     force-lock: DevicePolicyManager.lockNow() for the signed remote command "lock" (contract §8).
     wipe-data: DevicePolicyManager.wipeDevice() for the signed remote command "wipe", which also needs
-    "Autoriser l'effacement à distance" switched on in the app (off by default).
+    "Allow remote erase" switched on in the app (off by default).
     Nothing else (no reset password, no camera or keyguard feature control).
     These policies are read when the admin is activated: on a device where Watchpost was already Device
     Owner with an older list, check after the update that "lock" works (see README).

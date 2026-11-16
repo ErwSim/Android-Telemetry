@@ -132,7 +132,7 @@ class CommandVerifier(
         if (type == CommandTypes.WIPE && !env.wipeAllowed) {
             // This refusal is final for this command: its id is consumed in the signed anti-replay window. Otherwise
             // the server, which keeps the signed command until it expires (7 days by default), could deliver it
-            // again once the owner switches "Autoriser l'effacement à distance" on, and it would then run. An
+            // again once the user switches "Allow remote erase" on, and it would then run. An
             // expired command is not recorded (it can no longer run, and must not fill the window).
             if (notExpired) state.markSeen(outerId, signed)
             return refuse(Refusal.DISABLED, signed)
@@ -234,7 +234,7 @@ class CommandVerifier(
                     } else {
                         val prim = e as? JsonPrimitive ?: return null
                         if (!prim.isString) return null
-                        // "200 caractères" = 200 UTF-16 units; no control character except the line feed (contract §8,
+                        // "200 characters" = 200 UTF-16 units; no control character except the line feed (contract §8,
                         // checked here too: the server is not trusted).
                         if (prim.content.length > LOCK_MESSAGE_MAX) return null
                         // U+2028/U+2029 (line/paragraph separators) are refused like control characters (review of v1.1).
@@ -405,7 +405,7 @@ internal object JsonDuplicateKeys {
 
 /**
  * The conditions that must **all** hold for a factory reset (the only irreversible action of the app):
- * channel enabled, command code set, valid signature, "Autoriser l'effacement à distance" on, command
+ * channel enabled, command passphrase set, valid signature, "Allow remote erase" on, command
  * not expired and never seen. The verifier establishes them; the wipe executor (`:policy`) checks them
  * again against the live state right before calling the platform.
  */

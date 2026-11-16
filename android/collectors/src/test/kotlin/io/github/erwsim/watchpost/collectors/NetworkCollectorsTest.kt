@@ -58,7 +58,7 @@ class NetworkCollectorsTest {
             metered = false,
             vpn = true,
             privateDnsActive = true,
-            privateDnsServer = "dns.exemple.fr",
+            privateDnsServer = "dns.example.org",
             dnsServers = listOf("10.0.0.1", "fd00::1"),
             iface = "tun0",
         )
@@ -112,7 +112,7 @@ class NetworkCollectorsTest {
         val hidden = (data["aps"] as JsonArray)[2] as JsonObject
         assertEquals(setOf("bssid", "rssi", "freq_mhz"), hidden.keys)
         // 60 access points stay far below the 32 KiB event limit.
-        val many = (1..200).map { WifiScanCollector.Ap("Réseau voisin numéro $it", "aa:bb:cc:dd:%02x:%02x".format(it / 256, it % 256), -40 - it % 50, 5180, "eap_wpa3_enterprise") }
+        val many = (1..200).map { WifiScanCollector.Ap("Neighbouring network number $it", "aa:bb:cc:dd:%02x:%02x".format(it / 256, it % 256), -40 - it % 50, 5180, "eap_wpa3_enterprise") }
         assertTrue(WifiScanCollector.data(WifiScanCollector.selectAps(many, WifiScanCollector.MAX_APS)).toString().length < 16_000)
     }
 

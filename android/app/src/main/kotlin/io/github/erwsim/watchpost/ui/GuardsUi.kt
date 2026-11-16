@@ -107,7 +107,7 @@ fun GuardCard(agent: Agent, key: GuardKey, state: PolicyUiState, controller: Pol
                 }
             }
         }
-        // Option and list: pending choices, applied with "Aperçu et (ré)application".
+        // Option and list: pending choices, applied with "Preview and (re-)apply".
         if (key.hasExtended && t.extended != null) {
             var extended by remember(tick, edits) { mutableStateOf(controller.guardExtended(key)) }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -151,7 +151,7 @@ fun GuardCard(agent: Agent, key: GuardKey, state: PolicyUiState, controller: Pol
     }
 }
 
-/** "Ce qui va changer" for a guard: exactly which apps lose or regain what. */
+/** "What will change" for a guard: exactly which apps lose or regain what. */
 @Composable
 fun GuardPreviewDialog(preview: GuardPreview, onDismiss: () -> Unit, onApply: () -> Unit) {
     val title = stringResource(texts(preview.key).title)
@@ -195,7 +195,7 @@ fun GuardPreviewDialog(preview: GuardPreview, onDismiss: () -> Unit, onApply: ()
 }
 
 /**
- * Risk profile of an app (same scoring as `app.risk`, contract §11.2), computed on the phone: helps the owner
+ * Risk profile of an app (same scoring as `app.risk`, contract §11.2), computed on the phone: helps the user
  * decide whether to release it. Nothing is shown if the facts cannot be read.
  */
 @Composable
@@ -222,7 +222,7 @@ private fun RiskSummary(pkg: String) {
     }
 }
 
-/** "Applications en quarantaine": what is denied to each, its risk profile, and "Libérer". */
+/** "Quarantined apps": what is denied to each, its risk profile, and "Release". */
 @Composable
 fun QuarantineScreen(agent: Agent, resumeTick: Int, modifier: Modifier) {
     val controller = remember { PolicyModule.controller(agent) }

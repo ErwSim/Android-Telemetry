@@ -76,7 +76,7 @@ class CommandResultContractTest {
         processor.process(kit.simple("vibrate", """{"duration_s":5}"""))
         processor.process(kit.simple("stop_ring"))
         processor.process(kit.simple("locate"))
-        processor.process(kit.signed("lock", """{"message":"Rapportez-le, merci"}"""))
+        processor.process(kit.signed("lock", """{"message":"Please report back, thanks"}"""))
         processor.process(kit.signed("clear_lock_message"))
         processor.process(kit.signed("wipe"))
         assertEquals(1, wipes.get())

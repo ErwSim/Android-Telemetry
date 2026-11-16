@@ -5,11 +5,11 @@ import { useAuth } from '../state/auth.tsx';
 
 function messageFor(e: unknown): string {
   if (e instanceof ApiError) {
-    if (e.status === 401) return 'Identifiant ou mot de passe incorrect.';
-    if (e.status === 429) return 'Trop de tentatives. Patientez avant de réessayer.';
+    if (e.status === 401) return 'Incorrect username or password.';
+    if (e.status === 429) return 'Too many attempts. Wait before trying again.';
     return e.message;
   }
-  return 'Connexion impossible.';
+  return 'Sign-in failed.';
 }
 
 export default function Login() {
@@ -22,7 +22,7 @@ export default function Login() {
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
 
-  if (status === 'authed') return <Navigate to={from.startsWith('/connexion') ? '/' : from} replace />;
+  if (status === 'authed') return <Navigate to={from.startsWith('/login') ? '/' : from} replace />;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -30,7 +30,7 @@ export default function Login() {
     setError(undefined);
     try {
       await login(username.trim(), password);
-      nav(from.startsWith('/connexion') ? '/' : from, { replace: true });
+      nav(from.startsWith('/login') ? '/' : from, { replace: true });
     } catch (err) {
       setError(messageFor(err));
       setBusy(false);
@@ -46,8 +46,8 @@ export default function Login() {
             <path d="M4 17h6l3-8 5 15 3-7h7" fill="none" stroke="#fff" strokeWidth="2.400" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <div>
-            <h1 id="login-title">Vigie</h1>
-            <p className="muted">Console de télémétrie de sécurité</p>
+            <h1 id="login-title">Watchpost</h1>
+            <p className="muted">Security telemetry console</p>
           </div>
         </div>
         {(notice || error) && (
@@ -56,7 +56,7 @@ export default function Login() {
           </div>
         )}
         <label className="field">
-          Identifiant
+          Username
           <input
             name="username"
             autoComplete="username"
@@ -67,7 +67,7 @@ export default function Login() {
           />
         </label>
         <label className="field">
-          Mot de passe
+          Password
           <input
             name="password"
             type="password"
@@ -78,7 +78,7 @@ export default function Login() {
           />
         </label>
         <button type="submit" className="btn btn-primary" disabled={busy || !username || !password}>
-          {busy ? 'Connexion…' : 'Se connecter'}
+          {busy ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
     </div>

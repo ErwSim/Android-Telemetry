@@ -1,88 +1,88 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="fr">
-    <string name="collector_heartbeat_title">Battement de cœur</string>
-    <string name="collector_heartbeat_desc">Toutes les 15 minutes : état de l\'agent (batterie, événements en attente, événements perdus, collecteurs actifs, dernier envoi, mode Device Owner).</string>
+<resources>
+    <string name="collector_heartbeat_title">Heartbeat</string>
+    <string name="collector_heartbeat_desc">Every 15 minutes: agent state (battery, pending events, lost events, active collectors, last upload, Device Owner mode).</string>
 
-    <string name="collector_device_title">Appareil</string>
-    <string name="collector_device_desc">Écran allumé, éteint ou déverrouillé ; batterie ; économie d\'énergie ; démarrage et arrêt ; inventaire (modèle, version d\'Android et de One UI, correctif de sécurité, état du démarrage vérifié) ; stockage libre ; changements d\'heure et de fuseau ; mode avion ; état thermique.</string>
+    <string name="collector_device_title">Device</string>
+    <string name="collector_device_desc">Screen on, off or unlocked; battery; power saving; boot and shutdown; inventory (model, Android and One UI version, security patch, verified boot state); free storage; time and time zone changes; airplane mode; thermal state.</string>
 
-    <string name="collector_location_title">Localisation</string>
-    <string name="collector_location_desc">Positions GPS et positions obtenues passivement par les autres apps ; par défaut sans aucun service Google (les modes « GPS + réseau » et « fusionné », au choix ci-dessous, passent par les Services Google Play). Cadence rapide en mouvement, ralentie à l\'arrêt. Signale les positions fictives et l\'activation ou la désactivation des fournisseurs de position.</string>
-    <string name="collector_location_no_gps">Pas de récepteur GPS sur cet appareil</string>
-    <string name="setting_location_moving_interval">Intervalle GPS en mouvement</string>
-    <string name="setting_location_moving_interval_summary">Délai entre deux positions GPS quand l\'appareil se déplace.</string>
-    <string name="setting_location_stationary_interval">Intervalle GPS à l\'arrêt</string>
-    <string name="setting_location_stationary_interval_summary">Délai entre deux positions GPS quand l\'appareil est immobile (économise la batterie).</string>
-    <string name="setting_location_passive">Positions passives</string>
-    <string name="setting_location_passive_summary">Enregistrer aussi les positions demandées par les autres apps (sans coût énergétique).</string>
-    <string name="setting_location_passive_interval">Intervalle minimal des positions passives</string>
+    <string name="collector_location_title">Location</string>
+    <string name="collector_location_desc">GPS positions and positions obtained passively by other apps; by default without any Google service (the "GPS + network" and "fused" modes, selectable below, go through Google Play services). Fast cadence while moving, slowed down when stationary. Reports mock locations and the enabling or disabling of location providers.</string>
+    <string name="collector_location_no_gps">No GPS receiver on this device</string>
+    <string name="setting_location_moving_interval">GPS interval while moving</string>
+    <string name="setting_location_moving_interval_summary">Delay between two GPS positions when the device is moving.</string>
+    <string name="setting_location_stationary_interval">GPS interval while stationary</string>
+    <string name="setting_location_stationary_interval_summary">Delay between two GPS positions when the device is still (saves battery).</string>
+    <string name="setting_location_passive">Passive positions</string>
+    <string name="setting_location_passive_summary">Also record the positions requested by other apps (no energy cost).</string>
+    <string name="setting_location_passive_interval">Minimum interval of passive positions</string>
 
-    <string name="collectors_reason_usage_access">Accès à l\'utilisation non accordé : Paramètres › Applications › Accès spéciaux › Accès aux données d\'utilisation › Watchpost, ou scripts/grant-adb-permissions.sh</string>
+    <string name="collectors_reason_usage_access">Usage access not granted: Settings › Apps › Special access › Usage data access › Watchpost, or scripts/grant-adb-permissions.sh</string>
 
-    <string name="collector_connectivity_title">Connectivité</string>
-    <string name="collector_connectivity_desc">Réseau par défaut à chaque changement : Wi-Fi, mobile, VPN ou Ethernet, accès Internet validé, réseau facturé à l\'usage, DNS privé actif et son serveur, serveurs DNS, interface. Rappel du système, aucun relevé périodique ; au plus 60 événements par heure.</string>
+    <string name="collector_connectivity_title">Connectivity</string>
+    <string name="collector_connectivity_desc">Default network on every change: Wi-Fi, mobile, VPN or Ethernet, validated Internet access, metered network, private DNS active and its server, DNS servers, interface. System callback, no periodic polling; at most 60 events per hour.</string>
 
     <string name="collector_wifi_title">Wi-Fi</string>
-    <string name="collector_wifi_desc">Connexions et déconnexions Wi-Fi : nom du réseau (SSID), point d\'accès (BSSID), signal, fréquence, sécurité et norme. Le nom et le point d\'accès exigent la localisation précise (sinon ils sont omis). Rappel du système, aucun balayage ; quelques événements par jour.</string>
+    <string name="collector_wifi_desc">Wi-Fi connections and disconnections: network name (SSID), access point (BSSID), signal, frequency, security and standard. The name and the access point require precise location (otherwise they are omitted). System callback, no scanning; a few events per day.</string>
 
-    <string name="collector_wifi_scan_title">Réseaux Wi-Fi voisins</string>
-    <string name="collector_wifi_scan_desc">Optionnel : liste des réseaux Wi-Fi visibles autour de l\'appareil (noms et points d\'accès de tiers). Par défaut, reprend seulement les balayages déjà faits par le système, sans coût radio ; au plus un événement toutes les 15 minutes. Balayage actif possible (au plus toutes les 30 minutes, limité par Android).</string>
-    <string name="setting_wifi_scan_min_interval">Intervalle minimal entre deux relevés</string>
-    <string name="setting_wifi_scan_min_interval_summary">Les résultats plus rapprochés sont ignorés.</string>
-    <string name="setting_wifi_scan_active_interval">Balayage actif</string>
-    <string name="setting_wifi_scan_active_interval_summary">0 = jamais (écoute passive seulement). Sinon, intervalle en minutes (30 au minimum).</string>
+    <string name="collector_wifi_scan_title">Neighbouring Wi-Fi networks</string>
+    <string name="collector_wifi_scan_desc">Optional: list of the Wi-Fi networks visible around the device (names and access points of third parties). By default, only picks up the scans already done by the system, with no radio cost; at most one event every 15 minutes. Active scanning is possible (at most every 30 minutes, limited by Android).</string>
+    <string name="setting_wifi_scan_min_interval">Minimum interval between two readings</string>
+    <string name="setting_wifi_scan_min_interval_summary">Results that arrive closer together are ignored.</string>
+    <string name="setting_wifi_scan_active_interval">Active scanning</string>
+    <string name="setting_wifi_scan_active_interval_summary">0 = never (passive listening only). Otherwise, interval in minutes (30 at least).</string>
 
-    <string name="collector_hotspot_title">Point d\'accès mobile</string>
-    <string name="collector_hotspot_desc">Activation et désactivation du partage de connexion Wi-Fi (point d\'accès). Diffusion du système, aucun coût.</string>
+    <string name="collector_hotspot_title">Mobile hotspot</string>
+    <string name="collector_hotspot_desc">Enabling and disabling of Wi-Fi tethering (hotspot). System broadcast, no cost.</string>
 
     <string name="collector_nfc_title">NFC</string>
-    <string name="collector_nfc_desc">Activation et désactivation du NFC. Diffusion du système, aucun coût.</string>
-    <string name="collector_nfc_unavailable">Pas de NFC sur cet appareil</string>
+    <string name="collector_nfc_desc">Enabling and disabling of NFC. System broadcast, no cost.</string>
+    <string name="collector_nfc_unavailable">No NFC on this device</string>
 
-    <string name="collector_net_usage_title">Volumes réseau par app</string>
-    <string name="collector_net_usage_desc">Chaque heure : octets reçus et envoyés par application, en Wi-Fi et en données mobiles (statistiques du système). Exige l\'accès à l\'utilisation ou le mode Device Owner. Le système compte par tranches d\'environ 2 h : la répartition horaire est une estimation. Une requête par heure.</string>
+    <string name="collector_net_usage_title">Network volumes per app</string>
+    <string name="collector_net_usage_desc">Every hour: bytes received and sent per app, over Wi-Fi and mobile data (system statistics). Requires usage access or Device Owner mode. The system counts in buckets of about 2 h: the hourly breakdown is an estimate. One query per hour.</string>
 
-    <string name="collector_cell_title">Réseau mobile</string>
-    <string name="collector_cell_desc">Cellule de service à chaque changement : technologie (2G à 5G), opérateur, pays et réseau, zone, identifiant de cellule, bande, signal, itinérance. Alerte si l\'appareil passe en 2G (réseau sans authentification mutuelle, utilisé par les fausses antennes). Les identifiants de cellule exigent la localisation précise (et l\'autorisation « Téléphone » pour suivre chaque changement de cellule et le signal). Rappel du système, au plus un événement toutes les 20 secondes. Non détectable sans privilège système : chiffrement nul, demande d\'identifiant.</string>
+    <string name="collector_cell_title">Mobile network</string>
+    <string name="collector_cell_desc">Serving cell on every change: technology (2G to 5G), operator, country and network, area, cell identifier, band, signal, roaming. Alert if the device drops to 2G (a network without mutual authentication, used by fake base stations). Cell identifiers require precise location (and the "Phone" permission to follow every cell change and the signal). System callback, at most one event every 20 seconds. Not detectable without system privilege: null encryption, identifier requests.</string>
 
     <string name="collector_bluetooth_title">Bluetooth</string>
-    <string name="collector_bluetooth_desc">Activation et désactivation du Bluetooth ; connexions et déconnexions d\'appareils (nom, adresse, type) si l\'autorisation « Appareils à proximité » est accordée. Diffusions du système, aucun balayage ; au plus 120 événements par heure.</string>
+    <string name="collector_bluetooth_desc">Enabling and disabling of Bluetooth; device connections and disconnections (name, address, type) if the "Nearby devices" permission is granted. System broadcasts, no scanning; at most 120 events per hour.</string>
 
-    <string name="collector_ble_tracker_title">Traceurs qui vous suivent</string>
-    <string name="collector_ble_tracker_desc">Détecte un traceur (AirTag, SmartTag, Tile, Localiser de Google) séparé de son propriétaire et vu à plusieurs reprises pendant que l\'appareil se déplace. Balayage Bluetooth basse consommation filtré par le matériel sur ces seuls traceurs, positions tirées du cache passif (aucune demande GPS). Bluetooth allumé uniquement. Coût faible mais continu.</string>
-    <string name="setting_ble_tracker_duration">Durée minimale de suivi</string>
-    <string name="setting_ble_tracker_duration_summary">Temps entre la première et la dernière observation avant l\'alerte.</string>
-    <string name="setting_ble_tracker_distance">Déplacement minimal</string>
-    <string name="setting_ble_tracker_distance_summary">Distance parcourue par l\'appareil pendant que le traceur est vu.</string>
+    <string name="collector_ble_tracker_title">Trackers following you</string>
+    <string name="collector_ble_tracker_desc">Detects a tracker (AirTag, SmartTag, Tile, Google Find My Device) away from its owner and seen several times while the device moves. Low-power Bluetooth scan filtered by the hardware on these trackers only, positions taken from the passive cache (no GPS request). Bluetooth on only. Low but continuous cost.</string>
+    <string name="setting_ble_tracker_duration">Minimum follow duration</string>
+    <string name="setting_ble_tracker_duration_summary">Time between the first and the last sighting before the alert.</string>
+    <string name="setting_ble_tracker_distance">Minimum movement</string>
+    <string name="setting_ble_tracker_distance_summary">Distance travelled by the device while the tracker is seen.</string>
 
-    <string name="collector_apps_title">Applications</string>
-    <string name="collector_apps_desc">Inventaire complet des applications chaque jour et après chaque démarrage (version, source d\'installation, signature, autorisations sensibles accordées, état activé, suspendu ou masqué) ; installations, mises à jour et désinstallations dès qu\'elles ont lieu ; autorisations accordées ou retirées (comparaison horaire). Un parcours des paquets par heure.</string>
+    <string name="collector_apps_title">Apps</string>
+    <string name="collector_apps_desc">Full inventory of the apps every day and after every boot (version, install source, signature, sensitive permissions granted, enabled, suspended or hidden state); installs, updates and uninstalls as soon as they happen; permissions granted or withdrawn (hourly comparison). One package walk per hour.</string>
 
-    <string name="collector_foreground_title">App au premier plan</string>
-    <string name="collector_foreground_desc">Application qui passe au premier plan ou le quitte (changements d\'app seulement). Exige l\'accès à l\'utilisation. Relevé toutes les minutes écran allumé uniquement ; chaque événement porte l\'heure donnée par le système (pas celle du relevé). Quelques centaines d\'événements par jour.</string>
+    <string name="collector_foreground_title">Foreground app</string>
+    <string name="collector_foreground_desc">App that comes to the foreground or leaves it (app changes only). Requires usage access. Polled every minute with the screen on only; each event carries the time given by the system (not that of the poll). A few hundred events per day.</string>
 
-    <string name="collector_special_access_title">Accès spéciaux</string>
-    <string name="collector_special_access_desc">Chaque jour et à chaque changement : services d\'accessibilité actifs, écouteurs de notifications, administrateurs de l\'appareil, apps autorisées à se superposer, à installer des apps, à lire les statistiques d\'usage, apps proposant un VPN, apps par défaut (navigateur, accueil, téléphone, SMS, clavier, assistant, saisie automatique). Ce que le système refuse de dire est omis. Vérifié après un changement d\'app ou de réglage et au plus toutes les 15 minutes à l\'extinction de l\'écran.</string>
+    <string name="collector_special_access_title">Special access</string>
+    <string name="collector_special_access_desc">Every day and on every change: active accessibility services, notification listeners, device administrators, apps allowed to draw over other apps, to install apps, to read usage statistics, apps offering a VPN, default apps (browser, home, phone, SMS, keyboard, assistant, autofill). What the system refuses to tell is omitted. Checked after an app or setting change and at most every 15 minutes when the screen turns off.</string>
 
-    <string name="collector_camera_title">Caméra</string>
-    <string name="collector_camera_desc">Ouverture et fermeture d\'une caméra par n\'importe quelle app, avec l\'état de l\'écran et du verrouillage. Android ne dit pas quelle app (sauf attribution expérimentale). Rappel du système, aucun coût.</string>
+    <string name="collector_camera_title">Camera</string>
+    <string name="collector_camera_desc">Opening and closing of a camera by any app, with the screen and lock state. Android does not say which app (except through experimental attribution). System callback, no cost.</string>
     <string name="collector_microphone_title">Microphone</string>
-    <string name="collector_microphone_desc">Début et fin d\'un enregistrement audio par n\'importe quelle app (source audio, enregistrement rendu muet par le système), avec l\'état de l\'écran et du verrouillage. Android ne dit pas quelle app (sauf attribution expérimentale). Rappel du système, aucun coût.</string>
-    <string name="setting_sensor_attribution">Attribution expérimentale (DUMP)</string>
-    <string name="setting_sensor_attribution_summary">Cherche l\'app responsable dans l\'état des app-ops du système. Exige la permission DUMP accordée par ADB ; format non garanti, peut cesser de fonctionner après une mise à jour.</string>
+    <string name="collector_microphone_desc">Start and end of an audio recording by any app (audio source, recording silenced by the system), with the screen and lock state. Android does not say which app (except through experimental attribution). System callback, no cost.</string>
+    <string name="setting_sensor_attribution">Experimental attribution (DUMP)</string>
+    <string name="setting_sensor_attribution_summary">Looks for the responsible app in the system app-ops state. Requires the DUMP permission granted through ADB; format not guaranteed, may stop working after an update.</string>
 
     <string name="collector_usb_title">USB</string>
-    <string name="collector_usb_desc">Câble USB branché ou débranché, configuration et fonctions actives (transfert de fichiers, partage de connexion, MIDI, débogage ADB…), appareils et accessoires USB branchés sur le téléphone (fabricant, produit). Diffusions du système, aucun coût.</string>
+    <string name="collector_usb_desc">USB cable plugged or unplugged, configuration and active functions (file transfer, tethering, MIDI, ADB debugging…), USB devices and accessories plugged into the phone (manufacturer, product). System broadcasts, no cost.</string>
 
     <string name="collector_notifications_title">Notifications</string>
-    <string name="collector_notifications_desc">Quelles apps affichent des notifications : app, catégorie, canal, importance, notification permanente ou non, affichage et retrait. Lues par le compagnon séparé et optionnel « Watchpost Notifications » (cet APK ne lit jamais les notifications). Titre et texte seulement si « Contenu des notifications » est activé, avec masquage des codes de 4 à 8 chiffres ; les apps bancaires, d\'authentification, gestionnaires de mots de passe, SMS et téléphone connus en sont exclues (liste par nom de paquet, donc incomplète, réglable dans le compagnon). Mises à jour répétées et notifications permanentes non reprises ; au plus 20 événements par app et par 10 minutes, souvent quelques dizaines par jour.</string>
-    <string name="setting_notifications_content">Contenu des notifications</string>
-    <string name="setting_notifications_content_summary">Transmettre aussi le titre et le texte (512 caractères au plus). Ce sont les messages de tiers : désactivé par défaut. Désactivé, ils ne quittent jamais le compagnon.</string>
-    <string name="setting_notifications_redact">Masquer les codes numériques</string>
-    <string name="setting_notifications_redact_summary">Remplace par •••• toute suite de 4 à 8 chiffres (codes de validation reçus par SMS ou par app). Masque aussi des années, montants ronds ou codes postaux ; ne voit pas les codes alphanumériques.</string>
-    <string name="collector_notifications_reason_not_installed">Le compagnon « Watchpost Notifications » n\'est pas installé (APK séparé et optionnel : scripts/install-notifier.sh, voir le README).</string>
-    <string name="collector_notifications_reason_other_key">Le compagnon « Watchpost Notifications » n\'est pas signé par la même clé que Watchpost : installez celui de la même construction (même keystore).</string>
-    <string name="collector_notifications_reason_no_access">Le compagnon « Watchpost Notifications » n\'a pas l\'accès aux notifications : scripts/notifier-access.sh, ou ouvrez le compagnon et suivez ses indications.</string>
-    <string name="notifications_permission_label">Relais local des notifications Watchpost</string>
-    <string name="notifications_permission_desc">Canal entre Watchpost et son compagnon de notifications, réservé aux apps signées par la même clé.</string>
+    <string name="collector_notifications_desc">Which apps display notifications: app, category, channel, importance, ongoing notification or not, display and removal. Read by the separate, optional "Watchpost Notifications" companion (this APK never reads notifications). Title and text only if "Notification content" is enabled, with 4 to 8 digit codes masked; known banking, authentication, password manager, SMS and phone apps are excluded (list by package name, therefore incomplete, adjustable in the companion). Repeated updates and ongoing notifications are not forwarded; at most 20 events per app per 10 minutes, often a few dozen per day.</string>
+    <string name="setting_notifications_content">Notification content</string>
+    <string name="setting_notifications_content_summary">Also forward the title and the text (512 characters at most). These are third-party messages: disabled by default. When disabled, they never leave the companion.</string>
+    <string name="setting_notifications_redact">Mask numeric codes</string>
+    <string name="setting_notifications_redact_summary">Replaces any run of 4 to 8 digits with •••• (validation codes received by SMS or by app). Also masks years, round amounts or postal codes; does not see alphanumeric codes.</string>
+    <string name="collector_notifications_reason_not_installed">The "Watchpost Notifications" companion is not installed (separate, optional APK: scripts/install-notifier.sh, see the README).</string>
+    <string name="collector_notifications_reason_other_key">The "Watchpost Notifications" companion is not signed with the same key as Watchpost: install the one from the same build (same keystore).</string>
+    <string name="collector_notifications_reason_no_access">The "Watchpost Notifications" companion does not have notification access: scripts/notifier-access.sh, or open the companion and follow its instructions.</string>
+    <string name="notifications_permission_label">Watchpost notification local relay</string>
+    <string name="notifications_permission_desc">Channel between Watchpost and its notifications companion, reserved for apps signed with the same key.</string>
 </resources>

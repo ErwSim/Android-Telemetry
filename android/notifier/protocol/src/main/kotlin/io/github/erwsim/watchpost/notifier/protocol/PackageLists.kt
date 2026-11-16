@@ -2,7 +2,7 @@ package io.github.erwsim.watchpost.notifier.protocol
 
 /**
  * Package lists of the notification settings: apps whose title and text are never relayed
- * ("exclues du contenu") and apps ignored altogether. Lists of package names: an app is matched
+ * ("excluded from content") and apps ignored altogether. Lists of package names: an app is matched
  * only if its exact package name is listed, so the default list is necessarily incomplete (another
  * bank, a regional variant, a renamed app is not covered).
  */
@@ -91,7 +91,7 @@ object PackageLists {
         "com.android.phone",
     ).sorted()
 
-    /** Default "ignored" list: empty (every app is reported by name unless the owner adds it). */
+    /** Default "ignored" list: empty (every app is reported by name unless the user adds it). */
     val DEFAULT_IGNORED: List<String> = emptyList()
 
     fun joinForStorage(packages: List<String>): String = packages.joinToString("\n")

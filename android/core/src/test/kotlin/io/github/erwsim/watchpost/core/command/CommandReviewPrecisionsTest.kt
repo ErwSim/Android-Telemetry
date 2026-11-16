@@ -10,9 +10,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Contract §8, "Précisions (ajoutées après la revue de sécurité de la v1.1)", on the agent side:
+ * Contract §8, additional precisions, on the agent side:
  * validity of `wipe` (24 h at most), consumption of sensitive commands refused `disabled` or
- * `no_code_configured`, separators U+2028/U+2029 in the lock message, floor of the command code.
+ * `no_code_configured`, separators U+2028/U+2029 in the lock message, floor of the command passphrase.
  */
 class CommandReviewPrecisionsTest {
     private fun Verification.reason(): String = (this as? Verification.Refused)?.reason ?: "accepted"
@@ -47,7 +47,7 @@ class CommandReviewPrecisionsTest {
         val lock = noCode.signed("lock")
         assertEquals(Refusal.NO_CODE_CONFIGURED, noCode.verifier.verify(lock, noCode.env()).reason())
         assertTrue(noCode.state.wasSeen(lock.id))
-        // The owner sets the code afterwards (same state on disk): the command stays consumed.
+        // The user sets the passphrase afterwards (same state on disk): the command stays consumed.
         val withCode = CommandKit(statePrefs = statePrefs, keyPrefs = keyPrefs, clock = noCode.clock)
         assertEquals(Refusal.REPLAY, withCode.verifier.verify(lock, withCode.env()).reason())
         // A new command signed after the code was set runs.
@@ -97,7 +97,7 @@ class CommandReviewPrecisionsTest {
         assertEquals(Refusal.BAD_PARAMS, kit.verifier.verify(kit.signed("lock", "{\"message\":\"a\\u2028b\"}"), kit.env()).reason())
         assertEquals(Refusal.BAD_PARAMS, kit.verifier.verify(kit.signed("lock", "{\"message\":\"a\\u2029b\"}"), kit.env()).reason())
         assertEquals(Refusal.BAD_PARAMS, kit.verifier.verify(kit.signed("lock", "{\"message\":\"a\\u0007b\"}"), kit.env()).reason())
-        assertEquals("accepted", kit.verifier.verify(kit.signed("lock", "{\"message\":\"ligne 1\\nligne 2\"}"), kit.env()).reason())
+        assertEquals("accepted", kit.verifier.verify(kit.signed("lock", "{\"message\":\"line 1\\nline 2\"}"), kit.env()).reason())
     }
 
     @Test

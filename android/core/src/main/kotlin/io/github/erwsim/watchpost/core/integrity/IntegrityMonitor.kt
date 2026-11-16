@@ -17,7 +17,7 @@ import io.github.erwsim.watchpost.core.sink.emit
  * Detects tampering signals available without system privileges and emits `agent.tamper` (sev 3):
  * - `permission_revoked`: a runtime permission the agent had is no longer granted;
  * - `device_owner_lost`: the app was Device Owner and is not anymore;
- * - `force_stop`: the previous process was killed by a user request (Settings "Forcer l'arrêt",
+ * - `force_stop`: the previous process was killed by a user request (Settings "Force stop",
  *   clear data…) according to `ApplicationExitInfo`.
  * Admin deactivation is reported by the `:policy` DeviceAdminReceiver through [onAdminDisabled].
  *

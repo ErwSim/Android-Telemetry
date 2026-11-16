@@ -90,7 +90,7 @@ var ThreatDomains = []string{"api.secure-bank-sync.example", "gate.cdn-update-ch
 // the example levels file enabled, and one rule entered by hand.
 func NewFake(user, password string) *Fake {
 	f := &Fake{User: user, Password: password, maxLog: 500000, requests: map[string]int{},
-		userRules: []string{"! règle saisie à la main dans AdGuard Home", "||tracker.example^"}}
+		userRules: []string{"! rule entered by hand in AdGuard Home", "||tracker.example^"}}
 	f.addFilter("https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt", "AdGuard DNS filter", false, true)
 	f.addFilter("https://adguardteam.github.io/HostlistsRegistry/assets/filter_2.txt", "AdAway Default Blocklist", false, false)
 	f.addFilter(ThreatListURL, FakeLists[ThreatListURL].Name, false, true)

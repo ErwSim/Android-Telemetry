@@ -122,7 +122,7 @@ class SecurityLogCollector : Collector {
             if (!dpm.isDeviceOwnerApp(ctx.appContext.packageName) || dpm.isSecurityLoggingEnabled(admin) == enabled) return
             dpm.setSecurityLoggingEnabled(admin, enabled)
             val ok = dpm.isSecurityLoggingEnabled(admin) == enabled
-            PolicyModule.logAction(ctx.appContext, "security_logging", if (enabled) "enabled" else "disabled", ok, if (ok) null else "aucun effet constaté")
+            PolicyModule.logAction(ctx.appContext, "security_logging", if (enabled) "enabled" else "disabled", ok, if (ok) null else "no observed effect")
         } catch (e: Exception) {
             PolicyModule.logAction(ctx.appContext, "security_logging", if (enabled) "enabled" else "disabled", false, e.toString())
             if (enabled) throw e

@@ -30,7 +30,7 @@ func openStore(ctx context.Context) (*config.Config, *store.Store, error) {
 	}
 	st, err := store.Open(ctx, cfg.DBPath())
 	if err != nil {
-		return nil, nil, fmt.Errorf("base de données %s : %w", cfg.DBPath(), err)
+		return nil, nil, fmt.Errorf("database %s: %w", cfg.DBPath(), err)
 	}
 	return cfg, st, nil
 }
@@ -42,23 +42,23 @@ func fileParams(cfg *config.Config, ingestURL string) (enroll.Params, error) {
 		u = cfg.PublicIngestURL
 	}
 	if u == "" {
-		return enroll.Params{}, errors.New("URL d'ingestion inconnue : définissez WATCHPOST_PUBLIC_INGEST_URL ou --ingest-url")
+		return enroll.Params{}, errors.New("unknown ingestion URL: set WATCHPOST_PUBLIC_INGEST_URL or --ingest-url")
 	}
 	pu, err := enroll.CheckIngestURL(u)
 	if err != nil {
 		return enroll.Params{}, err
 	}
 	if pu.Scheme != "https" {
-		fmt.Fprintln(os.Stderr, "attention : URL d'ingestion en http, à réserver au développement local")
+		fmt.Fprintln(os.Stderr, "warning: ingestion URL uses http, reserve it for local development")
 	}
 	p := enroll.Params{IngestURL: u, PrivateDNSHost: cfg.PrivateDNSHost}
 	if cfg.ServerCAFile != "" {
 		b, err := os.ReadFile(cfg.ServerCAFile)
 		if err != nil {
-			return enroll.Params{}, fmt.Errorf("WATCHPOST_SERVER_CA_FILE : %w", err)
+			return enroll.Params{}, fmt.Errorf("WATCHPOST_SERVER_CA_FILE: %w", err)
 		}
 		if _, err := pki.FingerprintPEM(b); err != nil {
-			return enroll.Params{}, fmt.Errorf("WATCHPOST_SERVER_CA_FILE : %w", err)
+			return enroll.Params{}, fmt.Errorf("WATCHPOST_SERVER_CA_FILE: %w", err)
 		}
 		p.ServerCAPEM = string(b)
 	}
@@ -67,15 +67,15 @@ func fileParams(cfg *config.Config, ingestURL string) (enroll.Params, error) {
 
 func cmdEnroll(args []string) error {
 	fl := flag.NewFlagSet("enroll", flag.ContinueOnError)
-	name := fl.String("name", "", "nom de l'appareil (ex. s25)")
-	out := fl.String("out", "", "fichier .watchpost à écrire")
-	ingestURL := fl.String("ingest-url", "", "URL d'ingestion (défaut : WATCHPOST_PUBLIC_INGEST_URL)")
-	force := fl.Bool("force", false, "écraser le fichier de sortie s'il existe")
+	name := fl.String("name", "", "device name (e.g. phone)")
+	out := fl.String("out", "", ".watchpost file to write")
+	ingestURL := fl.String("ingest-url", "", "ingestion URL (default: WATCHPOST_PUBLIC_INGEST_URL)")
+	force := fl.Bool("force", false, "overwrite the output file if it exists")
 	if err := fl.Parse(args); err != nil {
 		return err
 	}
 	if *name == "" || *out == "" {
-		return errors.New("--name et --out sont requis")
+		return errors.New("--name and --out are required")
 	}
 	ctx := context.Background()
 	cfg, st, err := openStore(ctx)
@@ -90,12 +90,12 @@ func cmdEnroll(args []string) error {
 	params.Name = *name
 	ca, _, err := pki.LoadOrCreate(cfg.PKIDir(), time.Now())
 	if err != nil {
-		return fmt.Errorf("PKI : %w", err)
+		return fmt.Errorf("PKI: %w", err)
 	}
 	// Refuse early if the output exists, before creating the device.
 	if !*force {
 		if _, err := os.Stat(*out); err == nil {
-			return fmt.Errorf("%s existe déjà (utilisez --force pour l'écraser)", *out)
+			return fmt.Errorf("%s already exists (use --force to overwrite it)", *out)
 		}
 	}
 	f, err := enroll.Create(ctx, st, ca, params, time.Now())
@@ -103,13 +103,13 @@ func cmdEnroll(args []string) error {
 		return err
 	}
 	if err := f.Write(*out, *force); err != nil {
-		return fmt.Errorf("écriture de %s : %w (appareil %s créé : révoquez-le)", *out, err, f.DeviceID)
+		return fmt.Errorf("writing %s: %w (device %s created: revoke it)", *out, err, f.DeviceID)
 	}
 	fp, _ := pki.FingerprintPEM([]byte(f.ClientCertPEM))
-	fmt.Printf("Appareil enrôlé : %s (%s)\n", f.DeviceID, f.DeviceName)
-	fmt.Printf("Empreinte du certificat client (SHA-256) : %s\n", fp)
-	fmt.Printf("Fichier d'enrôlement : %s\n", *out)
-	fmt.Println("Ce fichier contient des secrets : transférez-le par câble (adb push) ou canal chiffré, puis supprimez-le.")
+	fmt.Printf("Device enrolled: %s (%s)\n", f.DeviceID, f.DeviceName)
+	fmt.Printf("Client certificate fingerprint (SHA-256): %s\n", fp)
+	fmt.Printf("Enrollment file: %s\n", *out)
+	fmt.Println("This file contains secrets: transfer it over a cable (adb push) or an encrypted channel, then delete it.")
 	return nil
 }
 
@@ -120,19 +120,19 @@ func cmdRenew(args []string) error {
 		id, args = args[0], args[1:]
 	}
 	fl := flag.NewFlagSet("renew", flag.ContinueOnError)
-	out := fl.String("out", "", "fichier .watchpost à écrire")
-	ingestURL := fl.String("ingest-url", "", "URL d'ingestion (défaut : WATCHPOST_PUBLIC_INGEST_URL)")
-	force := fl.Bool("force", false, "écraser le fichier de sortie s'il existe")
+	out := fl.String("out", "", ".watchpost file to write")
+	ingestURL := fl.String("ingest-url", "", "ingestion URL (default: WATCHPOST_PUBLIC_INGEST_URL)")
+	force := fl.Bool("force", false, "overwrite the output file if it exists")
 	if err := fl.Parse(args); err != nil {
 		return err
 	}
 	if id == "" && fl.NArg() == 1 {
 		id = fl.Arg(0)
 	} else if fl.NArg() != 0 {
-		return errors.New("utilisation : watchpost-collector renew <device_id> --out <fichier.watchpost> [--ingest-url URL] [--force]")
+		return errors.New("usage: watchpost-collector renew <device_id> --out <file.watchpost> [--ingest-url URL] [--force]")
 	}
 	if id == "" || *out == "" {
-		return errors.New("utilisation : watchpost-collector renew <device_id> --out <fichier.watchpost> [--ingest-url URL] [--force]")
+		return errors.New("usage: watchpost-collector renew <device_id> --out <file.watchpost> [--ingest-url URL] [--force]")
 	}
 	ctx := context.Background()
 	cfg, st, err := openStore(ctx)
@@ -146,40 +146,40 @@ func cmdRenew(args []string) error {
 	}
 	ca, _, err := pki.LoadOrCreate(cfg.PKIDir(), time.Now())
 	if err != nil {
-		return fmt.Errorf("PKI : %w", err)
+		return fmt.Errorf("PKI: %w", err)
 	}
 	if !*force {
 		if _, err := os.Stat(*out); err == nil {
-			return fmt.Errorf("%s existe déjà (utilisez --force pour l'écraser)", *out)
+			return fmt.Errorf("%s already exists (use --force to overwrite it)", *out)
 		}
 	}
 	f, err := enroll.Renew(ctx, st, ca, id, params, time.Now())
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrNotFound):
-			return fmt.Errorf("appareil inconnu : %s", id)
+			return fmt.Errorf("unknown device: %s", id)
 		case errors.Is(err, store.ErrRevoked):
-			return fmt.Errorf("appareil %s révoqué : un renouvellement est impossible (utilisez « enroll » pour un nouvel appareil)", id)
+			return fmt.Errorf("device %s is revoked: renewal is impossible (use \"enroll\" for a new device)", id)
 		}
 		return err
 	}
 	if err := f.Write(*out, *force); err != nil {
-		return fmt.Errorf("écriture de %s : %w (le renouvellement en attente est inutilisable, l'appareil garde son jeton et son certificat actuels ; relancez « renew »)", *out, err)
+		return fmt.Errorf("writing %s: %w (the pending renewal is unusable, the device keeps its current token and certificate; run \"renew\" again)", *out, err)
 	}
 	fp, _ := pki.FingerprintPEM([]byte(f.ClientCertPEM))
 	exp, _ := pki.NotAfterPEM([]byte(f.ClientCertPEM))
-	fmt.Printf("Renouvellement de %s (%s) : nouveau jeton et nouveau certificat émis, même identifiant.\n", f.DeviceID, f.DeviceName)
-	fmt.Printf("Empreinte du nouveau certificat (SHA-256) : %s\n", fp)
-	fmt.Printf("Nouveau certificat valable jusqu'au %s\n", exp.Local().Format("2006-01-02"))
-	fmt.Printf("Fichier d'enrôlement : %s\n", *out)
-	fmt.Println("L'ancien jeton et l'ancien certificat restent acceptés jusqu'au premier envoi avec le nouveau fichier, puis sont refusés.")
-	fmt.Println("Ce fichier contient des secrets : transférez-le par câble (adb push) ou canal chiffré, puis supprimez-le.")
+	fmt.Printf("Renewal of %s (%s): new token and new certificate issued, same identifier.\n", f.DeviceID, f.DeviceName)
+	fmt.Printf("New certificate fingerprint (SHA-256): %s\n", fp)
+	fmt.Printf("New certificate valid until %s\n", exp.Local().Format("2006-01-02"))
+	fmt.Printf("Enrollment file: %s\n", *out)
+	fmt.Println("The old token and the old certificate stay accepted until the first upload with the new file, then are refused.")
+	fmt.Println("This file contains secrets: transfer it over a cable (adb push) or an encrypted channel, then delete it.")
 	return nil
 }
 
 func cmdDevices(args []string) error {
 	fl := flag.NewFlagSet("devices", flag.ContinueOnError)
-	asJSON := fl.Bool("json", false, "sortie JSON")
+	asJSON := fl.Bool("json", false, "JSON output")
 	if err := fl.Parse(args); err != nil {
 		return err
 	}
@@ -242,26 +242,26 @@ func cmdDevices(args []string) error {
 		return enc.Encode(map[string]any{"devices": rows})
 	}
 	if len(devs) == 0 {
-		fmt.Println("Aucun appareil enrôlé.")
+		fmt.Println("No enrolled devices.")
 		return nil
 	}
 	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "IDENTIFIANT\tNOM\tENRÔLÉ LE\tDERNIER CONTACT\tVERSION\tÉTAT\tCERTIFICAT\tEXPIRE LE")
+	fmt.Fprintln(tw, "DEVICE ID\tNAME\tENROLLED\tLAST SEEN\tVERSION\tSTATE\tCERTIFICATE\tEXPIRES")
 	for _, d := range devs {
-		seen := "jamais"
+		seen := "never"
 		if d.LastSeen != nil {
 			seen = d.LastSeen.Local().Format("2006-01-02 15:04")
 		}
-		state := "actif"
+		state := "active"
 		if d.RevokedAt != nil {
-			state = "révoqué le " + d.RevokedAt.Local().Format("2006-01-02 15:04")
+			state = "revoked " + d.RevokedAt.Local().Format("2006-01-02 15:04")
 		}
 		ver := d.AgentVersion
 		if ver == "" {
 			ver = "-"
 		}
 		if d.HasPending() {
-			state += ", renouvellement en attente"
+			state += ", renewal pending"
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s…\t%s\n", d.DeviceID, d.Name, d.EnrolledAt.Local().Format("2006-01-02 15:04"),
 			seen, ver, state, d.CertSHA256[:16], expiryLabel(d.CertPEM, time.Now()))
@@ -271,7 +271,7 @@ func cmdDevices(args []string) error {
 
 func cmdRevoke(args []string) error {
 	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
-		return errors.New("utilisation : watchpost-collector revoke <device_id>")
+		return errors.New("usage: watchpost-collector revoke <device_id>")
 	}
 	ctx := context.Background()
 	_, st, err := openStore(ctx)
@@ -281,22 +281,22 @@ func cmdRevoke(args []string) error {
 	defer st.Close()
 	if err := st.RevokeDevice(ctx, args[0], time.Now()); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return fmt.Errorf("appareil inconnu : %s", args[0])
+			return fmt.Errorf("unknown device: %s", args[0])
 		}
 		return err
 	}
-	fmt.Printf("Appareil %s révoqué : son jeton et son certificat sont refusés dès maintenant (renouvellement en attente compris).\n", args[0])
-	fmt.Println("Ses données restent consultables dans la console. Pour le réenrôler, utilisez « enroll ».")
+	fmt.Printf("Device %s revoked: its token and certificate are refused from now on (including any pending renewal).\n", args[0])
+	fmt.Println("Its data stays available in the console. To enroll it again, use \"enroll\".")
 	return nil
 }
 
 func cmdUser(args []string) error {
 	if len(args) != 2 || args[0] != "set-password" {
-		return errors.New("utilisation : watchpost-collector user set-password <nom>")
+		return errors.New("usage: watchpost-collector user set-password <name>")
 	}
 	username := args[1]
 	if !auth.ValidUsername(username) {
-		return errors.New("nom invalide (1 à 64 caractères parmi lettres, chiffres, « _ - . @ »)")
+		return errors.New("invalid name (1 to 64 characters among letters, digits, \"_ - . @\")")
 	}
 	password, err := readPassword(os.Stdin)
 	if err != nil {
@@ -320,9 +320,9 @@ func cmdUser(args []string) error {
 		return err
 	}
 	if created {
-		fmt.Printf("Compte console « %s » créé.\n", username)
+		fmt.Printf("Console account \"%s\" created.\n", username)
 	} else {
-		fmt.Printf("Mot de passe de « %s » modifié ; ses sessions ouvertes sont fermées.\n", username)
+		fmt.Printf("Password of \"%s\" changed; its open sessions are closed.\n", username)
 	}
 	return nil
 }
@@ -331,20 +331,20 @@ func cmdUser(args []string) error {
 func readPassword(in *os.File) (string, error) {
 	fd := int(in.Fd())
 	if term.IsTerminal(fd) {
-		fmt.Fprint(os.Stderr, "Mot de passe : ")
+		fmt.Fprint(os.Stderr, "Password: ")
 		p1, err := term.ReadPassword(fd)
 		fmt.Fprintln(os.Stderr)
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprint(os.Stderr, "Confirmation : ")
+		fmt.Fprint(os.Stderr, "Confirmation: ")
 		p2, err := term.ReadPassword(fd)
 		fmt.Fprintln(os.Stderr)
 		if err != nil {
 			return "", err
 		}
 		if string(p1) != string(p2) {
-			return "", errors.New("les deux saisies diffèrent")
+			return "", errors.New("the two entries differ")
 		}
 		return string(p1), nil
 	}
@@ -355,18 +355,18 @@ func readPassword(in *os.File) (string, error) {
 	return strings.TrimRight(line, "\r\n"), nil
 }
 
-// expiryLabel formats a certificate expiry for the devices table: date, then days left or "EXPIRÉ".
+// expiryLabel formats a certificate expiry for the devices table: date, then days left or "EXPIRED".
 func expiryLabel(certPEM string, now time.Time) string {
 	t, err := pki.NotAfterPEM([]byte(certPEM))
 	if err != nil {
-		return "inconnue"
+		return "unknown"
 	}
 	days := int(t.Sub(now).Hours() / 24)
 	switch {
 	case !t.After(now):
-		return t.Local().Format("2006-01-02") + " (EXPIRÉ)"
+		return t.Local().Format("2006-01-02") + " (EXPIRED)"
 	case days < 30:
-		return fmt.Sprintf("%s (dans %d j, à renouveler)", t.Local().Format("2006-01-02"), days)
+		return fmt.Sprintf("%s (in %d d, to renew)", t.Local().Format("2006-01-02"), days)
 	}
-	return fmt.Sprintf("%s (dans %d j)", t.Local().Format("2006-01-02"), days)
+	return fmt.Sprintf("%s (in %d d)", t.Local().Format("2006-01-02"), days)
 }

@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Normal permission: lets MainActivity hide other apps' overlay windows while it is shown (no tapjacking of "Libérer"). -->
+    <!-- Normal permission: lets MainActivity hide other apps' overlay windows while it is shown (no tapjacking of "Release"). -->
     <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
     <!-- Permanent, visible foreground service (notification + icon: no stealth). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -48,10 +48,10 @@
             android:foregroundServiceType="location|specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Personal security telemetry agent installed by the device owner: continuously records device security events (screen, battery, connectivity, security logs) and uploads them to the owner's own server. A persistent notification shows what is collected." />
+                android:value="Security telemetry agent installed as Device Owner: continuously records device security events (screen, battery, connectivity, security logs) and uploads them to the user's own server. A persistent notification shows what is collected." />
         </service>
 
-        <!-- "Arrêter" of the remote ringing notification. Not exported: only this app's PendingIntent reaches it. -->
+        <!-- "Stop" of the remote ringing notification. Not exported: only this app's PendingIntent reaches it. -->
         <receiver
             android:name=".service.RingStopReceiver"
             android:exported="false" />

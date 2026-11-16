@@ -21,12 +21,11 @@ class AppOpsUnavailableException(message: String) : Exception(message)
  * contacts, microphone, camera, location…), how many times the system let the app perform it during the last
  * hour, how many of those while the app was in the background, and how many the system REFUSED
  * (`rejected_count`, from `reject=` of the history: an app that tries to send SMS and is turned down is reported
- * even if nothing went through). The SMS that left unseen from the owner's
- * previous phone would have shown up here.
+ * even if nothing went through).
  *
  * Source: the history of `dumpsys appops --history --op OP` read through `Debug.dumpService` with the `DUMP`
  * and `PACKAGE_USAGE_STATS` permissions granted by ADB. The format is not an API ([AppOpsParser] documents
- * what is expected, from the AOSP sources); it was never observed on the Samsung.
+ * what is expected, from the AOSP sources); it was never observed on a physical device.
  *
  * Sobriety: one reading per hour (10 history dumps, plus one state dump per op that was used, each bounded in
  * time and size), only the apps that used an op are reported, at most [AppOpsLogic.MAX_ITEMS] per hour. The

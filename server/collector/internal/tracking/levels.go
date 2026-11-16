@@ -14,7 +14,7 @@ import (
 )
 
 // Blocking levels (contract §9), in display order.
-var LevelKeys = []string{"permissif", "equilibre", "strict"}
+var LevelKeys = []string{"permissive", "balanced", "strict"}
 
 // ListDef is one AdGuard Home filter list managed by the levels file.
 type ListDef struct {
@@ -85,7 +85,7 @@ func LoadLevels(path string) (*Levels, error) {
 		return nil, err
 	}
 	if len(b) > 1<<20 {
-		return nil, errors.New("fichier de niveaux supérieur à 1 Mio")
+		return nil, errors.New("levels file larger than 1 MiB")
 	}
 	return ParseLevels(b)
 }
@@ -98,42 +98,42 @@ func printable(s string, max int, allowEmpty bool) bool {
 }
 
 // ParseLevels validates the levels file: version 1, lists identified by [a-z0-9_-]{1,64} with a name and
-// an http(s) URL or an absolute path (each URL once), exactly the three levels permissif, equilibre and
+// an http(s) URL or an absolute path (each URL once), exactly the three levels permissive, balanced and
 // strict, each naming existing lists. Unknown fields are refused.
 func ParseLevels(b []byte) (*Levels, error) {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
 	var l Levels
 	if err := dec.Decode(&l); err != nil {
-		return nil, fmt.Errorf("fichier de niveaux illisible : %w", err)
+		return nil, fmt.Errorf("unreadable levels file: %w", err)
 	}
 	if l.Version != 1 {
-		return nil, errors.New("fichier de niveaux : version 1 attendue")
+		return nil, errors.New("levels file: version 1 expected")
 	}
 	urls := map[string]string{}
 	for id, def := range l.Lists {
 		if !listIDRe.MatchString(id) {
-			return nil, fmt.Errorf("liste %q : identifiant [a-z0-9_-]{1,64} attendu", id)
+			return nil, fmt.Errorf("list %q: identifier [a-z0-9_-]{1,64} expected", id)
 		}
 		if !printable(def.Name, 128, false) {
-			return nil, fmt.Errorf("liste %q : nom de 1 à 128 caractères imprimables attendu", id)
+			return nil, fmt.Errorf("list %q: name of 1 to 128 printable characters expected", id)
 		}
 		if !validListURL(def.URL) {
-			return nil, fmt.Errorf("liste %q : URL http(s):// ou chemin absolu attendu", id)
+			return nil, fmt.Errorf("list %q: http(s):// URL or absolute path expected", id)
 		}
 		if def.Category != "" && !listCategories[def.Category] {
-			return nil, fmt.Errorf("liste %q : catégorie %q inconnue (threat, ads, tracking, mixed, custom ou allowlist)", id, def.Category)
+			return nil, fmt.Errorf("list %q: unknown category %q (threat, ads, tracking, mixed, custom or allowlist)", id, def.Category)
 		}
 		if def.Category == CategoryThreat && def.Allowlist {
-			return nil, fmt.Errorf("liste %q : une liste d'autorisation ne peut pas être de catégorie threat", id)
+			return nil, fmt.Errorf("list %q: an allowlist cannot be of category threat", id)
 		}
 		if prev, dup := urls[def.URL]; dup {
-			return nil, fmt.Errorf("listes %q et %q : même URL", prev, id)
+			return nil, fmt.Errorf("lists %q and %q: same URL", prev, id)
 		}
 		urls[def.URL] = id
 	}
 	if len(l.Levels) != len(LevelKeys) {
-		return nil, fmt.Errorf("fichier de niveaux : exactement les niveaux %s attendus", strings.Join(LevelKeys, ", "))
+		return nil, fmt.Errorf("levels file: exactly the levels %s expected", strings.Join(LevelKeys, ", "))
 	}
 	seen := map[string]bool{}
 	for _, lv := range l.Levels {
@@ -142,16 +142,16 @@ func ParseLevels(b []byte) (*Levels, error) {
 			known = known || k == lv.Key
 		}
 		if !known || seen[lv.Key] {
-			return nil, fmt.Errorf("niveau %q inconnu ou en double (attendus : %s)", lv.Key, strings.Join(LevelKeys, ", "))
+			return nil, fmt.Errorf("level %q unknown or duplicated (expected: %s)", lv.Key, strings.Join(LevelKeys, ", "))
 		}
 		seen[lv.Key] = true
 		if !printable(lv.Name, 64, false) || !printable(lv.Description, 500, true) {
-			return nil, fmt.Errorf("niveau %q : nom (64) ou description (500) invalide", lv.Key)
+			return nil, fmt.Errorf("level %q: invalid name (64) or description (500)", lv.Key)
 		}
 		inLevel := map[string]bool{}
 		for _, id := range lv.Lists {
 			if _, ok := l.Lists[id]; !ok || inLevel[id] {
-				return nil, fmt.Errorf("niveau %q : liste %q inconnue ou en double", lv.Key, id)
+				return nil, fmt.Errorf("level %q: list %q unknown or duplicated", lv.Key, id)
 			}
 			inLevel[id] = true
 		}
@@ -261,7 +261,7 @@ type Action struct {
 func (l *Levels) Plan(key string, filters []FilterState) ([]Action, error) {
 	lv := l.level(key)
 	if lv == nil {
-		return nil, fmt.Errorf("niveau %q inconnu", key)
+		return nil, fmt.Errorf("unknown level %q", key)
 	}
 	want := map[string]bool{}
 	for _, id := range lv.Lists {

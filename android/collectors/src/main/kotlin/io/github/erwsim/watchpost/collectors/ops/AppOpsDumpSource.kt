@@ -23,7 +23,7 @@ interface AppOpsDumpSource {
 /**
  * `Debug.dumpService("appops", fd, args)` with the `DUMP` permission (granted by ADB): the same text as
  * `adb shell dumpsys appops <args>`. The service also demands `PACKAGE_USAGE_STATS` from the caller
- * (`DumpUtils.checkDumpAndUsageStatsPermission`, AOSP). Not verified on the Samsung (SELinux may refuse).
+ * (`DumpUtils.checkDumpAndUsageStatsPermission`, AOSP). Not verified on a physical device (SELinux may refuse).
  *
  * Bounds: [timeoutMs] for the whole dump, [maxChars] of output. The pipe is always drained to its end,
  * even past the bound, otherwise the service would block on a full pipe; an output larger than the bound

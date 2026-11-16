@@ -57,8 +57,8 @@ import io.github.erwsim.watchpost.policy.ui.PolicyUiState
 
 /**
  * "Politique" screen of the `:policy` module: Device Owner state, profile with preview, per-item
- * switches and undo, private DNS, VPN, action journal, "Tout rétablir" and "Retirer le Device
- * Owner". Nothing is applied before the owner confirms the preview.
+ * switches and undo, private DNS, VPN, action log, "Restore everything" and "Remove Device
+ * Owner". Nothing is applied before the user confirms the preview.
  */
 @Composable
 fun PolicyScreen(agent: Agent, resumeTick: Int, modifier: Modifier, navigate: (Screen) -> Unit = {}) {
@@ -95,7 +95,7 @@ fun PolicyScreen(agent: Agent, resumeTick: Int, modifier: Modifier, navigate: (S
                     Text(stringResource(R.string.policy_not_owner), style = MaterialTheme.typography.bodyMedium)
                 }
             }
-            if (state.applied.isNotEmpty()) item { JournalCard(state) }
+            if (state.applied.isNotEmpty()) item { ActionLogCard(state) }
             item { RescueCard() }
             return@LazyColumn
         }
@@ -124,7 +124,7 @@ fun PolicyScreen(agent: Agent, resumeTick: Int, modifier: Modifier, navigate: (S
         }
         item { SettingsCard(state, controller) }
         item { VpnCard(state, controller) }
-        item { JournalCard(state) }
+        item { ActionLogCard(state) }
         item {
             SectionCard(stringResource(R.string.policy_undo_title)) {
                 Text(stringResource(R.string.policy_revert_all_desc), style = MaterialTheme.typography.bodySmall)
@@ -374,15 +374,15 @@ private fun VpnCard(state: PolicyUiState, controller: PolicyController) {
 }
 
 @Composable
-private fun JournalCard(state: PolicyUiState) {
-    SectionCard(stringResource(R.string.policy_journal_title)) {
-        if (state.journal.isEmpty()) {
-            Text(stringResource(R.string.policy_journal_empty), style = MaterialTheme.typography.bodySmall)
+private fun ActionLogCard(state: PolicyUiState) {
+    SectionCard(stringResource(R.string.policy_action_log_title)) {
+        if (state.actionLog.isEmpty()) {
+            Text(stringResource(R.string.policy_action_log_empty), style = MaterialTheme.typography.bodySmall)
         }
-        state.journal.take(JOURNAL_LINES).forEach { e ->
+        state.actionLog.take(ACTION_LOG_LINES).forEach { e ->
             Column {
                 Text(
-                    "${Format.dateTime(e.tsMs)} · ${e.action} · ${stringResource(if (e.ok) R.string.policy_journal_ok else R.string.policy_journal_failed)}",
+                    "${Format.dateTime(e.tsMs)} · ${e.action} · ${stringResource(if (e.ok) R.string.policy_action_log_ok else R.string.policy_action_log_failed)}",
                     style = MaterialTheme.typography.labelMedium,
                     color = toneColor(if (e.ok) Tone.NEUTRAL else Tone.ERROR),
                 )
@@ -495,4 +495,4 @@ private fun riskTone(risk: Risk): Tone = when (risk) {
     Risk.HIGH, Risk.CRITICAL -> Tone.ERROR
 }
 
-private const val JOURNAL_LINES = 40
+private const val ACTION_LOG_LINES = 40

@@ -1,13 +1,13 @@
-# Résolveurs DNS publics connus (DoH, DoT), lus par detect.dns_bypass.
+# Known public DNS resolvers (DoH, DoT), read by detect.dns_bypass.
 #
-# Une application qui se connecte à l'une de ces adresses sur un port de WATCHPOST_DETECT_DNS_BYPASS_PORTS
-# (443 et 853 par défaut : DNS sur HTTPS, DNS sur TLS) résout ses noms sans passer par le DNS privé du
-# téléphone, donc sans le filtrage d'AdGuard Home ni le journal net.dns.
+# An application that connects to one of these addresses on a port of WATCHPOST_DETECT_DNS_BYPASS_PORTS
+# (443 and 853 by default: DNS over HTTPS, DNS over TLS) resolves its names without going through the
+# phone's private DNS, hence without AdGuard Home filtering or the net.dns log.
 #
-# Format : une adresse IP ou un préfixe CIDR, puis le nom du service. « # » commence un commentaire.
-# Seules des adresses publiées par leur exploitant et réservées au service DNS figurent ici : une adresse
-# partagée avec des sites web ordinaires ferait sonner la détection à tort. Liste versionnée avec le
-# collecteur ; la compléter ici (une ligne par adresse), jamais par configuration.
+# Format: an IP address or a CIDR prefix, then the service name. "#" starts a comment.
+# Only addresses published by their operator and reserved for the DNS service belong here: an address
+# shared with ordinary web sites would make the detection ring wrongly. The list is versioned with the
+# collector; extend it here (one line per address), never through configuration.
 
 # Google Public DNS (dns.google)
 8.8.8.8                 Google Public DNS
@@ -15,7 +15,7 @@
 2001:4860:4860::8888    Google Public DNS
 2001:4860:4860::8844    Google Public DNS
 
-# Cloudflare (one.one.one.one, cloudflare-dns.com, filtres « security » et « family »)
+# Cloudflare (one.one.one.one, cloudflare-dns.com, "security" and "family" filters)
 1.1.1.1                 Cloudflare DNS
 1.0.0.1                 Cloudflare DNS
 1.1.1.2                 Cloudflare DNS
@@ -31,7 +31,7 @@
 2606:4700:4700::1113    Cloudflare DNS
 2606:4700:4700::1003    Cloudflare DNS
 
-# Quad9 (dns.quad9.net et variantes)
+# Quad9 (dns.quad9.net and variants)
 9.9.9.9                 Quad9
 149.112.112.112         Quad9
 9.9.9.10                Quad9
@@ -53,7 +53,7 @@
 2620:119:35::35         OpenDNS
 2620:119:53::53         OpenDNS
 
-# AdGuard DNS public (dns.adguard-dns.com, sans filtre, famille) — pas l'AdGuard Home de Watchpost
+# AdGuard DNS public (dns.adguard-dns.com, unfiltered, family) - not the AdGuard Home of Watchpost
 94.140.14.14            AdGuard DNS
 94.140.15.15            AdGuard DNS
 94.140.14.140           AdGuard DNS
@@ -67,7 +67,7 @@
 2a10:50c0::bad1:ff      AdGuard DNS
 2a10:50c0::bad2:ff      AdGuard DNS
 
-# NextDNS et Control D (adresses propres à chaque configuration, dans ces blocs dédiés)
+# NextDNS and Control D (addresses specific to each configuration, in these dedicated blocks)
 45.90.28.0/24           NextDNS
 45.90.30.0/24           NextDNS
 76.76.2.0/24            Control D
@@ -81,7 +81,7 @@
 185.228.168.168         CleanBrowsing
 185.228.169.168         CleanBrowsing
 
-# Mullvad DNS (dns.mullvad.net et variantes)
+# Mullvad DNS (dns.mullvad.net and variants)
 194.242.2.2             Mullvad DNS
 194.242.2.3             Mullvad DNS
 194.242.2.4             Mullvad DNS

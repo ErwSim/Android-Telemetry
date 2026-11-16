@@ -33,7 +33,7 @@ func (s *Server) newDetector() *detect.Engine {
 // StartDetections evaluates the detections every WATCHPOST_DETECT_INTERVAL_S until ctx is canceled.
 func (s *Server) StartDetections(ctx context.Context) {
 	if !s.cfg.DetectEnabled {
-		s.log.Info("détections désactivées (WATCHPOST_DETECT_ENABLED=false)")
+		s.log.Info("detections disabled (WATCHPOST_DETECT_ENABLED=false)")
 		return
 	}
 	var off []string
@@ -42,9 +42,9 @@ func (s *Server) StartDetections(ctx context.Context) {
 			off = append(off, t)
 		}
 	}
-	s.log.Info("détections actives", "interval", s.cfg.DetectInterval.String(), "disabled", off)
+	s.log.Info("detections enabled", "interval", s.cfg.DetectInterval.String(), "disabled", off)
 	if s.tracking.client != nil && len(s.tracking.threats) == 0 {
-		s.log.Warn("détections : aucune liste de catégorie \"threat\" dans WATCHPOST_ADGUARD_LEVELS_FILE, detect.threat_domain reste muette")
+		s.log.Warn("detections: no list of category \"threat\" in WATCHPOST_ADGUARD_LEVELS_FILE, detect.threat_domain stays silent")
 	}
 	go s.detector.Run(ctx, s.cfg.DetectInterval)
 }
@@ -69,7 +69,7 @@ func (s *Server) handleDetections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if q.Package = v.Get("package"); q.Package != "" && !packageRe.MatchString(q.Package) {
-		s.fail(w, paramErr("invalid_parameter", "paramètre package invalide"))
+		s.fail(w, paramErr("invalid_parameter", "invalid parameter package"))
 		return
 	}
 	if q.Limit, err = intParam(v, "limit", 100, 1, 500); err != nil {
@@ -79,7 +79,7 @@ func (s *Server) handleDetections(w http.ResponseWriter, r *http.Request) {
 	if c := v.Get("cursor"); c != "" {
 		ts, pk, ok := decodeCursor(c)
 		if !ok {
-			s.fail(w, paramErr("invalid_parameter", "curseur invalide"))
+			s.fail(w, paramErr("invalid_parameter", "invalid cursor"))
 			return
 		}
 		q.HasCursor, q.CursorTS, q.CursorPK = true, ts, pk
@@ -246,21 +246,21 @@ func (s *Server) muteRequest(w http.ResponseWriter, r *http.Request) (store.Mute
 	if raw, present := fields["reason"]; present {
 		var okR bool
 		if m.Reason, okR = jsonString(raw); !okR {
-			writeError(w, http.StatusBadRequest, "invalid_json", "reason : chaîne attendue")
+			writeError(w, http.StatusBadRequest, "invalid_json", "reason: string expected")
 			return m, false
 		}
 	}
 	switch {
 	case !ok1 || !validDeviceID(m.DeviceID):
-		writeError(w, http.StatusBadRequest, "invalid_parameter", "device_id invalide")
+		writeError(w, http.StatusBadRequest, "invalid_parameter", "invalid device_id")
 	case !ok3 || !packageRe.MatchString(m.Package):
-		writeError(w, http.StatusBadRequest, "invalid_parameter", "package : nom de paquet requis")
+		writeError(w, http.StatusBadRequest, "invalid_parameter", "package: package name required")
 	case !ok2 || !knownDetection(m.Type):
-		writeError(w, http.StatusBadRequest, "invalid_parameter", "type : type de détection inconnu")
+		writeError(w, http.StatusBadRequest, "invalid_parameter", "type: unknown detection type")
 	case !store.Mutable(m.Type):
-		writeError(w, http.StatusBadRequest, "not_mutable", m.Type+" ne peut pas être mise en sourdine")
+		writeError(w, http.StatusBadRequest, "not_mutable", m.Type+" cannot be muted")
 	case len([]rune(m.Reason)) > 200 || strings.IndexFunc(m.Reason, unicode.IsControl) >= 0:
-		writeError(w, http.StatusBadRequest, "invalid_parameter", "reason : 200 caractères au plus, sans caractère de contrôle")
+		writeError(w, http.StatusBadRequest, "invalid_parameter", "reason: 200 characters at most, no control characters")
 	default:
 		m.CreatedBy, _ = r.Context().Value(userKey).(string)
 		return m, true
@@ -294,7 +294,7 @@ func (s *Server) handleMute(w http.ResponseWriter, r *http.Request) {
 	}
 	if ev != nil {
 		s.published([]store.StoredEvent{*ev})
-		s.log.Info("détections mises en sourdine", "device_id", m.DeviceID, "type", m.Type, "package", m.Package, "user", m.CreatedBy)
+		s.log.Info("detections muted", "device_id", m.DeviceID, "type", m.Type, "package", m.Package, "user", m.CreatedBy)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNoContent)
@@ -314,7 +314,7 @@ func (s *Server) handleUnmute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.published([]store.StoredEvent{*ev})
-	s.log.Info("sourdine levée", "device_id", m.DeviceID, "type", m.Type, "package", m.Package, "user", m.CreatedBy)
+	s.log.Info("mute lifted", "device_id", m.DeviceID, "type", m.Type, "package", m.Package, "user", m.CreatedBy)
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNoContent)
 }

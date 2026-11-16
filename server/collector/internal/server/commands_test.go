@@ -196,7 +196,7 @@ func TestCommandValidation(t *testing.T) {
 		id := model.NewULID(time.Now())
 		return id, cmdPayload(id, dev, typ, params, issued, expires)
 	}
-	sig := "GWiiJjYxiBHlG1lba410Zxb0kDHsINh4nS9u/GE/OaE="
+	sig := "VVQ7B/b3fOzaG+sWd7Fqi7NKVRzdu5L3+NEIKurMXdE="
 	_, lock := mk("lock", `{"message":"Perdu"}`, now, now.Add(7*24*time.Hour))
 	_, ring := mk("ring", `{}`, now, now.Add(time.Hour))
 	_, wipe := mk("wipe", `{}`, now, now.Add(time.Hour))
@@ -238,7 +238,7 @@ func TestCommandValidation(t *testing.T) {
 		}
 	}
 	// Valid sensitive command with a well-formed signature; the same id is refused afterwards.
-	lockID, lock2 := mk("lock", `{"message":"Téléphone perdu"}`, now, now.Add(7*24*time.Hour))
+	lockID, lock2 := mk("lock", `{"message":"Lost phone"}`, now, now.Add(7*24*time.Hour))
 	if rec := e.createCommand(c, map[string]any{"device_id": dev, "payload": lock2, "sig": sig, "id": lockID}); rec.Code != http.StatusCreated {
 		t.Fatalf("signed lock: %d %s", rec.Code, rec.Body)
 	}
@@ -249,7 +249,7 @@ func TestCommandValidation(t *testing.T) {
 	if len(got) != 1 || got[0].Payload != lock2 || got[0].Sig != sig {
 		t.Fatalf("relayed %+v", got)
 	}
-	// wipe: 24 hours of validity at most (security review of v1.1), accepted at the bound.
+	// wipe: 24 hours of validity at most (contract §8), accepted at the bound.
 	_, wipeDay := mk("wipe", `{}`, now, now.Add(24*time.Hour))
 	if rec := e.createCommand(c, map[string]any{"device_id": dev, "payload": wipeDay, "sig": sig}); rec.Code != http.StatusCreated {
 		t.Fatalf("wipe valid 24 h: %d %s", rec.Code, rec.Body)
@@ -278,7 +278,7 @@ func TestCommandPayloadRelayedByteForByte(t *testing.T) {
 	now := time.Now()
 	id := model.NewULID(now)
 	// Unusual but valid spacing, key order and escapes: the agent must receive exactly these bytes.
-	p := fmt.Sprintf(`{ "type" : "lock", "v":1, "id":"%s",  "device_id":"%s", "params":{"message":"été <b>&amp;</b> \"x\"\nfin"},`+
+	p := fmt.Sprintf(`{ "type" : "lock", "v":1, "id":"%s",  "device_id":"%s", "params":{"message":"öl <b>&amp;</b> \"x\"\nend"},`+
 		` "issued_at":"%s","expires_at":"%s" }`, id, e.dev.DeviceID, model.FormatTS(now), model.FormatTS(now.Add(time.Hour)))
 	sig := strings.Repeat("A", 43) + "="
 	if rec := e.createCommand(c, map[string]any{"device_id": e.dev.DeviceID, "payload": p, "sig": sig}); rec.Code != http.StatusCreated {
@@ -288,7 +288,7 @@ func TestCommandPayloadRelayedByteForByte(t *testing.T) {
 	if len(got) != 1 || got[0].Payload != p {
 		t.Fatalf("payload altered:\n%q\n%q", p, got[0].Payload)
 	}
-	if lc := e.commands(c)[id]; lc.Params["message"] != "été <b>&amp;</b> \"x\"\nfin" {
+	if lc := e.commands(c)[id]; lc.Params["message"] != "öl <b>&amp;</b> \"x\"\nend" {
 		t.Fatalf("params %v", lc.Params)
 	}
 }
@@ -510,7 +510,7 @@ func TestCommandStream(t *testing.T) {
 	// A new command is pushed.
 	now := time.Now()
 	id2 := model.NewULID(now)
-	secret := "Rendez-le au 01 23 45 67 89"
+	secret := "Please return it, call +1 555 0100"
 	p := cmdPayload(id2, e.dev.DeviceID, "lock", fmt.Sprintf(`{"message":%q}`, secret), now, now.Add(time.Hour))
 	if rec := e.createCommand(c, map[string]any{"device_id": e.dev.DeviceID, "payload": p, "sig": strings.Repeat("A", 43) + "="}); rec.Code != http.StatusCreated {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body)
@@ -554,7 +554,7 @@ func TestCommandStream(t *testing.T) {
 	logMu.Lock()
 	logText := logs.String()
 	logMu.Unlock()
-	if !strings.Contains(logText, "commande émise") || strings.Contains(logText, secret) || strings.Contains(logText, e.dev.DeviceToken) {
+	if !strings.Contains(logText, "command issued") || strings.Contains(logText, secret) || strings.Contains(logText, e.dev.DeviceToken) {
 		t.Fatal("lock message or token in the process logs")
 	}
 	// Nor in the exported command.issued event.
@@ -645,8 +645,8 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 
 // The contract test vector also passes the collector's checks end to end (as payload + sig).
 func TestCommandContractVectorAccepted(t *testing.T) {
-	p, err := command.Parse(`{"v":1,"id":"01JCQ8Z3K4M5N6P7Q8R9S0T1V2","device_id":"dev_0123456789abcdef","type":"lock","params":{"message":"Téléphone perdu, appelez le 01 23 45 67 89"},"issued_at":"2026-11-16T10:00:00.000Z","expires_at":"2026-11-23T10:00:00.000Z"}`)
-	if err != nil || !command.Sensitive(p.Type) || !command.ValidSignatureFormat("GWiiJjYxiBHlG1lba410Zxb0kDHsINh4nS9u/GE/OaE=") {
+	p, err := command.Parse(`{"v":1,"id":"01JCQ8Z3K4M5N6P7Q8R9S0T1V2","device_id":"dev_0123456789abcdef","type":"lock","params":{"message":"Lost phone — please call +1 555 0100"},"issued_at":"2026-11-16T10:00:00.000Z","expires_at":"2026-11-23T10:00:00.000Z"}`)
+	if err != nil || !command.Sensitive(p.Type) || !command.ValidSignatureFormat("VVQ7B/b3fOzaG+sWd7Fqi7NKVRzdu5L3+NEIKurMXdE=") {
 		t.Fatal(err)
 	}
 	_ = store.CmdPending
@@ -654,7 +654,7 @@ func TestCommandContractVectorAccepted(t *testing.T) {
 
 // The signature of a sensitive command is kept only while the command can still be handed to the agent:
 // a copy of the database (or a backup) taken later holds no (payload, signature) pair of past commands
-// to search the owner's command code offline. The console still shows the command as signed.
+// to search the user's command passphrase offline. The console still shows the command as signed.
 func TestCommandSignatureErasedOnceFinal(t *testing.T) {
 	e := newEnv(t, nil)
 	c := e.session()

@@ -16,7 +16,7 @@ data class SecurityLogFilter(
     val radio: Boolean = true,
 )
 
-/** [tsMs]: time of the (first) log entry, the event's `ts` (contract §2 "Précisions"). */
+/** [tsMs]: time of the (first) log entry, the event's `ts` (contract §2, event timestamps). */
 data class SecurityOutput(val sev: Int, val data: JsonObject, val tsMs: Long)
 
 /** Batch → `security.log` data (contract §2). Pure (tested on the JVM). */

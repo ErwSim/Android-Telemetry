@@ -16,7 +16,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * verification ([CommandVerifier]) → execution (one [CommandExecutor] per type) → `command.result`
  * event (contract §8) → local history → result queued for `POST …/result`.
  *
- * Redelivery (contract §8 "Renvoi": the server delivers a command again when its result did not arrive,
+ * Redelivery (contract §8, redelivery: the server delivers a command again when its result did not arrive,
  * and stream and poll can both deliver it): a command whose id was already processed is **never executed
  * again**; its original result is queued again for `POST …/result` (no new event, no new history line).
  * Only an id still in the anti-replay window but whose result is no longer remembered gets `replay`.

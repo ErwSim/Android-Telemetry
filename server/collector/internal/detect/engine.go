@@ -91,9 +91,9 @@ func (e *Engine) Run(ctx context.Context, interval time.Duration) {
 		st, err := e.RunOnce(ctx)
 		switch {
 		case err != nil && !errors.Is(err, context.Canceled):
-			e.log.Error("détections : évaluation en échec (nouvel essai au prochain passage)", "err", err)
+			e.log.Error("detections: evaluation failed (will retry at the next run)", "err", err)
 		case st.Hours > 0:
-			e.log.Debug("détections : passage", "hours", st.Hours, "findings", st.Findings, "ms", st.Duration.Milliseconds(), "remaining", st.Remaining)
+			e.log.Debug("detections: run", "hours", st.Hours, "findings", st.Findings, "ms", st.Duration.Milliseconds(), "remaining", st.Remaining)
 		}
 		timer.Reset(interval)
 	}
@@ -175,7 +175,7 @@ func (e *Engine) round(ctx context.Context, hours []store.DirtyHour) (int, error
 				Update  bool   `json:"update"`
 			}
 			_ = json.Unmarshal(ev.Data, &d)
-			e.log.Info("détection", "type", ev.Type, "device_id", dev, "package", d.Package, "sev", ev.Sev, "update", d.Update)
+			e.log.Info("detection", "type", ev.Type, "device_id", dev, "package", d.Package, "sev", ev.Sev, "update", d.Update)
 		}
 		e.publish(res.Events)
 	}

@@ -71,23 +71,23 @@ func (e *env) seedTraffic(fake *adguard.Fake, at time.Time) {
 		return e.event(at, "net.dns", 0, d)
 	}
 	e.ingest([]map[string]any{
-		dns("fr.lemonde.editorial", "app-measurement.com", 3),
-		dns("fr.lemonde.editorial", "apps.lemonde.fr", 1),
+		dns("com.dailynews.reader", "app-measurement.com", 3),
+		dns("com.dailynews.reader", "apps.dailynews.example", 1),
 		dns("com.google.android.gms", "mtalk.google.com", 2),
 		dns("com.instagram.android", "graph.facebook.com", 1),
 		e.event(at, "net.usage", 0, map[string]any{"from": model.FormatTS(at.Add(-time.Hour)), "to": model.FormatTS(at), "apps": []map[string]any{
-			{"package": "fr.lemonde.editorial", "uid": 10255, "rx_bytes": 8000, "tx_bytes": 800, "transport": "wifi"},
+			{"package": "com.dailynews.reader", "uid": 10255, "rx_bytes": 8000, "tx_bytes": 800, "transport": "wifi"},
 			{"package": "com.spotify.music", "uid": 10254, "rx_bytes": 90000, "tx_bytes": 1000, "transport": "wifi"},
 		}}),
 	})
 	for i := range 3 {
-		fake.AddQuery(at.Add(time.Duration(i)*time.Second), "192.0.2.10", "s25", "app-measurement.com")
+		fake.AddQuery(at.Add(time.Duration(i)*time.Second), "192.0.2.10", "phone", "app-measurement.com")
 	}
-	fake.AddQuery(at, "192.0.2.10", "s25", "apps.lemonde.fr")
-	fake.AddQuery(at, "192.0.2.10", "s25", "mtalk.google.com")
-	fake.AddQuery(at, "192.0.2.10", "s25", "mtalk.google.com")
-	fake.AddQuery(at, "192.0.2.10", "s25", "graph.facebook.com")
-	fake.AddQuery(at, "192.0.2.10", "s25", "tracker.example") // blocked by the hand rule
+	fake.AddQuery(at, "192.0.2.10", "phone", "apps.dailynews.example")
+	fake.AddQuery(at, "192.0.2.10", "phone", "mtalk.google.com")
+	fake.AddQuery(at, "192.0.2.10", "phone", "mtalk.google.com")
+	fake.AddQuery(at, "192.0.2.10", "phone", "graph.facebook.com")
+	fake.AddQuery(at, "192.0.2.10", "phone", "tracker.example") // blocked by the hand rule
 }
 
 func num(v any) int64 { f, _ := v.(float64); return int64(f) }
@@ -103,10 +103,10 @@ func TestTrackingWithAdGuard(t *testing.T) {
 	}
 	sum := e.trackingGet(c, "summary", nil)
 	tot := sum["totals"].(map[string]any)
-	if sum["adguard"] != true || sum["level"] != "permissif" || num(tot["queries"]) != 8 || num(tot["blocked"]) != 4 || num(tot["allowed"]) != 4 {
+	if sum["adguard"] != true || sum["level"] != "permissive" || num(tot["queries"]) != 8 || num(tot["blocked"]) != 4 || num(tot["allowed"]) != 4 {
 		t.Fatalf("summary %v", sum)
 	}
-	if levels := sum["levels"].([]any); len(levels) != 3 || levels[1].(map[string]any)["key"] != "equilibre" {
+	if levels := sum["levels"].([]any); len(levels) != 3 || levels[1].(map[string]any)["key"] != "balanced" {
 		t.Fatalf("levels %v", levels)
 	}
 	google := sum["publishers"].([]any)[0].(map[string]any)
@@ -125,7 +125,7 @@ func TestTrackingWithAdGuard(t *testing.T) {
 	doms := e.trackingGet(c, "domains", url.Values{"limit": {"2"}})
 	list := doms["domains"].([]any)
 	first := list[0].(map[string]any)
-	if first["domain"] != "app-measurement.com" || first["status"] != "blocked" || first["reason"] != "Liste : AdGuard DNS filter" ||
+	if first["domain"] != "app-measurement.com" || first["status"] != "blocked" || first["reason"] != "List: AdGuard DNS filter" ||
 		first["publisher"] != "google" || len(first["apps"].([]any)) != 1 || doms["next_cursor"] == nil {
 		t.Fatalf("domains %v", doms)
 	}
@@ -146,11 +146,11 @@ func TestTrackingWithAdGuard(t *testing.T) {
 		}
 		cursor = nc
 	}
-	if !slices.Equal(all, []string{"app-measurement.com", "mtalk.google.com", "apps.lemonde.fr", "graph.facebook.com", "tracker.example"}) {
+	if !slices.Equal(all, []string{"app-measurement.com", "mtalk.google.com", "apps.dailynews.example", "graph.facebook.com", "tracker.example"}) {
 		t.Fatalf("paginated %v", all)
 	}
 	if hand := e.trackingGet(c, "domains", url.Values{"q": {"tracker"}})["domains"].([]any); len(hand) != 1 ||
-		!strings.HasPrefix(hand[0].(map[string]any)["reason"].(string), "Règle personnalisée") {
+		!strings.HasPrefix(hand[0].(map[string]any)["reason"].(string), "Custom rule") {
 		t.Fatalf("hand rule %v", hand)
 	}
 	if blocked := e.trackingGet(c, "domains", url.Values{"status": {"blocked"}, "publisher": {"google"}})["domains"].([]any); len(blocked) != 1 {
@@ -168,7 +168,7 @@ func TestTrackingWithAdGuard(t *testing.T) {
 	// Apps.
 	apps := e.trackingGet(c, "apps", nil)["apps"].([]any)
 	lm := apps[0].(map[string]any)
-	if lm["package"] != "fr.lemonde.editorial" || num(lm["queries"]) != 4 || num(lm["blocked"]) != 3 || num(lm["allowed"]) != 1 ||
+	if lm["package"] != "com.dailynews.reader" || num(lm["queries"]) != 4 || num(lm["blocked"]) != 3 || num(lm["allowed"]) != 1 ||
 		num(lm["rx_bytes"]) != 8000 || len(lm["top_domains"].([]any)) != 2 {
 		t.Fatalf("apps %v", apps)
 	}
@@ -205,7 +205,7 @@ func TestTrackingWithAdGuard(t *testing.T) {
 		t.Fatalf("idempotent override rewrote the rules: %d", rec.Code)
 	}
 	rules := fake.UserRules()
-	if !slices.Equal(rules[:2], []string{"! règle saisie à la main dans AdGuard Home", "||tracker.example^"}) ||
+	if !slices.Equal(rules[:2], []string{"! rule entered by hand in AdGuard Home", "||tracker.example^"}) ||
 		!slices.Contains(rules, "||graph.facebook.com^$important") || !slices.Contains(rules, "@@||mtalk.google.com^$important") {
 		t.Fatalf("rules %q", rules)
 	}
@@ -216,15 +216,15 @@ func TestTrackingWithAdGuard(t *testing.T) {
 	if d["override"] != "block" {
 		t.Fatalf("override not shown %v", d)
 	}
-	// AdGuard applies the rule: the next query is blocked by "Blocage manuel (Watchpost)".
-	fake.AddQuery(time.Now(), "192.0.2.10", "s25", "graph.facebook.com")
+	// AdGuard applies the rule: the next query is blocked by "Manual block (Watchpost)".
+	fake.AddQuery(time.Now(), "192.0.2.10", "phone", "graph.facebook.com")
 	e.srv.now = func() time.Time { return time.Now().Add(2 * time.Minute) }
 	if err := e.srv.tracking.pollOnce(ctx); err != nil {
 		t.Fatal(err)
 	}
 	e.srv.now = time.Now
 	d = e.trackingGet(c, "domains", url.Values{"q": {"graph.facebook"}, "to": {model.FormatTS(time.Now().Add(time.Hour))}})["domains"].([]any)[0].(map[string]any)
-	if d["status"] != "mixed" || d["reason"] != "Blocage manuel (Watchpost)" || num(d["blocked"]) != 1 {
+	if d["status"] != "mixed" || d["reason"] != "Manual block (Watchpost)" || num(d["blocked"]) != 1 {
 		t.Fatalf("after override %v", d)
 	}
 	for _, dom := range []string{"google.com", "graph.facebook.com", "mtalk.google.com"} {
@@ -232,7 +232,7 @@ func TestTrackingWithAdGuard(t *testing.T) {
 			t.Fatal(rec.Code)
 		}
 	}
-	if rules := fake.UserRules(); !slices.Equal(rules, []string{"! règle saisie à la main dans AdGuard Home", "||tracker.example^"}) {
+	if rules := fake.UserRules(); !slices.Equal(rules, []string{"! rule entered by hand in AdGuard Home", "||tracker.example^"}) {
 		t.Fatalf("rules after reset %q", rules)
 	}
 
@@ -249,11 +249,11 @@ func TestTrackingWithAdGuard(t *testing.T) {
 	if lv := e.get(c, "/api/console/tracking/level", nil); !strings.Contains(lv.Body.String(), `"level":"strict"`) {
 		t.Fatalf("level after change: %s", lv.Body)
 	}
-	if rec := e.put(c, "level", map[string]any{"level": "permissif"}, true); rec.Code != http.StatusNoContent {
+	if rec := e.put(c, "level", map[string]any{"level": "permissive"}, true); rec.Code != http.StatusNoContent {
 		t.Fatal(rec.Code)
 	}
 	if got := fake.EnabledLists(); len(got) != 2 {
-		t.Fatalf("enabled lists after permissif %v", got)
+		t.Fatalf("enabled lists after permissive %v", got)
 	}
 }
 
@@ -262,7 +262,7 @@ func TestTrackingIncrementalAndGaps(t *testing.T) {
 	ctx := context.Background()
 	base := time.Now().Add(-3 * time.Hour)
 	for i := range 1200 {
-		fake.AddQuery(base.Add(time.Duration(i)*time.Second), "192.0.2.10", "s25", "app-measurement.com")
+		fake.AddQuery(base.Add(time.Duration(i)*time.Second), "192.0.2.10", "phone", "app-measurement.com")
 	}
 	tr := e.srv.tracking
 	if err := tr.refreshStatus(ctx); err != nil {
@@ -275,7 +275,7 @@ func TestTrackingIncrementalAndGaps(t *testing.T) {
 		}
 	}
 	for i := range 700 { // new entries during the catch-up, read once they are older than the lag
-		fake.AddQuery(time.Now().Add(time.Duration(i)*time.Millisecond), "192.0.2.10", "s25", "www.google.com")
+		fake.AddQuery(time.Now().Add(time.Duration(i)*time.Millisecond), "192.0.2.10", "phone", "www.google.com")
 	}
 	e.srv.now = func() time.Time { return time.Now().Add(2 * time.Minute) }
 	for range 4 {
@@ -362,7 +362,7 @@ func TestNotificationContentCounted(t *testing.T) {
 	n := func(event string, content bool) map[string]any {
 		d := map[string]any{"package": "com.whatsapp", "event": event, "category": "msg", "channel": "messages", "ongoing": false, "importance": 4}
 		if content {
-			d["title"], d["text"], d["redacted"] = "Alice", "Ton code : ••••••", true
+			d["title"], d["text"], d["redacted"] = "Alice", "Your code: ••••••", true
 		}
 		return e.event(at, "app.notification", 0, d)
 	}
@@ -410,7 +410,7 @@ func TestTrackingCountsEveryEntryExactlyOnce(t *testing.T) {
 	add := func(n int, step time.Duration) {
 		for range n {
 			clock = clock.Add(step)
-			fake.AddQuery(clock, "192.0.2.10", "s25", "app-measurement.com")
+			fake.AddQuery(clock, "192.0.2.10", "phone", "app-measurement.com")
 			times = append(times, clock)
 		}
 	}
@@ -484,7 +484,7 @@ func TestTrackingBacklogSurvivesRestartsAndRotation(t *testing.T) {
 	add := func(n int, step time.Duration, domain string) {
 		for range n {
 			clock = clock.Add(step)
-			fake.AddQuery(clock, "192.0.2.10", "s25", domain)
+			fake.AddQuery(clock, "192.0.2.10", "phone", domain)
 			made++
 		}
 	}
@@ -549,7 +549,7 @@ func TestTrackingCursorNoLongerInTheLog(t *testing.T) {
 	e.srv.now = func() time.Time { return clock }
 	for range 1700 {
 		clock = clock.Add(100 * time.Millisecond)
-		fake.AddQuery(clock, "192.0.2.10", "s25", "app-measurement.com")
+		fake.AddQuery(clock, "192.0.2.10", "phone", "app-measurement.com")
 	}
 	clock = clock.Add(5 * time.Minute)
 	if err := tr.readLog(ctx, 1); err != nil { // the newest page only
@@ -585,7 +585,7 @@ func TestTrackingCursorNoLongerInTheLog(t *testing.T) {
 	at := clock.Add(-30 * time.Minute)
 	for range 1700 {
 		at = at.Add(100 * time.Millisecond)
-		fake2.AddQuery(at, "192.0.2.10", "s25", "app-measurement.com")
+		fake2.AddQuery(at, "192.0.2.10", "phone", "app-measurement.com")
 	}
 	if err := tr2.readLog(ctx, 1); err != nil {
 		t.Fatal(err)
@@ -616,7 +616,7 @@ func TestTrackingChangesAreServerEvents(t *testing.T) {
 	if err := e.srv.tracking.pollOnce(ctx); err != nil {
 		t.Fatal(err)
 	}
-	other, err := enroll.Create(ctx, e.st, e.ca, enroll.Params{Name: "révoqué", IngestURL: "https://ingest.watchpost.example"}, time.Now())
+	other, err := enroll.Create(ctx, e.st, e.ca, enroll.Params{Name: "revoked", IngestURL: "https://ingest.watchpost.example"}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -635,9 +635,9 @@ func TestTrackingChangesAreServerEvents(t *testing.T) {
 	put("override", map[string]any{"domain": "google.com", "action": "block"}, http.StatusConflict) // refused: no event
 	put("override", map[string]any{"domain": "google.com", "action": "block", "force": true}, http.StatusNoContent)
 	put("override", map[string]any{"domain": "tracker.example.net", "action": "default"}, http.StatusNoContent)
-	put("level", map[string]any{"level": "permissif"}, http.StatusNoContent) // already the level: no event
+	put("level", map[string]any{"level": "permissive"}, http.StatusNoContent) // already the level: no event
 	put("level", map[string]any{"level": "strict"}, http.StatusNoContent)
-	put("level", map[string]any{"level": "equilibre"}, http.StatusNoContent)
+	put("level", map[string]any{"level": "balanced"}, http.StatusNoContent)
 
 	type want struct {
 		sev  float64
@@ -675,7 +675,7 @@ func TestTrackingChangesAreServerEvents(t *testing.T) {
 		{2, map[string]any{"domain": "tracker.example.net", "action": "default", "forced": false, "previous": "block"}},
 	})
 	check("tracking.level_changed", []want{
-		{1, map[string]any{"old": "permissif", "new": "strict"}},
-		{2, map[string]any{"old": "strict", "new": "equilibre"}}, // blocking weakened
+		{1, map[string]any{"old": "permissive", "new": "strict"}},
+		{2, map[string]any{"old": "strict", "new": "balanced"}}, // blocking weakened
 	})
 }

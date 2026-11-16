@@ -121,9 +121,9 @@ class BluetoothTrackerTest {
     @Test
     fun bluetoothEventsUseContractFields() {
         Contract.check("net.bluetooth", BluetoothCollector.stateData(true))
-        val data = BluetoothCollector.deviceData("connected", "  Écouteurs  ", "aa:bb:cc:dd:ee:ff", "le")
+        val data = BluetoothCollector.deviceData("connected", "  Headphones  ", "aa:bb:cc:dd:ee:ff", "le")
         Contract.check("net.bluetooth", data)
-        assertEquals("Écouteurs", data["name"]!!.jsonPrimitive.content)
+        assertEquals("Headphones", data["name"]!!.jsonPrimitive.content)
         assertEquals(setOf("event", "address"), BluetoothCollector.deviceData("disconnected", " ", "aa:bb:cc:dd:ee:ff", null).keys)
     }
 }

@@ -21,8 +21,8 @@ func (e *env) mute(c *http.Cookie, method string, body map[string]any) *http.Res
 	return rec.Result()
 }
 
-// Contract §11.4: the owner's attack without app.ops (a Play Store application that obtains SEND_SMS 30 h after
-// its installation and sends in bulk) is reported by detect.sms_permission; being made the default SMS app by
+// Contract §11.4: a discreet store application that obtains SEND_SMS a day after its installation and sends in bulk
+// (the attack without app.ops) is reported by detect.sms_permission; being made the default SMS app by
 // detect.default_app_changed; an inventory that passes an installed application off as a system one is reported
 // and does not hide it.
 func TestDetectionsWithoutAppOps(t *testing.T) {
@@ -130,7 +130,7 @@ func TestDetectionsMuteRecurrenceFlood(t *testing.T) {
 			t.Errorf("%v: %d", tc.body, r.StatusCode)
 		}
 	}
-	m := map[string]any{"device_id": dev, "type": "detect.dns_bypass", "package": "org.mozilla.firefox", "reason": "DoH voulu dans Firefox"}
+	m := map[string]any{"device_id": dev, "type": "detect.dns_bypass", "package": "org.mozilla.firefox", "reason": "DoH wanted in Firefox"}
 	if r := e.mute(c, http.MethodPost, m); r.StatusCode != http.StatusNoContent {
 		t.Fatalf("mute: %d", r.StatusCode)
 	}
@@ -139,7 +139,7 @@ func TestDetectionsMuteRecurrenceFlood(t *testing.T) {
 	}
 	rec := e.get(c, "/api/console/detections/mutes", nil)
 	var mutes struct{ Mutes []store.Mute }
-	if json.Unmarshal(rec.Body.Bytes(), &mutes) != nil || len(mutes.Mutes) != 1 || mutes.Mutes[0].Reason != "DoH voulu dans Firefox" || mutes.Mutes[0].CreatedBy != "admin" {
+	if json.Unmarshal(rec.Body.Bytes(), &mutes) != nil || len(mutes.Mutes) != 1 || mutes.Mutes[0].Reason != "DoH wanted in Firefox" || mutes.Mutes[0].CreatedBy != "admin" {
 		t.Fatalf("mutes %s", rec.Body)
 	}
 	if n := len(e.serverEvents(c, "detect.muted")); n != 1 {

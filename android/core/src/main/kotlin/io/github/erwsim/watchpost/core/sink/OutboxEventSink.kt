@@ -60,7 +60,7 @@ class OutboxEventSink(
     @Volatile
     var listener: FlushListener? = null
 
-    /** Last emitted events, newest first (local journal, transparency). */
+    /** Last emitted events, newest first (local event log, transparency). */
     val recent = RecentEvents(recentCapacity)
 
     private val _lastWriteError = MutableStateFlow<String?>(null)

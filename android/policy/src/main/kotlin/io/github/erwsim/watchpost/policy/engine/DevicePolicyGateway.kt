@@ -145,8 +145,8 @@ object Dpm {
 
     fun dnsSetError(code: Int): String? = when (code) {
         DNS_SET_OK -> null
-        DNS_SET_HOST_NOT_SERVING -> "PRIVATE_DNS_SET_ERROR_HOST_NOT_SERVING : l'hôte ne répond pas en DNS sur TLS"
-        DNS_SET_FAILURE -> "PRIVATE_DNS_SET_ERROR_FAILURE_SETTING : écriture du réglage refusée"
+        DNS_SET_HOST_NOT_SERVING -> "PRIVATE_DNS_SET_ERROR_HOST_NOT_SERVING: the host does not answer DNS over TLS"
+        DNS_SET_FAILURE -> "PRIVATE_DNS_SET_ERROR_FAILURE_SETTING: writing the setting was refused"
         else -> "code $code"
     }
 }

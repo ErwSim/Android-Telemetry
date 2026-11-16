@@ -32,7 +32,7 @@ import kotlinx.serialization.json.JsonObject
  *
  * Polling, screen on only: one query every [POLL_SECONDS] seconds while the screen is on, one at
  * screen off, plus a WorkManager safety net every 15 min. `ts` is the time of the usage event given
- * by the system (contract §2 "Précisions"), not the poll time. Typically 100 to 400 events per day.
+ * by the system (contract §2, event timestamps), not the poll time. Typically 100 to 400 events per day.
  */
 class ForegroundAppCollector : Collector {
     override val id = "foreground"

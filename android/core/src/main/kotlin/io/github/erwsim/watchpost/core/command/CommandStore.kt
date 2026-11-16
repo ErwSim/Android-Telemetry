@@ -14,7 +14,7 @@ import java.util.Base64
 
 /**
  * The command key `K` (contract §8), sealed at rest by [SecretBox] (AES-GCM, non-exportable Keystore
- * key on the device). The command code itself is never stored: only `K`, derived from it and from the
+ * key on the device). The command passphrase itself is never stored: only `K`, derived from it and from the
  * device id. `K` is bound to the device id it was derived for: after an enrollment under another id it
  * no longer counts as configured (`no_code_configured`) and must be entered again.
  */
@@ -181,7 +181,7 @@ class CommandStateStore(private val prefs: SharedPreferences) {
     fun hasPendingResult(id: String): Boolean = pendingResults().any { it.id == id }
 
     /**
-     * The result of every processed command, kept with its id (contract §8 "Renvoi": a command delivered
+     * The result of every processed command, kept with its id (contract §8, redelivery: a command delivered
      * again is answered with its **original** result, never executed again). Bounded to [RESULT_MEMORY]
      * entries (as many as the two anti-replay windows together); a later result of the same id (wipe
      * announced then refused) replaces the earlier one.

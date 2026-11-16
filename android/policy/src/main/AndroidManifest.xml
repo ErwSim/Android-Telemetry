@@ -40,7 +40,7 @@
         </receiver>
 
         <!--
-            ADB rescue ("Tout rétablir" without the UI): scripts/rescue-revert.sh / .ps1.
+            ADB rescue ("Restore everything" without the UI): scripts/rescue-revert.sh / .ps1.
             The sender must hold FORCE_STOP_PACKAGES (signature|privileged, not grantable to
             third-party apps, even by "pm grant"): only the system and the ADB shell can send it.
             It can only UNDO Watchpost's own policy, never apply anything.

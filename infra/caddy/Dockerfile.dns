@@ -1,5 +1,5 @@
-# Image Caddy avec un module de défi DNS-01 (option « ClientID » en mode acme).
-# Construite par install.sh : docker build --build-arg DNS_MODULE=github.com/caddy-dns/<fournisseur>
+# Caddy image with a DNS-01 challenge module ("ClientID" option in acme mode).
+# Built by install.sh: docker build --build-arg DNS_MODULE=github.com/caddy-dns/<provider>
 ARG CADDY_VERSION=2.11.9
 FROM caddy:${CADDY_VERSION}-builder-alpine AS builder
 ARG DNS_MODULE

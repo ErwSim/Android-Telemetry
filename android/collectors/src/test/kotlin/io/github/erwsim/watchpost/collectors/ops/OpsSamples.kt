@@ -4,7 +4,7 @@ package io.github.erwsim.watchpost.collectors.ops
  * Extracts of `dumpsys appops` written from the AOSP sources (the exact `print` calls of `AppOpsService.dump`,
  * `dumpStatesLocked`, `UidState` dump, `StringDumpVisitor`, `TimeUtils.formatDuration`), with plausible packages
  * and values. None was captured on a device: they check that the parser reads what the code prints, not what
- * the Samsung prints.
+ * a real device prints.
  */
 object OpsSamples {
     /** `--history --op SEND_SMS`, Android 14 / 15 / 16 (legacy registry): same layout. */

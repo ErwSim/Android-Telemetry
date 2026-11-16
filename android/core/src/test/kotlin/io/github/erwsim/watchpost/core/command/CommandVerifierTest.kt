@@ -20,10 +20,10 @@ class CommandVerifierTest {
     fun reproducesTheContractTestVectorToTheByte() {
         assertEquals(CommandVector.KEY_HEX, hex(CommandVector.key))
         assertEquals(CommandVector.SIG, CommandCrypto.sign(CommandVector.key, CommandVector.PAYLOAD))
-        // The accented characters are signed as UTF-8 (2 bytes each), not as Latin-1 or UTF-16.
+        // The em dash is signed as UTF-8 (3 bytes), not as Latin-1 or UTF-16.
         assertTrue(CommandVector.PAYLOAD.toByteArray(Charsets.UTF_8).size > CommandVector.PAYLOAD.length)
         assertTrue(CommandCrypto.verify(CommandVector.key, CommandVector.PAYLOAD, CommandVector.SIG))
-        assertFalse(CommandCrypto.verify(CommandVector.key, CommandVector.PAYLOAD.replace("Téléphone", "Telephone"), CommandVector.SIG))
+        assertFalse(CommandCrypto.verify(CommandVector.key, CommandVector.PAYLOAD.replace("—", "-"), CommandVector.SIG))
     }
 
     @Test
@@ -47,7 +47,7 @@ class CommandVerifierTest {
         val v = kit.verifier.verify(CommandEnvelope(CommandVector.ID, CommandVector.PAYLOAD, CommandVector.SIG), kit.env())
         val accepted = (v as Verification.Accepted).command
         assertEquals(CommandTypes.LOCK, accepted.type)
-        assertEquals(CommandParams.Lock("Téléphone perdu, appelez le 01 23 45 67 89"), accepted.params)
+        assertEquals(CommandParams.Lock("Lost phone — please call +1 555 0100"), accepted.params)
         assertTrue(accepted.signatureVerified)
         assertTrue(accepted.gate.all().not()) // wipeAllowed false in this environment: the gate records it
     }
@@ -119,7 +119,7 @@ class CommandVerifierTest {
         assertEquals(Refusal.BAD_PARAMS, kit.verifier.verify(kit.simple("stop_ring", "[]"), ok).reason())
         assertEquals(Refusal.BAD_PARAMS, kit.verifier.verify(kit.signed("lock", """{"message":"${"x".repeat(201)}"}"""), ok).reason())
         assertEquals(Refusal.BAD_PARAMS, kit.verifier.verify(kit.signed("lock", """{"message":42}"""), ok).reason())
-        assertEquals("accepted", kit.verifier.verify(kit.signed("lock", """{"message":"${"é".repeat(200)}"}"""), ok).reason())
+        assertEquals("accepted", kit.verifier.verify(kit.signed("lock", """{"message":"${"ö".repeat(200)}"}"""), ok).reason())
         // not_device_owner
         assertEquals(Refusal.NOT_DEVICE_OWNER, kit.verifier.verify(kit.signed("lock"), kit.env(deviceOwner = false)).reason())
         assertEquals("accepted", kit.verifier.verify(kit.simple("ring"), kit.env(deviceOwner = false)).reason())
@@ -165,7 +165,7 @@ class CommandVerifierTest {
         val kit = CommandKit(statePrefs = statePrefs)
         val wipe = kit.signed("wipe")
         assertEquals(Refusal.DISABLED, kit.verifier.verify(wipe, kit.env(wipeAllowed = false)).reason())
-        // The owner switches "Autoriser l'effacement à distance" on later (also after a restart): the signed
+        // The user switches "Allow remote erase" on later (also after a restart): the signed
         // command the server still holds must not run then.
         val later = CommandKit(statePrefs = statePrefs, clock = kit.clock)
         assertEquals(Refusal.REPLAY, later.verifier.verify(wipe, later.env(wipeAllowed = true)).reason())
@@ -292,8 +292,8 @@ class CommandVerifierTest {
         assertTrue(JsonDuplicateKeys.found("""{"a":{"x":1},"b":{"x":[{"x":1},{"x":2}]},"a":0}"""))
         assertFalse(JsonDuplicateKeys.found("""{"a":{"x":1},"b":{"x":[{"x":1},{"x":2}],"s":"\"a\":1,\"a\""}}"""))
         // Lock message: line feed allowed, any other control character refused (the server is not trusted).
-        val withLf = kit.verifier.verify(kit.signed("lock", """{"message":"Perdu\nappelez-moi"}"""), ok) as Verification.Accepted
-        assertEquals(CommandParams.Lock("Perdu\nappelez-moi"), withLf.command.params)
+        val withLf = kit.verifier.verify(kit.signed("lock", """{"message":"Lost\ncall me"}"""), ok) as Verification.Accepted
+        assertEquals(CommandParams.Lock("Lost\ncall me"), withLf.command.params)
         assertEquals(Refusal.BAD_PARAMS, kit.verifier.verify(kit.signed("lock", """{"message":"a\tb"}"""), ok).reason())
         assertEquals(Refusal.BAD_PARAMS, kit.verifier.verify(kit.signed("lock", """{"message":"a\u0000b"}"""), ok).reason())
         assertEquals(Refusal.BAD_PARAMS, kit.verifier.verify(kit.signed("lock", """{"message":"a\u202Eb\u0085"}"""), ok).reason())

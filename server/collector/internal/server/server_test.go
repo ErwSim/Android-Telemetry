@@ -66,7 +66,7 @@ func newEnv(t *testing.T, vars map[string]string) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, err := enroll.Create(ctx, st, ca, enroll.Params{Name: "s25", IngestURL: "https://ingest.example.org"}, time.Now())
+	f, err := enroll.Create(ctx, st, ca, enroll.Params{Name: "phone", IngestURL: "https://ingest.example.org"}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -764,7 +764,7 @@ func TestConsoleLocationsStatsAppsPosture(t *testing.T) {
 			t.Fatalf("top %s: %+v", k, tp.Items)
 		}
 	}
-	// package filter (contract §6, Précisions).
+	// package filter (contract §6).
 	pq := with("kind", "dns_hostname")
 	pq.Set("package", "com.google.android.gms")
 	if tp := decodeJSON[top](t, e.get(c, "/api/console/stats/top", pq)); len(tp.Items) != 3 {
@@ -952,7 +952,7 @@ func TestStaticAndHeaders(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<title>Watchpost") {
 		t.Fatalf("index: %d", rec.Code)
 	}
-	// Exact header of contract §6 "Précisions".
+	// Exact header of contract §6.
 	want := "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://tile.openstreetmap.org; worker-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 	if csp != want {
 		t.Fatalf("CSP %q", csp)
@@ -1047,7 +1047,7 @@ func TestSessionIdleExpiry(t *testing.T) {
 	}
 }
 
-// Events relevé after the fact arrive with an old ts: they are accepted down to the retention window,
+// Events collected after the fact arrive with an old ts: they are accepted down to the retention window,
 // counted by data.count in /stats/top, and an event older than the retention is acknowledged without
 // being stored (accepted + duplicates + rejected still totals the batch).
 func TestLateEvents(t *testing.T) {

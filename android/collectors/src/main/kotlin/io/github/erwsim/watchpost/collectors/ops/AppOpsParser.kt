@@ -50,7 +50,7 @@ sealed interface HistoryResult {
 /**
  * Tolerant parser of `dumpsys appops`. The text is not an API; the formats below were read in the AOSP
  * sources of Android 14, 15 and 16 (`AppOpsService.dump`, `HistoricalRegistry`/`LegacyHistoricalRegistry`
- * `StringDumpVisitor`, `AppOpsManager.keyToString`), NOT observed on the Samsung phone.
+ * `StringDumpVisitor`, `AppOpsManager.keyToString`), NOT observed on a physical device.
  *
  * 1. History (`dumpsys appops --history --op SEND_SMS`), the only place with COUNTS:
  * ```
@@ -159,7 +159,7 @@ object AppOpsParser {
             // PASSIVE: the service does not count accesses itself (`incrementOpAccessedCount` only acts in ACTIVE mode).
             if (mode?.contains("DISABLED") == true || mode?.contains("PASSIVE") == true) return HistoryResult.Failed(OpsFailure.HISTORY_DISABLED, mode)
             // The service always prints the in-memory snapshot first: none at all means another layout.
-            if (snapshots == 0) return HistoryResult.Failed(OpsFailure.UNRECOGNIZED, "History: sans snapshot")
+            if (snapshots == 0) return HistoryResult.Failed(OpsFailure.UNRECOGNIZED, "History: no snapshot")
             return HistoryResult.Ok(total.mapValues { (p, t) -> OpCounts(t, background[p] ?: 0L, rejected[p] ?: 0L) }, snapshots, mode)
         } catch (e: Exception) {
             return HistoryResult.Failed(OpsFailure.UNRECOGNIZED, e.toString())

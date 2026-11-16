@@ -70,7 +70,7 @@ func Load(dir string) (*CA, error) {
 	}
 	cb, _ := pem.Decode(certPEM)
 	if cb == nil || cb.Type != "CERTIFICATE" {
-		return nil, fmt.Errorf("%s : PEM de certificat invalide", certPath(dir))
+		return nil, fmt.Errorf("%s: invalid certificate PEM", certPath(dir))
 	}
 	cert, err := x509.ParseCertificate(cb.Bytes)
 	if err != nil {
@@ -78,7 +78,7 @@ func Load(dir string) (*CA, error) {
 	}
 	kb, _ := pem.Decode(keyPEM)
 	if kb == nil || kb.Type != "PRIVATE KEY" {
-		return nil, fmt.Errorf("%s : PEM de clé PKCS#8 invalide", keyPath(dir))
+		return nil, fmt.Errorf("%s: invalid PKCS#8 key PEM", keyPath(dir))
 	}
 	k, err := x509.ParsePKCS8PrivateKey(kb.Bytes)
 	if err != nil {
@@ -86,7 +86,7 @@ func Load(dir string) (*CA, error) {
 	}
 	key, ok := k.(*ecdsa.PrivateKey)
 	if !ok || !key.PublicKey.Equal(cert.PublicKey) {
-		return nil, fmt.Errorf("%s : la clé ne correspond pas au certificat de l'AC", keyPath(dir))
+		return nil, fmt.Errorf("%s: the key does not match the CA certificate", keyPath(dir))
 	}
 	return &CA{Cert: cert, CertPEM: certPEM, key: key}, nil
 }
@@ -208,7 +208,7 @@ func Fingerprint(der []byte) string {
 func FingerprintPEM(certPEM []byte) (string, error) {
 	b, _ := pem.Decode(certPEM)
 	if b == nil || b.Type != "CERTIFICATE" {
-		return "", errors.New("certificat PEM invalide")
+		return "", errors.New("invalid certificate PEM")
 	}
 	return Fingerprint(b.Bytes), nil
 }
@@ -217,7 +217,7 @@ func FingerprintPEM(certPEM []byte) (string, error) {
 func NotAfterPEM(certPEM []byte) (time.Time, error) {
 	b, _ := pem.Decode(certPEM)
 	if b == nil || b.Type != "CERTIFICATE" {
-		return time.Time{}, errors.New("certificat PEM invalide")
+		return time.Time{}, errors.New("invalid certificate PEM")
 	}
 	c, err := x509.ParseCertificate(b.Bytes)
 	if err != nil {

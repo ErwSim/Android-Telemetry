@@ -18,7 +18,7 @@ import org.junit.Test
 class PostureAndDnsTest {
     private val base = linkedMapOf<String, Any?>(
         "security_patch" to "2026-10-01", "patch_age_days" to 45, "encrypted" to true, "lock_secure" to true,
-        "adb_enabled" to false, "private_dns_mode" to "hostname", "private_dns_host" to "dns.exemple.fr",
+        "adb_enabled" to false, "private_dns_mode" to "hostname", "private_dns_host" to "dns.example.org",
         "device_owner" to true, "user_ca_certs" to emptyList<String>(), "play_protect" to null,
     )
 
@@ -84,22 +84,22 @@ class PostureAndDnsTest {
 
     @Test
     fun `DoT query and response checks`() {
-        val q = DnsMessage.query(0x1234, "dns.exemple.fr")
+        val q = DnsMessage.query(0x1234, "dns.example.org")
         assertEquals(0x12, q[0].toInt())
         assertEquals(0x34, q[1].toInt())
-        // Header (12) + 3dns 7exemple 2fr 0 (16) + type + class (4).
-        assertEquals(12 + 16 + 4, q.size)
+        // Header (12) + 3dns 7example 3org 0 (17) + type + class (4).
+        assertEquals(12 + 17 + 4, q.size)
         val framed = DnsMessage.frame(q)
         assertEquals(q.size, (framed[0].toInt() shl 8) or framed[1].toInt())
         fun response(id: Int, flags2: Int) = byteArrayOf((id shr 8).toByte(), id.toByte(), 0x81.toByte(), flags2.toByte()) + ByteArray(8)
         assertNull(DnsMessage.checkResponse(response(0x1234, 0x80), 0x1234))
         assertNull(DnsMessage.checkResponse(response(0x1234, 0x83), 0x1234)) // NXDOMAIN still proves the server resolves
         assertTrue(DnsMessage.checkResponse(response(0x1234, 0x85), 0x1234)!!.startsWith("REFUSED"))
-        assertTrue(DnsMessage.checkResponse(response(0x9999, 0x80), 0x1234)!!.contains("identifiant"))
-        assertTrue(DnsMessage.checkResponse(ByteArray(4), 0x1234)!!.contains("tronquée"))
+        assertTrue(DnsMessage.checkResponse(response(0x9999, 0x80), 0x1234)!!.contains("ID"))
+        assertTrue(DnsMessage.checkResponse(ByteArray(4), 0x1234)!!.contains("truncated"))
     }
 
-    private val record = AppliedRecord(id = "dns", kind = ItemKind.PRIVATE_DNS, target = "dns.exemple.fr", dnsAddresses = listOf("203.0.113.5"))
+    private val record = AppliedRecord(id = "dns", kind = ItemKind.PRIVATE_DNS, target = "dns.example.org", dnsAddresses = listOf("203.0.113.5"))
 
     private fun input(
         record: AppliedRecord? = this.record, network: Boolean = true, validated: Boolean = false, probe: Boolean? = false,
@@ -136,7 +136,7 @@ class PostureAndDnsTest {
             listOf("android.permission.ACCESS_FINE_LOCATION", "android.permission.BLUETOOTH_SCAN", "android.permission.ACCESS_BACKGROUND_LOCATION"),
             DeviceOwnerManager.pendingSelfGrants(declared, { false }, emptySet()),
         )
-        // Revoked by the owner after the first automatic grant: not granted again behind his back.
+        // Revoked by the user after the first automatic grant: not granted again behind his back.
         assertEquals(
             listOf("android.permission.BLUETOOTH_SCAN"),
             DeviceOwnerManager.pendingSelfGrants(declared, { false }, setOf("android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_BACKGROUND_LOCATION")),

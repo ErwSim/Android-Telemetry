@@ -1,7 +1,7 @@
 // Package command implements the remote commands of contract §8: the closed list of
 // command types, the strict validation of the payload relayed by the collector, and
 // the key derivation and signature of sensitive commands (used by the tests and the
-// simulated agent: the collector itself never knows the command code).
+// simulated agent: the collector itself never knows the command passphrase).
 package command
 
 import (
@@ -38,7 +38,7 @@ const (
 const (
 	MaxPayloadBytes   = 4096
 	MaxValidity       = 30 * 24 * time.Hour
-	MaxWipeValidity   = 24 * time.Hour   // contract §8, security review of v1.1: wipe is valid 24 h at most
+	MaxWipeValidity   = 24 * time.Hour   // contract §8: wipe is valid 24 h at most
 	MaxIssueSkew      = 10 * time.Minute // |issued_at - server time| accepted at creation
 	MaxMessageUnits   = 200              // lock message, in UTF-16 code units (JavaScript and Kotlin String.length)
 	PBKDF2Iterations  = 600000
@@ -119,35 +119,35 @@ type Payload struct {
 // The device and the current time are checked by the caller (CheckTime).
 func Parse(payload string) (*Payload, error) {
 	if len(payload) == 0 || len(payload) > MaxPayloadBytes {
-		return nil, fail("invalid_payload", "payload : 1 à %d octets", MaxPayloadBytes)
+		return nil, fail("invalid_payload", "payload: 1 to %d bytes", MaxPayloadBytes)
 	}
 	if !utf8.ValidString(payload) || strings.ContainsRune(payload, utf8.RuneError) {
 		// U+FFFD also flags a lone surrogate replaced while decoding the request: the bytes
 		// would no longer be those that were signed.
-		return nil, fail("invalid_payload", "payload : UTF-8 invalide")
+		return nil, fail("invalid_payload", "payload: invalid UTF-8")
 	}
 	fields, err := StrictObject([]byte(payload))
 	if err != nil {
-		return nil, fail("invalid_payload", "payload : %s", err.Error())
+		return nil, fail("invalid_payload", "payload: %s", err.Error())
 	}
 	allowed := map[string]bool{"v": true, "id": true, "device_id": true, "type": true, "params": true, "issued_at": true, "expires_at": true}
 	for k := range fields {
 		if !allowed[k] {
-			return nil, fail("invalid_payload", "payload : champ inconnu %q", k)
+			return nil, fail("invalid_payload", "payload: unknown field %q", k)
 		}
 	}
 	if v, ok := fields["v"]; !ok || string(v) != "1" {
-		return nil, fail("invalid_payload", "payload : v doit valoir 1")
+		return nil, fail("invalid_payload", "payload: v must be 1")
 	}
 	p := &Payload{}
 	str := func(k string) (string, error) {
 		raw, ok := fields[k]
 		if !ok {
-			return "", fail("invalid_payload", "payload : champ %s manquant", k)
+			return "", fail("invalid_payload", "payload: field %s missing", k)
 		}
 		var s string
 		if len(raw) == 0 || raw[0] != '"' || json.Unmarshal(raw, &s) != nil {
-			return "", fail("invalid_payload", "payload : %s doit être une chaîne", k)
+			return "", fail("invalid_payload", "payload: %s must be a string", k)
 		}
 		return s, nil
 	}
@@ -155,7 +155,7 @@ func Parse(payload string) (*Payload, error) {
 		return nil, err
 	}
 	if !model.ValidULID(p.ID) {
-		return nil, fail("invalid_payload", "payload : id doit être un ULID (26 caractères, majuscules)")
+		return nil, fail("invalid_payload", "payload: id must be a ULID (26 upper-case characters)")
 	}
 	if p.DeviceID, err = str("device_id"); err != nil {
 		return nil, err
@@ -165,7 +165,7 @@ func Parse(payload string) (*Payload, error) {
 	}
 	spec, ok := specs[p.Type]
 	if !ok {
-		return nil, fail("unknown_type", "type de commande inconnu (liste fermée : %s)", strings.Join(Types(), ", "))
+		return nil, fail("unknown_type", "unknown command type (closed list: %s)", strings.Join(Types(), ", "))
 	}
 	if p.Params, err = parseParams(fields["params"], spec); err != nil {
 		return nil, err
@@ -177,7 +177,7 @@ func Parse(payload string) (*Payload, error) {
 		}
 		t, perr := time.Parse(time.RFC3339Nano, s)
 		if perr != nil || len(s) > 40 {
-			return nil, fail("invalid_payload", "payload : %s doit être une date RFC 3339", k)
+			return nil, fail("invalid_payload", "payload: %s must be an RFC 3339 date", k)
 		}
 		if k == "issued_at" {
 			p.IssuedAt = t
@@ -186,13 +186,13 @@ func Parse(payload string) (*Payload, error) {
 		}
 	}
 	if !p.ExpiresAt.After(p.IssuedAt) {
-		return nil, fail("invalid_validity", "expires_at doit suivre issued_at")
+		return nil, fail("invalid_validity", "expires_at must be after issued_at")
 	}
 	if p.ExpiresAt.Sub(p.IssuedAt) > MaxValidity {
-		return nil, fail("invalid_validity", "durée de validité de 30 jours au plus")
+		return nil, fail("invalid_validity", "validity of 30 days at most")
 	}
 	if p.Type == TypeWipe && p.ExpiresAt.Sub(p.IssuedAt) > MaxWipeValidity {
-		return nil, fail("invalid_validity", "wipe : durée de validité de 24 heures au plus")
+		return nil, fail("invalid_validity", "wipe: validity of 24 hours at most")
 	}
 	return p, nil
 }
@@ -201,10 +201,10 @@ func Parse(payload string) (*Payload, error) {
 // issued_at within MaxIssueSkew of now (an old signed payload cannot be replayed later).
 func (p *Payload) CheckTime(now time.Time) error {
 	if !p.ExpiresAt.After(now) {
-		return fail("expired", "commande déjà expirée")
+		return fail("expired", "command already expired")
 	}
 	if d := p.IssuedAt.Sub(now); d > MaxIssueSkew || d < -MaxIssueSkew {
-		return fail("invalid_validity", "issued_at doit être à moins de 10 minutes de l'heure du serveur")
+		return fail("invalid_validity", "issued_at must be within 10 minutes of the server time")
 	}
 	return nil
 }
@@ -216,18 +216,18 @@ func parseParams(raw json.RawMessage, spec typeSpec) (map[string]any, error) {
 	}
 	fields, err := StrictObject(raw)
 	if err != nil {
-		return nil, fail("bad_params", "params doit être un objet JSON (%s)", err.Error())
+		return nil, fail("bad_params", "params must be a JSON object (%s)", err.Error())
 	}
 	for k, v := range fields {
 		ps, ok := spec.params[k]
 		if !ok {
-			return nil, fail("bad_params", "paramètre inconnu %q pour ce type", k)
+			return nil, fail("bad_params", "unknown parameter %q for this type", k)
 		}
 		switch ps.kind {
 		case pInt:
 			n, ok := jsonInt(v)
 			if !ok || n < ps.min || n > ps.max {
-				return nil, fail("bad_params", "%s : entier entre %d et %d attendu", k, ps.min, ps.max)
+				return nil, fail("bad_params", "%s: integer between %d and %d expected", k, ps.min, ps.max)
 			}
 			out[k] = n
 		case pBool:
@@ -237,19 +237,19 @@ func parseParams(raw json.RawMessage, spec typeSpec) (map[string]any, error) {
 			case "false":
 				out[k] = false
 			default:
-				return nil, fail("bad_params", "%s : booléen attendu", k)
+				return nil, fail("bad_params", "%s: boolean expected", k)
 			}
 		case pString:
 			var s string
 			if len(v) == 0 || v[0] != '"' || json.Unmarshal(v, &s) != nil {
-				return nil, fail("bad_params", "%s : chaîne attendue", k)
+				return nil, fail("bad_params", "%s: string expected", k)
 			}
 			if int64(len(utf16.Encode([]rune(s)))) > ps.max {
-				return nil, fail("bad_params", "%s : %d caractères au plus", k, ps.max)
+				return nil, fail("bad_params", "%s: %d characters at most", k, ps.max)
 			}
 			for _, r := range s {
 				if (unicode.IsControl(r) && r != '\n') || r == ' ' || r == ' ' {
-					return nil, fail("bad_params", "%s : caractère de contrôle interdit", k)
+					return nil, fail("bad_params", "%s: control character not allowed", k)
 				}
 			}
 			out[k] = s
@@ -291,31 +291,31 @@ func StrictObject(raw []byte) (map[string]json.RawMessage, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	tok, err := dec.Token()
 	if err != nil || tok != json.Delim('{') {
-		return nil, errors.New("objet JSON attendu")
+		return nil, errors.New("JSON object expected")
 	}
 	out := map[string]json.RawMessage{}
 	for dec.More() {
 		kt, err := dec.Token()
 		if err != nil {
-			return nil, errors.New("JSON invalide")
+			return nil, errors.New("invalid JSON")
 		}
 		k, _ := kt.(string)
 		if _, dup := out[k]; dup {
-			return nil, fmt.Errorf("clé %q en double", k)
+			return nil, fmt.Errorf("duplicate key %q", k)
 		}
 		start := dec.InputOffset()
 		if err := skipBounded(dec, 32); err != nil {
-			return nil, errors.New("JSON invalide")
+			return nil, errors.New("invalid JSON")
 		}
 		v := bytes.TrimSpace(raw[start:dec.InputOffset()])
 		v = bytes.TrimSpace(bytes.TrimPrefix(v, []byte(":")))
 		out[k] = json.RawMessage(v)
 	}
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('}') {
-		return nil, errors.New("objet JSON mal terminé")
+		return nil, errors.New("JSON object not properly terminated")
 	}
 	if _, err := dec.Token(); err != io.EOF {
-		return nil, errors.New("données après l'objet JSON")
+		return nil, errors.New("data after the JSON object")
 	}
 	return out, nil
 }
@@ -330,11 +330,11 @@ func skipBounded(dec *json.Decoder, maxDepth int) error {
 		return nil
 	}
 	if d == '}' || d == ']' {
-		return errors.New("délimiteur inattendu")
+		return errors.New("unexpected delimiter")
 	}
 	for depth := 1; depth > 0; {
 		if depth > maxDepth {
-			return errors.New("imbrication excessive")
+			return errors.New("nesting too deep")
 		}
 		tok, err := dec.Token()
 		if err != nil {
@@ -352,7 +352,7 @@ func skipBounded(dec *json.Decoder, maxDepth int) error {
 }
 
 // ValidSignatureFormat reports whether sig is the padded standard base64 of 32 bytes.
-// The collector cannot verify the signature itself (it does not know the code).
+// The collector cannot verify the signature itself (it does not know the passphrase).
 func ValidSignatureFormat(sig string) bool {
 	if len(sig) != SignatureEncLen {
 		return false
@@ -361,7 +361,7 @@ func ValidSignatureFormat(sig string) bool {
 	return err == nil && len(b) == KeyBytes
 }
 
-// DeriveKey computes K = PBKDF2-HMAC-SHA256(code, "watchpost-cmd-v1:" + device_id, 600000, 32).
+// DeriveKey computes K = PBKDF2-HMAC-SHA256(passphrase, "watchpost-cmd-v1:" + device_id, 600000, 32).
 func DeriveKey(code, deviceID string) ([]byte, error) {
 	return pbkdf2.Key(sha256.New, code, []byte(SaltPrefix+deviceID), PBKDF2Iterations, KeyBytes)
 }

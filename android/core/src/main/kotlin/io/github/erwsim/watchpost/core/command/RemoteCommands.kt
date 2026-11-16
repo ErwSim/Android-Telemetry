@@ -10,12 +10,12 @@ import java.util.concurrent.ConcurrentHashMap
 
 /** Local settings of the command channel (changed only in the app; each change emits `agent.config_changed`). */
 object CommandSettings {
-    /** Off by default: the owner switches the channel on in the app. */
+    /** Off by default: the user switches the channel on in the app. */
     val ENABLED = SettingKey.BoolKey("commands.enabled", false)
     val MODE = SettingKey.ChoiceKey("commands.mode", ChannelMode.STREAM.wire, ChannelMode.entries.map { it.wire })
     val POLL_INTERVAL_MIN = SettingKey.IntKey("commands.poll_interval_min", 5, 1, 15)
 
-    /** "Autoriser l'effacement à distance": off by default, switched on only after an explicit confirmation. */
+    /** "Allow remote erase": off by default, switched on only after an explicit confirmation. */
     val ALLOW_WIPE = SettingKey.BoolKey("commands.allow_wipe", false)
 
     val KEYS = setOf(ENABLED.name, MODE.name, POLL_INTERVAL_MIN.name, ALLOW_WIPE.name)

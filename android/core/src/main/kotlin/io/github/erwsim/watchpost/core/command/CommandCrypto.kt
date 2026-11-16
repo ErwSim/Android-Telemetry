@@ -21,7 +21,7 @@ object CommandCrypto {
     const val SALT_PREFIX = "watchpost-cmd-v1:"
     private const val HMAC = "HmacSHA256"
 
-    /** Minimum length of the command code, in Unicode code points (as the console counts it). */
+    /** Minimum length of the command passphrase, in Unicode code points (as the console counts it). */
     const val MIN_CODE_CODE_POINTS = 12
 
     fun codeLength(code: String): Int = code.codePointCount(0, code.length)

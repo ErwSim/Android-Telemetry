@@ -53,8 +53,8 @@ class NoiseFilterTest {
         // Ongoing download, then "Download complete" (not ongoing any more): reported once.
         assertEquals(Verdict.EMIT, f.onPosted(seen("dl", category = "progress", ongoing = true, text = "1 %"), emptySet(), 0))
         assertEquals(Verdict.ONGOING_UPDATE, f.onPosted(seen("dl", category = "progress", ongoing = true, text = "50 %"), emptySet(), 1_000))
-        assertEquals(Verdict.EMIT, f.onPosted(seen("dl", category = null, text = "Terminé"), emptySet(), 2_000))
-        assertEquals(Verdict.DUPLICATE, f.onPosted(seen("dl", category = null, text = "Terminé"), emptySet(), 3_000))
+        assertEquals(Verdict.EMIT, f.onPosted(seen("dl", category = null, text = "Finished"), emptySet(), 2_000))
+        assertEquals(Verdict.DUPLICATE, f.onPosted(seen("dl", category = null, text = "Finished"), emptySet(), 3_000))
         assertTrue(NoiseFilter.isPersistent(ongoing = false, foregroundService = true, category = null))
         assertTrue(NoiseFilter.isPersistent(ongoing = false, foregroundService = false, category = "stopwatch"))
     }

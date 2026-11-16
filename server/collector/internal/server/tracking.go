@@ -61,16 +61,16 @@ func newTrackingService(s *Server) (*trackingService, error) {
 	cfg := s.cfg
 	own := map[string]string{}
 	if u, err := url.Parse(cfg.PublicIngestURL); err == nil && u.Hostname() != "" {
-		own[u.Hostname()] = "envoi des événements et commandes Watchpost (serveur d'ingestion)"
+		own[u.Hostname()] = "sending Watchpost events and commands (ingestion server)"
 	}
 	if cfg.PrivateDNSHost != "" {
-		own[cfg.PrivateDNSHost] = "DNS privé du téléphone (serveur Watchpost) : plus aucune résolution de noms"
+		own[cfg.PrivateDNSHost] = "the phone's private DNS (Watchpost server): no name resolution at all"
 	}
 	t := &trackingService{s: s, classifier: tracking.Default(), essentials: tracking.NewEssentials(own), poll: cfg.AdGuardPoll}
 	if cfg.AdGuardLevelsFile != "" {
 		l, err := tracking.LoadLevels(cfg.AdGuardLevelsFile)
 		if err != nil {
-			return nil, fmt.Errorf("WATCHPOST_ADGUARD_LEVELS_FILE : %w", err)
+			return nil, fmt.Errorf("WATCHPOST_ADGUARD_LEVELS_FILE: %w", err)
 		}
 		t.levels = l
 	}
@@ -78,7 +78,7 @@ func newTrackingService(s *Server) (*trackingService, error) {
 	if cfg.AdGuardURL != "" {
 		c, err := adguard.New(cfg.AdGuardURL, cfg.AdGuardUser, cfg.AdGuardPassword)
 		if err != nil {
-			return nil, fmt.Errorf("WATCHPOST_ADGUARD_URL : %w", err)
+			return nil, fmt.Errorf("WATCHPOST_ADGUARD_URL: %w", err)
 		}
 		t.client = c
 	}
@@ -88,7 +88,7 @@ func newTrackingService(s *Server) (*trackingService, error) {
 // StartTracking starts reading the AdGuard Home query log (when configured) until ctx is canceled.
 func (s *Server) StartTracking(ctx context.Context) {
 	if s.tracking.client == nil {
-		s.log.Info("vue pistage : AdGuard Home non configuré (WATCHPOST_ADGUARD_URL), vue construite depuis net.dns seul")
+		s.log.Info("tracking view: AdGuard Home not configured (WATCHPOST_ADGUARD_URL), view built from net.dns alone")
 		return
 	}
 	go s.tracking.run(ctx)
@@ -119,9 +119,9 @@ func (t *trackingService) run(ctx context.Context) {
 			t.lastErr = err.Error()
 			t.mu.Unlock()
 			if first {
-				t.s.log.Warn("vue pistage : AdGuard Home injoignable ou en erreur (nouvel essai à chaque relevé)", "err", err)
+				t.s.log.Warn("tracking view: AdGuard Home unreachable or failing (retrying at each poll)", "err", err)
 			} else {
-				t.s.log.Debug("vue pistage : AdGuard Home toujours en erreur", "err", err)
+				t.s.log.Debug("tracking view: AdGuard Home still failing", "err", err)
 			}
 		}
 		timer.Reset(t.poll)
@@ -139,7 +139,7 @@ func (t *trackingService) pollOnce(ctx context.Context) error {
 	}
 	t.mu.Lock()
 	if t.lastErr != "" {
-		t.s.log.Info("vue pistage : AdGuard Home de nouveau joignable")
+		t.s.log.Info("tracking view: AdGuard Home reachable again")
 	}
 	t.lastErr = ""
 	t.mu.Unlock()
@@ -247,7 +247,7 @@ func (t *trackingService) readLog(ctx context.Context, budget int) error {
 			if !done {
 				gaps = append([]logGap{g}, oldGaps...)
 				if len(gaps) > agMaxGaps {
-					t.s.log.Warn("vue pistage : trop de plages non lues, la plus ancienne est abandonnée", "from", gaps[len(gaps)-1].Lo, "to", gaps[len(gaps)-1].Hi)
+					t.s.log.Warn("tracking view: too many unread ranges, the oldest is dropped", "from", gaps[len(gaps)-1].Lo, "to", gaps[len(gaps)-1].Hi)
 					gaps = gaps[:agMaxGaps]
 				}
 			}
@@ -345,7 +345,7 @@ func (t *trackingService) walk(ctx context.Context, g logGap, budget *int, next 
 			done = done || short || len(res.times) == 0
 		} else if len(res.times) == 0 && tries >= len(recent) {
 			done = true
-			t.s.log.Debug("vue pistage : fin du journal d'AdGuard Home atteinte avant la limite basse de la plage", "cursor", recent[len(recent)-1], "lo", g.Lo)
+			t.s.log.Debug("tracking view: end of the AdGuard Home log reached before the lower bound of the range", "cursor", recent[len(recent)-1], "lo", g.Lo)
 		}
 		if err := t.s.st.ApplyTrackingPage(ctx, res.rows, agStateKey, stateJSON(next(remaining(), done))); err != nil {
 			return err
@@ -466,23 +466,23 @@ func classifyReason(it *adguard.QueryLogItem, names map[int64]string) (bool, str
 		if listID == 0 {
 			if ov, err := tracking.ParseOverrides([]string{tracking.BlockBegin, text, tracking.BlockEnd}); err == nil && len(ov) == 1 {
 				if allow {
-					return "Autorisation manuelle (Watchpost)"
+					return "Manual allow (Watchpost)"
 				}
-				return "Blocage manuel (Watchpost)"
+				return "Manual block (Watchpost)"
 			}
 			if text != "" {
-				return "Règle personnalisée : " + text
+				return "Custom rule: " + text
 			}
-			return "Règle personnalisée"
+			return "Custom rule"
 		}
 		name := names[listID]
 		if name == "" {
-			name = "n° " + strconv.FormatInt(listID, 10)
+			name = "no. " + strconv.FormatInt(listID, 10)
 		}
 		if allow {
-			return "Liste d'autorisation : " + clipText(name, 120)
+			return "Allowlist: " + clipText(name, 120)
 		}
-		return "Liste : " + clipText(name, 120)
+		return "List: " + clipText(name, 120)
 	}
 	switch it.Reason {
 	case "FilteredBlackList":
@@ -490,17 +490,17 @@ func classifyReason(it *adguard.QueryLogItem, names map[int64]string) (bool, str
 	case "NotFilteredWhiteList":
 		return false, ruleReason(true)
 	case "FilteredBlockedService":
-		return true, "Service bloqué : " + clipText(it.ServiceName, 80)
+		return true, "Blocked service: " + clipText(it.ServiceName, 80)
 	case "FilteredSafeBrowsing":
-		return true, "Navigation sécurisée (site dangereux)"
+		return true, "Safe Browsing (dangerous site)"
 	case "FilteredParental":
-		return true, "Contrôle parental"
+		return true, "Parental control"
 	case "FilteredInvalid":
-		return true, "Requête invalide"
+		return true, "Invalid request"
 	case "FilteredSafeSearch":
-		return false, "Recherche sécurisée"
+		return false, "Safe search"
 	case "Rewrite", "RewriteEtcHosts", "RewriteRule":
-		return false, "Réécriture DNS"
+		return false, "DNS rewrite"
 	}
 	return false, ""
 }
@@ -643,7 +643,7 @@ func decodeDomainCursor(c string) (int64, string, bool) {
 func (s *Server) publisherParam(v url.Values) (string, error) {
 	p := v.Get("publisher")
 	if p != "" && !s.tracking.classifier.Valid(p) {
-		return "", paramErr("invalid_parameter", "publisher inconnu")
+		return "", paramErr("invalid_parameter", "unknown publisher")
 	}
 	return p, nil
 }
@@ -662,7 +662,7 @@ func (s *Server) handleTrackingDomains(w http.ResponseWriter, r *http.Request) {
 	}
 	status := v.Get("status")
 	if status != "" && status != "all" && status != tracking.StatusBlocked && status != tracking.StatusAllowed {
-		s.fail(w, paramErr("invalid_parameter", "status : blocked, allowed ou all"))
+		s.fail(w, paramErr("invalid_parameter", "status: blocked, allowed or all"))
 		return
 	}
 	limit, err := intParam(v, "limit", 50, 1, 200)
@@ -672,7 +672,7 @@ func (s *Server) handleTrackingDomains(w http.ResponseWriter, r *http.Request) {
 	}
 	search := strings.ToLower(strings.TrimSpace(v.Get("q")))
 	if len(search) > 100 {
-		s.fail(w, paramErr("invalid_parameter", "paramètre q : 100 octets au plus"))
+		s.fail(w, paramErr("invalid_parameter", "parameter q: 100 bytes at most"))
 		return
 	}
 	var hasCursor bool
@@ -680,7 +680,7 @@ func (s *Server) handleTrackingDomains(w http.ResponseWriter, r *http.Request) {
 	var cd string
 	if c := v.Get("cursor"); c != "" {
 		if cq, cd, hasCursor = decodeDomainCursor(c); !hasCursor {
-			s.fail(w, paramErr("invalid_parameter", "curseur invalide"))
+			s.fail(w, paramErr("invalid_parameter", "invalid cursor"))
 			return
 		}
 	}
@@ -759,12 +759,12 @@ func (s *Server) handleTrackingApps(w http.ResponseWriter, r *http.Request) {
 func readStrictBody(w http.ResponseWriter, r *http.Request, allowed ...string) (map[string]json.RawMessage, bool) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4096))
 	if err != nil {
-		writeError(w, http.StatusRequestEntityTooLarge, "too_large", "requête trop volumineuse")
+		writeError(w, http.StatusRequestEntityTooLarge, "too_large", "request too large")
 		return nil, false
 	}
 	fields, err := command.StrictObject(body)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_json", "objet JSON attendu : "+err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_json", "JSON object expected: "+err.Error())
 		return nil, false
 	}
 	for k := range fields {
@@ -773,7 +773,7 @@ func readStrictBody(w http.ResponseWriter, r *http.Request, allowed ...string) (
 			ok = ok || a == k
 		}
 		if !ok {
-			writeError(w, http.StatusBadRequest, "invalid_json", "champ inconnu : "+k)
+			writeError(w, http.StatusBadRequest, "invalid_json", "unknown field: "+k)
 			return nil, false
 		}
 	}
@@ -791,15 +791,15 @@ func jsonString(raw json.RawMessage) (string, bool) {
 func (s *Server) adguardUnavailable(w http.ResponseWriter) bool {
 	if !s.tracking.available() {
 		w.Header().Set("Retry-After", "60")
-		writeError(w, http.StatusServiceUnavailable, "adguard_unavailable", "AdGuard Home non configuré ou injoignable")
+		writeError(w, http.StatusServiceUnavailable, "adguard_unavailable", "AdGuard Home not configured or unreachable")
 		return true
 	}
 	return false
 }
 
 func (s *Server) adguardFailed(w http.ResponseWriter, what string, err error) {
-	s.log.Error("vue pistage : "+what+" impossible dans AdGuard Home", "err", err)
-	writeError(w, http.StatusBadGateway, "adguard_error", "AdGuard Home a refusé ou n'a pas répondu ("+what+")")
+	s.log.Error("tracking view: "+what+" failed in AdGuard Home", "err", err)
+	writeError(w, http.StatusBadGateway, "adguard_error", "AdGuard Home refused or did not answer ("+what+")")
 }
 
 func (s *Server) handleTrackingOverride(w http.ResponseWriter, r *http.Request) {
@@ -817,17 +817,17 @@ func (s *Server) handleTrackingOverride(w http.ResponseWriter, r *http.Request) 
 			force = true
 		case "false", "null":
 		default:
-			writeError(w, http.StatusBadRequest, "invalid_json", "force : booléen attendu")
+			writeError(w, http.StatusBadRequest, "invalid_json", "force: boolean expected")
 			return
 		}
 	}
 	domain = tracking.Normalize(domain)
 	if !ok1 || !tracking.ValidDomain(domain) {
-		writeError(w, http.StatusBadRequest, "invalid_domain", "nom de domaine invalide (lettres, chiffres, tirets, points ; forme xn-- pour les noms internationaux)")
+		writeError(w, http.StatusBadRequest, "invalid_domain", "invalid domain name (letters, digits, hyphens, dots; xn-- form for international names)")
 		return
 	}
 	if !ok2 || (action != tracking.ActionBlock && action != tracking.ActionAllow && action != tracking.ActionDefault) {
-		writeError(w, http.StatusBadRequest, "invalid_action", "action : block, allow ou default")
+		writeError(w, http.StatusBadRequest, "invalid_action", "action: block, allow or default")
 		return
 	}
 	if action == tracking.ActionBlock && !force {
@@ -838,7 +838,7 @@ func (s *Server) handleTrackingOverride(w http.ResponseWriter, r *http.Request) 
 			}
 			writeJSON(w, http.StatusConflict, map[string]any{
 				"error":   "essential_domain",
-				"message": "bloquer " + domain + " casserait : " + strings.Join(parts, " ; ") + ". Confirmez avec \"force\": true.",
+				"message": "blocking " + domain + " would break: " + strings.Join(parts, "; ") + ". Confirm with \"force\": true.",
 				"breaks":  broken,
 			})
 			return
@@ -854,7 +854,7 @@ func (s *Server) handleTrackingOverride(w http.ResponseWriter, r *http.Request) 
 	defer cancel()
 	st, err := t.client.FilteringStatus(ctx)
 	if err != nil {
-		s.adguardFailed(w, "lecture des règles", err)
+		s.adguardFailed(w, "reading the rules", err)
 		return
 	}
 	previous := ""
@@ -863,7 +863,7 @@ func (s *Server) handleTrackingOverride(w http.ResponseWriter, r *http.Request) 
 	}
 	rules, changed, err := tracking.ApplyOverride(st.UserRules, domain, action)
 	if errors.Is(err, tracking.ErrCorruptBlock) {
-		writeError(w, http.StatusConflict, "corrupt_rules", err.Error()+" : corrigez-le dans AdGuard Home")
+		writeError(w, http.StatusConflict, "corrupt_rules", err.Error()+": fix it in AdGuard Home")
 		return
 	}
 	if err != nil {
@@ -872,7 +872,7 @@ func (s *Server) handleTrackingOverride(w http.ResponseWriter, r *http.Request) 
 	}
 	if changed {
 		if err := t.client.SetRules(ctx, rules); err != nil {
-			s.adguardFailed(w, "écriture des règles", err)
+			s.adguardFailed(w, "writing the rules", err)
 			return
 		}
 		st.UserRules = rules
@@ -891,7 +891,7 @@ func (s *Server) handleTrackingOverride(w http.ResponseWriter, r *http.Request) 
 		s.trackingEvent(ctx, "tracking.override", sev, data)
 	}
 	t.setStatus(st)
-	s.log.Info("vue pistage : règle modifiée", "domain", domain, "action", action, "force", force, "changed", changed, "user", user)
+	s.log.Info("tracking view: rule changed", "domain", domain, "action", action, "force", force, "changed", changed, "user", user)
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -913,7 +913,7 @@ func levelRank(key string) int {
 func (s *Server) trackingEvent(ctx context.Context, typ string, sev int, data map[string]any) {
 	evs, err := s.st.AddServerEvents(ctx, typ, sev, data, s.now())
 	if err != nil {
-		s.log.Error("vue pistage : événement non enregistré", "type", typ, "err", err)
+		s.log.Error("tracking view: event not recorded", "type", typ, "err", err)
 		return
 	}
 	s.published(evs)
@@ -936,11 +936,11 @@ func (s *Server) handleTrackingLevelPut(w http.ResponseWriter, r *http.Request) 
 	level, ok := jsonString(fields["level"])
 	t := s.tracking
 	if t.levels == nil {
-		writeError(w, http.StatusServiceUnavailable, "levels_not_configured", "correspondance niveaux → listes absente (WATCHPOST_ADGUARD_LEVELS_FILE)")
+		writeError(w, http.StatusServiceUnavailable, "levels_not_configured", "level-to-list mapping missing (WATCHPOST_ADGUARD_LEVELS_FILE)")
 		return
 	}
 	if !ok || !t.levels.Has(level) {
-		writeError(w, http.StatusBadRequest, "invalid_level", "level : "+strings.Join(tracking.LevelKeys, ", "))
+		writeError(w, http.StatusBadRequest, "invalid_level", "level: "+strings.Join(tracking.LevelKeys, ", "))
 		return
 	}
 	if s.adguardUnavailable(w) {
@@ -952,7 +952,7 @@ func (s *Server) handleTrackingLevelPut(w http.ResponseWriter, r *http.Request) 
 	defer cancel()
 	st, err := t.client.FilteringStatus(ctx)
 	if err != nil {
-		s.adguardFailed(w, "lecture des listes", err)
+		s.adguardFailed(w, "reading the lists", err)
 		return
 	}
 	t.setStatus(st)
@@ -976,7 +976,7 @@ func (s *Server) handleTrackingLevelPut(w http.ResponseWriter, r *http.Request) 
 			if st, rerr := t.client.FilteringStatus(ctx); rerr == nil {
 				t.setStatus(st)
 			}
-			s.adguardFailed(w, "changement de liste ("+a.Name+")", err)
+			s.adguardFailed(w, "list change ("+a.Name+")", err)
 			return
 		}
 	}
@@ -994,7 +994,7 @@ func (s *Server) handleTrackingLevelPut(w http.ResponseWriter, r *http.Request) 
 		}
 		s.trackingEvent(ctx, "tracking.level_changed", sev, data)
 	}
-	s.log.Info("vue pistage : niveau de blocage changé", "level", level, "old", oldLevel, "changes", len(plan), "user", user)
+	s.log.Info("tracking view: blocking level changed", "level", level, "old", oldLevel, "changes", len(plan), "user", user)
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNoContent)
 }

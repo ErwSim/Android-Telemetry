@@ -10,7 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 
 /**
- * The single test reference of `docs/contrat/contrat.md` §2 and its "Précisions": every event type,
+ * The single test reference of `docs/contract/contract.md` §2 and its additional precisions: every event type,
  * its field names and the JSON type of each value. Shared by the tests of every module (testFixtures
  * of `:core`); [check] fails on an unknown type, an unknown key, a JSON null, a value of the wrong
  * type, or a value outside a closed list of the contract.
@@ -47,7 +47,7 @@ object Contract {
         "bad_params", "not_device_owner", "locked_out",
     )
 
-    /** `security.policy.action`: §2 plus the three lists of "Précisions". */
+    /** `security.policy.action`: §2 plus the three lists of the additional precisions. */
     val POLICY_ACTIONS = setOf(
         "private_dns_set", "package_disabled", "package_enabled", "permission_denied", "restriction_set", "restriction_cleared",
         "network_logging", "security_logging",
@@ -342,7 +342,7 @@ object Contract {
                 assertTrue("security.log $tag (not in the table): field '$key' must be argN", ARG_RE.matches(key))
             }
         }
-        // Success flags are booleans (contract: "les indicateurs 0/1 de réussite deviennent des booléens").
+        // Success flags are booleans (contract: the 0/1 success indicators become booleans).
         (fields["success"] as? JsonPrimitive)?.let { assertTrue("security.log $tag: success must be a boolean", !it.isString && it.content in setOf("true", "false")) }
     }
 }

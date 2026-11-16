@@ -36,7 +36,7 @@ func TestInvalid(t *testing.T) {
 		{"WATCHPOST_TRUSTED_PROXIES": "nope"},
 		{"WATCHPOST_RETENTION_DAYS": "0"},
 		{"WATCHPOST_EXPORT_KEEP": "x"},
-		{"WATCHPOST_COOKIE_SECURE": "peut-être"},
+		{"WATCHPOST_COOKIE_SECURE": "maybe"},
 		{"WATCHPOST_TILE_URL": "https://evil.example; script-src *"},
 		{"WATCHPOST_TILE_URL": "http://tiles.example.org/{z}/{x}/{y}.png"},
 		{"WATCHPOST_TILE_URL": "https://*/{z}.png"},

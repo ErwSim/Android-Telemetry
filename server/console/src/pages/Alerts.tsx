@@ -10,11 +10,11 @@ import { detectionLabel, isDetectionType } from '../lib/detections.ts';
 import { useDevice } from '../state/device.tsx';
 
 const LEVELS = [
-  { v: 0, l: 'Tous les niveaux' },
-  { v: 5, l: 'Niveau 5 et plus' },
-  { v: 7, l: 'Niveau 7 et plus' },
-  { v: 10, l: 'Niveau 10 et plus' },
-  { v: 12, l: 'Niveau 12 et plus (critique)' },
+  { v: 0, l: 'All levels' },
+  { v: 5, l: 'Level 5 and above' },
+  { v: 7, l: 'Level 7 and above' },
+  { v: 10, l: 'Level 10 and above' },
+  { v: 12, l: 'Level 12 and above (critical)' },
 ];
 
 export default function Alerts() {
@@ -29,17 +29,17 @@ export default function Alerts() {
   return (
     <>
       <div className="page-head">
-        <h1>Alertes Wazuh</h1>
+        <h1>Wazuh alerts</h1>
       </div>
       <p className="hint net-intro">
-        Cette page montre ce que <strong>Wazuh</strong> a levé comme alertes (règles et niveaux de Wazuh, tous sujets confondus). Les comportements anormaux des applications calculés
-        par Vigie (SMS en masse, domaines de menaces, micro en arrière-plan…) sont <strong>expliqués et classés sur la page <Link to="/detections">Détections</Link></strong> : Wazuh les
-        reçoit aussi, d'où leur présence ici quand il est configuré.
+        This page shows the alerts that <strong>Wazuh</strong> raised (Wazuh rules and levels, all topics combined). The abnormal application behaviours computed
+        by Watchpost (mass SMS, threat domains, background microphone...) are <strong>explained and ranked on the <Link to="/detections">Detections</Link> page</strong>: Wazuh also
+        receives them, hence their presence here when it is configured.
       </p>
       <div className="toolbar">
         <PeriodPicker ctl={ctl} />
         <label className="filter">
-          Niveau
+          Level
           <select value={level} onChange={(e) => setLevel(Number(e.target.value))}>
             {LEVELS.map((l) => (
               <option key={l.v} value={l.v}>
@@ -49,29 +49,29 @@ export default function Alerts() {
           </select>
         </label>
         <button type="button" className="btn" onClick={() => { ctl.refresh(); state.reload(); }}>
-          Actualiser
+          Refresh
         </button>
       </div>
-      <Async state={state} loadingLabel="Interrogation de Wazuh…">
+      <Async state={state} loadingLabel="Querying Wazuh…">
         {(d) =>
           !d.wazuh ? (
-            <Card title="Wazuh non configuré">
+            <Card title="Wazuh not configured">
               <p>
-                Le collecteur n'est pas relié à l'indexeur Wazuh : il n'y a donc pas d'alertes à afficher. Les événements sont
-                néanmoins collectés et consultables dans le journal.
+                The collector is not connected to the Wazuh indexer: there are therefore no alerts to display. Events are
+                still collected and can be viewed in the event log.
               </p>
               <p className="hint">
-                Pour activer cette page, renseignez <code>WATCHPOST_WAZUH_INDEXER_URL</code> (et identifiants) côté collecteur.
+                To enable this page, set <code>WATCHPOST_WAZUH_INDEXER_URL</code> (and credentials) on the collector side.
               </p>
             </Card>
           ) : d.alerts.length === 0 ? (
-            <Empty>Aucune alerte sur cette période.</Empty>
+            <Empty>No alerts for this period.</Empty>
           ) : (
             <>
               <div className="stats alert-stats">
-                <Stat label="Alertes" value={fmtNumber(d.alerts.length)} />
-                <Stat label="Niveau ≥ 10" value={fmtNumber(d.alerts.filter((a) => a.level >= 10).length)} tone={d.alerts.some((a) => a.level >= 10) ? 'bad' : undefined} />
-                <Stat label="Niveau 7-9" value={fmtNumber(d.alerts.filter((a) => a.level >= 7 && a.level < 10).length)} />
+                <Stat label="Alerts" value={fmtNumber(d.alerts.length)} />
+                <Stat label="Level ≥ 10" value={fmtNumber(d.alerts.filter((a) => a.level >= 10).length)} tone={d.alerts.some((a) => a.level >= 10) ? 'bad' : undefined} />
+                <Stat label="Level 7-9" value={fmtNumber(d.alerts.filter((a) => a.level >= 7 && a.level < 10).length)} />
               </div>
               <Card>
                 <div className="flush">
@@ -80,11 +80,11 @@ export default function Alerts() {
                       <thead>
                         <tr>
                           <th scope="col">Date</th>
-                          <th scope="col">Niveau</th>
-                          <th scope="col">Règle</th>
+                          <th scope="col">Level</th>
+                          <th scope="col">Rule</th>
                           <th scope="col">Description</th>
                           <th scope="col" className="hide-sm">Type</th>
-                          <th scope="col" className="hide-sm">Appareil</th>
+                          <th scope="col" className="hide-sm">Device</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -100,7 +100,7 @@ export default function Alerts() {
                               {a.type && isDetectionType(a.type) && (
                                 <>
                                   {' '}
-                                  <Link to={`/detections?type=${encodeURIComponent(a.type)}`}>Voir la détection « {detectionLabel(a.type)} »</Link>
+                                  <Link to={`/detections?type=${encodeURIComponent(a.type)}`}>See the "{detectionLabel(a.type)}" detection</Link>
                                 </>
                               )}
                             </td>

@@ -33,14 +33,14 @@ func TestAgentChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Contract vector: the agent's key is K of §8, and the vector signature verifies.
-	vector := AgentCommand{ID: "01JCQ8Z3K4M5N6P7Q8R9S0T1V2", Sig: "GWiiJjYxiBHlG1lba410Zxb0kDHsINh4nS9u/GE/OaE=",
-		Payload: `{"v":1,"id":"01JCQ8Z3K4M5N6P7Q8R9S0T1V2","device_id":"dev_0123456789abcdef","type":"lock","params":{"message":"Téléphone perdu, appelez le 01 23 45 67 89"},"issued_at":"2026-11-16T10:00:00.000Z","expires_at":"2026-11-23T10:00:00.000Z"}`}
+	vector := AgentCommand{ID: "01JCQ8Z3K4M5N6P7Q8R9S0T1V2", Sig: "VVQ7B/b3fOzaG+sWd7Fqi7NKVRzdu5L3+NEIKurMXdE=",
+		Payload: `{"v":1,"id":"01JCQ8Z3K4M5N6P7Q8R9S0T1V2","device_id":"dev_0123456789abcdef","type":"lock","params":{"message":"Lost phone — please call +1 555 0100"},"issued_at":"2026-11-16T10:00:00.000Z","expires_at":"2026-11-23T10:00:00.000Z"}`}
 	if !command.Verify(a.key, vector.Payload, vector.Sig) {
 		t.Fatal("contract vector does not verify with the simulated agent's key")
 	}
 	now := time.Now()
 	ok := func(c AgentCommand) AgentCommand { return c }
-	good := signedCmd(t, a.key, dev, "lock", `{"message":"Perdu"}`, now, now.Add(time.Hour))
+	good := signedCmd(t, a.key, dev, "lock", `{"message":"Lost"}`, now, now.Add(time.Hour))
 	cases := []struct {
 		name string
 		cmd  AgentCommand
@@ -50,9 +50,9 @@ func TestAgentChecks(t *testing.T) {
 		{"signed lock", ok(good), ""},
 		{"id differs", AgentCommand{ID: model.NewULID(now), Payload: good.Payload, Sig: good.Sig}, "malformed"},
 		{"not json", AgentCommand{ID: "x", Payload: "{"}, "malformed"},
-		{"wrong device", signedCmd(t, nil, "dev_autre", "ring", `{}`, now, now.Add(time.Hour)), "wrong_device"},
+		{"wrong device", signedCmd(t, nil, "dev_other", "ring", `{}`, now, now.Add(time.Hour)), "wrong_device"},
 		{"unknown type", signedCmd(t, nil, dev, "reboot", `{}`, now, now.Add(time.Hour)), "unknown_type"},
-		{"bad signature", AgentCommand{ID: good.ID, Payload: good.Payload, Sig: command.Sign([]byte("autre clé"), good.Payload)}, "bad_signature"},
+		{"bad signature", AgentCommand{ID: good.ID, Payload: good.Payload, Sig: command.Sign([]byte("other key"), good.Payload)}, "bad_signature"},
 		{"unsigned lock", AgentCommand{ID: good.ID, Payload: good.Payload}, "bad_signature"},
 		{"wipe not allowed", signedCmd(t, a.key, dev, "wipe", `{}`, now, now.Add(time.Hour)), "disabled"},
 		{"expired", signedCmd(t, nil, dev, "ring", `{}`, now.Add(-time.Hour), now.Add(-6*time.Minute)), "expired"},

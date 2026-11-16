@@ -15,7 +15,7 @@ import io.github.erwsim.watchpost.policy.engine.AppliedRecord
 import io.github.erwsim.watchpost.policy.engine.CatalogItem
 import io.github.erwsim.watchpost.policy.engine.Dpm
 import io.github.erwsim.watchpost.policy.engine.EngineReport
-import io.github.erwsim.watchpost.policy.engine.JournalEntry
+import io.github.erwsim.watchpost.policy.engine.ActionLogEntry
 import io.github.erwsim.watchpost.policy.engine.PlannedChange
 import io.github.erwsim.watchpost.policy.engine.PolicyCatalog
 import io.github.erwsim.watchpost.policy.engine.PolicyEngine
@@ -41,7 +41,7 @@ data class PolicyUiState(
     val preview: List<PlannedChange>? = null,
     val busy: Boolean = false,
     val message: String? = null,
-    val journal: List<JournalEntry> = emptyList(),
+    val actionLog: List<ActionLogEntry> = emptyList(),
     val dnsHost: String? = null,
     val dnsMode: String? = null,
     val dnsCurrentHost: String? = null,
@@ -54,7 +54,7 @@ data class PolicyUiState(
     val vpnLockdown: Boolean = false,
     // ---- Capability guards (contract §11.1).
     val guards: Map<GuardKey, GuardStatus> = emptyMap(),
-    /** Preview of the guard change the owner asked for, applied as is by [PolicyController.applyGuard]. */
+    /** Preview of the guard change the user asked for, applied as is by [PolicyController.applyGuard]. */
     val guardPreview: GuardPreview? = null,
     val guardRequest: GuardRequest? = null,
     val quarantined: List<AppliedRecord> = emptyList(),
@@ -111,7 +111,7 @@ class PolicyController(
                 applied = engine.state().records.associateBy { r -> r.id },
                 installed = catalog.packages.map { p -> p.pkg }.plus(catalog.permissions.map { p -> p.pkg })
                     .filter { pkg -> runCatching { gateway.isInstalled(pkg) }.getOrDefault(false) }.toSet(),
-                journal = engine.journal().asReversed(),
+                actionLog = engine.actionLog().asReversed(),
                 dnsHost = currentDnsHost(),
                 dnsMode = dnsMode?.let(Dpm::dnsModeName),
                 dnsCurrentHost = if (dnsMode == Dpm.DNS_MODE_HOSTNAME) read { gateway.privateDnsHost() } else null,
@@ -176,7 +176,7 @@ class PolicyController(
 
     // ---------------------------------------------------------------- guards
 
-    /** The exception list the owner is editing (pre-filled once with the default SMS app / dialer). */
+    /** The exception list the user is editing (pre-filled once with the default SMS app / dialer). */
     fun guardList(key: GuardKey): Set<String> {
         val listKey = PolicyModule.GUARD_LISTS[key] ?: return emptySet()
         val s = settings ?: return emptySet()
@@ -190,7 +190,7 @@ class PolicyController(
         _state.update { it.copy(guardPreview = null, guardRequest = null) }
     }
 
-    /** "Ce qui va changer" for switching [key] on (or re-applying it) or off. */
+    /** "What will change" for switching [key] on (or re-applying it) or off. */
     fun previewGuard(key: GuardKey, enable: Boolean) = run(null) {
         prefill(key)
         val request = GuardRequest(key, enable, guardExtended(key), guardList(key))
@@ -226,7 +226,7 @@ class PolicyController(
         run(R.string.guard_msg_applied) { engine.guards.set(request.key, request.enable, request.extended, request.allowed) }
     }
 
-    /** "Libérer" a quarantined application. */
+    /** "Release" a quarantined application. */
     fun release(pkg: String) = run(R.string.guard_msg_released) { engine.guards.release(pkg) }
 
     /** Display name of a package (the package name if unknown). */

@@ -67,7 +67,7 @@ object PolicyModule {
     val GUARD_LISTS: Map<GuardKey, SettingKey.PackageListKey> = listOf(GuardKey.SMS, GuardKey.CALLS, GuardKey.ACCESSIBILITY, GuardKey.INPUT_METHODS)
         .associateWith { SettingKey.PackageListKey("policy.guard.${it.wire}.allowed") }
 
-    /** "Refuser aussi…" options of the SMS and calls guards (pending choice; the applied one is in the guard record). */
+    /** "Also deny…" options of the SMS and calls guards (pending choice; the applied one is in the guard record). */
     val GUARD_EXTENDED: Map<GuardKey, SettingKey.BoolKey> = listOf(GuardKey.SMS, GuardKey.CALLS)
         .associateWith { SettingKey.BoolKey("policy.guard.${it.wire}.extended", false) }
 
@@ -159,7 +159,7 @@ object PolicyModule {
                 }
             },
             onGuardNotice = { notice -> guardNoticeListener?.invoke(notice) },
-            // "La liste suit": the new default SMS app / dialer joins the exception list the owner edits.
+            // "the list follows": the new default SMS app / dialer joins the exception list the user edits.
             onGuardListFollow = { key, pkg ->
                 val agent = Agent.getOrNull()
                 val listKey = GUARD_LISTS[key]
@@ -330,7 +330,7 @@ object PolicyModule {
 
     /**
      * Device Owner (re)activated: the self-granted permissions are granted afresh (a new activation
-     * is an explicit act of the owner).
+     * is an explicit act of the user).
      */
     fun onOwnerEnabled(agent: Agent) {
         agent.context.getSharedPreferences(PREFS_SELF_GRANT, Context.MODE_PRIVATE).edit().clear().apply()
@@ -341,7 +341,7 @@ object PolicyModule {
     fun onAgentStarted(agent: Agent) {
         val manager = deviceOwner(agent)
         if (!manager.isDeviceOwner()) return
-        // Each permission is self-granted once: a later revocation by the owner is respected.
+        // Each permission is self-granted once: a later revocation by the user is respected.
         val grantPrefs = agent.context.getSharedPreferences(PREFS_SELF_GRANT, Context.MODE_PRIVATE)
         val grantedOnce = grantPrefs.getStringSet(K_GRANTED_ONCE, emptySet()).orEmpty().toSet()
         val results = manager.selfGrantRuntimePermissions(grantedOnce)
@@ -353,7 +353,7 @@ object PolicyModule {
                 logAction(agent.context, "permission_granted", r.permission, true, null)
             } else if (reportedGrantFailures.add(r.permission)) {
                 Log.w(TAG, "self-grant failed: ${r.permission} ${r.error.orEmpty()}")
-                logAction(agent.context, "permission_granted", r.permission, false, r.error ?: "refusé")
+                logAction(agent.context, "permission_granted", r.permission, false, r.error ?: "refused")
             }
         }
         if (results.any { it.granted }) {
@@ -377,16 +377,16 @@ object PolicyModule {
         if (manager.isDeviceOwner() && manager.isForceStopProtected() != wanted) {
             val ok = manager.setForceStopProtection(wanted) && manager.isForceStopProtected() == wanted
             if (!ok) Log.w(TAG, "setUserControlDisabledPackages failed")
-            logAction(agent.context, "force_stop_protection", if (wanted) "enabled" else "disabled", ok, if (ok) null else "aucun effet constaté")
+            logAction(agent.context, "force_stop_protection", if (wanted) "enabled" else "disabled", ok, if (ok) null else "no observed effect")
         }
     }
 
-    /** `security.policy` + local journal for an action outside the engine's items (logging switches…). */
+    /** `security.policy` + local action log for an action outside the engine's items (logging switches…). */
     fun logAction(context: Context, action: String, target: String, ok: Boolean, error: String?) {
         try {
             engine(context).logAction(action, target, null, ok, error)
         } catch (e: Exception) {
-            Log.w(TAG, "policy journal failed", e)
+            Log.w(TAG, "policy action log failed", e)
         }
     }
 
@@ -401,7 +401,7 @@ object PolicyModule {
     }
 
     /**
-     * A log batch arrived while its collector is not running. If the owner turned the collector
+     * A log batch arrived while its collector is not running. If the user turned the collector
      * off, the system logging is switched off too; if only the agent is stopped, the batch waits
      * (the system keeps it) and is retrieved at the next start.
      */

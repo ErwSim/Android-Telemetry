@@ -34,21 +34,21 @@
   },
   "levels": [
     {
-      "key": "permissif",
-      "name": "Permissif",
-      "description": "Menaces (hameçonnage, maliciels, serveurs de commande), publicité et pisteurs courants seulement. Tout fonctionne.",
+      "key": "permissive",
+      "name": "Permissive",
+      "description": "Threats (phishing, malware, command servers), advertising and common trackers only. Everything keeps working.",
       "lists": ["adguard_dns", "hagezi_tif"]
     },
     {
-      "key": "equilibre",
-      "name": "Équilibré",
-      "description": "Ajoute la télémétrie Samsung, TikTok et Microsoft. Play Services, Play Store, notifications push et applications bancaires restent fonctionnels.",
+      "key": "balanced",
+      "name": "Balanced",
+      "description": "Adds Samsung, TikTok and Microsoft telemetry. Play Services, the Play Store, push notifications and banking apps keep working.",
       "lists": ["adguard_dns", "hagezi_tif", "hagezi_samsung", "hagezi_tiktok", "hagezi_microsoft"]
     },
     {
       "key": "strict",
       "name": "Strict",
-      "description": "Ajoute une liste étendue (télémétrie Google comprise). Certaines applications peuvent mal fonctionner.",
+      "description": "Adds an extended list (Google telemetry included). Some applications may malfunction.",
       "lists": ["adguard_dns", "hagezi_tif", "hagezi_samsung", "hagezi_tiktok", "hagezi_microsoft", "hagezi_pro_plus"]
     }
   ]

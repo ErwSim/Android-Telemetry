@@ -1,55 +1,55 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="fr">
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">Watchpost Notifications</string>
-    <string name="listener_label">Watchpost Notifications (relais vers l\'agent Watchpost)</string>
-    <string name="permission_label">Relais local des notifications Watchpost</string>
-    <string name="permission_desc">Canal entre Watchpost et son compagnon de notifications, réservé aux apps signées par la même clé.</string>
+    <string name="listener_label">Watchpost Notifications (relay to the Watchpost agent)</string>
+    <string name="permission_label">Watchpost notification local relay</string>
+    <string name="permission_desc">Channel between Watchpost and its notifications companion, reserved for apps signed with the same key.</string>
 
-    <string name="intro">Module optionnel de Watchpost. Il lit les notifications affichées sur ce téléphone et les remet à l\'agent Watchpost installé sur ce même téléphone, qui les envoie à votre serveur avec ses autres événements. Ce module n\'a pas accès à Internet, ne conserve rien et ne transmet qu\'à l\'agent Watchpost signé par la même clé. Il est séparé de l\'agent pour que l\'agent (administrateur de l\'appareil) n\'ait jamais lui-même accès aux notifications.</string>
+    <string name="intro">Optional Watchpost module. It reads the notifications displayed on this phone and hands them to the Watchpost agent installed on this same phone, which sends them to your server with its other events. This module has no Internet access, keeps nothing and only passes data to the Watchpost agent signed with the same key. It is separate from the agent so that the agent (a device administrator) never has access to notifications itself.</string>
 
-    <string name="header_state">État</string>
-    <string name="state_access_on">Accès aux notifications : accordé</string>
-    <string name="state_access_off">Accès aux notifications : NON accordé (bouton ci-dessous, ou scripts/notifier-access.sh)</string>
-    <string name="state_listener_on">Service d\'écoute : connecté</string>
-    <string name="state_listener_off">Service d\'écoute : déconnecté</string>
-    <string name="state_agent_unknown">Agent Watchpost : vérification…</string>
-    <string name="state_agent_absent">Agent Watchpost : non installé. Rien n\'est transmis (les notifications ne sont pas conservées en attendant).</string>
-    <string name="state_agent_other_key">Agent Watchpost : installé mais signé par une autre clé. Aucun échange possible : installez les deux APK issus de la même construction.</string>
-    <string name="state_agent_ok">Agent Watchpost : présent, même clé de signature</string>
-    <string name="state_agent_denied">Agent Watchpost : accès refusé par Android (permission du canal non accordée : clés de signature différentes, ou compagnon installé avant une ancienne version de l\'agent ; réinstallez le compagnon).</string>
-    <string name="state_agent_starting">Agent Watchpost : en cours de démarrage, réessayez dans un instant.</string>
-    <string name="state_agent_incompatible">Agent Watchpost : version incompatible avec ce compagnon. Installez les deux APK issus de la même construction.</string>
-    <string name="state_agent_unreachable">Agent Watchpost : injoignable (arrêté, en cours de mise à jour ?). Rien n\'est transmis pendant ce temps.</string>
-    <string name="state_collect_on">Collecte par l\'agent : active (collecteur « Notifications » activé)</string>
-    <string name="state_collect_off">Collecte par l\'agent : désactivée (agent arrêté ou collecteur « Notifications » désactivé dans Watchpost). Rien n\'est transmis.</string>
-    <string name="state_collect_unknown">Collecte par l\'agent : inconnue (agent injoignable)</string>
-    <string name="state_content_on">Contenu (titre et texte) : ACTIVÉ dans Watchpost. Masquage des codes : %1$s. %2$d apps exclues du contenu, %3$d apps ignorées.</string>
-    <string name="state_content_off">Contenu (titre et texte) : désactivé dans Watchpost. Seuls l\'app, la catégorie, le canal et l\'importance sont transmis. %1$d apps ignorées.</string>
-    <string name="state_content_unknown">Contenu (titre et texte) : réglages de l\'agent non lus. Tant qu\'ils ne le sont pas, rien n\'est transmis.</string>
-    <string name="state_redact_on">activé</string>
-    <string name="state_redact_off">DÉSACTIVÉ</string>
-    <string name="state_last_none">Dernière notification relayée : aucune depuis le démarrage du module.</string>
-    <string name="state_last">Dernière notification relayée : %1$s (%2$s)</string>
-    <string name="state_counters">Depuis le démarrage du module : %1$d relayées, %2$d non reprises (mises à jour, notifications permanentes, apps ignorées, limite de débit), %3$d non remises (agent absent, arrêté ou refus), %4$d perdues (file pleine).</string>
+    <string name="header_state">State</string>
+    <string name="state_access_on">Notification access: granted</string>
+    <string name="state_access_off">Notification access: NOT granted (button below, or scripts/notifier-access.sh)</string>
+    <string name="state_listener_on">Listener service: connected</string>
+    <string name="state_listener_off">Listener service: disconnected</string>
+    <string name="state_agent_unknown">Watchpost agent: checking…</string>
+    <string name="state_agent_absent">Watchpost agent: not installed. Nothing is passed on (notifications are not kept in the meantime).</string>
+    <string name="state_agent_other_key">Watchpost agent: installed but signed with another key. No exchange is possible: install both APKs from the same build.</string>
+    <string name="state_agent_ok">Watchpost agent: present, same signing key</string>
+    <string name="state_agent_denied">Watchpost agent: access refused by Android (channel permission not granted: different signing keys, or companion installed before an older version of the agent; reinstall the companion).</string>
+    <string name="state_agent_starting">Watchpost agent: starting, try again in a moment.</string>
+    <string name="state_agent_incompatible">Watchpost agent: version incompatible with this companion. Install both APKs from the same build.</string>
+    <string name="state_agent_unreachable">Watchpost agent: unreachable (stopped, being updated?). Nothing is passed on in the meantime.</string>
+    <string name="state_collect_on">Collection by the agent: active ("Notifications" collector enabled)</string>
+    <string name="state_collect_off">Collection by the agent: disabled (agent stopped or "Notifications" collector disabled in Watchpost). Nothing is passed on.</string>
+    <string name="state_collect_unknown">Collection by the agent: unknown (agent unreachable)</string>
+    <string name="state_content_on">Content (title and text): ENABLED in Watchpost. Code masking: %1$s. %2$d apps excluded from content, %3$d apps ignored.</string>
+    <string name="state_content_off">Content (title and text): disabled in Watchpost. Only the app, category, channel and importance are passed on. %1$d apps ignored.</string>
+    <string name="state_content_unknown">Content (title and text): agent settings not read. As long as they are not, nothing is passed on.</string>
+    <string name="state_redact_on">enabled</string>
+    <string name="state_redact_off">DISABLED</string>
+    <string name="state_last_none">Last notification relayed: none since the module started.</string>
+    <string name="state_last">Last notification relayed: %1$s (%2$s)</string>
+    <string name="state_counters">Since the module started: %1$d relayed, %2$d not forwarded (updates, ongoing notifications, ignored apps, rate limit), %3$d not delivered (agent absent, stopped or refusal), %4$d lost (queue full).</string>
 
-    <string name="button_refresh">Actualiser</string>
-    <string name="button_access">Réglage d\'accès aux notifications</string>
+    <string name="button_refresh">Refresh</string>
+    <string name="button_access">Notification access setting</string>
 
-    <string name="header_what">Ce qui est transmis</string>
-    <string name="what">Pour chaque notification affichée ou retirée : nom de paquet de l\'app, catégorie, canal, importance, notification permanente ou non. Le titre et le texte (512 caractères au plus) seulement si vous activez « Contenu des notifications » dans Watchpost (onglet Collecteurs › Notifications) ; désactivé, ils ne quittent jamais ce module. Les suites de 4 à 8 chiffres (codes de validation) sont remplacées par •••• avant l\'envoi, sauf si vous désactivez le masquage ; cela masque aussi des années, montants ronds ou codes postaux, et ne voit pas les codes alphanumériques. Ne sont pas transmises : les notifications de Watchpost et de ce module, les mises à jour répétées d\'une même notification, les mises à jour des notifications permanentes (musique, téléchargement, minuteur, appel, navigation), les résumés de groupe, et au-delà de 20 événements par app et par 10 minutes.</string>
+    <string name="header_what">What is passed on</string>
+    <string name="what">For each notification displayed or removed: the app\'s package name, category, channel, importance, ongoing notification or not. The title and text (512 characters at most) only if you enable "Notification content" in Watchpost (Collectors › Notifications tab); when disabled, they never leave this module. Runs of 4 to 8 digits (validation codes) are replaced by •••• before sending, unless you disable masking; this also masks years, round amounts or postal codes, and does not see alphanumeric codes. Not passed on: the notifications of Watchpost and of this module, repeated updates of the same notification, updates of ongoing notifications (music, download, timer, call, navigation), group summaries, and anything beyond 20 events per app per 10 minutes.</string>
 
-    <string name="header_lists">Listes d\'apps (enregistrées dans Watchpost)</string>
-    <string name="lists_explain">Une app par ligne, désignée par son nom de paquet (exemple : com.exemple.banque ; visible dans Paramètres › Applications › l\'app, ou dans la liste des apps de Watchpost). Ces listes ne reconnaissent une app que par son nom exact : la liste par défaut (banques et paiement courants, authentificateurs, gestionnaires de mots de passe, SMS, téléphone) est forcément incomplète, ajoutez-y vos propres apps sensibles. Chaque modification est enregistrée dans Watchpost et signalée au serveur (agent.config_changed).</string>
-    <string name="label_excluded">Apps exclues du contenu (seul le nom de l\'app est transmis, jamais le titre ni le texte) :</string>
-    <string name="label_ignored">Apps totalement ignorées (rien n\'est transmis) :</string>
-    <string name="button_save">Enregistrer dans Watchpost</string>
-    <string name="button_reset">Rétablir les listes par défaut</string>
-    <string name="lists_saved">Enregistré dans Watchpost : %1$d apps exclues du contenu, %2$d apps ignorées.</string>
-    <string name="lists_rejected">Entrées refusées (nom de paquet invalide ou liste pleine) : %1$s</string>
-    <string name="lists_failed">Échec : l\'agent Watchpost n\'a pas pu enregistrer les listes (voir l\'état ci-dessus).</string>
-    <string name="lists_working">Enregistrement…</string>
+    <string name="header_lists">App lists (saved in Watchpost)</string>
+    <string name="lists_explain">One app per line, identified by its package name (example: com.example.bank; visible in Settings › Apps › the app, or in the Watchpost app list). These lists only recognize an app by its exact name: the default list (common banking and payment apps, authenticators, password managers, SMS, phone) is necessarily incomplete, add your own sensitive apps to it. Every change is saved in Watchpost and reported to the server (agent.config_changed).</string>
+    <string name="label_excluded">Apps excluded from content (only the app name is passed on, never the title or the text):</string>
+    <string name="label_ignored">Apps fully ignored (nothing is passed on):</string>
+    <string name="button_save">Save in Watchpost</string>
+    <string name="button_reset">Restore the default lists</string>
+    <string name="lists_saved">Saved in Watchpost: %1$d apps excluded from content, %2$d apps ignored.</string>
+    <string name="lists_rejected">Entries refused (invalid package name or list full): %1$s</string>
+    <string name="lists_failed">Failed: the Watchpost agent could not save the lists (see the state above).</string>
+    <string name="lists_working">Saving…</string>
 
-    <string name="header_remove">Retirer l\'accès, désinstaller</string>
-    <string name="remove" tools:ignore="TypographyDashes">Retirer l\'accès : bouton « Réglage d\'accès aux notifications » ci-dessus, puis désactiver Watchpost Notifications (dans les Paramètres, cherchez « Accès aux notifications » : le chemin varie selon la version de One UI), ou par ADB : scripts/notifier-access.sh --revoke. Le module cesse aussitôt de lire les notifications. Pour tout arrêter côté agent, désactivez plutôt le collecteur « Notifications » dans Watchpost. Désinstaller : bouton ci-dessous (Désinstaller), ou scripts/uninstall-notifier.sh. L\'agent Watchpost continue de fonctionner sans ce module (son collecteur « Notifications » passe « indisponible »).</string>
-    <string name="button_app_info">Informations sur l\'app (désinstaller)</string>
+    <string name="header_remove">Remove access, uninstall</string>
+    <string name="remove" tools:ignore="TypographyDashes">Remove access: "Notification access setting" button above, then disable Watchpost Notifications (in Settings, look for "Notification access": the path varies with the One UI version), or through ADB: scripts/notifier-access.sh --revoke. The module stops reading notifications immediately. To stop everything on the agent side, rather disable the "Notifications" collector in Watchpost. Uninstall: button below (Uninstall), or scripts/uninstall-notifier.sh. The Watchpost agent keeps working without this module (its "Notifications" collector becomes "unavailable").</string>
+    <string name="button_app_info">App info (uninstall)</string>
 </resources>

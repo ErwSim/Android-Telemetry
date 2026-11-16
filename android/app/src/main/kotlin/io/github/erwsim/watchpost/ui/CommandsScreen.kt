@@ -59,7 +59,7 @@ private val pollSpec = SettingSpec.IntSpec(CommandSettings.POLL_INTERVAL_MIN, R.
 private val enabledSpec = SettingSpec.BoolSpec(CommandSettings.ENABLED, R.string.cmd_enabled, R.string.cmd_enabled_summary)
 
 /**
- * "Commandes à distance": channel switch and mode, connection state, command code, remote wipe
+ * "Remote commands": channel switch and mode, connection state, command passphrase, remote wipe
  * permission (explicit confirmation), lock-screen message, local history. Everything here is local:
  * no command can change any of it.
  */
@@ -147,7 +147,7 @@ fun CommandsScreen(agent: Agent, resumeTick: Int, modifier: Modifier) {
             } else if (lockMessage.isNullOrBlank()) {
                 Text(stringResource(R.string.cmd_lock_message_none), style = MaterialTheme.typography.bodySmall)
             } else {
-                Text("« $lockMessage »", style = MaterialTheme.typography.bodyMedium)
+                Text("“$lockMessage”", style = MaterialTheme.typography.bodyMedium)
                 OutlinedButton(onClick = {
                     scope.launch {
                         withContext(Dispatchers.IO) { PolicyModule.clearLockScreenMessage(agent) }

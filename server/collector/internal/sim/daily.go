@@ -108,14 +108,14 @@ func postureChangeSev(field, val string) int {
 func (g *Generator) startup(t time.Time, reason string) {
 	g.emit(t, "agent.started", 0, map[string]any{"reason": reason, "agent_version": g.version})
 	for i, p := range []map[string]any{
-		{"action": "private_dns_set", "target": g.dnsHost, "profile": "equilibre", "ok": true},
-		{"action": "network_logging", "target": "enabled", "profile": "equilibre", "ok": true},
-		{"action": "security_logging", "target": "enabled", "profile": "equilibre", "ok": true},
-		{"action": "restriction_set", "target": "no_install_unknown_sources_globally", "profile": "equilibre", "ok": true},
-		{"action": "package_disabled", "target": "com.facebook.appmanager", "profile": "equilibre", "ok": true},
-		{"action": "package_disabled", "target": "com.facebook.services", "profile": "equilibre", "ok": true},
-		{"action": "package_disabled", "target": "com.samsung.android.app.tips", "profile": "equilibre", "ok": true},
-		{"action": "package_disabled", "target": "com.samsung.android.da.daagent", "profile": "equilibre", "ok": false,
+		{"action": "private_dns_set", "target": g.dnsHost, "profile": "balanced", "ok": true},
+		{"action": "network_logging", "target": "enabled", "profile": "balanced", "ok": true},
+		{"action": "security_logging", "target": "enabled", "profile": "balanced", "ok": true},
+		{"action": "restriction_set", "target": "no_install_unknown_sources_globally", "profile": "balanced", "ok": true},
+		{"action": "package_disabled", "target": "com.facebook.appmanager", "profile": "balanced", "ok": true},
+		{"action": "package_disabled", "target": "com.facebook.services", "profile": "balanced", "ok": true},
+		{"action": "package_disabled", "target": "com.samsung.android.app.tips", "profile": "balanced", "ok": true},
+		{"action": "package_disabled", "target": "com.samsung.android.da.daagent", "profile": "balanced", "ok": false,
 			"error": "SecurityException: package is required by the system"},
 	} {
 		sev := 0
@@ -230,8 +230,8 @@ func (g *Generator) PlanScenario(from, to time.Time) {
 	g.reboot(rb)
 
 	g.bleTracker(at(0.33))
-	g.emit(at(0.36), "net.cell_security", 2, map[string]any{"kind": "downgrade_2g", "detail": "Bascule forcée en GSM (2G), chiffrement A5/1 annoncé par la cellule"})
-	g.emit(at(0.37), "net.cell_security", 3, map[string]any{"kind": "null_cipher", "detail": "Cellule 208-01 sans chiffrement (A5/0) pendant 40 s"})
+	g.emit(at(0.36), "net.cell_security", 2, map[string]any{"kind": "downgrade_2g", "detail": "Forced fallback to GSM (2G), A5/1 encryption announced by the cell"})
+	g.emit(at(0.37), "net.cell_security", 3, map[string]any{"kind": "null_cipher", "detail": "Cell 208-01 without encryption (A5/0) for 40 s"})
 
 	ca := at(0.45)
 	caSHA := sha256Hex("corporate-proxy-ca")
@@ -252,9 +252,9 @@ func (g *Generator) PlanScenario(from, to time.Time) {
 	})
 
 	tam := at(0.52)
-	g.emit(tam, "agent.tamper", 3, map[string]any{"kind": "permission_revoked", "detail": "android.permission.ACCESS_FINE_LOCATION retirée à Watchpost"})
-	g.emit(tam.Add(90*time.Second), "agent.tamper", 3, map[string]any{"kind": "force_stop", "detail": "arrêt forcé du service détecté au redémarrage"})
-	g.emit(at(0.15), "agent.collector_error", 1, map[string]any{"collector": "wifi_scan", "error": "SecurityException: startScan limité (4 balayages / 2 min)"})
+	g.emit(tam, "agent.tamper", 3, map[string]any{"kind": "permission_revoked", "detail": "android.permission.ACCESS_FINE_LOCATION revoked from Watchpost"})
+	g.emit(tam.Add(90*time.Second), "agent.tamper", 3, map[string]any{"kind": "force_stop", "detail": "forced stop of the service detected at restart"})
+	g.emit(at(0.15), "agent.collector_error", 1, map[string]any{"collector": "wifi_scan", "error": "SecurityException: startScan throttled (4 scans / 2 min)"})
 	g.emit(at(0.2), "agent.config_changed", 0, map[string]any{"key": "upload.wifi_only", "old": false, "new": true})
 	g.emit(at(0.21), "agent.config_changed", 0, map[string]any{"key": "upload.wifi_only", "old": true, "new": false})
 	ov := at(0.6)

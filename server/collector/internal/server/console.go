@@ -34,12 +34,12 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 	case errors.Is(err, store.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "introuvable")
 	case errors.Is(err, context.DeadlineExceeded):
-		writeError(w, http.StatusServiceUnavailable, "timeout", "requête trop longue, réduisez l'intervalle")
+		writeError(w, http.StatusServiceUnavailable, "timeout", "request too long, reduce the interval")
 	case errors.Is(err, context.Canceled):
 		// client went away
 	default:
-		s.log.Error("API console : erreur", "err", err)
-		writeError(w, http.StatusInternalServerError, "internal", "erreur interne")
+		s.log.Error("console API: error", "err", err)
+		writeError(w, http.StatusInternalServerError, "internal", "internal error")
 	}
 }
 
@@ -47,13 +47,13 @@ func parseTime(v url.Values, name string, required bool) (time.Time, bool, error
 	raw := v.Get(name)
 	if raw == "" {
 		if required {
-			return time.Time{}, false, paramErr("missing_parameter", "paramètre %s requis (RFC 3339)", name)
+			return time.Time{}, false, paramErr("missing_parameter", "parameter %s required (RFC 3339)", name)
 		}
 		return time.Time{}, false, nil
 	}
 	t, err := time.Parse(time.RFC3339Nano, raw)
 	if err != nil {
-		return time.Time{}, false, paramErr("invalid_parameter", "paramètre %s : date RFC 3339 attendue", name)
+		return time.Time{}, false, paramErr("invalid_parameter", "parameter %s: RFC 3339 date expected", name)
 	}
 	return t, true, nil
 }
@@ -75,7 +75,7 @@ func timeRange(v url.Values, required bool, now time.Time, defaultSpan time.Dura
 		from = to.Add(-defaultSpan)
 	}
 	if from.After(to) {
-		return 0, 0, paramErr("invalid_parameter", "from doit précéder to")
+		return 0, 0, paramErr("invalid_parameter", "from must precede to")
 	}
 	return from.UnixMilli(), to.UnixMilli(), nil
 }
@@ -87,7 +87,7 @@ func intParam(v url.Values, name string, def, min, max int) (int, error) {
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil || n < min || n > max {
-		return 0, paramErr("invalid_parameter", "paramètre %s : entier entre %d et %d attendu", name, min, max)
+		return 0, paramErr("invalid_parameter", "parameter %s: integer between %d and %d expected", name, min, max)
 	}
 	return n, nil
 }
@@ -96,12 +96,12 @@ func deviceParam(v url.Values, required bool) (string, error) {
 	d := v.Get("device_id")
 	if d == "" {
 		if required {
-			return "", paramErr("missing_parameter", "paramètre device_id requis")
+			return "", paramErr("missing_parameter", "parameter device_id required")
 		}
 		return "", nil
 	}
 	if !validDeviceID(d) {
-		return "", paramErr("invalid_parameter", "device_id invalide")
+		return "", paramErr("invalid_parameter", "invalid device_id")
 	}
 	return d, nil
 }
@@ -117,7 +117,7 @@ func typePrefixes(v url.Values) ([]string, error) {
 			continue
 		}
 		if !typePrefixRe.MatchString(p) || len(out) >= 32 {
-			return nil, paramErr("invalid_parameter", "paramètre type : préfixes [a-z0-9_.] séparés par des virgules")
+			return nil, paramErr("invalid_parameter", "parameter type: comma-separated prefixes [a-z0-9_.]")
 		}
 		out = append(out, p)
 	}
@@ -201,13 +201,13 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	q.Q = v.Get("q")
 	if len(q.Q) > 200 {
-		s.fail(w, paramErr("invalid_parameter", "paramètre q : 200 octets au plus"))
+		s.fail(w, paramErr("invalid_parameter", "parameter q: 200 bytes at most"))
 		return
 	}
 	if c := v.Get("cursor"); c != "" {
 		ts, pk, ok := decodeCursor(c)
 		if !ok {
-			s.fail(w, paramErr("invalid_parameter", "curseur invalide"))
+			s.fail(w, paramErr("invalid_parameter", "invalid cursor"))
 			return
 		}
 		q.HasCursor, q.CursorTS, q.CursorPK = true, ts, pk
@@ -232,7 +232,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request) {
 	id := strings.ToUpper(r.PathValue("id"))
 	if len(id) != 26 {
-		writeError(w, http.StatusNotFound, "not_found", "événement introuvable")
+		writeError(w, http.StatusNotFound, "not_found", "event not found")
 		return
 	}
 	ev, err := s.st.GetEvent(r.Context(), id)
@@ -290,7 +290,7 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	case "day":
 		q.BucketMS = int64(24 * time.Hour / time.Millisecond)
 	default:
-		s.fail(w, paramErr("invalid_parameter", "bucket : minute, hour ou day"))
+		s.fail(w, paramErr("invalid_parameter", "bucket: minute, hour or day"))
 		return
 	}
 	if q.TypePrefixes, err = typePrefixes(v); err != nil {
@@ -303,15 +303,15 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	case "type", "sev":
 		q.By = by
 	default:
-		s.fail(w, paramErr("invalid_parameter", "by : domain, type ou sev"))
+		s.fail(w, paramErr("invalid_parameter", "by: domain, type or sev"))
 		return
 	}
 	if q.FromMS < 0 {
-		s.fail(w, paramErr("invalid_parameter", "from antérieur à 1970"))
+		s.fail(w, paramErr("invalid_parameter", "from earlier than 1970"))
 		return
 	}
 	if n := (q.ToMS-(q.FromMS-q.FromMS%q.BucketMS))/q.BucketMS + 1; n > store.MaxTimelineBuckets {
-		s.fail(w, paramErr("too_many_buckets", "intervalle trop long pour ce pas (%d intervalles au plus)", store.MaxTimelineBuckets))
+		s.fail(w, paramErr("too_many_buckets", "interval too long for this step (%d intervals at most)", store.MaxTimelineBuckets))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
@@ -338,7 +338,7 @@ func (s *Server) handleTop(w http.ResponseWriter, r *http.Request) {
 	}
 	kind := v.Get("kind")
 	if !store.ValidTopKind(kind) {
-		s.fail(w, paramErr("invalid_parameter", "kind : dns_hostname, dns_package, connect_dest, connect_package, usage_package, foreground_package, notification_package ou event_type"))
+		s.fail(w, paramErr("invalid_parameter", "kind: dns_hostname, dns_package, connect_dest, connect_package, usage_package, foreground_package, notification_package or event_type"))
 		return
 	}
 	limit, err := intParam(v, "limit", 20, 1, 500)
@@ -348,7 +348,7 @@ func (s *Server) handleTop(w http.ResponseWriter, r *http.Request) {
 	}
 	pkg := v.Get("package")
 	if pkg != "" && (!packageRe.MatchString(pkg) || kind == store.TopEventType) {
-		s.fail(w, paramErr("invalid_parameter", "paramètre package invalide (non applicable à kind=event_type)"))
+		s.fail(w, paramErr("invalid_parameter", "invalid parameter package (not applicable to kind=event_type)"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)

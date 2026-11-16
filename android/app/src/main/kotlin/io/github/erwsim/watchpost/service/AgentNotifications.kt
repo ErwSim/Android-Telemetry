@@ -25,7 +25,7 @@ object AgentNotifications {
     const val CHANNEL_ID = "watchpost_agent"
     const val NOTIFICATION_ID = 1
 
-    /** Remote `ring`/`vibrate` in progress (high importance: heads-up, lock screen, "Arrêter"). */
+    /** Remote `ring`/`vibrate` in progress (high importance: heads-up, lock screen, "Stop"). */
     const val CHANNEL_ALERT = "watchpost_commands_alert"
 
     /** One notification per processed remote command: a command never goes unnoticed on the phone. */
@@ -38,7 +38,7 @@ object AgentNotifications {
 
     /**
      * A new default SMS app or dialer: exactly the path of SMS trojans (one system dialog). High importance
-     * (heads-up, lock screen) so that the owner sees it at once (contract §11.4).
+     * (heads-up, lock screen) so that the user sees it at once (contract §11.4).
      */
     const val CHANNEL_GUARDS_ALERT = "watchpost_guards_alert"
 
@@ -119,7 +119,7 @@ object AgentNotifications {
                         if (notice.lifted.isEmpty()) "" else context.getString(R.string.guard_notif_role_lifted, perms(notice.lifted)),
                     )
                 } else {
-                    context.getString(R.string.guard_notif_role_spared, label(notice.pkg), notice.role, guardTitle(notice.key), perms(notice.lifted).ifEmpty { "SMS et appels du rôle" })
+                    context.getString(R.string.guard_notif_role_spared, label(notice.pkg), notice.role, guardTitle(notice.key), perms(notice.lifted).ifEmpty { "SMS and calls of the role" })
                 },
                 Screen.Policy.name,
             )
@@ -149,7 +149,7 @@ object AgentNotifications {
         try {
             context.getSystemService(NotificationManager::class.java)?.notify(GUARD_NOTIFICATION_BASE + (pkg.hashCode() and 0xFFFF), notification)
         } catch (_: Exception) {
-            // Notifications refused: the journal and security.policy still say it.
+            // Notifications refused: the event log and security.policy still say it.
         }
     }
 
@@ -165,7 +165,7 @@ object AgentNotifications {
         context.getSystemService(NotificationManager::class.java)?.cancel(RING_NOTIFICATION_ID)
     }
 
-    /** "Commande à distance : Localiser — exécutée (10:42)". */
+    /** "Remote command: Locate — executed (10:42)". */
     fun commandProcessed(context: Context, entry: CommandHistoryEntry) {
         val text = context.getString(
             R.string.cmd_notif_processed_text,

@@ -26,7 +26,7 @@ sealed class LocateOutcome {
 /**
  * `locate` (contract §8): precise fix (acquisition up to 60 s) through the running `location` collector,
  * then the buffer is sent at once ([RemoteCommands] forces an upload once `command.result` is emitted,
- * so that the fix and the result leave together). If the owner switched the collector off (or its
+ * so that the fix and the result leave together). If the user switched the collector off (or its
  * permission is missing), the command fails (`location_unavailable`): a command never overrides a local choice.
  */
 class LocateExecutor(

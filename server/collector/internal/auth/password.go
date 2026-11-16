@@ -39,7 +39,7 @@ func HashPassword(password string) (string, error) {
 }
 
 // ErrBadHash reports an unparsable stored hash.
-var ErrBadHash = errors.New("empreinte de mot de passe illisible")
+var ErrBadHash = errors.New("unreadable password hash")
 
 // VerifyPassword checks password against a PHC string in constant time.
 func VerifyPassword(password, encoded string) (bool, error) {
@@ -97,10 +97,10 @@ func ValidUsername(u string) bool {
 // ValidPassword checks the password policy and returns a French message on failure.
 func ValidPassword(p string) error {
 	if len([]rune(p)) < MinPasswordLen {
-		return fmt.Errorf("le mot de passe doit contenir au moins %d caractères", MinPasswordLen)
+		return fmt.Errorf("the password must contain at least %d characters", MinPasswordLen)
 	}
 	if len(p) > MaxPasswordLen {
-		return fmt.Errorf("le mot de passe ne doit pas dépasser %d octets", MaxPasswordLen)
+		return fmt.Errorf("the password must not exceed %d bytes", MaxPasswordLen)
 	}
 	return nil
 }

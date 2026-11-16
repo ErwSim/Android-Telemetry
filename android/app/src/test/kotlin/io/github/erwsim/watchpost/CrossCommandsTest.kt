@@ -65,7 +65,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * Cross-check of the command channel with the REAL collector (`server/collector`, contract §8): commands
  * created through the real console API (payload and signature built exactly as the console builds them),
  * delivered by the real SSE stream and by the real poll endpoint to the real [CommandChannel], verified by
- * the real [CommandVerifier] (key derived from the command code by the real PBKDF2), results posted back
+ * the real [CommandVerifier] (key derived from the command passphrase by the real PBKDF2), results posted back
  * and read again from the console API. Platform effects are faked (nothing rings, nothing is wiped).
  *
  * Skipped unless these are set (development server in `http://`, see `server/collector/README.md`):
@@ -132,7 +132,7 @@ class CrossCommandsTest {
         val target = IngestTarget(url!!.toHttpUrl(), deviceId, parsed.deviceToken, "0.1.0-cross")
 
         // The phone side: real key derivation, verifier, processor and channel; faked platform effects.
-        val code = "Phrase de passe très longue 2026"
+        val code = "A long and unusual passphrase 2026"
         val keys = CommandKeyStore(MemoryPrefs(), PlainSecretBox()).also { it.save(deviceId, CommandCrypto.deriveKey(code, deviceId), WallClock.nowMillis()) }
         val state = CommandStateStore(MemoryPrefs())
         val sink = RecordingSink()
@@ -192,11 +192,11 @@ class CrossCommandsTest {
 
         try {
             val ring = create("ring", """{"duration_s":5,"vibrate":true}""", signed = false)
-            val lock = create("lock", """{"message":"Téléphone perdu,\nappelez le 01 23 45 67 89"}""", signed = true)
+            val lock = create("lock", """{"message":"Lost phone —\nplease call +1 555 0100"}""", signed = true)
             channel.start()
             eventually("stream connected") { channel.channelState.value.phase == ChannelPhase.CONNECTED }
             eventually("ring and lock executed") { executed.size == 2 }
-            assertTrue(executed.toString(), executed.any { it.startsWith("lock:$lock") && "Téléphone perdu,\nappelez" in it })
+            assertTrue(executed.toString(), executed.any { it.startsWith("lock:$lock") && "Lost phone —\nplease" in it })
             eventually("results recorded by the server") { serverStatus(ring) == "executed" && serverStatus(lock) == "executed" }
 
             // A command created while the stream is open arrives at once.
@@ -212,7 +212,7 @@ class CrossCommandsTest {
                 val body = buildJsonObject {
                     put("device_id", deviceId)
                     put("payload", payload)
-                    put("sig", CommandCrypto.sign(CommandCrypto.deriveKey("un autre code que le bon", deviceId), payload))
+                    put("sig", CommandCrypto.sign(CommandCrypto.deriveKey("another passphrase than the right one", deviceId), payload))
                 }
                 assertEquals(201, console("POST", "/commands", body).first)
                 id
@@ -334,7 +334,7 @@ class CrossCommandsTest {
 
     /**
      * The signature computed by the real console code (TypeScript, WebCrypto) on hard cases — accents, emojis,
-     * quotes, line feeds, bidirectional text, non-ASCII and decomposed command codes — survives the real
+     * quotes, line feeds, bidirectional text, non-ASCII and decomposed command passphrases — survives the real
      * collector (payload relayed to the byte) and is accepted by the real verifier, with the exact message.
      */
     @Test
@@ -393,7 +393,7 @@ class CrossCommandsTest {
     }
 
     /**
-     * Contract §8 "Renvoi", against the real collector: a command whose result did not reach the server is
+     * Contract §8 redelivery, against the real collector: a command whose result did not reach the server is
      * delivered again after 5 minutes. The phone must not run it again and the server must end up with the
      * ORIGINAL result. Two situations, on two enrolled devices (results are posted in order, so a result
      * that cannot leave holds the following ones back: the two cases would disturb each other on one device):
@@ -422,7 +422,7 @@ class CrossCommandsTest {
                 else -> chain.proceed(request)
             }
         }
-        val code = "Phrase de passe très longue 2026"
+        val code = "A long and unusual passphrase 2026"
         val rig = Rig(enroll!!, url!!, interceptor).also { it.useCode(code) }
         val rig2 = enroll2?.let { Rig(it, url, interceptor) }
         login()
@@ -448,7 +448,7 @@ class CrossCommandsTest {
             eventually("streams connected") {
                 rig.channel.channelState.value.phase == ChannelPhase.CONNECTED && (rig2 == null || rig2.channel.channelState.value.phase == ChannelPhase.CONNECTED)
             }
-            val lock = create(rig, "lock", """{"message":"Renvoi après 5 min"}""", signed = true) { swallowOnce += it }
+            val lock = create(rig, "lock", """{"message":"Redelivered after 5 min"}""", signed = true) { swallowOnce += it }
             val wipe = create(rig, "wipe", "{}", signed = true) { swallowOnce += it }
             val ring = rig2?.let { r -> create(r, "ring", """{"duration_s":5,"vibrate":false}""", signed = false) { drop += it } }
             val start = System.currentTimeMillis()
@@ -478,7 +478,7 @@ class CrossCommandsTest {
             assertEquals(2, posts[wipe]!!.size)
             assertTrue(posts[lock]!![1] - posts[lock]!![0] >= 295_000)
             // Nothing ran twice; one command.result event per command; nothing left to post.
-            assertEquals(listOf("lock:$lock:${CommandParams.Lock("Renvoi après 5 min")}"), rig.executed.toList())
+            assertEquals(listOf("lock:$lock:${CommandParams.Lock("Redelivered after 5 min")}"), rig.executed.toList())
             assertEquals(1, rig.wipes.get())
             assertEquals(2, rig.sink.of("command.result").size)
             eventually("results all acknowledged") { rig.state.pendingResults().isEmpty() }

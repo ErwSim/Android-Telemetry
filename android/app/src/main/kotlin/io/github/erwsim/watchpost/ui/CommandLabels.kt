@@ -7,7 +7,7 @@ import io.github.erwsim.watchpost.core.command.ChannelPhase
 import io.github.erwsim.watchpost.core.command.CommandTypes
 import io.github.erwsim.watchpost.core.command.Refusal
 
-/** French labels of the remote commands (types, outcomes, refusal reasons, channel states). */
+/** English labels of the remote commands (types, outcomes, refusal reasons, channel states). */
 object CommandLabels {
     @StringRes
     fun type(type: String): Int = when (type) {

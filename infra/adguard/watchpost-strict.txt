@@ -1,0 +1,28 @@
+! Title: Watchpost: additional blocks of the STRICT level
+! Description: Enabled at the "strict" level (adguard/levels.json), in addition to watchpost-base.txt and HaGeZi Pro++
+!   instead of Pro. Cuts Samsung/Google services that are useful but chatty. Visible effects
+!   expected, to be accepted knowingly (see the "Breaks" notes).
+!
+! The exceptions of watchpost-base.txt (FCM push, Play Store, connectivity check, updates)
+! keep priority ($important): the phone stays usable.
+!
+! --- Firebase Remote Config: remote configuration of the apps (A/B tests, version tracking).
+!     Breaks: some apps start with their default settings; rarely, an app refuses to start.
+||firebaseremoteconfig.googleapis.com^
+! --- Firebase Dynamic Links / In-App Messaging: attribution tracking and promotional messages.
+||firebasedynamiclinks.googleapis.com^
+||firebaseinappmessaging.googleapis.com^
+!
+! --- Samsung Galaxy Store and its services.
+!     Breaks: no more updates of the Samsung apps through the Galaxy Store, nor of the Galaxy Store.
+||samsungapps.com^
+! --- Samsung Push Service (SPP): push notifications of the Samsung apps only.
+!     Breaks: Samsung Cloud, SmartThings, Samsung Health notifications.
+||push.samsungosp.com^
+! --- Samsung Cloud (synchronisation of Samsung notes, gallery, contacts).
+!     Breaks: Samsung Cloud synchronisation.
+||samsungcloud.com^
+!
+! To block other domains: look at the AdGuard query log (adguard.<domain>) or at the
+! "Watchpost: tracking and DNS" Wazuh dashboard, then add the rule here (or, for a setting
+! specific to your installation, in infra/data/adguard/userfilters/personal-rules.txt).

@@ -15,6 +15,6 @@
 # stable anyway so that work already enqueued before an update still resolves.
 -keepnames class * extends androidx.work.ListenableWorker
 
-# Readable crash reports from the owner's own device.
+# Readable crash reports from a device you control.
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile

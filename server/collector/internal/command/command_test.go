@@ -11,9 +11,9 @@ import (
 const (
 	vectorCode    = "correct horse battery staple"
 	vectorDevice  = "dev_0123456789abcdef"
-	vectorKey     = "072a4a8b76845668eff857e6412bd6bde57cf158cf89b2fb9c844a7d66037492"
-	vectorPayload = `{"v":1,"id":"01JCQ8Z3K4M5N6P7Q8R9S0T1V2","device_id":"dev_0123456789abcdef","type":"lock","params":{"message":"Téléphone perdu, appelez le 01 23 45 67 89"},"issued_at":"2026-11-16T10:00:00.000Z","expires_at":"2026-11-23T10:00:00.000Z"}`
-	vectorSig     = "GWiiJjYxiBHlG1lba410Zxb0kDHsINh4nS9u/GE/OaE="
+	vectorKey     = "05fd656216f9ae34c3be8e6afcfa857c535e9e0ef438ab6c2de7130891abdb8b"
+	vectorPayload = `{"v":1,"id":"01JCQ8Z3K4M5N6P7Q8R9S0T1V2","device_id":"dev_0123456789abcdef","type":"lock","params":{"message":"Lost phone — please call +1 555 0100"},"issued_at":"2026-11-16T10:00:00.000Z","expires_at":"2026-11-23T10:00:00.000Z"}`
+	vectorSig     = "VVQ7B/b3fOzaG+sWd7Fqi7NKVRzdu5L3+NEIKurMXdE="
 )
 
 func TestContractVector(t *testing.T) {
@@ -41,7 +41,7 @@ func TestContractVector(t *testing.T) {
 		t.Fatal(err)
 	}
 	if p.ID != "01JCQ8Z3K4M5N6P7Q8R9S0T1V2" || p.DeviceID != vectorDevice || p.Type != TypeLock || !Sensitive(p.Type) ||
-		p.Params["message"] != "Téléphone perdu, appelez le 01 23 45 67 89" {
+		p.Params["message"] != "Lost phone — please call +1 555 0100" {
 		t.Fatalf("parsed %+v", p)
 	}
 	if err := p.CheckTime(time.Date(2026, 11, 16, 10, 5, 0, 0, time.UTC)); err != nil {
@@ -61,7 +61,7 @@ func payload(fields string) string {
 }
 
 func TestParseRejects(t *testing.T) {
-	long := strings.Repeat("é", 201)
+	long := strings.Repeat("ö", 201)
 	cases := map[string]string{
 		"unknown type":        payload(`"type":"reboot","params":{}`),
 		"duplicate key":       payload(`"type":"ring","type":"wipe","params":{}`),
@@ -114,7 +114,7 @@ func TestParseAccepts(t *testing.T) {
 		payload(`"type":"stop_ring","params":{}`),
 		payload(`"type":"locate","params":{}`),
 		payload(`"type":"lock","params":{"message":"` + strings.Repeat("😀", 100) + `"}`), // 200 UTF-16 units
-		payload(`"type":"lock","params":{"message":"ligne 1\nligne 2"}`),
+		payload(`"type":"lock","params":{"message":"line 1\nline 2"}`),
 		payload(`"type":"lock","params":{}`),
 		payload(`"type":"clear_lock_message","params":{}`),
 		payload(`"type":"wipe","params":{}`),

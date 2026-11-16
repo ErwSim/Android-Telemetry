@@ -7,15 +7,15 @@ import (
 	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
-// Review of v1.2. These tests pin what the detections do NOT see, so that the README stays true and a
-// future detection that closes a gap has to say so here.
+// These tests pin what the detections do NOT see, so that the README stays true and a future detection
+// that closes a gap has to say so here.
 
-// The attack the owner lived through: a discreet application sends about 2 000 SMS a day. SMS do not use
-// the IP network, so without app.ops (experimental on the phone, possibly never available) nothing counts
-// them. Since contract §11.4, holding SEND_SMS without being the SMS app or a system application is reported
-// (detect.sms_permission), whenever the permission was granted; detect.new_app_risky remains for a grant
-// within 24 hours of the installation.
-func TestOwnerScenarioWithoutAppOps(t *testing.T) {
+// A discreet store application obtains SEND_SMS a day after its installation, then sends in bulk. SMS do not
+// use the IP network, so without app.ops (experimental on the phone, possibly never available) nothing
+// counts them. Since contract §11.4, holding SEND_SMS without being the SMS app or a system application is
+// reported (detect.sms_permission), whenever the permission was granted; detect.new_app_risky remains for a
+// grant within 24 hours of the installation.
+func TestSMSTrojanWithoutAppOps(t *testing.T) {
 	const app = "com.coupons.promo.deals"
 	install := Install{Package: app, Installer: "com.android.vending", TS: hour0}
 	// As the real agent rates it at installation: SEND_SMS is only counted once granted (android/README).
@@ -32,7 +32,7 @@ func TestOwnerScenarioWithoutAppOps(t *testing.T) {
 	none(t, MailPortsRule(day, dests, Labels{}, th), "no mail port")
 	none(t, DNSBypass(day, dests, DefaultResolvers(), Labels{}, th), "not a resolver")
 	none(t, UploadSpike(UploadInput{HourMS: late.TS, Tx: map[string]int64{app: 25_000}}, th), "25 kB an hour")
-	// Contract §11.4: without app.ops, the permission itself is reported (the review pinned 0 detection here).
+	// Contract §11.4: without app.ops, the permission itself is reported (before that contract, no detection was expected here).
 	sms := map[string]bool{"com.google.android.apps.messaging": true}
 	p := one(t, SMSPermission(SMSPermissionInput{Holders: []SMSHolder{{Package: app, SinceMS: late.TS, Source: "permission_changed"}},
 		SMSApps: sms, Risks: map[string]Risk{app: risk}}), TypeSMSPermission, app)

@@ -21,7 +21,7 @@ func TestFakeQueryLogSeeksLikeAdGuardHome(t *testing.T) {
 	base := time.Date(2026, 11, 16, 10, 0, 0, 0, time.UTC)
 	at := func(i int) time.Time { return base.Add(time.Duration(i) * time.Second) }
 	for i := range 40 {
-		f.AddQuery(at(i), "192.0.2.1", "s25", "a.example")
+		f.AddQuery(at(i), "192.0.2.1", "phone", "a.example")
 	}
 	count := func(older time.Time) (int, string) {
 		t.Helper()
@@ -61,7 +61,7 @@ func TestFakeQueryLogSeeksLikeAdGuardHome(t *testing.T) {
 	// After a rotation: records 0..39 are in the rotated file, 40..54 in the current one.
 	f.Rotate()
 	for i := 40; i < 55; i++ {
-		f.AddQuery(at(i), "192.0.2.1", "s25", "a.example")
+		f.AddQuery(at(i), "192.0.2.1", "phone", "a.example")
 	}
 	check("two files, no older_than", time.Time{}, 55, at(54))
 	check("two files, later than every record", at(100), 54, at(53))

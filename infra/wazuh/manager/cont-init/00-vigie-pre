@@ -1,8 +1,0 @@
-#!/usr/bin/with-contenv bash
-# Vigie : exécuté avant 0-wazuh-init (ordre alphabétique de /etc/cont-init.d).
-# Contourne un défaut de l'image wazuh-manager 4.14.10 : au REDÉMARRAGE d'un conteneur existant
-# (reboot de l'hôte, « docker compose restart »), /var/ossec/var/multigroups a été vidé par Wazuh ;
-# 0-wazuh-init tente alors de le réinitialiser depuis /var/ossec/data_tmp, supprimé après le
-# premier démarrage, échoue et s'arrête AVANT de copier ossec.conf et les règles Vigie.
-mkdir -p /var/ossec/data_tmp/permanent/var/ossec/var/multigroups
-exit 0

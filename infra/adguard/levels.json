@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "lists": {
+    "watchpost_base": {
+      "name": "Watchpost: base (exceptions and telemetry)",
+      "url": "/opt/adguardhome/work/userfilters/watchpost/watchpost-base.txt",
+      "category": "tracking"
+    },
+    "watchpost_strict": {
+      "name": "Watchpost: strict",
+      "url": "/opt/adguardhome/work/userfilters/watchpost/watchpost-strict.txt",
+      "category": "tracking"
+    },
+    "hagezi_pro": {
+      "name": "HaGeZi Multi PRO",
+      "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/pro.txt",
+      "category": "mixed"
+    },
+    "hagezi_pro_plus": {
+      "name": "HaGeZi Multi PRO++",
+      "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/pro.plus.txt",
+      "category": "mixed"
+    },
+    "hagezi_samsung": {
+      "name": "HaGeZi Native Tracker — Samsung",
+      "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/native.samsung.txt",
+      "category": "tracking"
+    },
+    "hagezi_tif": {
+      "name": "HaGeZi Threat Intelligence Feeds (medium)",
+      "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/tif.medium.txt",
+      "category": "threat"
+    }
+  },
+  "levels": [
+    {
+      "key": "permissive",
+      "name": "Permissive",
+      "description": "Threats (phishing, malware, command-and-control servers) and Watchpost base rules: main Google and Samsung telemetry and Google ad networks blocked, essential exceptions guaranteed. No general advertising list: everything works.",
+      "lists": ["watchpost_base", "hagezi_tif"]
+    },
+    {
+      "key": "balanced",
+      "name": "Balanced",
+      "description": "Adds HaGeZi Multi PRO (advertising, tracking, telemetry) and the Samsung native trackers. Play Services, Play Store, push notifications and banking apps keep working.",
+      "lists": ["watchpost_base", "hagezi_pro", "hagezi_samsung", "hagezi_tif"]
+    },
+    {
+      "key": "strict",
+      "name": "Strict",
+      "description": "HaGeZi Multi PRO++ (more aggressive) instead of PRO, and strict Watchpost blocks: Firebase Remote Config, Galaxy Store, Samsung push and cloud. The essential exceptions stay guaranteed, but some Samsung apps and features may misbehave.",
+      "lists": ["watchpost_base", "watchpost_strict", "hagezi_pro_plus", "hagezi_samsung", "hagezi_tif"]
+    }
+  ]
+}

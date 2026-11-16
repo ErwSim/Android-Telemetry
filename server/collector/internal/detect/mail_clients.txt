@@ -1,7 +1,7 @@
-# Clients de messagerie connus, exclus de detect.mail_ports : ils se connectent légitimement aux ports
-# d'envoi de courriel (25, 465, 587). Une application absente de cette liste qui s'y connecte est signalée.
-# Compléter par WATCHPOST_DETECT_MAIL_CLIENTS (paquets séparés par des virgules) pour un client local.
-# Une ligne par paquet Android, « # » commence un commentaire.
+# Known mail clients, excluded from detect.mail_ports: they legitimately connect to the mail-sending ports
+# (25, 465, 587). An application that is not in this list and connects to them is reported.
+# Extend with WATCHPOST_DETECT_MAIL_CLIENTS (comma-separated packages) for a local client.
+# One line per Android package, "#" starts a comment.
 
 com.android.email
 com.samsung.android.email.provider

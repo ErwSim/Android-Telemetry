@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
-/** A typed setting. Names are dotted lowercase, prefixed by the owner (`buffer.`, `location.`…). */
+/** A typed setting. Names are dotted lowercase, prefixed by the component that owns them (`buffer.`, `location.`…). */
 sealed class SettingKey<T : Any>(val name: String, val default: T) {
     class IntKey(name: String, default: Int, val min: Int, val max: Int) : SettingKey<Int>(name, default)
     class BoolKey(name: String, default: Boolean) : SettingKey<Boolean>(name, default)
@@ -57,7 +57,7 @@ sealed class SettingSpec(
     open val key: SettingKey<*>,
     @StringRes open val titleRes: Int,
     @StringRes open val summaryRes: Int?,
-    /** Shown with an "Expérimental" mark (unstable platform behaviour, best effort). */
+    /** Shown with an "Experimental" mark (unstable platform behaviour, best effort). */
     open val experimental: Boolean,
 ) {
     data class IntSpec(
@@ -152,7 +152,7 @@ class AgentSettings(private val prefs: SharedPreferences) {
     operator fun get(key: SettingKey.PackageListKey): Set<String> =
         if (prefs.contains(key.name)) PackageNames.decode(prefs.getString(key.name, null)).take(key.maxSize).toSortedSet() else key.default
 
-    /** Whether the owner ever saved this list (a never-saved list reads as its default). */
+    /** Whether the user ever saved this list (a never-saved list reads as its default). */
     fun isSet(key: SettingKey<*>): Boolean = prefs.contains(key.name)
 
     /**
@@ -186,7 +186,7 @@ class AgentSettings(private val prefs: SharedPreferences) {
     val raw: SharedPreferences get() = prefs
 }
 
-/** Core settings shown in the "Réglages" screen. */
+/** Core settings shown in the "Settings" screen. */
 object CoreSettings {
     val AGENT_ENABLED = SettingKey.BoolKey("agent.enabled", true)
     val BUFFER_MAX_MB = SettingKey.IntKey("buffer.max_mb", 200, 10, 2_000)

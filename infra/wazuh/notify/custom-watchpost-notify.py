@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Notification Vigie : intégration Wazuh appelée par wazuh-integratord pour chaque alerte retenue
-(niveau >= VIGIE_NOTIFY_LEVEL, plus le silence de l'agent). Arguments : <fichier d'alerte JSON> …
+"""Watchpost notification: Wazuh integration called by wazuh-integratord for each selected alert
+(level >= WATCHPOST_NOTIFY_LEVEL, plus the agent silence). Arguments: <JSON alert file> …
 
-Envoie, selon /var/ossec/etc/vigie-notify.json (écrit par vigie-init.sh depuis .env) :
-- un POST JSON simple vers un webhook : {"title", "message", "priority", "tags"} (+ "topic" si
-  défini : format de publication JSON de ntfy, à poster sur la racine du serveur ntfy) ;
-- un e-mail par un relais SMTP (STARTTLS, TLS ou clair, authentification facultative).
+Sends, according to /var/ossec/etc/watchpost-notify.json (written by watchpost-init.sh from .env):
+- a simple JSON POST to a webhook: {"title", "message", "priority", "tags"} (+ "topic" if
+  set: ntfy JSON publishing format, to be posted to the root of the ntfy server);
+- an e-mail through an SMTP relay (STARTTLS, TLS or plain, optional authentication).
 
-Le corps ne contient que le titre de la règle, son niveau, l'appareil, le type d'événement et
-l'heure : jamais le journal brut (full_log), ni les données de l'événement (position GPS,
-identifiants, contenu), ni de secret. La notification part chez un tiers.
+The body contains only the rule title, its level, the device, the event type and the time:
+never the raw log (full_log), nor the event data (GPS position, identifiers, content), nor any
+secret. The notification goes to a third party.
 """
 import json
 import smtplib
@@ -19,30 +19,30 @@ import urllib.request
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 
-CONF = "/var/ossec/etc/vigie-notify.json"
+CONF = "/var/ossec/etc/watchpost-notify.json"
 
 
 def build(alert):
     rule = alert.get("rule", {})
     data = alert.get("data", {}) or {}
-    v = data.get("vigie", {}) or {}
-    w = data.get("vigie_watch", {}) or {}
+    v = data.get("watchpost", {}) or {}
+    w = data.get("watchpost_watch", {}) or {}
     level = int(rule.get("level", 0))
-    desc = str(rule.get("description", "alerte Wazuh"))
+    desc = str(rule.get("description", "Wazuh alert"))
     device = v.get("device_name") or w.get("device_name") or v.get("device_id") or w.get("device_id") or "?"
-    lines = [desc, "", f"Gravité : niveau {level} (règle {rule.get('id', '?')})", f"Appareil : {device}"]
+    lines = [desc, "", f"Severity: level {level} (rule {rule.get('id', '?')})", f"Device: {device}"]
     if v.get("type"):
-        lines.append(f"Type d'événement : {v['type']}")
+        lines.append(f"Event type: {v['type']}")
     if v.get("ts"):
-        lines.append(f"Heure de l'événement : {v['ts']}")
+        lines.append(f"Event time: {v['ts']}")
     elif w.get("last_seen"):
-        lines.append(f"Dernier événement reçu : {w['last_seen']}")
-    lines.append(f"Heure de l'alerte (Wazuh) : {alert.get('timestamp', '?')}")
+        lines.append(f"Last event received: {w['last_seen']}")
+    lines.append(f"Alert time (Wazuh): {alert.get('timestamp', '?')}")
     mitre = [g[len("attack_mobile_"):] for g in rule.get("groups", []) if g.startswith("attack_mobile_")]
     if mitre:
-        lines.append("ATT&CK Mobile : " + ", ".join(mitre))
-    lines += ["", "Détails : dashboard Wazuh (siem.) ou console Vigie."]
-    title = f"Vigie [{level}] {desc}"
+        lines.append("ATT&CK Mobile: " + ", ".join(mitre))
+    lines += ["", "Details: Wazuh dashboard (siem.) or Watchpost console."]
+    title = f"Watchpost [{level}] {desc}"
     if len(title) > 200:
         title = title[:199] + "…"
     priority = 5 if level >= 12 else 4 if level >= 10 else 3
@@ -50,25 +50,25 @@ def build(alert):
 
 
 def send_webhook(conf, title, message, priority):
-    body = {"title": title, "message": message, "priority": priority, "tags": ["vigie", "rotating_light" if priority >= 5 else "warning"]}
+    body = {"title": title, "message": message, "priority": priority, "tags": ["watchpost", "rotating_light" if priority >= 5 else "warning"]}
     if conf.get("topic"):
         body["topic"] = conf["topic"]
     req = urllib.request.Request(conf["url"], data=json.dumps(body, ensure_ascii=False).encode("utf-8"), method="POST",
-                                 headers={"Content-Type": "application/json; charset=utf-8", "User-Agent": "vigie-notify"})
+                                 headers={"Content-Type": "application/json; charset=utf-8", "User-Agent": "watchpost-notify"})
     if conf.get("token"):
         req.add_header("Authorization", "Bearer " + conf["token"])
     with urllib.request.urlopen(req, timeout=15, context=ssl.create_default_context()) as r:
         if r.status >= 300:
-            raise RuntimeError(f"webhook : HTTP {r.status}")
+            raise RuntimeError(f"webhook: HTTP {r.status}")
 
 
 def send_mail(conf, title, message):
     msg = EmailMessage()
     msg["Subject"] = title
-    msg["From"] = conf.get("smtp_from") or conf.get("smtp_user") or "vigie@localhost"
+    msg["From"] = conf.get("smtp_from") or conf.get("smtp_user") or "watchpost@localhost"
     msg["To"] = conf["smtp_to"]
     msg["Date"] = formatdate(localtime=False)
-    msg["Message-ID"] = make_msgid(domain="vigie")
+    msg["Message-ID"] = make_msgid(domain="watchpost")
     msg.set_content(message)
     mode = conf.get("smtp_tls", "starttls")
     port = int(conf.get("smtp_port") or 587)
@@ -97,15 +97,15 @@ def main():
     if conf.get("url"):
         try:
             send_webhook(conf, title, message, priority)
-        except Exception as e:  # noqa: BLE001 — une erreur ne doit pas empêcher l'e-mail
-            errors.append(f"webhook : {e}")
+        except Exception as e:  # noqa: BLE001 - an error must not prevent the e-mail
+            errors.append(f"webhook: {e}")
     if conf.get("smtp_host") and conf.get("smtp_to"):
         try:
             send_mail(conf, title, message)
         except Exception as e:  # noqa: BLE001
-            errors.append(f"smtp : {e}")
+            errors.append(f"smtp: {e}")
     if errors:
-        print("vigie-notify : " + " ; ".join(errors), file=sys.stderr)
+        print("watchpost-notify: " + "; ".join(errors), file=sys.stderr)
         sys.exit(1)
 
 

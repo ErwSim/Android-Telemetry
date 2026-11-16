@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Génère les cas de test des règles Vigie (cases/*.log). Usage : python3 generer-cas.py cases
+"""Génère les cas de test des règles Watchpost (cases/*.log). Usage : python3 generer-cas.py cases
 
 Chaque fichier : commentaires (description, « attendu: <id de règle> » pour la DERNIÈRE ligne),
 puis une ou plusieurs lignes d'événement (les premières préparent les règles de corrélation).
@@ -18,7 +18,7 @@ def ev(typ, data, sev=0, dev="dev_7k2m9q", name="s25", source=None):
     if source:  # événements produits par le collecteur (commandes §8, pistage §9, détections §11.3)
         v["seq"] = 0; v["source"] = source
     v["data"] = data
-    return json.dumps({"vigie": v}, ensure_ascii=False, separators=(',', ':'))
+    return json.dumps({"watchpost": v}, ensure_ascii=False, separators=(',', ':'))
 CMD = "01JCQ8Z3K4M5N6P7Q8R9S0T1V2"
 def issued(typ, params=None, sev=0, **kw):
     d = {"command_id": CMD, "type": typ, "signed": typ in ("lock", "wipe", "clear_lock_message"), "created_by": "admin",
@@ -75,7 +75,7 @@ def guard(action, key, target, permission=None, sev=None, ok=True):
 def pc(field, old, new, sev=0):
     return ev("security.posture_change", {"field": field, "old": old, "new": new}, sev)
 def watch(o):
-    return json.dumps({"vigie_watch": o}, separators=(',', ':'))
+    return json.dumps({"watchpost_watch": o}, separators=(',', ':'))
 GOOD = {"security_patch": "2026-10-01", "patch_age_days": 45, "encrypted": True, "lock_secure": True,
         "adb_enabled": False, "adb_wifi_enabled": False, "dev_options": False, "unknown_sources": False,
         "private_dns_mode": "hostname", "private_dns_host": "@@DNS_HOST@@", "always_on_vpn": False,
@@ -84,8 +84,8 @@ GOOD = {"security_patch": "2026-10-01", "patch_age_days": 45, "encrypted": True,
 def posture(**kw):
     d = dict(GOOD); d.update(kw); return ev("security.posture", d)
 SA = {"accessibility_services": [], "notification_listeners": ["com.google.android.gms/.NotifListener"],
-      "device_admins": ["io.github.erwsim.vigie/.AdminReceiver"], "overlay_apps": [], "unknown_sources_apps": [],
-      "usage_access_apps": ["io.github.erwsim.vigie"], "vpn_apps": [], "default_apps": {"browser": "org.mozilla.firefox"}}
+      "device_admins": ["io.github.erwsim.watchpost/.AdminReceiver"], "overlay_apps": [], "unknown_sources_apps": [],
+      "usage_access_apps": ["io.github.erwsim.watchpost"], "vpn_apps": [], "default_apps": {"browser": "org.mozilla.firefox"}}
 def sa(**kw):
     d = dict(SA); d.update(kw); return ev("app.special_access", d)
 def slog(tag, fields=None, level="info"):
@@ -123,7 +123,7 @@ cases = [
  ("100153", "app-desinstallee", "App désinstallée", [ev("app.removed", {"package": "org.example.app"})]),
  ("100155", "acces-speciaux-quotidien", "Accès spéciaux inchangés (un seul événement)", [sa()]),
  ("100156", "acces-accessibilite", "Nouvelle app avec service d'accessibilité", [sa(), sa(accessibility_services=["com.evil.app/.A11yService"])]),
- ("100157", "acces-admin-appareil", "Nouvel administrateur de l'appareil", [sa(), sa(device_admins=["io.github.erwsim.vigie/.AdminReceiver", "com.evil.app/.Admin"])]),
+ ("100157", "acces-admin-appareil", "Nouvel administrateur de l'appareil", [sa(), sa(device_admins=["io.github.erwsim.watchpost/.AdminReceiver", "com.evil.app/.Admin"])]),
  ("100158", "acces-notifications", "Nouvelle app qui lit les notifications", [sa(), sa(notification_listeners=["com.google.android.gms/.NotifListener", "com.evil.app/.Listener"])]),
  ("100159", "acces-vpn", "Nouvelle app VPN", [sa(), sa(vpn_apps=["com.evil.vpn"])]),
  ("100155", "acces-speciaux-identiques", "Deux états identiques : pas d'alerte", [sa(), sa()]),
@@ -163,10 +163,10 @@ cases = [
  ("100216", "journal-ac-installee", "AC installée (journal)", [slog("cert_authority_installed", {"success": True, "subject": "CN=Proxy MITM", "user_id": 0})]),
  ("100217", "journal-arrete", "Journalisation arrêtée", [slog("logging_stopped")]),
  ("100218", "journal-tampon-critique", "Tampon du journal presque plein", [slog("log_buffer_size_critical")]),
- ("100219", "journal-violation-cle", "Violation d'intégrité de clé", [slog("key_integrity_violation", {"alias": "vigie_upload_key", "uid": 10301})]),
+ ("100219", "journal-violation-cle", "Violation d'intégrité de clé", [slog("key_integrity_violation", {"alias": "watchpost_upload_key", "uid": 10301})]),
  ("100220", "journal-autotest-crypto", "Échec de l'autotest crypto", [slog("crypto_self_test_completed", {"success": False})]),
  ("100221", "journal-effacement-echec", "Échec d'effacement", [slog("wipe_failure", {"arg0": "x"})]),
- ("100222", "journal-restriction-retiree", "Restriction utilisateur retirée", [slog("user_restriction_removed", {"admin_package": "io.github.erwsim.vigie", "user_id": 0, "restriction": "no_debugging_features"})]),
+ ("100222", "journal-restriction-retiree", "Restriction utilisateur retirée", [slog("user_restriction_removed", {"admin_package": "io.github.erwsim.watchpost", "user_id": 0, "restriction": "no_debugging_features"})]),
  ("100223", "journal-support-monte", "Support amovible monté", [slog("media_mount", {"mount_point": "/storage/ABCD-1234", "label": "USB"})]),
  ("100224", "journal-validation-certificat", "Échec de validation de certificat", [slog("cert_validation_failure", {"reason": "untrusted"})]),
  ("100300", "sonde-autre", "Sonde : constat inconnu", [watch({"check": "other", "device_id": "dev_7k2m9q"})]),
@@ -175,7 +175,7 @@ cases = [
  ("100303", "sonde-trou-sequence", "Trou de séquence inexpliqué", [watch({"check": "seq_gap", "device_id": "dev_7k2m9q", "device_name": "s25", "missing_count": 3, "first_missing": 120, "last_missing": 122, "sample": [120, 121, 122], "explained": "none"})]),
  ("100304", "sonde-trou-explique", "Trou de séquence dû à la purge du tampon", [watch({"check": "seq_gap", "device_id": "dev_7k2m9q", "device_name": "s25", "missing_count": 300, "first_missing": 120, "last_missing": 419, "sample": [120], "explained": "buffer_overflow"})]),
  ("100305", "sonde-sequence-remise-a-zero", "Compteur de séquence revenu en arrière", [watch({"check": "seq_reset", "device_id": "dev_7k2m9q", "device_name": "s25", "previous_max_seq": 18234, "current_max_seq": 12})]),
- ("100290", "rotation-export", "Rotation par renommage de l'export : pas d'alerte", ["ossec: File rotated (inode changed): '/var/vigie/events.ndjson'."]),
+ ("100290", "rotation-export", "Rotation par renommage de l'export : pas d'alerte", ["ossec: File rotated (inode changed): '/var/watchpost/events.ndjson'."]),
  ("100290", "rotation-adguard", "Rotation du journal AdGuard : pas d'alerte", ["ossec: File rotated (inode changed): '/var/adguard/querylog.json'."]),
  ("591", "rotation-autre-fichier", "Rotation d'un autre fichier : règle Wazuh 591 conservée", ["ossec: File rotated (inode changed): '/var/log/autre.log'."]),
  ("100172", "micro-appareil-verrouille", "Micro utilisé appareil verrouillé", [ev("sensor.microphone", {"recording": True, "source": "mic", "package": "com.qrscan.free.reader", "silenced": False, "screen_on": False, "locked": True}, 2)]),
@@ -205,7 +205,7 @@ cases = [
  ("100226", "journal-dm-verity", "dm-verity non appliqué", [slog("os_startup", {"verified_boot_state": "green", "dm_verity_mode": "eio"})]),
  ("100210", "journal-demarrage-normal", "Démarrage normal : pas d'alerte", [slog("os_startup", {"verified_boot_state": "green", "dm_verity_mode": "enforcing"})]),
  ("100227", "journal-code-modifie", "Code de verrouillage modifié", [slog("password_changed", {"complexity": 196608, "user_id": 0})]),
- ("100228", "journal-cle-echec", "Échec de génération de clé", [slog("key_generated", {"success": False, "alias": "vigie_upload_key", "uid": 10301})]),
+ ("100228", "journal-cle-echec", "Échec de génération de clé", [slog("key_generated", {"success": False, "alias": "watchpost_upload_key", "uid": 10301})]),
  ("100105", "severite-critique-type-inconnu", "Type inconnu, sévérité 3", [ev("device.unknown_future_type", {"x": 1}, 3)]),
  ("100106", "severite-avertissement-type-inconnu", "Type inconnu, sévérité 2", [ev("net.unknown_future_type", {"x": 1}, 2)]),
  ("100400", "adguard-requete", "Requête DNS non bloquée", [agh("example.org")]),

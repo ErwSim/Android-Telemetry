@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Interroge un résolveur DNS-over-TLS comme le fait le « DNS privé » d'Android (diagnostic).
+"""Queries a DNS-over-TLS resolver the way Android's "private DNS" does (diagnostics).
 
-  python3 tools/dot-query.py dns.exemple.fr app-measurement.com
-  python3 tools/dot-query.py --connect 127.0.0.1 --cafile data/caddy/server-root-ca.crt dns.vigie.lan example.org
+  python3 tools/dot-query.py dns.example.org app-measurement.com
+  python3 tools/dot-query.py --connect 127.0.0.1 --cafile data/caddy/server-root-ca.crt dns.watchpost.lan example.org
 
-Affiche le certificat présenté (sujet, émetteur, empreinte SHA-256), le code de réponse et les
-adresses A/AAAA. Un domaine bloqué par AdGuard Home répond 0.0.0.0 / ::. Python 3 standard.
+Prints the presented certificate (subject, issuer, SHA-256 fingerprint), the response code and the
+A/AAAA addresses. A domain blocked by AdGuard Home answers 0.0.0.0 / ::. Standard Python 3.
 """
 import argparse
 import hashlib
@@ -55,11 +55,11 @@ def parse_answers(buf):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("server", help="nom d'hôte DoT (SNI et vérification du certificat)")
-    ap.add_argument("name", help="nom à résoudre")
-    ap.add_argument("--connect", help="adresse IP à joindre (défaut : résolution de server)")
+    ap.add_argument("server", help="DoT host name (SNI and certificate verification)")
+    ap.add_argument("name", help="name to resolve")
+    ap.add_argument("--connect", help="IP address to connect to (default: resolution of server)")
     ap.add_argument("--port", type=int, default=853)
-    ap.add_argument("--cafile", help="AC à utiliser (mode TLS interne)")
+    ap.add_argument("--cafile", help="CA to use (internal TLS mode)")
     ap.add_argument("--type", default="A", choices=["A", "AAAA"])
     a = ap.parse_args()
 
@@ -70,10 +70,10 @@ def main():
             cert = s.getpeercert()
             subj = dict(x[0] for x in cert.get("subject", ()))
             issuer = dict(x[0] for x in cert.get("issuer", ()))
-            print(f"TLS {s.version()} ; certificat : CN={subj.get('commonName', '')} "
+            print(f"TLS {s.version()}; certificate: CN={subj.get('commonName', '')} "
                   f"SAN={[v for k, v in cert.get('subjectAltName', ())]}")
-            print(f"  émetteur : {issuer.get('commonName', '')} ; expire : {cert.get('notAfter')}")
-            print(f"  SHA-256 : {hashlib.sha256(der).hexdigest()}")
+            print(f"  issuer: {issuer.get('commonName', '')}; expires: {cert.get('notAfter')}")
+            print(f"  SHA-256: {hashlib.sha256(der).hexdigest()}")
             qid, q = build_query(a.name, 1 if a.type == "A" else 28)
             s.sendall(struct.pack(">H", len(q)) + q)
             ln = struct.unpack(">H", s.recv(2))[0]
@@ -84,9 +84,9 @@ def main():
                     break
                 buf += chunk
     rcode, addrs = parse_answers(buf)
-    print(f"{a.name} {a.type} : {rcode} {' '.join(addrs)}")
+    print(f"{a.name} {a.type}: {rcode} {' '.join(addrs)}")
     blocked = any(x in ("0.0.0.0", "::") for x in addrs)
-    print("=> BLOQUÉ par le filtrage" if blocked else "=> non bloqué")
+    print("=> BLOCKED by filtering" if blocked else "=> not blocked")
     return 0
 
 

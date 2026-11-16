@@ -57,7 +57,7 @@ import java.security.MessageDigest
  * `http://` address of a development collector (the test then sets `X-Watchpost-Client-Cert-Sha256` itself, as
  * the simulator does); `WATCHPOST_CROSS_OUT` receives a summary.
  *
- *     WATCHPOST_CROSS_ENROLL=/tmp/s25.watchpost WATCHPOST_CROSS_URL=http://127.0.0.1:8080 \
+ *     WATCHPOST_CROSS_ENROLL=/tmp/phone.watchpost WATCHPOST_CROSS_URL=http://127.0.0.1:8080 \
  *         ./gradlew :app:testDebugUnitTest --tests '*CrossDetectionsTest*' --rerun
  */
 class CrossDetectionsTest {
@@ -106,7 +106,7 @@ class CrossDetectionsTest {
             eventData { SpecialAccessSnapshot(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), mapOf("sms" to messages, "keyboard" to "com.samsung.android.honeyboard")).writeTo(this) },
             ts = t0 - 600_000,
         )
-        val system = listOf(messages to "Messages", gms to "Services Google Play", "com.samsung.android.honeyboard" to "Clavier Samsung").map { (pkg, label) ->
+        val system = listOf(messages to "Messages", gms to "Google Play services", "com.samsung.android.honeyboard" to "Samsung Keyboard").map { (pkg, label) ->
             AppInventoryLogic.inventoryItem(AppDetails(pkg, label, true, false, false, 36, t0 - 86_400_000L * 300, t0 - 86_400_000L), AppRecord(pkg, "1", 1, "c".repeat(64), emptySet(), "com.android.vending", system = true))
         }
         AppInventoryLogic.inventoryParts(system, "01JCROSSDETECTIONS00000000", 16 * 1024).forEach { add("app.inventory", it, ts = t0 - 500_000) }
@@ -120,7 +120,7 @@ class CrossDetectionsTest {
             bootReceiver = true, launcherActivity = false,
         )
         // At installation nothing is granted yet: the scorer only counts SEND_SMS once it is granted (android/README,
-        // « sms_send : SEND_SMS accordée »), so the first note is only "medium" and has no SMS reason.
+        // `sms_send`: SEND_SMS granted), so the first note is only "medium" and has no SMS reason.
         val atInstall = RiskScorer.score(facts)
         assertEquals("at installation: ${atInstall.reasonCodes}", RiskLevel.MEDIUM, atInstall.level)
         assertTrue(atInstall.reasonCodes.toString(), "sms_send" !in atInstall.reasonCodes)

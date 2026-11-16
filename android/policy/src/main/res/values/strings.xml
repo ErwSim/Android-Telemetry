@@ -1,56 +1,56 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="fr">
-    <string name="policy_admin_label">Watchpost (administration de l\'appareil)</string>
-    <string name="policy_admin_description">Permet à Watchpost, en mode Device Owner, de journaliser la sécurité et le réseau et d\'appliquer la politique de confidentialité choisie dans l\'app. Tout est réversible depuis l\'app.</string>
-    <string name="policy_disable_warning">Désactiver l\'administrateur Watchpost arrête la protection de l\'appareil. Cette action est enregistrée et signalée au serveur.</string>
-    <string name="setting_force_stop_protection">Protection contre l\'arrêt forcé</string>
-    <string name="setting_force_stop_protection_summary">En mode Device Owner, empêche « Forcer l\'arrêt » et « Effacer les données » sur Watchpost, et exempte Watchpost de la mise en veille des applications. Réversible ici.</string>
+<resources>
+    <string name="policy_admin_label">Watchpost (device administration)</string>
+    <string name="policy_admin_description">Allows Watchpost, in Device Owner mode, to log security and network events and to apply the privacy policy chosen in the app. Everything is reversible from the app.</string>
+    <string name="policy_disable_warning">Disabling the Watchpost administrator stops the device protection. This action is recorded and reported to the server.</string>
+    <string name="setting_force_stop_protection">Force-stop protection</string>
+    <string name="setting_force_stop_protection_summary">In Device Owner mode, prevents "Force stop" and "Clear data" on Watchpost, and exempts Watchpost from app sleeping. Reversible here.</string>
 
     <!-- Private DNS fallback (policy settings) -->
-    <string name="setting_dns_fallback">Repli automatique du DNS privé</string>
-    <string name="setting_dns_fallback_summary">Si le serveur DNS imposé reste injoignable (réseau non validé et contrôle DNS sur TLS en échec), Watchpost repasse le DNS privé en mode automatique pour garder Internet. Le repli est signalé (sévérité 2). Désactivé : la protection prime, le téléphone reste sans Internet jusqu\'au retour du serveur ou à l\'annulation du DNS.</string>
-    <string name="setting_dns_fallback_min">Délai avant le repli</string>
-    <string name="setting_dns_fallback_min_summary">Durée d\'échec continue avant de basculer en mode automatique.</string>
-    <string name="setting_dns_auto_restore">Réimposer le DNS quand le serveur répond</string>
-    <string name="setting_dns_auto_restore_summary">Après un repli, réimpose l\'hôte dès qu\'il répond de nouveau (vérifié avant).</string>
+    <string name="setting_dns_fallback">Private DNS automatic fallback</string>
+    <string name="setting_dns_fallback_summary">If the enforced DNS server stays unreachable (network not validated and DNS over TLS check failing), Watchpost sets private DNS back to automatic mode to keep Internet. The fallback is reported (severity 2). Disabled: protection comes first, the phone stays without Internet until the server returns or the DNS is cancelled.</string>
+    <string name="setting_dns_fallback_min">Delay before the fallback</string>
+    <string name="setting_dns_fallback_min_summary">Continuous failure duration before switching to automatic mode.</string>
+    <string name="setting_dns_auto_restore">Re-enforce the DNS when the server answers</string>
+    <string name="setting_dns_auto_restore_summary">After a fallback, re-enforces the host as soon as it answers again (checked first).</string>
 
     <!-- Results of policy operations (screen) -->
-    <string name="policy_msg_applied">Politique appliquée : %1$d action(s) réussie(s).</string>
-    <string name="policy_msg_reverted">Rétabli : %1$d action(s) réussie(s).</string>
-    <string name="policy_msg_removed">Device Owner retiré : %1$d action(s) réussie(s).</string>
-    <string name="policy_msg_failures">%1$d échec(s) :\n%2$s</string>
-    <string name="policy_msg_error">Erreur : %1$s</string>
+    <string name="policy_msg_applied">Policy applied: %1$d action(s) succeeded.</string>
+    <string name="policy_msg_reverted">Restored: %1$d action(s) succeeded.</string>
+    <string name="policy_msg_removed">Device Owner removed: %1$d action(s) succeeded.</string>
+    <string name="policy_msg_failures">%1$d failure(s):\n%2$s</string>
+    <string name="policy_msg_error">Error: %1$s</string>
 
     <!-- Collectors -->
-    <string name="collector_security_log_title">Journal de sécurité du système</string>
-    <string name="collector_security_log_desc">Journal de sécurité d\'Android (Device Owner) : commandes et transferts ADB, démarrages et arrêts, déverrouillages réussis ou non, clés et autorités de certification, montage de supports, restrictions, installations d\'apps, connexions Wi-Fi et Bluetooth, démarrages de processus. Livré par le système par lots (au plus toutes les 2 h), sans relevé périodique. Volume : quelques centaines d\'entrées par heure, surtout des démarrages de processus (agrégés par défaut).</string>
-    <string name="setting_security_log_app_process">Démarrages de processus</string>
-    <string name="setting_security_log_app_process_summary">Chaque démarrage de processus avec l\'empreinte de son APK (le tag le plus bavard).</string>
-    <string name="setting_security_log_aggregate">Agréger les démarrages de processus</string>
-    <string name="setting_security_log_aggregate_summary">Un seul événement par processus et par heure, avec le nombre de démarrages.</string>
-    <string name="setting_security_log_radio">Connexions Wi-Fi et Bluetooth</string>
-    <string name="setting_security_log_radio_summary">Connexions et déconnexions Wi-Fi et Bluetooth vues par le journal de sécurité.</string>
+    <string name="collector_security_log_title">System security log</string>
+    <string name="collector_security_log_desc">Android security log (Device Owner): ADB commands and transfers, boots and shutdowns, successful or failed unlocks, keys and certificate authorities, media mounting, restrictions, app installs, Wi-Fi and Bluetooth connections, process starts. Delivered by the system in batches (at most every 2 h), no periodic polling. Volume: a few hundred entries per hour, mostly process starts (aggregated by default).</string>
+    <string name="setting_security_log_app_process">Process starts</string>
+    <string name="setting_security_log_app_process_summary">Every process start with the fingerprint of its APK (the chattiest tag).</string>
+    <string name="setting_security_log_aggregate">Aggregate process starts</string>
+    <string name="setting_security_log_aggregate_summary">One event per process and per hour, with the number of starts.</string>
+    <string name="setting_security_log_radio">Wi-Fi and Bluetooth connections</string>
+    <string name="setting_security_log_radio_summary">Wi-Fi and Bluetooth connections and disconnections seen by the security log.</string>
 
-    <string name="collector_network_log_title">Journal réseau du système</string>
-    <string name="collector_network_log_desc">Journal réseau d\'Android (Device Owner) : chaque requête DNS (nom demandé, adresses) et chaque connexion TCP sortante (adresse, port), avec l\'app qui l\'a faite. Livré par lots (au plus 1200 entrées ou toutes les 1 h 30). Ne voit pas l\'UDP sans connexion (QUIC), les adresses codées en dur ni le DNS chiffré par les apps. Active la mention « réseau surveillé » du système. Volume : jusqu\'à plusieurs centaines d\'entrées par heure (réduit par l\'agrégation).</string>
-    <string name="setting_network_log_aggregate">Agréger les requêtes identiques</string>
-    <string name="setting_network_log_aggregate_summary">Une même requête (même app, même nom ou même adresse et port) répétée dans la fenêtre devient un seul événement avec un compteur.</string>
-    <string name="setting_network_log_window">Fenêtre d\'agrégation</string>
-    <string name="setting_network_log_window_summary">Durée pendant laquelle les requêtes identiques sont regroupées.</string>
-    <string name="setting_network_log_connect">Connexions TCP</string>
-    <string name="setting_network_log_connect_summary">Enregistrer aussi les connexions (adresse et port), pas seulement le DNS.</string>
+    <string name="collector_network_log_title">System network log</string>
+    <string name="collector_network_log_desc">Android network log (Device Owner): every DNS request (name requested, addresses) and every outgoing TCP connection (address, port), with the app that made it. Delivered in batches (at most 1200 entries or every 1 h 30). Does not see connectionless UDP (QUIC), hard-coded addresses or DNS encrypted by apps. Turns on the system "network monitored" notice. Volume: up to several hundred entries per hour (reduced by aggregation).</string>
+    <string name="setting_network_log_aggregate">Aggregate identical requests</string>
+    <string name="setting_network_log_aggregate_summary">The same request (same app, same name or same address and port) repeated within the window becomes a single event with a counter.</string>
+    <string name="setting_network_log_window">Aggregation window</string>
+    <string name="setting_network_log_window_summary">Duration over which identical requests are grouped.</string>
+    <string name="setting_network_log_connect">TCP connections</string>
+    <string name="setting_network_log_connect_summary">Also record connections (address and port), not only DNS.</string>
 
-    <string name="collector_posture_title">Posture de sécurité</string>
-    <string name="collector_posture_desc">État de sécurité : correctif, chiffrement, verrouillage, débogage ADB (USB et sans fil), options développeur, sources inconnues, DNS privé, VPN permanent, Device Owner, démarrage vérifié, autorités de certification ajoutées, signal USB (Play Protect : aucune lecture fiable, omis). Au démarrage, une fois par jour et à chaque changement (un événement par champ modifié). Signale aussi l\'ajout ou le retrait d\'une autorité de certification et les échecs de déverrouillage. Un champ illisible est omis.</string>
+    <string name="collector_posture_title">Security posture</string>
+    <string name="collector_posture_desc">Security state: patch level, encryption, lock, ADB debugging (USB and wireless), developer options, unknown sources, private DNS, always-on VPN, Device Owner, verified boot, added certificate authorities, USB signal (Play Protect: no reliable reading, omitted). At boot, once a day and on every change (one event per changed field). Also reports the addition or removal of a certificate authority and unlock failures. An unreadable field is omitted.</string>
     <!-- Capability guards (contract §11.1): exception lists. -->
-    <string name="guard_list_sms">Applications autorisées à envoyer des SMS</string>
-    <string name="guard_list_sms_summary">En plus de l\'appli SMS par défaut et des applications du système, toujours épargnées. Pré-remplie avec l\'appli SMS par défaut.</string>
-    <string name="guard_list_calls">Applications autorisées à passer des appels</string>
-    <string name="guard_list_calls_summary">En plus du composeur par défaut et des applications du système, toujours épargnés. Pré-remplie avec le composeur par défaut.</string>
-    <string name="guard_list_accessibility">Services d\'accessibilité approuvés</string>
-    <string name="guard_list_accessibility_summary">Ceux du système restent toujours permis ; un service déjà activé est gardé (Android l\'exige).</string>
-    <string name="guard_list_input_methods">Claviers approuvés</string>
-    <string name="guard_list_input_methods_summary">Ceux du système (clavier Samsung) restent toujours permis ; un clavier déjà activé est gardé (Android l\'exige).</string>
-    <string name="guard_msg_applied">Garde appliquée : %1$d action(s) réussie(s).</string>
-    <string name="guard_msg_released">Application libérée.</string>
+    <string name="guard_list_sms">Apps allowed to send SMS</string>
+    <string name="guard_list_sms_summary">In addition to the default SMS app and the system apps, always spared. Pre-filled with the default SMS app.</string>
+    <string name="guard_list_calls">Apps allowed to place calls</string>
+    <string name="guard_list_calls_summary">In addition to the default dialer and the system apps, always spared. Pre-filled with the default dialer.</string>
+    <string name="guard_list_accessibility">Approved accessibility services</string>
+    <string name="guard_list_accessibility_summary">The system ones always remain allowed; a service that is already enabled is kept (Android requires it).</string>
+    <string name="guard_list_input_methods">Approved keyboards</string>
+    <string name="guard_list_input_methods_summary">The system ones (Samsung keyboard) always remain allowed; a keyboard that is already enabled is kept (Android requires it).</string>
+    <string name="guard_msg_applied">Guard applied: %1$d action(s) succeeded.</string>
+    <string name="guard_msg_released">App released.</string>
 </resources>

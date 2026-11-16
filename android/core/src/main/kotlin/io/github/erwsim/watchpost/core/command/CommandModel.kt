@@ -16,7 +16,7 @@ object CommandTypes {
 
     val ALL: Set<String> = setOf(RING, VIBRATE, STOP_RING, LOCATE, LOCK, CLEAR_LOCK_MESSAGE, WIPE)
 
-    /** Signed with the owner's command code (HMAC), verified before the content is read. */
+    /** Signed with the user's command passphrase (HMAC), verified before the content is read. */
     val SENSITIVE: Set<String> = setOf(LOCK, CLEAR_LOCK_MESSAGE, WIPE)
 
     /** Executed only by the Device Owner (`not_device_owner` otherwise). */
@@ -75,7 +75,7 @@ class AcceptedCommand internal constructor(
     val params: CommandParams,
     val issuedAtMs: Long,
     val expiresAtMs: Long,
-    /** The HMAC of the payload was verified with the owner's key (always true for a sensitive type). */
+    /** The HMAC of the payload was verified with the user's key (always true for a sensitive type). */
     val signatureVerified: Boolean,
     /** Conditions observed by the verifier; the wipe executor checks them again (see [WipeGate]). */
     val gate: WipeGate.Conditions,

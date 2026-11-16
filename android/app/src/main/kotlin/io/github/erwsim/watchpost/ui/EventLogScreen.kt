@@ -36,9 +36,9 @@ import io.github.erwsim.watchpost.core.event.Event
 import io.github.erwsim.watchpost.core.event.Rfc3339
 import io.github.erwsim.watchpost.core.event.WatchpostJson
 
-/** "Journal local": exactly what the agent emitted, as sent (transparency). */
+/** "Local event log": exactly what the agent emitted, as sent (transparency). */
 @Composable
-fun JournalScreen(agent: Agent, modifier: Modifier) {
+fun EventLogScreen(agent: Agent, modifier: Modifier) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val recent by agent.sink.recent.events.collectAsStateWithLifecycle()
     val totals by agent.outbox.totals.collectAsStateWithLifecycle()
@@ -53,20 +53,20 @@ fun JournalScreen(agent: Agent, modifier: Modifier) {
 
     Column(modifier.fillMaxSize()) {
         PrimaryTabRow(selectedTabIndex = tab) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.journal_tab_recent)) })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.journal_tab_pending, totals.count)) })
+            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.event_log_tab_recent)) })
+            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.event_log_tab_pending, totals.count)) })
         }
         val events = if (tab == 0) recent else pending
         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             item {
                 Text(
-                    stringResource(if (tab == 0) R.string.journal_recent_intro else R.string.journal_pending_intro),
+                    stringResource(if (tab == 0) R.string.event_log_recent_intro else R.string.event_log_pending_intro),
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
             if (events.isEmpty()) {
-                item { Text(stringResource(R.string.journal_empty), style = MaterialTheme.typography.bodyMedium) }
+                item { Text(stringResource(R.string.event_log_empty), style = MaterialTheme.typography.bodyMedium) }
             }
             items(events, key = { it.id }) { EventRow(it) }
         }

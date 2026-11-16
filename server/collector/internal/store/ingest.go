@@ -122,7 +122,7 @@ type IngestResult struct {
 // Ingest stores a batch of validated events for a device in one transaction.
 // Each event is either inserted, recognized as a duplicate (same id) or dropped as expired.
 //
-// ts is the origin time of the event: events relevé after the fact (net.dns, net.connect,
+// ts is the origin time of the event: events collected after the fact (net.dns, net.connect,
 // security.log, app.foreground) arrive hours or days late, so every aggregate is keyed on ts
 // and never on the reception time. An event older than the retention window (see SetRetention)
 // is acknowledged without being stored.

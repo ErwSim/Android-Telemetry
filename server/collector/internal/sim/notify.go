@@ -18,17 +18,17 @@ func importance(category string) string {
 
 // contentExcluded lists the apps whose notification content is never collected (setting of the
 // companion APK, contract §10): here the banking app.
-var contentExcluded = map[string]bool{"fr.creditagricole.androidapp": true}
+var contentExcluded = map[string]bool{"com.mybank.app": true}
 
 var notificationTexts = map[string][][2]string{
-	"com.whatsapp":                       {{"Maman", "Tu passes dimanche ?"}, {"Thomas", "Ok pour ce soir, 20 h devant le métro"}, {"Escalade du jeudi", "Léa : qui a la corde ?"}},
-	"org.thoughtcrime.securesms":         {{"Alice", "Je t'envoie le document ce soir"}, {"Alice", "Bien reçu, merci !"}},
-	"org.telegram.messenger":             {{"Canal Infos Vélo", "Nouvelle piste cyclable rue de Rivoli"}},
-	"com.samsung.android.messaging":      {{"38XXX", "Votre code de vérification est 483920. Ne le communiquez à personne."}, {"Pharmacie", "Votre commande est prête"}, {"Banque", "Code de sécurité : 7731 pour valider votre paiement"}},
-	"com.samsung.android.email.provider": {{"Fastmail", "Facture de novembre disponible"}, {"Mairie du 11e", "Votre rendez-vous du 21/11"}},
-	"fr.lemonde.editorial":               {{"Le Monde", "Alerte : le Parlement adopte le budget"}, {"Le Monde", "Les principales informations de la journée"}},
-	"com.instagram.android":              {{"Instagram", "thomas_r a aimé votre publication"}},
-	"com.strava":                         {{"Strava", "Thomas vous a donné un kudo"}, {"Strava", "Nouveau record personnel sur le segment Bois de Vincennes"}},
+	"com.whatsapp":                       {{"Mom", "Are you coming on Sunday?"}, {"Thomas", "Ok for tonight, 8 pm in front of the station"}, {"Thursday climbing", "Lea: who has the rope?"}},
+	"org.thoughtcrime.securesms":         {{"Alice", "I'll send you the document tonight"}, {"Alice", "Got it, thanks!"}},
+	"org.telegram.messenger":             {{"Cycling News Channel", "New bike lane on Main Street"}},
+	"com.samsung.android.messaging":      {{"38XXX", "Your verification code is 483920. Do not share it with anyone."}, {"Pharmacy", "Your order is ready"}, {"Bank", "Security code: 7731 to confirm your payment"}},
+	"com.samsung.android.email.provider": {{"Fastmail", "November invoice available"}, {"City Hall", "Your appointment on Nov 21"}},
+	"com.dailynews.reader":               {{"Daily News", "Alert: Parliament passes the budget"}, {"Daily News", "Today's top stories"}},
+	"com.instagram.android":              {{"Instagram", "thomas_r liked your post"}},
+	"com.strava":                         {{"Strava", "Thomas gave you kudos"}, {"Strava", "New personal record on the Riverside Park segment"}},
 }
 
 var codeRe = regexp.MustCompile(`\b[0-9]{4,8}\b`)

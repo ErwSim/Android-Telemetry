@@ -41,7 +41,7 @@ import io.github.erwsim.watchpost.core.Agent
 enum class Screen(val titleRes: Int, val topLevel: Boolean) {
     Home(R.string.nav_home, true),
     Collectors(R.string.nav_collectors, true),
-    Journal(R.string.nav_journal, true),
+    EventLog(R.string.nav_event_log, true),
     Settings(R.string.nav_settings, true),
     Enrollment(R.string.screen_enrollment, false),
     Policy(R.string.screen_policy, false),
@@ -140,7 +140,7 @@ fun WatchpostApp(openRequest: androidx.compose.runtime.MutableState<String?> = r
                 listOf(
                     Screen.Home to Icons.Filled.Home,
                     Screen.Collectors to Icons.AutoMirrored.Filled.List,
-                    Screen.Journal to Icons.Filled.Info,
+                    Screen.EventLog to Icons.Filled.Info,
                     Screen.Settings to Icons.Filled.Settings,
                 ).forEach { (s, icon) ->
                     NavigationBarItem(
@@ -157,7 +157,7 @@ fun WatchpostApp(openRequest: androidx.compose.runtime.MutableState<String?> = r
         when (screen) {
             Screen.Home -> HomeScreen(agent, resumeTick, modifier, ::navigate)
             Screen.Collectors -> CollectorsScreen(agent, resumeTick, modifier)
-            Screen.Journal -> JournalScreen(agent, modifier)
+            Screen.EventLog -> EventLogScreen(agent, modifier)
             Screen.Settings -> SettingsScreen(agent, resumeTick, modifier, ::navigate)
             Screen.Enrollment -> EnrollmentScreen(agent, modifier)
             Screen.Policy -> PolicyScreen(agent, resumeTick, modifier, ::navigate)

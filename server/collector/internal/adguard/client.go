@@ -46,7 +46,7 @@ func New(baseURL, user, pass string) (*Client, error) {
 			Transport: tr,
 			Timeout:   requestTimeout,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return errors.New("redirection refusée")
+				return errors.New("redirect refused")
 			},
 		},
 	}, nil
@@ -60,7 +60,7 @@ type StatusError struct {
 }
 
 func (e *StatusError) Error() string {
-	return fmt.Sprintf("AdGuard Home %s : HTTP %d %s", e.Path, e.Code, e.Body)
+	return fmt.Sprintf("AdGuard Home %s: HTTP %d %s", e.Path, e.Code, e.Body)
 }
 
 func (c *Client) do(ctx context.Context, method, path string, q url.Values, body any, limit int64, out any) error {
@@ -106,10 +106,10 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 		return err
 	}
 	if int64(len(b)) > limit {
-		return fmt.Errorf("AdGuard Home %s : réponse supérieure à %d octets", path, limit)
+		return fmt.Errorf("AdGuard Home %s: response larger than %d bytes", path, limit)
 	}
 	if err := json.Unmarshal(b, out); err != nil {
-		return fmt.Errorf("AdGuard Home %s : réponse illisible : %w", path, err)
+		return fmt.Errorf("AdGuard Home %s: unreadable response: %w", path, err)
 	}
 	return nil
 }

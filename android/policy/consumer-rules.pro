@@ -1,3 +1,3 @@
-# Volontairement vide : le module ne recourt pas à la réflexion. La sérialisation (kotlinx, sérialiseurs
-# générés), Room et WorkManager sont couverts par les règles de leurs bibliothèques et par
-# app/proguard-rules.pro (io.github.erwsim.watchpost.**), vérifiées sur l'APK release (voir README).
+# Intentionally empty: the module does not use reflection. Serialization (kotlinx, generated
+# serializers), Room and WorkManager are covered by the rules of their libraries and by
+# app/proguard-rules.pro (io.github.erwsim.watchpost.**), verified on the release APK (see README).

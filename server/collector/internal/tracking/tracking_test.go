@@ -53,12 +53,12 @@ func TestClassify(t *testing.T) {
 
 func TestParsePublishersErrors(t *testing.T) {
 	bad := []string{
-		"google.com\n[other] Autres\n",                           // suffix before publisher
-		"[a] A\nexample.com\n[b] B\nexample.com\n[other] Autres", // duplicate suffix
-		"[a] A\n[a] A2\n[other] Autres",                          // duplicate publisher
+		"google.com\n[other] Others\n",                           // suffix before publisher
+		"[a] A\nexample.com\n[b] B\nexample.com\n[other] Others", // duplicate suffix
+		"[a] A\n[a] A2\n[other] Others",                          // duplicate publisher
 		"[a] A\nexample.com\n",                                   // no "other"
-		"[a] A\nexa mple.com\n[other] Autres",                    // invalid suffix
-		"[other] Autres\nexample.com",                            // suffix on other
+		"[a] A\nexa mple.com\n[other] Others",                    // invalid suffix
+		"[other] Others\nexample.com",                            // suffix on other
 	}
 	for _, b := range bad {
 		if _, err := ParsePublishers(b); err == nil {
@@ -86,7 +86,7 @@ func TestValidDomain(t *testing.T) {
 }
 
 func TestEssentials(t *testing.T) {
-	e := NewEssentials(map[string]string{"ingest.watchpost.example": "envoi des événements Watchpost", "not a host": "x"})
+	e := NewEssentials(map[string]string{"ingest.watchpost.example": "sending Watchpost events", "not a host": "x"})
 	if got := e.BrokenBy("google.com"); len(got) < 2 {
 		t.Fatalf("google.com breaks %v", got)
 	}
@@ -105,7 +105,7 @@ func TestEssentials(t *testing.T) {
 }
 
 func TestApplyOverride(t *testing.T) {
-	user := []string{"||ads.example.org^", "# règle à la main", "@@||bank.example^"}
+	user := []string{"||ads.example.org^", "# hand-made rule", "@@||bank.example^"}
 	r1, changed, err := ApplyOverride(user, "tracker.example.com", ActionBlock)
 	if err != nil || !changed {
 		t.Fatal(err, changed)
@@ -144,7 +144,7 @@ func TestApplyOverride(t *testing.T) {
 	}
 }
 
-// Contract §9: "les règles saisies à la main dans AdGuard ne sont pas touchées" — also when the owner (or
+// Contract §9: "rules entered by hand in AdGuard are not touched" — also when the user (or
 // AdGuard Home) put some between the markers of the managed block.
 func TestApplyOverrideKeepsForeignLinesOfTheBlock(t *testing.T) {
 	rules := []string{
@@ -152,7 +152,7 @@ func TestApplyOverrideKeepsForeignLinesOfTheBlock(t *testing.T) {
 		BlockBegin,
 		"||tracker.example.com^$important",
 		"||hand-made.example^",           // not written by Watchpost (no $important)
-		"! note du propriétaire",         // a comment
+		"! note from the user",           // a comment
 		"@@||app.example.net^$important", // ours
 		"",
 		"||other.example^$important,client=1.2.3.4", // looks like ours, is not
@@ -171,7 +171,7 @@ func TestApplyOverrideKeepsForeignLinesOfTheBlock(t *testing.T) {
 		"||tracker.example.com^$important",
 		BlockEnd,
 		"||hand-made.example^",
-		"! note du propriétaire",
+		"! note from the user",
 		"||other.example^$important,client=1.2.3.4",
 		"||after.example^",
 	}
@@ -184,7 +184,7 @@ func TestApplyOverrideKeepsForeignLinesOfTheBlock(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	want = []string{"||before.example^", "||hand-made.example^", "! note du propriétaire", "||other.example^$important,client=1.2.3.4", "||after.example^"}
+	want = []string{"||before.example^", "||hand-made.example^", "! note from the user", "||other.example^$important,client=1.2.3.4", "||after.example^"}
 	if !slices.Equal(out, want) {
 		t.Fatalf("after removal: %q", out)
 	}
@@ -199,8 +199,8 @@ const levelsJSON = `{
     "fcm": {"name": "Exceptions", "url": "https://lists.example/allow.txt", "allowlist": true}
   },
   "levels": [
-    {"key": "permissif", "name": "Permissif", "description": "Publicité", "lists": ["base"]},
-    {"key": "equilibre", "name": "Équilibré", "description": "", "lists": ["base", "samsung", "fcm"]},
+    {"key": "permissive", "name": "Permissive", "description": "Advertising", "lists": ["base"]},
+    {"key": "balanced", "name": "Balanced", "description": "", "lists": ["base", "samsung", "fcm"]},
     {"key": "strict", "name": "Strict", "description": "Tout", "lists": ["base", "samsung", "google", "fcm"]}
   ]
 }`
@@ -210,15 +210,15 @@ func TestLevels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if infos := l.Infos(); len(infos) != 3 || infos[1].Key != "equilibre" || infos[1].Name != "Équilibré" {
+	if infos := l.Infos(); len(infos) != 3 || infos[1].Key != "balanced" || infos[1].Name != "Balanced" {
 		t.Fatalf("infos %+v", infos)
 	}
 	filters := []FilterState{
 		{URL: "https://lists.example/base.txt", Name: "Base", Enabled: true},
 		{URL: "https://lists.example/samsung.txt", Name: "Samsung", Enabled: false},
-		{URL: "https://other.example/x.txt", Name: "Liste à la main", Enabled: true},
+		{URL: "https://other.example/x.txt", Name: "Hand-made list", Enabled: true},
 	}
-	if cur := l.Current(filters); cur != "permissif" {
+	if cur := l.Current(filters); cur != "permissive" {
 		t.Fatalf("current %q", cur)
 	}
 	plan, err := l.Plan("strict", filters)
@@ -266,7 +266,7 @@ func TestLevels(t *testing.T) {
 		strings.Replace(levelsJSON, `"name": "Base"`, `"name": ""`, 1),
 		strings.Replace(levelsJSON, `"category": "tracking"`, `"category": "threats"`, 1),
 		strings.Replace(levelsJSON, `"allowlist": true`, `"allowlist": true, "category": "threat"`, 1),
-		strings.Replace(levelsJSON, `{"key": "permissif", "name": "Permissif", "description": "Publicité", "lists": ["base"]},`, ``, 1),
+		strings.Replace(levelsJSON, `{"key": "permissive", "name": "Permissive", "description": "Advertising", "lists": ["base"]},`, ``, 1),
 	}
 	for i, b := range bad {
 		if _, err := ParseLevels([]byte(b)); err == nil {
@@ -285,7 +285,7 @@ func TestView(t *testing.T) {
 		},
 		DNS: []AppDomain{
 			{Package: "com.example.news", Domain: "app-measurement.com", Count: 30},
-			{Package: "com.example.news", Domain: "www.lemonde.fr", Count: 10},
+			{Package: "com.example.news", Domain: "www.dailynews.example", Count: 10},
 			{Package: "com.instagram.android", Domain: "graph.facebook.com", Count: 8},
 			{Package: "", Domain: "www.google.com", Count: 4},
 		},
@@ -296,7 +296,7 @@ func TestView(t *testing.T) {
 	}
 	ds := Domains(in)
 	if len(ds) != 4 || ds[0].Domain != "app-measurement.com" || ds[0].Status != StatusBlocked || ds[0].Reason == "" ||
-		ds[1].Status != StatusAllowed || ds[2].Status != StatusMixed || ds[2].Override != ActionBlock || ds[3].Domain != "www.lemonde.fr" ||
+		ds[1].Status != StatusAllowed || ds[2].Status != StatusMixed || ds[2].Override != ActionBlock || ds[3].Domain != "www.dailynews.example" ||
 		ds[3].Status != "" || ds[3].Queries != 0 {
 		t.Fatalf("domains %+v %+v %+v %+v", ds[0], ds[1], ds[2], ds[3])
 	}

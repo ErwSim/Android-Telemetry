@@ -49,7 +49,7 @@ class CommandProcessorTest {
 
     /**
      * The server keeps every signed command until it expires (7 days by default). A `wipe` refused because the
-     * permission was off must not run when the server delivers it again after the owner switched the permission
+     * permission was off must not run when the server delivers it again after the user switched the permission
      * on — not even once unsigned traffic (which a compromised server produces at will) has pushed its result
      * out of the result memory.
      */

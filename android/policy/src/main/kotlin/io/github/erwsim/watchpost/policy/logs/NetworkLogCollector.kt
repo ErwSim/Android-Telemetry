@@ -27,7 +27,7 @@ import kotlinx.coroutines.withContext
  * app, delivered by the system in batches (≤ 1200 entries, at most every 1 h 30) through
  * `DeviceAdminReceiver.onNetworkLogsAvailable`. No polling.
  *
- * - The logging switch follows this collector's switch: enabled at start, disabled when the owner
+ * - The logging switch follows this collector's switch: enabled at start, disabled when the user
  *   turns the collector off (not when the agent merely stops). Each switch emits `security.policy`.
  * - A batch notified while the agent was stopped is retrieved at the next start (the system keeps
  *   up to 5 unretrieved batches). Gaps in batch tokens or expired batches are reported as
@@ -62,7 +62,7 @@ class NetworkLogCollector : Collector {
 
     override suspend fun stop(ctx: CollectorContext) {
         this.ctx = null
-        // Turned off by the owner (not an agent stop): stop the system logging as well.
+        // Turned off by the user (not an agent stop): stop the system logging as well.
         if (!ctx.settings[ctx.settings.collectorEnabledKey(id, defaultEnabled)]) {
             withContext(ctx.io) { ensureLogging(ctx, false) }
         }
@@ -100,7 +100,7 @@ class NetworkLogCollector : Collector {
         }
         ctx.prefs.edit { putLong(K_PROCESSED, token) }
         if (missing > 0) {
-            ctx.reportError(IllegalStateException("$missing lot(s) de journaux réseau perdus (non récupérés à temps)"), "network_log")
+            ctx.reportError(IllegalStateException("$missing network log batch(es) lost (not retrieved in time)"), "network_log")
         }
         if (events.isEmpty()) return@withLock
         val records = events.mapNotNull(::toRecord)
@@ -141,7 +141,7 @@ class NetworkLogCollector : Collector {
             if (!dpm.isDeviceOwnerApp(ctx.appContext.packageName) || dpm.isNetworkLoggingEnabled(admin) == enabled) return
             dpm.setNetworkLoggingEnabled(admin, enabled)
             val ok = dpm.isNetworkLoggingEnabled(admin) == enabled
-            PolicyModule.logAction(ctx.appContext, "network_logging", if (enabled) "enabled" else "disabled", ok, if (ok) null else "aucun effet constaté")
+            PolicyModule.logAction(ctx.appContext, "network_logging", if (enabled) "enabled" else "disabled", ok, if (ok) null else "no observed effect")
         } catch (e: Exception) {
             PolicyModule.logAction(ctx.appContext, "network_logging", if (enabled) "enabled" else "disabled", false, e.toString())
             if (enabled) throw e

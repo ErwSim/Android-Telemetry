@@ -74,7 +74,7 @@ class PolicyEngineRescueTest {
         probe = { _, _ -> ProbeResult(true, listOf("203.0.113.5")) },
         clock = FakeClock(),
         sink = { sink },
-        dnsHost = { "dns.exemple.fr" },
+        dnsHost = { "dns.example.org" },
     )
 
     @Before
@@ -276,7 +276,7 @@ class PolicyEngineRescueTest {
         val flaky = FlakyPrefs(prefs)
         val e = PolicyEngine(
             gateway = gw, store = PolicyStore(flaky), catalog = PolicyCatalog.parse(catalog()),
-            probe = { _, _ -> ProbeResult(true, listOf("203.0.113.5")) }, clock = FakeClock(), sink = { sink }, dnsHost = { "dns.exemple.fr" },
+            probe = { _, _ -> ProbeResult(true, listOf("203.0.113.5")) }, clock = FakeClock(), sink = { sink }, dnsHost = { "dns.example.org" },
         )
         e.apply(PolicySelection(Profile.BALANCED, mapOf("backup" to false)))
         assertTrue("com.samsung.android.rubin.app" in gw.hidden)

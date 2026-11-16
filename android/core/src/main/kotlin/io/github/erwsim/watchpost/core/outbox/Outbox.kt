@@ -33,7 +33,7 @@ data class PurgeReport(
 )
 
 /**
- * Persistent offline buffer (contract §1/§3, ARCHITECTURE "Tampon hors-ligne").
+ * Persistent offline buffer (contract §1/§3, ARCHITECTURE "Offline buffer").
  *
  * Guarantees:
  * - `seq` is assigned inside the same SQLite transaction as the insert and the counter update,
@@ -114,7 +114,7 @@ class Outbox(
 
     suspend fun countMinSev(minSev: Int): Long = dao.countMinSev(minSev)
 
-    /** Most recent buffered events (local journal). */
+    /** Most recent buffered events (local event log). */
     suspend fun newest(limit: Int): List<OutboxEntity> = dao.newest(limit)
 
     /** Deletes acknowledged rows. */

@@ -15,7 +15,7 @@ import io.github.erwsim.watchpost.service.RemoteAlerts
  * Wires the modules together: every collector comes from a module entry point, so adding a
  * collector never touches this file.
  *
- * Nothing here may crash the process: the ADB rescue (`RescueReceiver`, "Tout rétablir" without the
+ * Nothing here may crash the process: the ADB rescue (`RescueReceiver`, "Restore everything" without the
  * interface) runs in this process and only needs the policy engine, which does not depend on the
  * agent. A start-up step that fails is logged, kept in [startupError] (shown by the activity) and
  * skipped; if the agent itself cannot be built, the app only offers the rescue.

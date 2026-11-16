@@ -10,7 +10,7 @@ import (
 // Overrides are written in a block delimited by these comment lines among the AdGuard Home user rules.
 // Rules outside the block (entered by hand in AdGuard) are never touched.
 const (
-	BlockBegin = "! watchpost:begin — règles gérées par la console Watchpost (vue « pistage ») : ne pas modifier à la main"
+	BlockBegin = "! watchpost:begin - rules managed by the Watchpost console (Tracking page): do not edit by hand"
 	BlockEnd   = "! watchpost:end"
 )
 
@@ -22,8 +22,8 @@ const (
 )
 
 // ErrCorruptBlock is returned when the markers of the managed block are inconsistent: Watchpost then
-// refuses to rewrite the rules rather than risk deleting rules of the owner.
-var ErrCorruptBlock = errors.New("bloc Watchpost incohérent dans les règles personnalisées d'AdGuard Home (repères watchpost:begin / watchpost:end)")
+// refuses to rewrite the rules rather than risk deleting rules of the user.
+var ErrCorruptBlock = errors.New("inconsistent Watchpost block in the AdGuard Home custom rules (watchpost:begin / watchpost:end markers)")
 
 var managedRuleRe = regexp.MustCompile(`^(@@)?\|\|([a-z0-9_.-]+)\^\$important$`)
 
@@ -93,7 +93,7 @@ func RuleFor(domain, action string) string {
 // the block. The domain must already be validated (ValidDomain).
 func ApplyOverride(rules []string, domain, action string) ([]string, bool, error) {
 	if !ValidDomain(domain) {
-		return nil, false, errors.New("nom de domaine invalide")
+		return nil, false, errors.New("invalid domain name")
 	}
 	cur, err := ParseOverrides(rules)
 	if err != nil {
@@ -110,7 +110,7 @@ func ApplyOverride(rules []string, domain, action string) ([]string, bool, error
 	case ActionDefault:
 		delete(next, domain)
 	default:
-		return nil, false, errors.New("action inconnue")
+		return nil, false, errors.New("unknown action")
 	}
 	domains := make([]string, 0, len(next))
 	for d := range next {

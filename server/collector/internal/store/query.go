@@ -343,7 +343,7 @@ func (s *Store) StatsTimeline(ctx context.Context, q TimelineQuery) (*Timeline, 
 	start := q.FromMS - mod(q.FromMS, q.BucketMS)
 	n := int((q.ToMS-start)/q.BucketMS) + 1
 	if n > MaxTimelineBuckets || n < 1 {
-		return nil, fmt.Errorf("trop d'intervalles (%d)", n)
+		return nil, fmt.Errorf("too many intervals (%d)", n)
 	}
 	tl := &Timeline{Buckets: make([]string, n), Series: []TimelineSerie{}}
 	for i := range n {

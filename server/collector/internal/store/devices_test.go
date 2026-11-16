@@ -12,7 +12,7 @@ import (
 
 func newDev(t *testing.T, st *Store, id string) {
 	t.Helper()
-	if err := st.CreateDevice(context.Background(), &Device{DeviceID: id, Name: "s25", TokenHash: []byte("tok-" + id),
+	if err := st.CreateDevice(context.Background(), &Device{DeviceID: id, Name: "phone", TokenHash: []byte("tok-" + id),
 		CertSHA256: "cert-" + id, CertPEM: "pem", EnrolledAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestMigration4OnExistingDatabase(t *testing.T) {
 	if _, err := st.w.Exec(`PRAGMA user_version = 3`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.w.Exec(`INSERT INTO devices(device_id, name, token_hash, cert_sha256, cert_pem, enrolled_ms) VALUES('dev_old','s25',x'0102','fp','pem',1000)`); err != nil {
+	if _, err := st.w.Exec(`INSERT INTO devices(device_id, name, token_hash, cert_sha256, cert_pem, enrolled_ms) VALUES('dev_old','phone',x'0102','fp','pem',1000)`); err != nil {
 		t.Fatal(err)
 	}
 	st.w.Close()

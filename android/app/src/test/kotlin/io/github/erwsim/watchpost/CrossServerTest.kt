@@ -50,7 +50,7 @@ import java.security.interfaces.ECKey
  *   file is presented (mTLS through the reverse proxy) and the server CA of the file is pinned;
  * - `WATCHPOST_CROSS_OUT` (optional): file receiving a summary (device id, counts, time base).
  *
- *     WATCHPOST_CROSS_ENROLL=/tmp/s25.watchpost ./gradlew :app:testDebugUnitTest --tests '*CrossServerTest*' --rerun
+ *     WATCHPOST_CROSS_ENROLL=/tmp/phone.watchpost ./gradlew :app:testDebugUnitTest --tests '*CrossServerTest*' --rerun
  *
  * The Android Keystore does not exist on the JVM: the key is held by [SingleKeyManager] in memory
  * (same key manager class as on the device, different key storage).

@@ -69,7 +69,7 @@ class PolicyEngineTest {
         }
     }
 
-    private fun engine(host: String? = "dns.exemple.fr") = PolicyEngine(
+    private fun engine(host: String? = "dns.example.org") = PolicyEngine(
         gateway = gw,
         store = PolicyStore(prefs),
         catalog = PolicyCatalog.parse(catalogJson),
@@ -164,7 +164,7 @@ class PolicyEngineTest {
         assertTrue("no_safe_boot" in gw.restrictions)
         assertEquals("0", gw.settings["global:ble_scan_always_enabled"])
         assertEquals(Dpm.DNS_MODE_HOSTNAME, gw.dnsMode)
-        assertEquals("dns.exemple.fr", gw.dnsHost)
+        assertEquals("dns.example.org", gw.dnsHost)
         assertTrue("disallow_config_private_dns" in gw.restrictions)
         // Camera was already denied: left alone (not recorded, not undone).
         assertFalse(gw.calls.any { it.startsWith("perm $gms $camera") })
@@ -241,11 +241,11 @@ class PolicyEngineTest {
         probeOk = false
         engine().apply(PolicySelection(Profile.BALANCED))
         assertEquals(Dpm.DNS_MODE_OFF, gw.dnsMode)
-        assertFalse(gw.calls.any { it.startsWith("dns dns.exemple.fr") })
+        assertFalse(gw.calls.any { it.startsWith("dns dns.example.org") })
         assertFalse("disallow_config_private_dns" in gw.restrictions)
         val dns = events.map { it.second }.single { it.str("action") == "private_dns_set" }
         assertEquals("false", dns.str("ok"))
-        assertTrue(dns.str("error")!!.startsWith("vérification préalable"))
+        assertTrue(dns.str("error")!!.startsWith("prior check"))
     }
 
     @Test
@@ -302,7 +302,7 @@ class PolicyEngineTest {
     fun `DNS fallback switches to opportunistic, reapply restores the host, undo restores the original mode`() {
         val e = engine()
         e.apply(PolicySelection(Profile.BALANCED))
-        assertTrue(e.dnsFallback("injoignable").allOk)
+        assertTrue(e.dnsFallback("unreachable").allOk)
         assertEquals(Dpm.DNS_MODE_OPPORTUNISTIC, gw.dnsMode)
         assertTrue(e.dnsRecord()!!.dnsFallback)
         val fallbackEvent = events.last()
@@ -311,7 +311,7 @@ class PolicyEngineTest {
         // Second fallback call: nothing.
         assertTrue(e.dnsFallback("encore").succeeded.isEmpty())
         assertTrue(e.dnsReapply().allOk)
-        assertEquals("dns.exemple.fr", gw.dnsHost)
+        assertEquals("dns.example.org", gw.dnsHost)
         assertFalse(e.dnsRecord()!!.dnsFallback)
         e.revertAll()
         assertEquals(Dpm.DNS_MODE_OFF, gw.dnsMode)
@@ -322,7 +322,7 @@ class PolicyEngineTest {
     fun `failed reapply after fallback keeps the fallback recorded`() {
         val e = engine()
         e.apply(PolicySelection(Profile.BALANCED))
-        e.dnsFallback("injoignable")
+        e.dnsFallback("unreachable")
         probeOk = false
         assertFalse(e.dnsReapply().allOk)
         assertTrue(e.dnsRecord()!!.dnsFallback)
@@ -364,7 +364,7 @@ class PolicyEngineTest {
     }
 
     @Test
-    fun `remove device owner undoes everything, stops the logs, then clears the owner`() {
+    fun `remove device owner undoes everything, stops the logs, then clears the user`() {
         val initial = gw.snapshot()
         val e = engine()
         e.apply(PolicySelection(Profile.BALANCED))
@@ -474,11 +474,11 @@ class PolicyEngineTest {
     }
 
     @Test
-    fun `journal keeps every action with its outcome`() {
+    fun `action log keeps every action with its outcome`() {
         engine().apply(PolicySelection(Profile.BALANCED))
-        val journal = engine().journal()
-        assertEquals(events.size, journal.size)
-        assertTrue(journal.any { it.action == "package_disabled" && it.target == "com.samsung.android.rubin.app" && it.ok })
-        assertTrue(journal.any { it.action == "setting_changed" && it.target == "ble_scan_always_enabled=0" })
+        val actionLog = engine().actionLog()
+        assertEquals(events.size, actionLog.size)
+        assertTrue(actionLog.any { it.action == "package_disabled" && it.target == "com.samsung.android.rubin.app" && it.ok })
+        assertTrue(actionLog.any { it.action == "setting_changed" && it.target == "ble_scan_always_enabled=0" })
     }
 }

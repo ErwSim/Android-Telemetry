@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Sonde Vigie exécutée par le manager Wazuh (wodle « command », toutes les 10 min).
+"""Watchpost watcher run by the Wazuh manager ("command" wodle, every 10 min).
 
-Une règle Wazuh ne peut pas se déclencher sur une ABSENCE d'événement ni comparer des numéros de
-séquence. Cette sonde lit la fin de l'export NDJSON du collecteur et écrit sur sa sortie standard
-une ligne JSON par constat ; le manager les analyse comme des journaux (règles 1003xx) :
+A Wazuh rule cannot fire on the ABSENCE of an event nor compare sequence numbers. This
+watcher reads the end of the collector's NDJSON export and writes one JSON line per finding on
+its standard output; the manager analyses them as logs (rules 1003xx):
 
-  {"vigie_watch":{"check":"silence", ...}}   aucun événement reçu depuis N minutes
-  {"vigie_watch":{"check":"resumed", ...}}   l'appareil émet à nouveau
-  {"vigie_watch":{"check":"seq_gap", ...}}   numéros de séquence manquants (événements perdus/supprimés)
-  {"vigie_watch":{"check":"seq_reset", ...}} compteur revenu en arrière (réinstallation, effacement)
+  {"watchpost_watch":{"check":"silence", ...}}   no event received for N minutes
+  {"watchpost_watch":{"check":"resumed", ...}}   the device sends again
+  {"watchpost_watch":{"check":"seq_gap", ...}}   missing sequence numbers (lost/deleted events)
+  {"watchpost_watch":{"check":"seq_reset", ...}} counter went backwards (reinstallation, wipe)
 
-Un même constat n'est émis qu'une fois par épisode (état persistant dans /var/ossec/logs).
-Python standard uniquement (interpréteur embarqué de Wazuh). Variables d'environnement :
-VIGIE_WATCH_SILENCE_MIN (60), VIGIE_WATCH_GRACE_MIN (30), VIGIE_WATCH_EXPORT (/var/vigie/events.ndjson).
+A given finding is emitted only once per episode (persistent state in /var/ossec/logs).
+Standard Python only (Wazuh's embedded interpreter). Environment variables:
+WATCHPOST_WATCH_SILENCE_MIN (60), WATCHPOST_WATCH_GRACE_MIN (30), WATCHPOST_WATCH_EXPORT (/var/watchpost/events.ndjson).
 """
 import glob
 import json
@@ -21,11 +21,11 @@ import sys
 import time
 from datetime import datetime, timezone
 
-EXPORT = os.environ.get("VIGIE_WATCH_EXPORT", "/var/vigie/events.ndjson")
-STATE = os.environ.get("VIGIE_WATCH_STATE", "/var/ossec/logs/vigie-watch-state.json")
-SILENCE_MIN = int(os.environ.get("VIGIE_WATCH_SILENCE_MIN", "60"))
-GRACE_MIN = int(os.environ.get("VIGIE_WATCH_GRACE_MIN", "30"))
-TAIL_BYTES = int(os.environ.get("VIGIE_WATCH_TAIL_BYTES", str(32 * 1024 * 1024)))
+EXPORT = os.environ.get("WATCHPOST_WATCH_EXPORT", "/var/watchpost/events.ndjson")
+STATE = os.environ.get("WATCHPOST_WATCH_STATE", "/var/ossec/logs/watchpost-watch-state.json")
+SILENCE_MIN = int(os.environ.get("WATCHPOST_WATCH_SILENCE_MIN", "60"))
+GRACE_MIN = int(os.environ.get("WATCHPOST_WATCH_GRACE_MIN", "30"))
+TAIL_BYTES = int(os.environ.get("WATCHPOST_WATCH_TAIL_BYTES", str(32 * 1024 * 1024)))
 MAX_GAP_REPORT = 50
 
 
@@ -52,17 +52,17 @@ def tail_lines(path, nbytes):
         return []
     lines = data.split(b"\n")
     if start > 0:
-        lines = lines[1:]  # première ligne probablement incomplète
+        lines = lines[1:]  # first line probably incomplete
     return lines
 
 
 def load_events():
-    """Événements récents, du plus ancien au plus récent (fichier tourné .1 puis courant)."""
+    """Recent events, oldest first (rotated .1 file, then the current one)."""
     files = sorted(glob.glob(EXPORT + ".[0-9]*"), key=lambda p: -int(p.rsplit(".", 1)[1]))[-1:]
     files.append(EXPORT)
     budget = TAIL_BYTES
     out = []
-    for path in reversed(files):  # le courant d'abord pour le budget
+    for path in reversed(files):  # the current one first for the budget
         if budget <= 0:
             break
         lines = tail_lines(path, budget)
@@ -72,7 +72,7 @@ def load_events():
         if not raw.startswith(b'{"'):
             continue
         try:
-            v = json.loads(raw).get("vigie")
+            v = json.loads(raw).get("watchpost")
         except ValueError:
             continue
         if isinstance(v, dict) and v.get("device_id"):
@@ -80,7 +80,7 @@ def load_events():
 
 
 def emit(obj):
-    sys.stdout.write(json.dumps({"vigie_watch": obj}, separators=(",", ":"), ensure_ascii=False) + "\n")
+    sys.stdout.write(json.dumps({"watchpost_watch": obj}, separators=(",", ":"), ensure_ascii=False) + "\n")
 
 
 def main():
@@ -126,7 +126,7 @@ def main():
             continue
         seen = set(r["seqs"])
         lo, hi = d["max_seq"] + 1, confirmed[-1]
-        if lo >= min(r["seqs"]):  # fenêtre lue suffisante pour juger
+        if lo >= min(r["seqs"]):  # window read is large enough to judge
             missing = [s for s in range(lo, hi + 1) if s not in seen]
             if missing:
                 emit({"check": "seq_gap", "device_id": dev, "device_name": d["name"],
@@ -148,10 +148,10 @@ def main():
             emit({"check": "resumed", "device_id": dev, "device_name": d.get("name", ""),
                   "last_seen": iso(d["last_seen"])})
 
-    # Purge quotidienne des archives brutes compressées du manager (les données restent dans
-    # l'indexeur, soumises à la politique de rétention ISM).
+    # Daily purge of the manager's compressed raw archives (the data stays in the indexer,
+    # subject to the ISM retention policy).
     if now - state.get("last_purge", 0) > 86400:
-        days = int(os.environ.get("VIGIE_ARCHIVES_FILE_DAYS", "14"))
+        days = int(os.environ.get("WATCHPOST_ARCHIVES_FILE_DAYS", "14"))
         for p in glob.glob("/var/ossec/logs/archives/*/*/*.gz") + glob.glob("/var/ossec/logs/alerts/*/*/*.gz"):
             try:
                 if now - os.path.getmtime(p) > days * 86400:

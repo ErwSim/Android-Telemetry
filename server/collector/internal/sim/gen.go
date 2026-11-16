@@ -539,7 +539,7 @@ func (g *Generator) wifiScan(t time.Time, seg segment) {
 		aps = append(aps, map[string]any{"ssid": n.ssid, "bssid": n.bssid, "rssi": -40 - g.rng.Intn(50), "freq_mhz": n.freq, "security": n.security})
 	}
 	for i := 0; i < 3+g.rng.Intn(6); i++ { // passing networks
-		aps = append(aps, map[string]any{"ssid": fmt.Sprintf("Livebox-%04X", g.rng.Intn(1<<16)),
+		aps = append(aps, map[string]any{"ssid": fmt.Sprintf("HomeNet-%04X", g.rng.Intn(1<<16)),
 			"bssid": fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x", 0xa4, 0x3e, 0x51, g.rng.Intn(256), g.rng.Intn(256), g.rng.Intn(256)),
 			"rssi":  -70 - g.rng.Intn(25), "freq_mhz": []int{2412, 2437, 2462, 5180, 5500}[g.rng.Intn(5)], "security": "WPA2-PSK"})
 	}
@@ -645,10 +645,10 @@ func (g *Generator) notifications(t0, t1 time.Time) {
 		switch a.pkg {
 		case "com.samsung.android.email.provider":
 			cat, ch = "email", "new_mail"
-		case "fr.lemonde.editorial":
-			cat, ch = "recommendation", "alertes_info"
-		case "fr.creditagricole.androidapp":
-			cat, ch = "status", "operations"
+		case "com.dailynews.reader":
+			cat, ch = "recommendation", "news_alerts"
+		case "com.mybank.app":
+			cat, ch = "status", "transactions"
 		case "com.strava":
 			cat, ch = "social", "kudos"
 		case "com.instagram.android":

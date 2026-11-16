@@ -47,7 +47,7 @@ func TestEmbeddedLists(t *testing.T) {
 	if _, err := ParseResolvers("1.2.3.4\n"); err == nil {
 		t.Error("line without a name accepted")
 	}
-	if _, err := ParseResolvers("pas-une-ip Nom\n"); err == nil {
+	if _, err := ParseResolvers("not-an-ip Name\n"); err == nil {
 		t.Error("bad address accepted")
 	}
 	d := Defaults()
@@ -96,7 +96,7 @@ func TestUploadSpike(t *testing.T) {
 	}
 	f := one(t, UploadSpike(in(3*floor, steady, false), th), TypeUploadSpike, "com.gallery")
 	if f.Evidence["median_bytes"] != int64(2<<20) || f.Evidence["learning"] != false || f.Evidence["threshold_bytes"] != floor ||
-		!strings.Contains(f.Summary, "3 Gio") || !strings.Contains(f.Summary, "écran éteint") {
+		!strings.Contains(f.Summary, "3 GiB") || !strings.Contains(f.Summary, "screen off") {
 		t.Fatalf("%+v", f)
 	}
 	none(t, UploadSpike(in(floor, steady, false), th), "at the floor")
@@ -141,7 +141,7 @@ func TestFanout(t *testing.T) {
 	for p := 1; p <= 400; p++ {
 		rows = append(rows, store.ConnectRow{Package: "com.scan", Key: fmt.Sprintf("192.0.2.1:%d", p), Count: 1})
 	}
-	rows = append(rows, store.ConnectRow{Package: "x", Key: "[2001:db8::1]:443", Count: 1}, store.ConnectRow{Package: "x", Key: "pas-une-ip", Count: 1})
+	rows = append(rows, store.ConnectRow{Package: "x", Key: "[2001:db8::1]:443", Count: 1}, store.ConnectRow{Package: "x", Key: "not-an-ip", Count: 1})
 	parsed := Dests(rows)
 	if len(parsed) != 401 || parsed[400].Port != 443 || MaxDistinct(parsed) != 1 {
 		t.Fatalf("dests %d %d", len(parsed), MaxDistinct(parsed))
@@ -191,18 +191,18 @@ func TestDNSBypass(t *testing.T) {
 func TestThreatDomain(t *testing.T) {
 	day := hour0 - hour0%dayMS
 	in := ThreatInput{DayMS: day,
-		Blocks: []store.ThreatBlock{{Domain: "gate.cdn-update-check.example", Blocked: 12, Reason: "Liste : HaGeZi TIF"},
-			{Domain: "login-banque.example", Blocked: 1, Reason: "Navigation sécurisée (site dangereux)"}},
+		Blocks: []store.ThreatBlock{{Domain: "gate.cdn-update-check.example", Blocked: 12, Reason: "List: HaGeZi TIF"},
+			{Domain: "login-bank.example", Blocked: 1, Reason: "Safe Browsing (dangerous site)"}},
 		Lookups: []store.DNSLookup{{Package: "com.update.system", Domain: "gate.cdn-update-check.example", Count: 12},
-			{Package: "com.android.chrome", Domain: "login-banque.example", Count: 1},
+			{Package: "com.android.chrome", Domain: "login-bank.example", Count: 1},
 			{Package: "com.whatsapp", Domain: "g.whatsapp.net", Count: 500}},
 		Browsers: map[string]bool{"com.android.chrome": true}}
-	in.Lookups = append(in.Lookups, store.DNSLookup{Package: "com.update.system", Domain: "login-banque.example", Count: 2})
+	in.Lookups = append(in.Lookups, store.DNSLookup{Package: "com.update.system", Domain: "login-bank.example", Count: 2})
 	fs := ThreatDomain(in)
 	if len(fs) != 2 || fs[0].Package != "com.android.chrome" || fs[0].Sev != 2 || fs[1].Package != "com.update.system" || fs[1].Sev != 3 ||
 		fs[1].Subject != "com.update.system" || fs[1].Evidence["blocked"] != int64(13) || fs[1].Evidence["requests"] != int64(14) ||
 		fs[1].Evidence["domain_count"] != 2 || len(fs[1].Items) != 2 || fs[1].Items[0] != "gate.cdn-update-check.example" ||
-		!strings.Contains(fs[1].Summary, "2 domaine(s)") {
+		!strings.Contains(fs[1].Summary, "2 domain(s)") {
 		t.Fatalf("%+v", fs)
 	}
 	none(t, ThreatDomain(ThreatInput{DayMS: day, Lookups: in.Lookups}), "no threat block")
@@ -235,7 +235,7 @@ func TestSMSAbuse(t *testing.T) {
 	// Refused attempts count: an application stopped by the SMS guard is reported all the same.
 	f = one(t, SMSAbuse(OpsInput{DayMS: day, Uses: []store.OpUse{{Package: "com.flashlight.pro", Op: "send_sms", Rejected: 500}}, SMSApps: sms}, th),
 		TypeSMSAbuse, "com.flashlight.pro")
-	if f.Evidence["rejected"] != int64(500) || f.Evidence["sent"] != int64(0) || !strings.Contains(f.Summary, "500 refusés") {
+	if f.Evidence["rejected"] != int64(500) || f.Evidence["sent"] != int64(0) || !strings.Contains(f.Summary, "500 refused") {
 		t.Fatalf("rejected %+v", f)
 	}
 	th.SMSOtherMin = 2
@@ -272,19 +272,19 @@ func TestNewAppRisky(t *testing.T) {
 	in := NewAppInput{
 		Installs: []Install{{Package: "com.update.system", Installer: "com.google.android.packageinstaller", TS: inst},
 			{Package: "fr.vinted", Installer: "com.android.vending", TS: inst}, {Package: "io.github.erwsim.watchpost", TS: inst}},
-		Risks: []Risk{{Package: "com.update.system", Label: "Mise à jour système", Level: "high", Score: 92, TS: inst + 2000,
+		Risks: []Risk{{Package: "com.update.system", Label: "System update", Level: "high", Score: 92, TS: inst + 2000,
 			Reasons: []string{"sideloaded", "accessibility_service", "overlay", "combo_banking_trojan"}},
 			{Package: "fr.vinted", Level: "low", Score: 10, TS: inst + 1000, FromStore: &fs}},
 		Caps: []Capability{{Package: "com.update.system", Kind: "accessibility", TS: inst + 5*60000},
-			{Package: "com.update.system", Kind: "accessibility", TS: inst + 6*60000},      // same capability again
-			{Package: "com.update.system", Kind: "overlay", TS: inst + 25*3600000},         // after 24 h
-			{Package: "fr.vinted", Kind: "permission:CAMERA", TS: inst + 60000},            // not sensitive
-			{Package: "com.android.chrome", Kind: "permission:SEND_SMS", TS: inst + 60000}, // not a new app
-			{Package: "io.github.erwsim.watchpost", Kind: "device_admin", TS: inst + 60000}},   // Watchpost itself
+			{Package: "com.update.system", Kind: "accessibility", TS: inst + 6*60000},        // same capability again
+			{Package: "com.update.system", Kind: "overlay", TS: inst + 25*3600000},           // after 24 h
+			{Package: "fr.vinted", Kind: "permission:CAMERA", TS: inst + 60000},              // not sensitive
+			{Package: "com.android.chrome", Kind: "permission:SEND_SMS", TS: inst + 60000},   // not a new app
+			{Package: "io.github.erwsim.watchpost", Kind: "device_admin", TS: inst + 60000}}, // Watchpost itself
 	}
 	in.Caps = append(in.Caps, Capability{Package: "com.update.system", Kind: "overlay", TS: inst + 7*60000})
 	out := NewAppRisky(in)
-	if len(out) != 1 || out[0].Subject != "com.update.system" || out[0].Sev != 3 || out[0].Label != "Mise à jour système" ||
+	if len(out) != 1 || out[0].Subject != "com.update.system" || out[0].Sev != 3 || out[0].Label != "System update" ||
 		out[0].Evidence["minutes_to_first_capability"] != int64(5) || out[0].FromMS != inst || out[0].Evidence["high_risk"] != true ||
 		strings.Join(out[0].Items, ",") != "high_risk,accessibility,overlay" || len(out[0].Evidence["capabilities"].([]any)) != 2 {
 		t.Fatalf("%+v", out)
@@ -316,7 +316,7 @@ func TestGroupDay(t *testing.T) {
 	day := hour0 - hour0%dayMS
 	if len(g) != 2 || g[0].FromMS != day || g[0].ToMS != day+dayMS || g[0].Subject != "com.proxy.sdk" || g[0].Evidence["hours"] != 3 ||
 		g[0].Evidence["addresses"] != 420 || g[0].Evidence["peak_hour"] != fmtMS(hour0+hourMS) || g[0].Evidence["first_hour"] != fmtMS(hour0) ||
-		!strings.Contains(g[0].Summary, "3 heures") || g[1].Evidence["hours"] != 1 {
+		!strings.Contains(g[0].Summary, "3 hours") || g[1].Evidence["hours"] != 1 {
 		t.Fatalf("%+v", g)
 	}
 	if len(GroupDay(nil, "addresses")) != 0 {
@@ -324,9 +324,9 @@ func TestGroupDay(t *testing.T) {
 	}
 }
 
-func TestBytesFR(t *testing.T) {
-	for n, want := range map[int64]string{512: "512 o", 1536: "1,5 Kio", 3 << 30: "3 Gio"} {
-		if got := bytesFR(n); got != want {
+func TestFormatBytes(t *testing.T) {
+	for n, want := range map[int64]string{512: "512 B", 1536: "1.5 KiB", 3 << 30: "3 GiB"} {
+		if got := formatBytes(n); got != want {
 			t.Errorf("%d: %q", n, got)
 		}
 	}

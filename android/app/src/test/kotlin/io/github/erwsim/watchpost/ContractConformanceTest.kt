@@ -16,7 +16,7 @@ import org.junit.Test
 import java.nio.file.Files
 
 /**
- * End-to-end conformity of what the APK emits with `docs/contrat/contrat.md` §2 and its "Précisions"
+ * End-to-end conformity of what the APK emits with `docs/contract/contract.md` §2 and its additional precisions
  * (single reference: [Contract], testFixtures of `:core`).
  *
  * Every collector of the APK (the `:collectors` and `:policy` entry points, wired as in

@@ -58,7 +58,7 @@ func CheckIngestURL(s string) (*url.URL, error) {
 	u, err := url.Parse(s)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil ||
 		u.RawQuery != "" || u.Fragment != "" {
-		return nil, fmt.Errorf("URL d'ingestion invalide : %q (attendu https://hôte[:port])", s)
+		return nil, fmt.Errorf("invalid ingestion URL: %q (expected https://host[:port])", s)
 	}
 	return u, nil
 }
@@ -66,7 +66,7 @@ func CheckIngestURL(s string) (*url.URL, error) {
 // Create registers a new device and returns its enrollment file.
 func Create(ctx context.Context, st *store.Store, ca *pki.CA, p Params, now time.Time) (*File, error) {
 	if !ValidName(p.Name) {
-		return nil, errors.New("nom d'appareil invalide (1 à 64 lettres, chiffres, espaces, « _ . - + ( ) »)")
+		return nil, errors.New("invalid device name (1 to 64 letters, digits, spaces, \"_ . - + ( )\")")
 	}
 	if _, err := CheckIngestURL(p.IngestURL); err != nil {
 		return nil, err
@@ -81,18 +81,18 @@ func Create(ctx context.Context, st *store.Store, ca *pki.CA, p Params, now time
 		return nil, err
 	}
 	if !ValidDeviceID(deviceID) || !ValidToken(token) {
-		return nil, errors.New("identifiants générés hors format (contrat §4)")
+		return nil, errors.New("generated credentials do not match the format (contract §4)")
 	}
 	cert, err := ca.Issue(deviceID, now)
 	if err != nil {
-		return nil, fmt.Errorf("émission du certificat : %w", err)
+		return nil, fmt.Errorf("certificate issuance: %w", err)
 	}
 	tokenHash := HashToken(token)
 	if err := st.CreateDevice(ctx, &store.Device{
 		DeviceID: deviceID, Name: p.Name, TokenHash: tokenHash, CertSHA256: cert.SHA256,
 		CertPEM: string(cert.CertPEM), EnrolledAt: now,
 	}); err != nil {
-		return nil, fmt.Errorf("enregistrement de l'appareil : %w", err)
+		return nil, fmt.Errorf("device registration: %w", err)
 	}
 	return &File{
 		Version: 1, IngestURL: strings.TrimRight(p.IngestURL, "/"), DeviceID: deviceID, DeviceName: p.Name,
@@ -164,7 +164,7 @@ func Renew(ctx context.Context, st *store.Store, ca *pki.CA, deviceID string, p 
 	}
 	cert, err := ca.Issue(deviceID, now)
 	if err != nil {
-		return nil, fmt.Errorf("émission du certificat : %w", err)
+		return nil, fmt.Errorf("certificate issuance: %w", err)
 	}
 	if err := st.SetPendingCredentials(ctx, deviceID, HashToken(token), cert.SHA256, string(cert.CertPEM), now); err != nil {
 		return nil, err
@@ -211,10 +211,10 @@ func Read(path string) (*File, error) {
 	}
 	var f File
 	if err := json.Unmarshal(b, &f); err != nil {
-		return nil, fmt.Errorf("%s : JSON invalide : %w", path, err)
+		return nil, fmt.Errorf("%s: invalid JSON: %w", path, err)
 	}
 	if f.Version != 1 || f.DeviceID == "" || f.DeviceToken == "" {
-		return nil, fmt.Errorf("%s : fichier d'enrôlement incomplet ou de version inconnue", path)
+		return nil, fmt.Errorf("%s: enrollment file incomplete or of unknown version", path)
 	}
 	return &f, nil
 }

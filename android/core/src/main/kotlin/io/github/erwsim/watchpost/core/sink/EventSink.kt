@@ -13,7 +13,7 @@ import kotlinx.serialization.json.JsonObject
  * event is persisted. `emit` never blocks on I/O: events are grouped in memory and written to
  * the outbox in one transaction (a few seconds later, immediately for `sev >= 2`).
  *
- * Events read after the fact (usage events, network and security logs: contract §2 "Précisions")
+ * Events read after the fact (usage events, network and security logs: contract §2, event timestamps)
  * pass [originTsMs], the wall-clock time at which the system recorded them: it becomes `ts`, and
  * `elapsed_ms` is estimated for that instant (see [OriginTime]). `seq` always stays the emission
  * order, so `ts` is not monotonic in `seq`.

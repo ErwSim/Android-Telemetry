@@ -60,7 +60,7 @@ sealed class DnsGuardDecision {
  *   It is emitted with sev 2 (Wazuh alert): blocking port 853 to force a downgrade is visible;
  * - with auto-restore, the host is re-imposed (after a new check) as soon as it answers again.
  * Disabling the fallback favours protection: the phone stays without Internet until the server is
- * fixed or the owner undoes the DNS from the app (or the ADB rescue).
+ * fixed or the user undoes the DNS from the app (or the ADB rescue).
  */
 object DnsGuardLogic {
     fun decide(i: DnsGuardInput): DnsGuardDecision {
@@ -165,7 +165,7 @@ class PrivateDnsGuard(
             }
             is DnsGuardDecision.Fallback -> {
                 val minutes = (clock.nowMillis() - decision.sinceMs) / 60_000
-                engine.dnsFallback("hôte ${record.target} injoignable depuis $minutes min (réseau non validé, contrôle DoT en échec)")
+                engine.dnsFallback("host ${record.target} unreachable for $minutes min (network not validated, DoT check failing)")
                 prefs.edit { remove(K_FAILING_SINCE) }
             }
             DnsGuardDecision.Reapply -> engine.dnsReapply()

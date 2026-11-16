@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
- * Rescue without the user interface: "Tout rétablir" (and optionally "Retirer le Device Owner")
+ * Rescue without the user interface: "Restore everything" (and optionally "Remove Device Owner")
  * triggered from ADB by `scripts/rescue-revert.sh` / `.ps1`:
  *
  *     adb shell am broadcast --include-stopped-packages -a io.github.erwsim.watchpost.action.RESCUE_REVERT_ALL \
@@ -53,7 +53,7 @@ class RescueReceiver : BroadcastReceiver() {
         val pending = goAsync()
         val done = CountDownLatch(1)
         var code = RESULT_TIMEOUT
-        var summary = "délai dépassé : l'opération continue en arrière-plan, relancez le script pour voir le résultat"
+        var summary = "timed out: the operation continues in the background, run the script again to see the result"
         val app = context.applicationContext
         thread(name = "watchpost-rescue") {
             try {

@@ -5,7 +5,7 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 
-/** One `security.posture_change`: values converted to strings (contract §2, "Précisions"). */
+/** One `security.posture_change`: values converted to strings (contract §2). */
 data class PostureChange(val field: String, val old: String, val new: String, val sev: Int)
 
 /** Pure posture logic (tested on the JVM). */

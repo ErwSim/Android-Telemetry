@@ -1,0 +1,3 @@
+#!/bin/sh
+# Launcher of the "custom-watchpost-notify" Wazuh integration (Wazuh's embedded Python).
+exec /var/ossec/framework/python/bin/python3 /var/ossec/integrations/custom-watchpost-notify.py "$@"

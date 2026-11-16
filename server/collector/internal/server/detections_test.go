@@ -330,9 +330,9 @@ func TestDetectionThreatDomain(t *testing.T) {
 	at := time.Now().Add(-10 * time.Minute)
 	c2 := adguard.ThreatDomains[1]
 	for i := range 6 {
-		fake.AddQuery(at.Add(time.Duration(i)*time.Second), "192.0.2.10", "s25", c2)
+		fake.AddQuery(at.Add(time.Duration(i)*time.Second), "192.0.2.10", "phone", c2)
 	}
-	fake.AddQuery(at, "192.0.2.10", "s25", "app-measurement.com") // blocked by a general list: not a threat
+	fake.AddQuery(at, "192.0.2.10", "phone", "app-measurement.com") // blocked by a general list: not a threat
 	if err := e.srv.tracking.pollOnce(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -345,7 +345,7 @@ func TestDetectionThreatDomain(t *testing.T) {
 		return e.event(at, "net.dns", 0, map[string]any{"package": pkg, "uid": 10400, "hostname": host, "addresses": []string{"0.0.0.0"},
 			"address_count": 1, "count": count})
 	}
-	e.ingestAll([]map[string]any{dns("com.update.system", c2, 6), dns("fr.lemonde.editorial", "app-measurement.com", 1)})
+	e.ingestAll([]map[string]any{dns("com.update.system", c2, 6), dns("com.dailynews.reader", "app-measurement.com", 1)})
 	if n := e.runDetections(); n != 1 {
 		t.Fatalf("threat findings: %d", n)
 	}
@@ -356,7 +356,7 @@ func TestDetectionThreatDomain(t *testing.T) {
 		t.Fatalf("%+v", items)
 	}
 	// AdGuard Home polled again with new blocks of the same domain: still one finding for the day.
-	fake.AddQuery(time.Now().Add(-2*time.Minute), "192.0.2.10", "s25", c2)
+	fake.AddQuery(time.Now().Add(-2*time.Minute), "192.0.2.10", "phone", c2)
 	if err := e.srv.tracking.pollOnce(ctx); err != nil {
 		t.Fatal(err)
 	}

@@ -29,7 +29,7 @@ import org.junit.Test
 
 /**
  * Contract §11.1: the five guards against the fake `DevicePolicyManager`, their hard limits, new
- * installs and updates, role changes, partial failures, and "Tout rétablir" / crash / unreadable state.
+ * installs and updates, role changes, partial failures, and "Restore everything" / crash / unreadable state.
  */
 class CapabilityGuardsTest {
     private val sendSms = "android.permission.SEND_SMS"
@@ -133,11 +133,11 @@ class CapabilityGuardsTest {
         assertEquals(listOf(sendSms), preview.lines.single().deny)
         assertTrue("the preview says it was granted", preview.lines.single().note!!.contains("SEND_SMS"))
         val exempt = preview.exempt.toMap()
-        assertEquals("liste choisie", exempt[signal])
-        assertEquals("application du système", exempt[samsungMessages])
-        assertEquals("application du système", exempt[sos])
-        assertEquals("Watchpost ou son compagnon", exempt[companion])
-        assertEquals("Watchpost ou son compagnon", exempt[watchpost])
+        assertEquals("chosen list", exempt[signal])
+        assertEquals("system app", exempt[samsungMessages])
+        assertEquals("system app", exempt[sos])
+        assertEquals("Watchpost or its companion", exempt[companion])
+        assertEquals("Watchpost or its companion", exempt[watchpost])
 
         assertTrue(e.guards.set(GuardKey.SMS, true, allowed = setOf(signal)).allOk)
         assertEquals(Dpm.GRANT_DENIED, state(malware, sendSms))
@@ -189,7 +189,7 @@ class CapabilityGuardsTest {
     }
 
     @Test
-    fun `a new default SMS app gets its permission back, the list follows and the owner is told`() {
+    fun `a new default SMS app gets its permission back, the list follows and the user is told`() {
         val e = engine()
         e.guards.set(GuardKey.SMS, true, allowed = setOf(samsungMessages))
         assertEquals(Dpm.GRANT_DENIED, state(signal, sendSms))
@@ -204,7 +204,7 @@ class CapabilityGuardsTest {
         val notice = notices.single() as GuardNotice.RoleHolder
         assertEquals(listOf(sendSms), notice.lifted)
         assertTrue(notice.joined)
-        // The role moves back: Signal stays in the list (the owner removes it if he wants).
+        // The role moves back: Signal stays in the list (the user removes it if he wants).
         gw.roles = gw.roles.copy(sms = samsungMessages)
         e.guards.reconcile()
         assertEquals(Dpm.GRANT_DEFAULT, state(signal, sendSms))
@@ -217,7 +217,7 @@ class CapabilityGuardsTest {
         assertEquals(Dpm.GRANT_DENIED, state(bank, callPhone))
         assertEquals(Dpm.GRANT_DENIED, state(otherDialer, readCallLog))
         assertFalse(gw.calls.any { it.startsWith("perm $samsungDialer") || it.startsWith("perm $sos") })
-        // The owner makes the third-party dialer the default one.
+        // The user makes the third-party dialer the default one.
         gw.roles = gw.roles.copy(dialer = otherDialer)
         e.guards.reconcile()
         assertEquals(Dpm.GRANT_DEFAULT, state(otherDialer, callPhone))
@@ -346,7 +346,7 @@ class CapabilityGuardsTest {
     }
 
     @Test
-    fun `a quarantined app chosen as default SMS app gets only the SMS role back, stays in quarantine, and the owner is told`() {
+    fun `a quarantined app chosen as default SMS app gets only the SMS role back, stays in quarantine, and the user is told`() {
         val e = engine()
         e.guards.set(GuardKey.QUARANTINE, true)
         gw.install("com.sms.client", sendSms, readSms, receiveSms, contacts, mic)
@@ -365,16 +365,16 @@ class CapabilityGuardsTest {
         assertEquals(Dpm.GRANT_DENIED, state("com.sms.client", mic))
         val notice = notices.single() as GuardNotice.RoleHolder
         assertEquals(GuardKey.QUARANTINE, notice.key)
-        assertEquals("appli SMS par défaut", notice.role)
+        assertEquals("default SMS app", notice.role)
         assertEquals(setOf(sendSms, readSms, receiveSms), notice.lifted.toSet())
         // Steady state: no new notice.
         e.guards.reconcile()
         assertEquals(1, notices.size)
-        // The owner puts Samsung Messages back: the SMS permissions are denied again (still quarantined).
+        // The user puts Samsung Messages back: the SMS permissions are denied again (still quarantined).
         gw.roles = gw.roles.copy(sms = samsungMessages)
         e.guards.reconcile()
         assertEquals(Dpm.GRANT_DENIED, state("com.sms.client", sendSms))
-        // "Libérer", then "Tout rétablir": nothing left.
+        // "Release", then "Restore everything": nothing left.
         assertTrue(e.guards.release("com.sms.client").allOk)
         assertEquals(Dpm.GRANT_DEFAULT, state("com.sms.client", contacts))
         assertTrue(engine().revertAll().allOk)
@@ -552,7 +552,7 @@ class CapabilityGuardsTest {
             } catch (_: ProcessDeath) {
                 // The app restarts with what is on disk.
             }
-            // Restart: reconciliation at agent start, then the owner presses "Aperçu et réapplication", then switches off.
+            // Restart: reconciliation at agent start, then the user presses "Preview and re-apply", then switches off.
             val e = engine()
             e.guards.reconcile()
             assertTrue("$dieAfter", e.guards.set(GuardKey.SMS, true, extended = true).allOk)
@@ -615,7 +615,7 @@ class CapabilityGuardsTest {
         assertFalse(launcher in e.guards.status().getValue(GuardKey.SMS).allowed)
         assertTrue(followed.isEmpty())
         assertTrue(notices.isEmpty())
-        assertEquals(launcher to "liste choisie", e.guards.preview(GuardKey.SMS, true, allowed = setOf(launcher)).exempt.first { it.first == launcher })
+        assertEquals(launcher to "chosen list", e.guards.preview(GuardKey.SMS, true, allowed = setOf(launcher)).exempt.first { it.first == launcher })
         assertTrue(e.guards.preview(GuardKey.SMS, true, allowed = setOf(samsungMessages)).exempt.none { it.first == launcher })
         assertTrue(e.guards.set(GuardKey.SMS, false).allOk)
         assertEquals(Dpm.GRANT_DEFAULT, state(launcher, sendSms))

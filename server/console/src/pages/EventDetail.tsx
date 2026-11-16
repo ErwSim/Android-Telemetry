@@ -12,9 +12,9 @@ export default function EventDetail() {
   return (
     <>
       <div className="page-head">
-        <h1>Événement</h1>
-        <Link to="/evenements" className="btn btn-sm">
-          Retour au journal
+        <h1>Event</h1>
+        <Link to="/events" className="btn btn-sm">
+          Back to the event log
         </Link>
       </div>
       <Async state={state}>

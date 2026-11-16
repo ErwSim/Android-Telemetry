@@ -81,7 +81,7 @@ func FromLookup(lookup func(string) (string, bool)) (*Config, error) {
 		}
 		b, err := strconv.ParseBool(v)
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("%s : booléen attendu", k))
+			errs = append(errs, fmt.Sprintf("%s: boolean expected", k))
 			return def
 		}
 		return b
@@ -93,7 +93,7 @@ func FromLookup(lookup func(string) (string, bool)) (*Config, error) {
 		}
 		n, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || n < min {
-			errs = append(errs, fmt.Sprintf("%s : entier >= %d attendu", k, min))
+			errs = append(errs, fmt.Sprintf("%s: integer >= %d expected", k, min))
 			return def
 		}
 		return n
@@ -121,20 +121,20 @@ func FromLookup(lookup func(string) (string, bool)) (*Config, error) {
 	for _, s := range strings.FieldsFunc(get("WATCHPOST_TRUSTED_PROXIES", "127.0.0.1/32"), splitList) {
 		p, err := parsePrefix(s)
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("WATCHPOST_TRUSTED_PROXIES : %q n'est ni une IP ni un CIDR", s))
+			errs = append(errs, fmt.Sprintf("WATCHPOST_TRUSTED_PROXIES: %q is neither an IP nor a CIDR", s))
 			continue
 		}
 		c.TrustedProxies = append(c.TrustedProxies, p)
 	}
 	c.TileURL = get("WATCHPOST_TILE_URL", DefaultTileURL)
 	if o, err := TileOrigin(c.TileURL); err != nil {
-		errs = append(errs, "WATCHPOST_TILE_URL : "+err.Error())
+		errs = append(errs, "WATCHPOST_TILE_URL: "+err.Error())
 	} else {
 		c.TileOrigin = o
 	}
 	c.CmdKeepAlive = time.Duration(intVar("WATCHPOST_CMD_KEEPALIVE_S", 120, 5)) * time.Second
 	if c.CmdKeepAlive > time.Hour {
-		errs = append(errs, "WATCHPOST_CMD_KEEPALIVE_S : 3600 au plus")
+		errs = append(errs, "WATCHPOST_CMD_KEEPALIVE_S: 3600 at most")
 	}
 	c.AdGuardURL = strings.TrimRight(get("WATCHPOST_ADGUARD_URL", ""), "/")
 	c.AdGuardUser = get("WATCHPOST_ADGUARD_USER", "")
@@ -143,24 +143,24 @@ func FromLookup(lookup func(string) (string, bool)) (*Config, error) {
 	c.AdGuardPoll = time.Duration(intVar("WATCHPOST_ADGUARD_POLL_S", 60, 10)) * time.Second
 	if c.AdGuardURL != "" {
 		if err := CheckAdGuardURL(c.AdGuardURL); err != nil {
-			errs = append(errs, "WATCHPOST_ADGUARD_URL : "+err.Error())
+			errs = append(errs, "WATCHPOST_ADGUARD_URL: "+err.Error())
 		}
 	}
 	if clients, err := parseClients(get("WATCHPOST_ADGUARD_CLIENTS", "")); err != nil {
-		errs = append(errs, "WATCHPOST_ADGUARD_CLIENTS : "+err.Error())
+		errs = append(errs, "WATCHPOST_ADGUARD_CLIENTS: "+err.Error())
 	} else {
 		c.AdGuardClients = clients
 	}
 	c.DetectEnabled = boolVar("WATCHPOST_DETECT_ENABLED", true)
 	c.DetectInterval = time.Duration(intVar("WATCHPOST_DETECT_INTERVAL_S", 300, 10)) * time.Second
 	if c.DetectInterval > 24*time.Hour {
-		errs = append(errs, "WATCHPOST_DETECT_INTERVAL_S : 86400 au plus")
+		errs = append(errs, "WATCHPOST_DETECT_INTERVAL_S: 86400 at most")
 	}
 	th, derrs := detect.ParseEnv(func(k string) string { return get(k, "") })
 	c.Detect = th
 	errs = append(errs, derrs...)
 	if len(errs) > 0 {
-		return nil, fmt.Errorf("configuration invalide : %s", strings.Join(errs, " ; "))
+		return nil, fmt.Errorf("invalid configuration: %s", strings.Join(errs, "; "))
 	}
 	return c, nil
 }
@@ -172,11 +172,11 @@ const DefaultTileURL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 // "https://{s}.tile.example.org/{z}/{x}/{y}.png" (a "{s}" host label becomes "*").
 func TileOrigin(tileURL string) (string, error) {
 	if len(tileURL) > 512 || strings.ContainsAny(tileURL, " \t\r\n;,'\"") {
-		return "", fmt.Errorf("%q : URL invalide", tileURL)
+		return "", fmt.Errorf("%q: invalid URL", tileURL)
 	}
 	rest, ok := strings.CutPrefix(tileURL, "https://")
 	if !ok {
-		return "", fmt.Errorf("%q : URL https:// attendue", tileURL)
+		return "", fmt.Errorf("%q: https:// URL expected", tileURL)
 	}
 	host := rest
 	if i := strings.IndexAny(rest, "/?#"); i >= 0 {
@@ -190,7 +190,7 @@ func TileOrigin(tileURL string) (string, error) {
 	}
 	origin := "https://" + strings.Join(labels, ".")
 	if !validOrigin(origin) || strings.Contains(origin[len("https://"):], "*") && !strings.HasPrefix(origin, "https://*.") {
-		return "", fmt.Errorf("%q : hôte invalide", tileURL)
+		return "", fmt.Errorf("%q: invalid host", tileURL)
 	}
 	return origin, nil
 }
@@ -234,10 +234,10 @@ func validOrigin(s string) bool {
 func CheckAdGuardURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Hostname() == "" {
-		return fmt.Errorf("%q : URL http(s)://hôte[:port] attendue", raw)
+		return fmt.Errorf("%q: http(s)://host[:port] URL expected", raw)
 	}
 	if u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
-		return fmt.Errorf("URL sans identifiants, requête ni fragment attendue (identifiants : WATCHPOST_ADGUARD_USER et WATCHPOST_ADGUARD_PASSWORD)")
+		return fmt.Errorf("URL without credentials, query or fragment expected (credentials: WATCHPOST_ADGUARD_USER and WATCHPOST_ADGUARD_PASSWORD)")
 	}
 	return nil
 }
@@ -251,7 +251,7 @@ func parseClients(v string) (map[string][]string, error) {
 	for _, part := range strings.FieldsFunc(v, splitList) {
 		dev, cl, ok := strings.Cut(part, "=")
 		if !ok || !deviceRe.MatchString(dev) || !clientRe.MatchString(cl) {
-			return nil, fmt.Errorf("%q : paires device_id=client (ClientID ou IP AdGuard) attendues", part)
+			return nil, fmt.Errorf("%q: device_id=client pairs (AdGuard ClientID or IP) expected", part)
 		}
 		out[dev] = append(out[dev], cl)
 	}

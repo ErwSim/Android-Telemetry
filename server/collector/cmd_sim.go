@@ -21,31 +21,31 @@ import (
 
 func cmdSim(args []string) error {
 	fl := flag.NewFlagSet("sim", flag.ContinueOnError)
-	enrollPath := fl.String("enroll", "", "fichier .watchpost de l'appareil simulé (requis)")
-	url := fl.String("url", "", "URL d'ingestion (défaut : celle du fichier .watchpost)")
-	backfill := fl.Duration("backfill", 0, "génère d'abord l'historique de cette durée (ex. 24h, 168h)")
-	follow := fl.Bool("follow", false, "avec --backfill : continuer ensuite en temps réel")
-	rate := fl.Float64("rate", 1, "facteur de volume (trafic DNS/connexions, notifications) ; 1 = réaliste")
-	interval := fl.Duration("interval", 15*time.Second, "mode continu : intervalle entre deux envois")
-	seed := fl.Int64("seed", 0, "graine aléatoire (0 = dérivée de l'heure)")
-	batch := fl.Int("batch", 500, "taille maximale des lots (1 à 500)")
-	version := fl.String("agent-version", "1.0.0-sim", "agent_version annoncée")
-	cmdMode := fl.String("commands", "stream", "canal de commandes en mode continu : stream (flux permanent), poll (interrogation) ou off")
-	pollEvery := fl.Duration("poll-interval", time.Minute, "avec --commands poll : intervalle d'interrogation (1 à 15 min)")
-	cmdCode := fl.String("command-code", "", "code de commande de l'appareil simulé (12 caractères au moins) ; vide : commandes sensibles refusées (no_code_configured)")
-	allowWipe := fl.Bool("allow-wipe", false, "réglage « Autoriser l'effacement à distance » (éteint par défaut : wipe refusé avec disabled)")
-	clockSkew := fl.Duration("clock-skew", 0, "décalage de l'horloge du téléphone simulé (ex. 2h : commandes refusées avec expired)")
-	notifContent := fl.Bool("notification-content", true, "option « Contenu des notifications » de l'APK compagnon (titre et texte, codes masqués)")
-	fakeAG := fl.String("fake-adguard", "", "adresse d'écoute d'un faux AdGuard Home alimenté par les net.dns simulés (ex. 127.0.0.1:3001)")
-	fakeAGUser := fl.String("fake-adguard-user", "", "faux AdGuard Home : utilisateur (authentification de base ; vide : aucune)")
-	fakeAGPass := fl.String("fake-adguard-password", "", "faux AdGuard Home : mot de passe")
-	fakeAGClient := fl.String("fake-adguard-client", "", "faux AdGuard Home : ClientID des requêtes (défaut : nom de l'appareil)")
-	scenario := fl.String("scenario", sim.ScenarioHealthy, "scénarios séparés par des virgules (voir plus bas) ; sain : aucun")
-	appOps := fl.Bool("app-ops", true, "émettre app.ops (expérimental côté agent : =false pour simuler son absence)")
+	enrollPath := fl.String("enroll", "", ".watchpost file of the simulated device (required)")
+	url := fl.String("url", "", "ingestion URL (default: the one in the .watchpost file)")
+	backfill := fl.Duration("backfill", 0, "first generate the history of this duration (e.g. 24h, 168h)")
+	follow := fl.Bool("follow", false, "with --backfill: then keep going in real time")
+	rate := fl.Float64("rate", 1, "volume factor (DNS/connection traffic, notifications); 1 = realistic")
+	interval := fl.Duration("interval", 15*time.Second, "continuous mode: interval between two uploads")
+	seed := fl.Int64("seed", 0, "random seed (0 = derived from the clock)")
+	batch := fl.Int("batch", 500, "maximum batch size (1 to 500)")
+	version := fl.String("agent-version", "1.0.0-sim", "announced agent_version")
+	cmdMode := fl.String("commands", "stream", "command channel in continuous mode: stream (permanent stream), poll (polling) or off")
+	pollEvery := fl.Duration("poll-interval", time.Minute, "with --commands poll: polling interval (1 to 15 min)")
+	cmdCode := fl.String("command-code", "", "command passphrase of the simulated device (at least 12 characters); empty: sensitive commands refused (no_code_configured)")
+	allowWipe := fl.Bool("allow-wipe", false, "\"Allow remote erase\" setting (off by default: wipe refused with disabled)")
+	clockSkew := fl.Duration("clock-skew", 0, "clock offset of the simulated phone (e.g. 2h: commands refused with expired)")
+	notifContent := fl.Bool("notification-content", true, "\"Notification content\" option of the companion APK (title and text, codes masked)")
+	fakeAG := fl.String("fake-adguard", "", "listen address of a fake AdGuard Home fed by the simulated net.dns events (e.g. 127.0.0.1:3001)")
+	fakeAGUser := fl.String("fake-adguard-user", "", "fake AdGuard Home: user (basic authentication; empty: none)")
+	fakeAGPass := fl.String("fake-adguard-password", "", "fake AdGuard Home: password")
+	fakeAGClient := fl.String("fake-adguard-client", "", "fake AdGuard Home: ClientID of the queries (default: device name)")
+	scenario := fl.String("scenario", sim.ScenarioHealthy, "comma-separated scenarios (see below); healthy: none")
+	appOps := fl.Bool("app-ops", true, "emit app.ops (experimental on the agent side: =false to simulate its absence)")
 	fl.Usage = func() {
-		fmt.Fprintln(fl.Output(), "Usage : watchpost-collector sim --enroll <fichier.watchpost> [options]")
+		fmt.Fprintln(fl.Output(), "Usage: watchpost-collector sim --enroll <file.watchpost> [options]")
 		fl.PrintDefaults()
-		fmt.Fprintln(fl.Output(), "\nScénarios (--scenario) :")
+		fmt.Fprintln(fl.Output(), "\nScenarios (--scenario):")
 		for _, i := range sim.ScenarioInfo {
 			fmt.Fprintf(fl.Output(), "  %-18s %s\n", i.Name, i.Desc)
 		}
@@ -56,26 +56,26 @@ func cmdSim(args []string) error {
 	switch *cmdMode {
 	case "stream", "poll", "off":
 	default:
-		return errors.New("--commands : stream, poll ou off")
+		return errors.New("--commands: stream, poll or off")
 	}
 	if *pollEvery < time.Minute || *pollEvery > 15*time.Minute {
-		return errors.New("--poll-interval doit être entre 1m et 15m")
+		return errors.New("--poll-interval must be between 1m and 15m")
 	}
 	if *enrollPath == "" {
-		return errors.New("--enroll <fichier.watchpost> est requis")
+		return errors.New("--enroll <file.watchpost> is required")
 	}
 	if *batch < 1 || *batch > 500 {
-		return errors.New("--batch doit être entre 1 et 500")
+		return errors.New("--batch must be between 1 and 500")
 	}
 	if *rate <= 0 || *rate > 100 {
-		return errors.New("--rate doit être dans ]0, 100]")
+		return errors.New("--rate must be in ]0, 100]")
 	}
 	if *backfill < 0 || *backfill > 90*24*time.Hour {
-		return errors.New("--backfill doit être entre 0 et 2160h")
+		return errors.New("--backfill must be between 0 and 2160h")
 	}
 	scenarios, err := sim.ParseScenarios(*scenario)
 	if err != nil {
-		return fmt.Errorf("--scenario : %w", err)
+		return fmt.Errorf("--scenario: %w", err)
 	}
 	f, err := enroll.Read(*enrollPath)
 	if err != nil {
@@ -88,9 +88,9 @@ func cmdSim(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if err := client.Ping(ctx); err != nil {
-		return fmt.Errorf("authentification refusée ou serveur injoignable : %w", err)
+		return fmt.Errorf("authentication refused or server unreachable: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "Appareil %s (%s) authentifié.\n", f.DeviceID, f.DeviceName)
+	fmt.Fprintf(os.Stderr, "Device %s (%s) authenticated.\n", f.DeviceID, f.DeviceName)
 
 	now := time.Now().UTC()
 	s := *seed
@@ -111,7 +111,7 @@ func cmdSim(args []string) error {
 		if *backfill > 0 {
 			opts.ScenarioEnd = now // events placed within the history (exfiltration spike)
 		}
-		fmt.Fprintf(os.Stderr, "Scénarios : %s, à partir de %s\n", strings.Join(scenarios, ", "), opts.ScenarioStart.Format(time.RFC3339))
+		fmt.Fprintf(os.Stderr, "Scenarios: %s, starting at %s\n", strings.Join(scenarios, ", "), opts.ScenarioStart.Format(time.RFC3339))
 	}
 	var fake *adguard.Fake
 	if *fakeAG != "" {
@@ -136,14 +136,14 @@ func cmdSim(args []string) error {
 		srv := &http.Server{Handler: fake, ReadHeaderTimeout: 10 * time.Second}
 		go func() { _ = srv.Serve(ln) }()
 		go func() { <-ctx.Done(); _ = srv.Close() }()
-		fmt.Fprintf(os.Stderr, "Faux AdGuard Home : http://%s (%d requêtes dans le journal) — WATCHPOST_ADGUARD_URL=http://%s\n",
+		fmt.Fprintf(os.Stderr, "Fake AdGuard Home: http://%s (%d queries in the log) - WATCHPOST_ADGUARD_URL=http://%s\n",
 			ln.Addr(), fake.Len(), ln.Addr())
 		return nil
 	}
 
 	if *backfill > 0 {
 		g.PlanScenario(start, now)
-		fmt.Fprintf(os.Stderr, "Historique : %s → %s\n", start.Format(time.RFC3339), now.Format(time.RFC3339))
+		fmt.Fprintf(os.Stderr, "History: %s -> %s\n", start.Format(time.RFC3339), now.Format(time.RFC3339))
 		for t := start; t.Before(now); {
 			next := t.Add(time.Hour)
 			if next.After(now) {
@@ -153,7 +153,7 @@ func cmdSim(args []string) error {
 				return err
 			}
 			t = next
-			fmt.Fprintf(os.Stderr, "\r  %s : %d événements envoyés", t.Format("2006-01-02 15:04"), stats.sent)
+			fmt.Fprintf(os.Stderr, "\r  %s: %d events sent", t.Format("2006-01-02 15:04"), stats.sent)
 		}
 		fmt.Fprintln(os.Stderr)
 		if !*follow {
@@ -186,10 +186,10 @@ func cmdSim(args []string) error {
 		} else {
 			go agent.RunPoll(ctx, *pollEvery)
 		}
-		fmt.Fprintf(os.Stderr, "Canal de commandes : %s (code de commande %s, effacement à distance %s)\n", *cmdMode,
-			map[bool]string{true: "défini", false: "non défini"}[*cmdCode != ""], map[bool]string{true: "autorisé", false: "refusé"}[*allowWipe])
+		fmt.Fprintf(os.Stderr, "Command channel: %s (command passphrase %s, remote erase %s)\n", *cmdMode,
+			map[bool]string{true: "set", false: "not set"}[*cmdCode != ""], map[bool]string{true: "allowed", false: "refused"}[*allowWipe])
 	}
-	fmt.Fprintf(os.Stderr, "Mode continu (envoi toutes les %s, Ctrl-C pour arrêter)…\n", *interval)
+	fmt.Fprintf(os.Stderr, "Continuous mode (upload every %s, Ctrl-C to stop)...\n", *interval)
 	t := time.NewTicker(*interval)
 	defer t.Stop()
 	for {
@@ -229,7 +229,7 @@ func cmdSim(args []string) error {
 			}
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "\r  %s : %d événements envoyés", time.Now().Format("15:04:05"), stats.sent)
+		fmt.Fprintf(os.Stderr, "\r  %s: %d events sent", time.Now().Format("15:04:05"), stats.sent)
 	}
 }
 
@@ -239,7 +239,7 @@ type simStats struct {
 }
 
 func (s *simStats) print() {
-	fmt.Fprintf(os.Stderr, "Envoyés : %d, acceptés : %d, doublons : %d, rejetés : %d, types : %d\n",
+	fmt.Fprintf(os.Stderr, "Sent: %d, accepted: %d, duplicates: %d, rejected: %d, types: %d\n",
 		s.sent, s.accepted, s.dups, s.rejected, len(s.types))
 	keys := make([]string, 0, len(s.types))
 	for k := range s.types {
@@ -266,7 +266,7 @@ func sendAll(ctx context.Context, c *sim.Client, evs []sim.Event, batch int, st 
 		st.dups += res.Duplicates
 		st.rejected += len(res.Rejected)
 		for _, r := range res.Rejected {
-			fmt.Fprintf(os.Stderr, "\nrejet : %s %s", r.ID, r.Reason)
+			fmt.Fprintf(os.Stderr, "\nrejected: %s %s", r.ID, r.Reason)
 		}
 		evs = evs[n:]
 	}
@@ -283,7 +283,7 @@ func clientIDFrom(name string) string {
 	}
 	s := b.String()
 	if s == "" {
-		s = "telephone"
+		s = "phone"
 	}
 	if len(s) > 64 {
 		s = s[:64]

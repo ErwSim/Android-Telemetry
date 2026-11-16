@@ -45,7 +45,7 @@ func ParsePublishers(text string) (*Classifier, error) {
 		}
 		if m := headerRe.FindStringSubmatch(line); m != nil {
 			if _, dup := c.names[m[1]]; dup {
-				return nil, fmt.Errorf("ligne %d : éditeur %q défini deux fois", i+1, m[1])
+				return nil, fmt.Errorf("line %d: publisher %q defined twice", i+1, m[1])
 			}
 			cur = m[1]
 			c.names[cur] = strings.TrimSpace(m[2])
@@ -53,21 +53,21 @@ func ParsePublishers(text string) (*Classifier, error) {
 			continue
 		}
 		if cur == "" {
-			return nil, fmt.Errorf("ligne %d : suffixe avant tout éditeur", i+1)
+			return nil, fmt.Errorf("line %d: suffix before any publisher", i+1)
 		}
 		if cur == Other {
-			return nil, fmt.Errorf("ligne %d : l'éditeur %q ne prend pas de suffixe", i+1, Other)
+			return nil, fmt.Errorf("line %d: publisher %q takes no suffix", i+1, Other)
 		}
 		if !ValidDomain(line) {
-			return nil, fmt.Errorf("ligne %d : suffixe invalide %q", i+1, line)
+			return nil, fmt.Errorf("line %d: invalid suffix %q", i+1, line)
 		}
 		if prev, dup := c.suffix[line]; dup {
-			return nil, fmt.Errorf("ligne %d : %q déjà rattaché à %q", i+1, line, prev)
+			return nil, fmt.Errorf("line %d: %q already attached to %q", i+1, line, prev)
 		}
 		c.suffix[line] = cur
 	}
 	if _, ok := c.names[Other]; !ok {
-		return nil, fmt.Errorf("éditeur %q manquant", Other)
+		return nil, fmt.Errorf("publisher %q missing", Other)
 	}
 	return c, nil
 }

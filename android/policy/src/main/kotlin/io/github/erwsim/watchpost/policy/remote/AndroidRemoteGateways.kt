@@ -44,7 +44,7 @@ class AndroidLockScreenGateway(private val context: Context) : LockScreenGateway
  * DevicePolicyManager#wipeData / #wipeDevice).
  *
  * Flags 0: the factory reset protection (Google account) and the eSIM profiles are kept — a thief cannot
- * reuse the phone without the owner's account, and the owner keeps the line.
+ * reuse the phone without the user's account, and the user keeps the line.
  *
  * Constructed only by `PolicyModule.registerCommandExecutors`, behind [WipeExecutor] (see `WipeIsolationTest`).
  */

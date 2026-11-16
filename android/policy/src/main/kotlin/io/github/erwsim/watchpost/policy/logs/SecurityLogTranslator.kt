@@ -16,7 +16,7 @@ data class RawSecurityEvent(
     val data: Any?,
 )
 
-/** A translated entry: `security.log` data (contract §2, "Précisions" table). */
+/** A translated entry: `security.log` data (contract §2, security log table). */
 data class TranslatedSecurityEvent(
     val tag: String,
     val level: String,

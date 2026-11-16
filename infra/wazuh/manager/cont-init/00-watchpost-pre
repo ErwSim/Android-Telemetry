@@ -1,0 +1,8 @@
+#!/usr/bin/with-contenv bash
+# Watchpost: runs before 0-wazuh-init (alphabetical order of /etc/cont-init.d).
+# Works around a defect of the wazuh-manager 4.14.10 image: when an existing container RESTARTS
+# (host reboot, "docker compose restart"), /var/ossec/var/multigroups has been emptied by Wazuh;
+# 0-wazuh-init then tries to reinitialise it from /var/ossec/data_tmp, deleted after the first
+# start, fails and stops BEFORE copying ossec.conf and the Watchpost rules.
+mkdir -p /var/ossec/data_tmp/permanent/var/ossec/var/multigroups
+exit 0

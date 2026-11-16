@@ -69,16 +69,16 @@ class ContentFilteringTest {
 
     @Test
     fun controlCharactersAreRemoved() {
-        val c = ContentPolicy.apply("com.chat", "A\u0007B", "ligne 1\nligne 2\u001b[31m", on)
+        val c = ContentPolicy.apply("com.chat", "A\u0007B", "line 1\nline 2\u001b[31m", on)
         assertEquals("A B", c.title)
-        assertEquals("ligne 1\nligne 2 [31m", c.text)
+        assertEquals("line 1\nline 2 [31m", c.text)
     }
 
     @Test
     fun packageLists() {
-        val p = PackageLists.parseText("com.a.b\n# commentaire\ncom.c.d, com.a.b ; pas-un-paquet\n\n  org.x.y  # fin\nsansPoint")
+        val p = PackageLists.parseText("com.a.b\n# comment\ncom.c.d, com.a.b ; not-a-package\n\n  org.x.y  # end\nnoDot")
         assertEquals(listOf("com.a.b", "com.c.d", "org.x.y"), p.packages)
-        assertEquals(listOf("pas-un-paquet", "sansPoint"), p.rejected)
+        assertEquals(listOf("not-a-package", "noDot"), p.rejected)
         // Bounded size.
         val many = PackageLists.parse((1..2_000).map { "com.app.n$it" })
         assertEquals(Limits.MAX_LIST_ENTRIES, many.packages.size)

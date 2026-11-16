@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Contract §8 Device Owner commands. The wipe guard matrix: every combination of the six conditions
- * (channel on, code set, valid signature, "Autoriser l'effacement à distance" on, not expired, never
+ * (channel on, code set, valid signature, "Allow remote erase" on, not expired, never
  * seen) goes through the real verifier, processor and [WipeExecutor]; the (fake) reset runs only when
  * all six hold. No test can reach the real reset: it exists only in `AndroidFactoryReset`.
  */
@@ -134,7 +134,7 @@ class RemoteCommandsPolicyTest {
     @Test
     fun wipeIsRefusedWhenTheSettingIsTurnedOffBeforeTheResetOrTheRoleIsLost() {
         val s = Setup()
-        s.liveWipeAllowed = false // switched off by the owner during the 10 s upload window
+        s.liveWipeAllowed = false // switched off by the user during the 10 s upload window
         val entry = s.process(s.kit.signed("wipe"))!!
         assertEquals(0, s.reset.calls.get())
         assertEquals("refused", entry.status)
@@ -158,7 +158,7 @@ class RemoteCommandsPolicyTest {
         val screen = FakeLockScreen()
         val s = Setup(lockScreen = screen)
         val wipe = s.kit.signed("wipe")
-        val lock = s.kit.signed("lock", """{"message":"Perdu"}""")
+        val lock = s.kit.signed("lock", """{"message":"Lost"}""")
         s.process(wipe)
         s.process(lock)
         assertEquals(1, s.reset.calls.get())
@@ -174,7 +174,7 @@ class RemoteCommandsPolicyTest {
             assertNull(s.process(wipe))
         }
         assertEquals(1, s.reset.calls.get())
-        assertEquals(listOf("info=Perdu", "lockNow"), screen.calls)
+        assertEquals(listOf("info=Lost", "lockNow"), screen.calls)
         assertEquals("no new event, no new history line", eventsBefore, s.sink.events.size)
         assertEquals(2, s.kit.state.history.value.size)
         val pending = s.kit.state.pendingResults().associateBy { it.id }
@@ -205,14 +205,14 @@ class RemoteCommandsPolicyTest {
     fun lockSetsTheMessageThenLocks() {
         val screen = FakeLockScreen()
         val s = Setup(lockScreen = screen)
-        val entry = s.process(s.kit.signed("lock", """{"message":"Téléphone perdu"}"""))!!
+        val entry = s.process(s.kit.signed("lock", """{"message":"Lost phone"}"""))!!
         assertEquals("executed", entry.status)
         assertEquals("ok_message", entry.detail)
-        assertEquals(listOf("info=Téléphone perdu", "lockNow"), screen.calls)
+        assertEquals(listOf("info=Lost phone", "lockNow"), screen.calls)
         assertEquals(2, s.sink.of("command.result").single().sev)
         // Without a message: lock only, the current message is left as it is.
         s.process(s.kit.signed("lock"))
-        assertEquals(listOf("info=Téléphone perdu", "lockNow", "lockNow"), screen.calls)
+        assertEquals(listOf("info=Lost phone", "lockNow", "lockNow"), screen.calls)
         val cleared = s.process(s.kit.signed("clear_lock_message"))!!
         assertEquals("executed", cleared.status)
         assertNull(screen.info)

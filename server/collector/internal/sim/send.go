@@ -81,13 +81,13 @@ func NewClient(f *enroll.File, url, version string) (*Client, error) {
 	if strings.HasPrefix(url, "https://") {
 		cert, err := tls.X509KeyPair([]byte(f.ClientCertPEM), []byte(f.ClientKeyPEM))
 		if err != nil {
-			return nil, fmt.Errorf("certificat client : %w", err)
+			return nil, fmt.Errorf("client certificate: %w", err)
 		}
 		cfg := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 		if f.ServerCAPEM != "" {
 			pool := x509.NewCertPool()
 			if !pool.AppendCertsFromPEM([]byte(f.ServerCAPEM)) {
-				return nil, fmt.Errorf("server_ca_pem invalide")
+				return nil, fmt.Errorf("invalid server_ca_pem")
 			}
 			cfg.RootCAs = pool
 		}
@@ -137,7 +137,7 @@ func (c *Client) Ping(ctx context.Context) error {
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("ping : HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		return fmt.Errorf("ping: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
 	return nil
 }
@@ -172,7 +172,7 @@ func (c *Client) Send(ctx context.Context, evs []Event) (*Result, error) {
 			case resp.StatusCode == http.StatusOK:
 				var r Result
 				if err := json.Unmarshal(body, &r); err != nil {
-					return nil, fmt.Errorf("réponse illisible : %w", err)
+					return nil, fmt.Errorf("unreadable response: %w", err)
 				}
 				return &r, nil
 			case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
@@ -181,7 +181,7 @@ func (c *Client) Send(ctx context.Context, evs []Event) (*Result, error) {
 				}
 				err = fmt.Errorf("HTTP %d", resp.StatusCode)
 			default:
-				return nil, fmt.Errorf("HTTP %d : %s", resp.StatusCode, strings.TrimSpace(string(body)))
+				return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 			}
 		}
 		if attempt >= 8 {

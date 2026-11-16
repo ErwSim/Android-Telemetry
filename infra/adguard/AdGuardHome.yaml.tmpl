@@ -1,14 +1,14 @@
-# AdGuard Home — configuration gérée par Vigie (gabarit infra/adguard/AdGuardHome.yaml.tmpl).
-# Rendu dans data/adguard/vigie-gere.yaml puis FUSIONNÉ par infra/adguard/merge-config.py dans la
-# configuration en service : seuls les réglages gérés par Vigie (comptes admin et
-# vigie-collecteur, TLS, amonts, clients autorisés, journal des requêtes, présence des listes)
-# sont réappliqués à chaque install.sh ; les réglages faits dans l'interface et dans la console
-# Vigie (niveau de blocage, bloc « vigie:begin ») sont conservés. --reset-adguard repart de ce
-# gabarit en gardant le niveau et le bloc de la console. Les listes (filters) sont construites par
-# merge-config.py depuis adguard/niveaux.json.
+# AdGuard Home: configuration managed by Watchpost (template infra/adguard/AdGuardHome.yaml.tmpl).
+# Rendered into data/adguard/watchpost-managed.yaml, then MERGED by infra/adguard/merge-config.py into
+# the configuration in service: only the settings managed by Watchpost (admin and
+# watchpost-collector accounts, TLS, upstreams, allowed clients, query log, presence of the lists)
+# are reapplied on every install.sh; the settings made in the interface and in the Watchpost
+# console (blocking level, "watchpost:begin" block) are kept. --reset-adguard starts again from
+# this template, keeping the level and the console block. The lists (filters) are built by
+# merge-config.py from adguard/levels.json.
 schema_version: 34
 http:
-  # Interface web derrière Caddy (adguard.<domaine>), jamais publiée.
+  # Web interface behind Caddy (adguard.<domain>), never published.
   address: 0.0.0.0:3000
   session_ttl: 24h
   doh:
@@ -17,36 +17,36 @@ http:
   pprof:
     enabled: false
     port: 6060
-# AdGuard Home n'a qu'un type de compte : tout compte est administrateur complet. Le compte
-# « vigie-collecteur » sert au collecteur (vue « pistage », niveaux, règles de la console) par le
-# réseau Docker interne ; son mot de passe (.env : ADGUARD_COLLECTOR_PASSWORD) vaut donc celui
-# d'admin et se protège de la même façon.
+# AdGuard Home has a single account type: every account is a full administrator. The
+# "watchpost-collector" account is used by the collector (Tracking page, levels, console rules) over
+# the internal Docker network; its password (.env: ADGUARD_COLLECTOR_PASSWORD) is therefore worth
+# as much as admin's and is protected the same way.
 users:
   - name: admin
     password: '@@ADGUARD_ADMIN_HASH@@'
-  - name: vigie-collecteur
+  - name: watchpost-collector
     password: '@@ADGUARD_COLLECTOR_HASH@@'
 auth_attempts: 5
 block_auth_min: 15
-language: fr
+language: en
 theme: auto
 dns:
   bind_hosts:
     - 0.0.0.0
-  # DNS en clair : seulement sur le réseau Docker interne (WireGuard, diagnostics). Jamais publié.
+  # Plain DNS: only on the internal Docker network (WireGuard, diagnostics). Never published.
   port: 53
   serve_plain_dns: true
   anonymize_client_ip: false
-  # Limitation de débit par client (/24 en IPv4, /56 en IPv6) : protège contre l'abus du
-  # résolveur exposé en DoT. Le téléphone fait rarement plus de quelques requêtes par seconde.
+  # Rate limiting per client (/24 in IPv4, /56 in IPv6): protects against abuse of the resolver
+  # exposed over DoT. The phone rarely makes more than a few queries per second.
   ratelimit: 50
   ratelimit_subnet_len_ipv4: 24
   ratelimit_subnet_len_ipv6: 56
   ratelimit_whitelist: []
   refuse_any: true
-  # Amont chiffré respectueux de la vie privée : Quad9 (fondation suisse, pas de journalisation
-  # des IP, validation DNSSEC, sans ECS sur dns.quad9.net), en DoH et en DoT.
-  # Secours (si Quad9 est injoignable) : Mullvad DNS (sans filtrage, sans journalisation).
+  # Encrypted, privacy-respecting upstream: Quad9 (Swiss foundation, no logging of IP
+  # addresses, DNSSEC validation, no ECS on dns.quad9.net), over DoH and DoT.
+  # Fallback (if Quad9 is unreachable): Mullvad DNS (no filtering, no logging).
   upstream_dns:@@ADGUARD_UPSTREAMS@@
   upstream_dns_file: ""
   bootstrap_dns:
@@ -57,8 +57,8 @@ dns:
     - https://dns.mullvad.net/dns-query
   upstream_mode: load_balance
   fastest_timeout: 1s
-  # Clients autorisés : vide = tous (mode par défaut) ; en mode ClientID : l'identifiant du
-  # téléphone + le réseau Docker interne. Les autres reçoivent REFUSED.
+  # Allowed clients: empty = all (default mode); in ClientID mode: the identifier of the phone +
+  # the internal Docker network. The others receive REFUSED.
   allowed_clients:@@ADGUARD_ALLOWED_CLIENTS@@
   disallowed_clients: []
   blocked_hosts:
@@ -75,8 +75,8 @@ dns:
   cache_optimistic: false
   bogus_nxdomain: []
   aaaa_disabled: false
-  # Demande DNSSEC à l'amont (bit DO) ; la validation est faite par Quad9 (réponse SERVFAIL si
-  # la signature est invalide) et le bit AD est transmis au téléphone.
+  # Requests DNSSEC from the upstream (DO bit); validation is done by Quad9 (SERVFAIL answer if
+  # the signature is invalid) and the AD bit is passed on to the phone.
   enable_dnssec: true
   edns_client_subnet:
     custom_ip: ""
@@ -100,7 +100,7 @@ dns:
     enabled: true
 tls:
   enabled: true
-  server_name: dns.@@VIGIE_DOMAIN@@
+  server_name: dns.@@WATCHPOST_DOMAIN@@
   force_https: false
   port_https: 0
   port_dns_over_tls: 853
@@ -109,22 +109,22 @@ tls:
   dnscrypt_config_file: ""
   certificate_chain: ""
   private_key: ""
-  # Certificat obtenu et renouvelé par Caddy (volume caddy_data monté en lecture seule) ;
-  # AdGuard Home surveille ces fichiers et les recharge à chaque renouvellement.
+  # Certificate obtained and renewed by Caddy (caddy_data volume mounted read-only);
+  # AdGuard Home watches these files and reloads them on every renewal.
   certificate_path: @@ADGUARD_CERT_PATH@@
   private_key_path: @@ADGUARD_KEY_PATH@@
   strict_sni_check: false
 querylog:
-  # Journal des requêtes : lu par le manager Wazuh (volume adguard_querylog), rotation par
-  # renommage en querylog.json.1 à chaque intervalle.
+  # Query log: read by the Wazuh manager (adguard_querylog volume), rotated by renaming to
+  # querylog.json.1 at every interval.
   dir_path: /opt/adguardhome/querylog
   ignored: []
   interval: 168h
-  # Entrées gardées en mémoire avant écriture sur disque. 50 : le journal arrive dans Wazuh par
-  # petits paquets (pas de retard de plusieurs heures comme avec le défaut de 1000) ; à 1, AdGuard
-  # perd lui-même des entrées sous requêtes simultanées ; au-delà de 500 (une page de l'API), le
-  # relevé du collecteur (vue « pistage », detect.threat_domain) peut en sauter (contrat §8).
-  # Géré par Vigie : réappliqué à chaque install.sh, y compris sur une installation existante.
+  # Entries kept in memory before being written to disk. 50: the log reaches Wazuh in small
+  # batches (no delay of several hours as with the default of 1000); at 1, AdGuard itself loses
+  # entries under concurrent queries; above 500 (one API page), the collector's polling
+  # (Tracking page, detect.threat_domain) may skip some (contract §8).
+  # Managed by Watchpost: reapplied on every install.sh, including on an existing installation.
   size_memory: 50
   enabled: true
   ignored_enabled: false
@@ -135,9 +135,9 @@ statistics:
   interval: 168h
   enabled: true
   ignored_enabled: false
-# Listes de blocage : construites par merge-config.py depuis adguard/niveaux.json (présentes pour
-# tous les niveaux, activées selon le niveau choisi). Identifiants fixes : les règles Wazuh s'en
-# servent (FilterListID 30 = flux de menaces).
+# Blocklists: built by merge-config.py from adguard/levels.json (present at every level,
+# enabled according to the chosen level). Fixed identifiers: the Wazuh rules use them
+# (FilterListID 30 = threat feed).
 filters: []
 whitelist_filters: []
 user_rules: []
@@ -175,15 +175,15 @@ filtering:
     pixabay: true
     yandex: true
     youtube: true
-  # Réponse 0.0.0.0 / :: pour un domaine bloqué.
+  # Answer 0.0.0.0 / :: for a blocked domain.
   blocking_mode: default
   parental_block_host: family-block.dns.adguard.com
   safebrowsing_block_host: standard-block.dns.adguard.com
   rewrites: []
-  # Les listes locales (règles Vigie versionnées) ne sont lues que dans ce répertoire.
+  # Local lists (committed Watchpost rules) are read only from these directories.
   safe_fs_patterns:
-    - /opt/adguardhome/work/userfilters/vigie/*.txt
-    - /opt/adguardhome/work/userfilters/perso/*.txt
+    - /opt/adguardhome/work/userfilters/watchpost/*.txt
+    - /opt/adguardhome/work/userfilters/personal/*.txt
   max_http_size: 256MB
   safebrowsing_cache_size: 1048576
   safesearch_cache_size: 1048576

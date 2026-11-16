@@ -71,7 +71,7 @@ func scanCommand(sc interface{ Scan(...any) error }) (*Command, error) {
 // SigErased replaces the signature of a signed command once the command can no longer be handed to the
 // agent (result received, expired, cancelled). The collector cannot verify a signature and only needs it
 // for the relay; kept longer, each (payload, signature) pair would stay in the database and in its backups
-// as material for an offline search of the owner's command code. A real signature is 44 characters of
+// as material for an offline search of the user's command passphrase. A real signature is 44 characters of
 // base64, so the marker cannot be mistaken for one; "signed" stays true for the console.
 const SigErased = "-"
 
@@ -79,8 +79,8 @@ const eraseSig = `sig = CASE WHEN sig IS NULL THEN NULL ELSE '` + SigErased + `'
 
 // Command creation errors.
 var (
-	ErrDuplicateID = errors.New("identifiant de commande déjà utilisé")
-	ErrConflict    = errors.New("état incompatible")
+	ErrDuplicateID = errors.New("command identifier already used")
+	ErrConflict    = errors.New("incompatible state")
 )
 
 // LimitError is returned when a command limit is reached (contract §8: 429).
@@ -149,14 +149,14 @@ func (s *Store) CreateCommand(ctx context.Context, nc NewCommand, lim CommandLim
 		if oldest.Valid {
 			wait = time.Duration(oldest.Int64+hourMS-nowMS) * time.Millisecond
 		}
-		return StoredEvent{}, &LimitError{Msg: fmt.Sprintf("%d commandes par heure au plus pour cet appareil", lim.PerHour), RetryAfter: wait}
+		return StoredEvent{}, &LimitError{Msg: fmt.Sprintf("%d commands per hour at most for this device", lim.PerHour), RetryAfter: wait}
 	}
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM commands INDEXED BY commands_open
 		WHERE device_id = ? AND status IN ('pending', 'delivered') AND expires_ms > ?`, nc.DeviceID, nowMS).Scan(&n); err != nil {
 		return StoredEvent{}, err
 	}
 	if n >= lim.MaxPending {
-		return StoredEvent{}, &LimitError{Msg: fmt.Sprintf("%d commandes en attente au plus pour cet appareil", lim.MaxPending), RetryAfter: time.Minute}
+		return StoredEvent{}, &LimitError{Msg: fmt.Sprintf("%d pending commands at most for this device", lim.MaxPending), RetryAfter: time.Minute}
 	}
 	var sig any
 	if nc.Sig != "" {

@@ -53,7 +53,7 @@ func (c *cmdConn) stop() { c.once.Do(func() { close(c.done) }) }
 
 func newCmdHub(max int) *cmdHub { return &cmdHub{conns: map[string]*cmdConn{}, max: max} }
 
-var errTooManyStreams = errors.New("trop de flux de commandes ouverts")
+var errTooManyStreams = errors.New("too many open command streams")
 
 // attach registers the stream of a device, closing the previous one.
 func (h *cmdHub) attach(device string) (*cmdConn, error) {
@@ -141,8 +141,8 @@ func (s *Server) handleCommandStream(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	s.touchChannel(dev.DeviceID, store.ChannelStream)
 	defer s.touchChannel(dev.DeviceID, store.ChannelStream)
-	s.log.Info("flux de commandes ouvert", "device_id", dev.DeviceID)
-	defer s.log.Info("flux de commandes fermé", "device_id", dev.DeviceID)
+	s.log.Info("command stream opened", "device_id", dev.DeviceID)
+	defer s.log.Info("command stream closed", "device_id", dev.DeviceID)
 
 	rc := http.NewResponseController(w)
 	// The server-wide read timeout would end this long-lived request; writes keep a deadline each.
@@ -166,7 +166,7 @@ func (s *Server) handleCommandStream(w http.ResponseWriter, r *http.Request) {
 		cmds, err := s.st.ClaimCommands(ctx, dev.DeviceID, s.now(), cmdRedeliverAfter, cmdMaxAttempts)
 		if err != nil {
 			if ctx.Err() == nil {
-				s.log.Error("commandes : lecture des commandes en attente impossible", "device_id", dev.DeviceID, "err", err)
+				s.log.Error("commands: cannot read the pending commands", "device_id", dev.DeviceID, "err", err)
 			}
 			return ctx.Err() == nil
 		}
@@ -184,12 +184,12 @@ func (s *Server) handleCommandStream(w http.ResponseWriter, r *http.Request) {
 				bg := context.WithoutCancel(ctx)
 				for _, u := range cmds[i:] {
 					if err := s.st.UnclaimCommand(bg, u.ID, *u.DeliveredMS); err != nil {
-						s.log.Warn("commandes : remise en attente impossible", "command_id", u.ID, "err", err)
+						s.log.Warn("commands: cannot put back in the queue", "command_id", u.ID, "err", err)
 					}
 				}
 				return false
 			}
-			s.log.Info("commande remise à l'agent", "command_id", c.ID, "device_id", c.DeviceID, "type", c.Type, "mode", "stream", "attempt", c.Attempts)
+			s.log.Info("command handed to the agent", "command_id", c.ID, "device_id", c.DeviceID, "type", c.Type, "mode", "stream", "attempt", c.Attempts)
 		}
 		return true
 	}
@@ -212,11 +212,11 @@ func (s *Server) handleCommandStream(w http.ResponseWriter, r *http.Request) {
 			// A revocation or a renewal switchover made meanwhile ends the stream.
 			if cur, err := s.authenticateDevice(r); err != nil || cur.DeviceID != dev.DeviceID {
 				if errors.Is(err, errUnauthorized) {
-					s.log.Info("flux de commandes : identifiants plus valides, fermeture", "device_id", dev.DeviceID)
+					s.log.Info("command stream: credentials no longer valid, closing", "device_id", dev.DeviceID)
 					return
 				}
 				if err != nil && ctx.Err() == nil {
-					s.log.Warn("flux de commandes : vérification des identifiants impossible", "device_id", dev.DeviceID, "err", err)
+					s.log.Warn("command stream: cannot check the credentials", "device_id", dev.DeviceID, "err", err)
 				}
 			}
 			if !write([]byte(": ka\n\n")) {
@@ -234,7 +234,7 @@ func (s *Server) touchChannel(device, mode string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := s.st.TouchCommandChannel(ctx, device, mode, s.now()); err != nil {
-		s.log.Warn("commandes : mise à jour du canal impossible", "device_id", device, "err", err)
+		s.log.Warn("commands: cannot update the channel", "device_id", device, "err", err)
 	}
 }
 
@@ -253,15 +253,15 @@ func (s *Server) handleCommandPoll(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	cmds, err := s.st.ClaimCommands(ctx, dev.DeviceID, s.now(), cmdRedeliverAfter, cmdMaxAttempts)
 	if err != nil {
-		s.log.Error("commandes : lecture des commandes en attente impossible", "device_id", dev.DeviceID, "err", err)
+		s.log.Error("commands: cannot read the pending commands", "device_id", dev.DeviceID, "err", err)
 		w.Header().Set("Retry-After", "30")
-		writeError(w, http.StatusServiceUnavailable, "unavailable", "service momentanément indisponible")
+		writeError(w, http.StatusServiceUnavailable, "unavailable", "service temporarily unavailable")
 		return
 	}
 	out := make([]agentCommand, 0, len(cmds))
 	for _, c := range cmds {
 		out = append(out, toAgent(c))
-		s.log.Info("commande remise à l'agent", "command_id", c.ID, "device_id", c.DeviceID, "type", c.Type, "mode", "poll", "attempt", c.Attempts)
+		s.log.Info("command handed to the agent", "command_id", c.ID, "device_id", c.DeviceID, "type", c.Type, "mode", "poll", "attempt", c.Attempts)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"commands": out})
 }
@@ -280,33 +280,33 @@ func (s *Server) handleCommandResult(w http.ResponseWriter, r *http.Request) {
 	s.commitRenewal(r.Context(), dev)
 	id := r.PathValue("id")
 	if !model.ValidULID(id) {
-		writeError(w, http.StatusNotFound, "not_found", "commande introuvable")
+		writeError(w, http.StatusNotFound, "not_found", "command not found")
 		return
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, cmdMaxResultBody))
 	if err != nil {
-		writeError(w, http.StatusRequestEntityTooLarge, "too_large", "4 Kio au plus")
+		writeError(w, http.StatusRequestEntityTooLarge, "too_large", "4 KiB at most")
 		return
 	}
 	var req resultRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_json", "JSON { status, detail, at } attendu")
+		writeError(w, http.StatusBadRequest, "invalid_json", "JSON { status, detail, at } expected")
 		return
 	}
 	if !command.ValidResultStatus(req.Status) {
-		writeError(w, http.StatusBadRequest, "invalid_status", "status : executed, failed ou refused")
+		writeError(w, http.StatusBadRequest, "invalid_status", "status: executed, failed or refused")
 		return
 	}
 	req.Detail = strings.TrimSpace(req.Detail)
 	if len(req.Detail) > cmdMaxDetail || strings.IndexFunc(req.Detail, unicode.IsControl) >= 0 {
-		writeError(w, http.StatusBadRequest, "invalid_detail", "detail : 200 octets imprimables au plus")
+		writeError(w, http.StatusBadRequest, "invalid_detail", "detail: 200 printable bytes at most")
 		return
 	}
 	var atMS *int64
 	if req.At != "" {
 		t, err := time.Parse(time.RFC3339Nano, req.At)
 		if err != nil || len(req.At) > 40 {
-			writeError(w, http.StatusBadRequest, "invalid_at", "at : date RFC 3339 attendue")
+			writeError(w, http.StatusBadRequest, "invalid_at", "at: RFC 3339 date expected")
 			return
 		}
 		ms := t.UnixMilli()
@@ -329,20 +329,20 @@ func (s *Server) handleCommandResult(w http.ResponseWriter, r *http.Request) {
 	}, s.now())
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		writeError(w, http.StatusNotFound, "not_found", "commande introuvable")
+		writeError(w, http.StatusNotFound, "not_found", "command not found")
 		return
 	case err != nil:
-		s.log.Error("commandes : enregistrement du résultat impossible", "command_id", id, "err", err)
+		s.log.Error("commands: cannot record the result", "command_id", id, "err", err)
 		w.Header().Set("Retry-After", "30")
-		writeError(w, http.StatusServiceUnavailable, "unavailable", "service momentanément indisponible")
+		writeError(w, http.StatusServiceUnavailable, "unavailable", "service temporarily unavailable")
 		return
 	}
 	s.touchChannel(dev.DeviceID, "")
 	if ev != nil {
-		s.log.Info("résultat de commande", "command_id", c.ID, "device_id", c.DeviceID, "type", c.Type, "status", c.Status, "detail", c.Detail)
+		s.log.Info("command result", "command_id", c.ID, "device_id", c.DeviceID, "type", c.Type, "status", c.Status, "detail", c.Detail)
 		s.published([]store.StoredEvent{*ev})
 	} else {
-		s.log.Info("résultat de commande sans effet (doublon ou rejeu)", "command_id", id, "device_id", dev.DeviceID,
+		s.log.Info("command result without effect (duplicate or replay)", "command_id", id, "device_id", dev.DeviceID,
 			"current_status", c.Status, "reported_status", req.Status, "detail", req.Detail)
 	}
 	w.Header().Set("Cache-Control", "no-store")
@@ -426,12 +426,12 @@ func (s *Server) handleCreateCommand(w http.ResponseWriter, r *http.Request) {
 	user, _ := r.Context().Value(userKey).(string)
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, cmdMaxBody))
 	if err != nil {
-		writeError(w, http.StatusRequestEntityTooLarge, "too_large", "requête trop volumineuse")
+		writeError(w, http.StatusRequestEntityTooLarge, "too_large", "request too large")
 		return
 	}
 	fields, err := command.StrictObject(body)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_json", "JSON { device_id, payload, sig } attendu : "+err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_json", "JSON { device_id, payload, sig } expected: "+err.Error())
 		return
 	}
 	str := func(k string, required bool) (string, bool) {
@@ -447,7 +447,7 @@ func (s *Server) handleCreateCommand(w http.ResponseWriter, r *http.Request) {
 	}
 	for k := range fields {
 		if k != "device_id" && k != "payload" && k != "sig" && k != "id" {
-			writeError(w, http.StatusBadRequest, "invalid_json", "champ inconnu : "+k)
+			writeError(w, http.StatusBadRequest, "invalid_json", "unknown field: "+k)
 			return
 		}
 	}
@@ -456,11 +456,11 @@ func (s *Server) handleCreateCommand(w http.ResponseWriter, r *http.Request) {
 	sig, ok3 := str("sig", false)
 	bodyID, ok4 := str("id", false)
 	if !ok1 || !ok2 || !ok3 || !ok4 {
-		writeError(w, http.StatusBadRequest, "invalid_json", "device_id et payload (chaînes) requis ; sig et id : chaînes")
+		writeError(w, http.StatusBadRequest, "invalid_json", "device_id and payload (strings) required; sig and id: strings")
 		return
 	}
 	if !validDeviceID(deviceID) {
-		writeError(w, http.StatusBadRequest, "invalid_parameter", "device_id invalide")
+		writeError(w, http.StatusBadRequest, "invalid_parameter", "invalid device_id")
 		return
 	}
 	p, err := command.Parse(payload)
@@ -470,25 +470,25 @@ func (s *Server) handleCreateCommand(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, ce.Code, ce.Msg)
 			return
 		}
-		writeError(w, http.StatusBadRequest, "invalid_payload", "payload invalide")
+		writeError(w, http.StatusBadRequest, "invalid_payload", "invalid payload")
 		return
 	}
 	now := s.now()
 	switch {
 	case p.DeviceID != deviceID:
-		writeError(w, http.StatusBadRequest, "wrong_device", "device_id du payload différent de celui de la requête")
+		writeError(w, http.StatusBadRequest, "wrong_device", "payload device_id differs from the request's")
 		return
 	case bodyID != "" && bodyID != p.ID:
-		writeError(w, http.StatusBadRequest, "invalid_payload", "id différent de celui du payload")
+		writeError(w, http.StatusBadRequest, "invalid_payload", "id differs from the payload's")
 		return
 	case command.Sensitive(p.Type) && sig == "":
-		writeError(w, http.StatusBadRequest, "signature_required", "commande sensible : signature (sig) requise")
+		writeError(w, http.StatusBadRequest, "signature_required", "sensitive command: signature (sig) required")
 		return
 	case command.Sensitive(p.Type) && !command.ValidSignatureFormat(sig):
-		writeError(w, http.StatusBadRequest, "invalid_signature", "sig : base64 de 32 octets (HMAC-SHA256) attendu")
+		writeError(w, http.StatusBadRequest, "invalid_signature", "sig: base64 of 32 bytes (HMAC-SHA256) expected")
 		return
 	case !command.Sensitive(p.Type) && sig != "":
-		writeError(w, http.StatusBadRequest, "signature_not_allowed", "commande simple : pas de signature")
+		writeError(w, http.StatusBadRequest, "signature_not_allowed", "simple command: no signature")
 		return
 	}
 	if err := p.CheckTime(now); err != nil {
@@ -499,10 +499,10 @@ func (s *Server) handleCreateCommand(w http.ResponseWriter, r *http.Request) {
 	}
 	params, err := model.Marshal(p.Params)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "bad_params", "paramètres illisibles")
+		writeError(w, http.StatusBadRequest, "bad_params", "unreadable parameters")
 		return
 	}
-	// The lock message is the owner's data: kept in the database for the console, not copied
+	// The lock message is the user's data: kept in the database for the console, not copied
 	// into the exported event (nor into the process logs).
 	evParams := map[string]any{}
 	for k, v := range p.Params {
@@ -525,23 +525,23 @@ func (s *Server) handleCreateCommand(w http.ResponseWriter, r *http.Request) {
 	var le *store.LimitError
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		writeError(w, http.StatusNotFound, "not_found", "appareil inconnu")
+		writeError(w, http.StatusNotFound, "not_found", "unknown device")
 		return
 	case errors.Is(err, store.ErrRevoked):
-		writeError(w, http.StatusConflict, "device_revoked", "appareil révoqué")
+		writeError(w, http.StatusConflict, "device_revoked", "device revoked")
 		return
 	case errors.Is(err, store.ErrDuplicateID):
-		writeError(w, http.StatusConflict, "duplicate_id", "identifiant de commande déjà utilisé")
+		writeError(w, http.StatusConflict, "duplicate_id", "command identifier already used")
 		return
 	case errors.As(err, &le):
 		writeRetry(w, le.RetryAfter, le.Msg)
 		return
 	case err != nil:
-		s.log.Error("commandes : création impossible", "err", err)
-		writeError(w, http.StatusServiceUnavailable, "unavailable", "service momentanément indisponible")
+		s.log.Error("commands: cannot create", "err", err)
+		writeError(w, http.StatusServiceUnavailable, "unavailable", "service temporarily unavailable")
 		return
 	}
-	s.log.Info("commande émise", "command_id", p.ID, "device_id", deviceID, "type", p.Type, "signed", sig != "",
+	s.log.Info("command issued", "command_id", p.ID, "device_id", deviceID, "type", p.Type, "signed", sig != "",
 		"user", user, "expires_at", model.FormatTS(p.ExpiresAt))
 	s.published([]store.StoredEvent{ev})
 	s.cmdHub.notify(deviceID)
@@ -552,7 +552,7 @@ func (s *Server) handleCancelCommand(w http.ResponseWriter, r *http.Request) {
 	user, _ := r.Context().Value(userKey).(string)
 	id := r.PathValue("id")
 	if !model.ValidULID(id) {
-		writeError(w, http.StatusNotFound, "not_found", "commande introuvable")
+		writeError(w, http.StatusNotFound, "not_found", "command not found")
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 10*time.Second)
@@ -560,17 +560,17 @@ func (s *Server) handleCancelCommand(w http.ResponseWriter, r *http.Request) {
 	ev, c, err := s.st.CancelCommand(ctx, id, user, s.now())
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		writeError(w, http.StatusNotFound, "not_found", "commande introuvable")
+		writeError(w, http.StatusNotFound, "not_found", "command not found")
 		return
 	case errors.Is(err, store.ErrConflict):
-		writeError(w, http.StatusConflict, "not_pending", "commande déjà remise à l'appareil, terminée, expirée ou annulée (statut : "+c.EffectiveStatus(s.now())+")")
+		writeError(w, http.StatusConflict, "not_pending", "command already handed to the device, finished, expired or canceled (status: "+c.EffectiveStatus(s.now())+")")
 		return
 	case err != nil:
-		s.log.Error("commandes : annulation impossible", "command_id", id, "err", err)
-		writeError(w, http.StatusServiceUnavailable, "unavailable", "service momentanément indisponible")
+		s.log.Error("commands: cannot cancel", "command_id", id, "err", err)
+		writeError(w, http.StatusServiceUnavailable, "unavailable", "service temporarily unavailable")
 		return
 	}
-	s.log.Info("commande annulée", "command_id", id, "device_id", c.DeviceID, "type", c.Type, "user", user)
+	s.log.Info("command canceled", "command_id", id, "device_id", c.DeviceID, "type", c.Type, "user", user)
 	s.published([]store.StoredEvent{ev})
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNoContent)
@@ -597,14 +597,14 @@ func (s *Server) expireCommands(ctx context.Context) {
 		})
 		if err != nil {
 			if ctx.Err() == nil {
-				s.log.Error("commandes : expiration impossible", "err", err)
+				s.log.Error("commands: cannot expire", "err", err)
 			}
 			return
 		}
 		for _, ev := range evs {
 			var d map[string]any
 			_ = json.Unmarshal(ev.Data, &d)
-			s.log.Info("commande expirée sans résultat", "command_id", d["command_id"], "device_id", ev.DeviceID, "type", d["type"])
+			s.log.Info("command expired without result", "command_id", d["command_id"], "device_id", ev.DeviceID, "type", d["type"])
 		}
 		s.published(evs)
 		if len(evs) < 500 {

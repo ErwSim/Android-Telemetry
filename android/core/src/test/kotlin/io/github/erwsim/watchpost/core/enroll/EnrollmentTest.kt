@@ -46,19 +46,19 @@ class EnrollmentTest {
 
     private fun file(
         version: Any? = 1,
-        url: String? = "https://ingest.exemple.fr",
+        url: String? = "https://ingest.example.org",
         deviceId: String? = "dev_8f3a",
         token: String? = "tok-123",
         certPem: String? = clientCert.certificatePem(),
         keyPem: String? = clientCert.privateKeyPkcs8Pem(),
         caPem: String? = null,
-        dns: String? = "dns.exemple.fr",
+        dns: String? = "dns.example.org",
     ): ByteArray {
         val map = linkedMapOf<String, kotlinx.serialization.json.JsonElement>()
         version?.let { map["version"] = if (it is Int) JsonPrimitive(it) else JsonPrimitive(it.toString()) }
         url?.let { map["ingest_url"] = JsonPrimitive(it) }
         deviceId?.let { map["device_id"] = JsonPrimitive(it) }
-        map["device_name"] = JsonPrimitive("s25")
+        map["device_name"] = JsonPrimitive("phone")
         token?.let { map["device_token"] = JsonPrimitive(it) }
         certPem?.let { map["client_cert_pem"] = JsonPrimitive(it) }
         keyPem?.let { map["client_key_pem"] = JsonPrimitive(it) }
@@ -127,7 +127,7 @@ class EnrollmentTest {
         } catch (_: java.security.KeyStoreException) {
         }
         assertEquals(0, cleared)
-        assertEquals("https://ingest.exemple.fr/", manager.state.value?.ingestUrl)
+        assertEquals("https://ingest.example.org/", manager.state.value?.ingestUrl)
     }
 
     @Test
@@ -135,7 +135,7 @@ class EnrollmentTest {
         // The token goes into an HTTP header, the device id into every batch: a value OkHttp would
         // refuse to send must be rejected when the file is read, not at every upload.
         expectError(EnrollmentError.BAD_TOKEN, file(token = "tok\nInjected: 1"))
-        expectError(EnrollmentError.BAD_TOKEN, file(token = "tok é"))
+        expectError(EnrollmentError.BAD_TOKEN, file(token = "tok ö"))
         expectError(EnrollmentError.BAD_TOKEN, file(token = "x".repeat(513)))
         expectError(EnrollmentError.BAD_DEVICE_ID, file(deviceId = "dev\u0000x"))
         expectError(EnrollmentError.BAD_DEVICE_ID, file(deviceId = "d".repeat(200)))
@@ -146,13 +146,13 @@ class EnrollmentTest {
     @Test
     fun parsesAValidFile() {
         val parsed = EnrollmentParser.parse(file(caPem = serverCa.certificatePem()), now)
-        assertEquals("https://ingest.exemple.fr/", parsed.ingestUrl)
+        assertEquals("https://ingest.example.org/", parsed.ingestUrl)
         assertEquals("dev_8f3a", parsed.deviceId)
-        assertEquals("s25", parsed.deviceName)
+        assertEquals("phone", parsed.deviceName)
         assertEquals("tok-123", parsed.deviceToken)
         assertEquals(clientCert.certificate, parsed.clientChain.single())
         assertEquals(serverCa.certificate, parsed.serverCa.single())
-        assertEquals("dns.exemple.fr", parsed.privateDnsHost)
+        assertEquals("dns.example.org", parsed.privateDnsHost)
         assertTrue(parsed.warnings.isEmpty())
     }
 
@@ -179,9 +179,9 @@ class EnrollmentTest {
 
     @Test
     fun rejectsUnsafeOrInvalidUrls() {
-        expectError(EnrollmentError.INSECURE_URL, file(url = "http://ingest.exemple.fr"))
-        expectError(EnrollmentError.BAD_URL, file(url = "ingest.exemple.fr"))
-        expectError(EnrollmentError.BAD_URL, file(url = "https://ingest.exemple.fr/?x=1"))
+        expectError(EnrollmentError.INSECURE_URL, file(url = "http://ingest.example.org"))
+        expectError(EnrollmentError.BAD_URL, file(url = "ingest.example.org"))
+        expectError(EnrollmentError.BAD_URL, file(url = "https://ingest.example.org/?x=1"))
     }
 
     @Test
@@ -235,7 +235,7 @@ class EnrollmentTest {
         assertFalse("private key never stored in prefs", prefs.all.values.any { it.toString().contains("PRIVATE KEY") })
         val (_, target) = manager.target()!!
         assertEquals("tok-123", target.token)
-        assertEquals("https://ingest.exemple.fr/api/v1/ingest", target.ingestUrl.toString())
+        assertEquals("https://ingest.example.org/api/v1/ingest", target.ingestUrl.toString())
 
         manager.unenroll()
         assertNull(manager.state.value)

@@ -191,7 +191,7 @@ class CommandChannel(
         kicks.trySend(Kick.NETWORK)
     }
 
-    /** Called after each upload run: poll if the stream is not open (contract: "interroge à chaque envoi de lot"). */
+    /** Called after each upload run: poll if the stream is not open (contract: poll on every batch upload). */
     fun onUploadCycle() {
         flushSoon()
         if (_state.value.phase == ChannelPhase.CONNECTED) return

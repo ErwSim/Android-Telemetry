@@ -1,145 +1,143 @@
-# 03 — Préparer et configurer le téléphone
+# 03 — Prepare and configure the phone
 
-Ce guide installe Vigie Agent sur votre Samsung Galaxy S25+, l'élève au rang de **Device Owner**, l'enrôle auprès
-de votre serveur, puis met la politique anti-pistage en service **par paliers**. C'est le guide où une erreur peut
-coûter cher : lisez-le en entier avant de commencer, et gardez [le guide 04 (retour en arrière)](04-retour-arriere.md)
-ouvert dans un autre onglet.
+This guide installs the Watchpost Agent on your Samsung Galaxy phone, promotes it to **Device Owner**, enrolls it
+with your server, and then puts the anti-tracking policy into service **in stages**. This is the guide where a mistake
+can be costly: read it all before you start, and keep [guide 04 (rollback)](04-rollback.md) open in another tab.
 
-Prérequis : le serveur tourne et répond ([guide 01](01-serveur.md)) ; vous avez un APK **release signé** et un
-PC avec `adb` ([guide 02](02-compiler-apk.md)). Durée : une demi-journée pour les sections 1 à 12 ; la mise en service de
-la politique (section 14), des commandes à distance (15), des gardes (16), du compagnon de notifications (17) et des modes de
-localisation (18) s'étale sur plusieurs semaines, volontairement.
+Prerequisites: the server is running and answers ([guide 01](01-server.md)); you have a **signed release APK** and a
+PC with `adb` ([guide 02](02-build-apk.md)). Time: half a day for sections 1 to 12; putting the policy into service
+(section 14), the remote commands (15), the guards (16), the notification companion (17) and the location modes (18)
+is spread over several weeks, deliberately.
 
-> **Statut de vérification : lisez ceci.** Rien dans ce guide n'a jamais été exécuté sur un téléphone, et les scripts
-> PowerShell n'ont même pas été lancés une fois. Les commandes ont été relues contre les scripts du dépôt, les
-> messages attendus viennent des scripts et de la recherche (`docs/research/android-plateforme.md`), pas d'une
-> exécution. Quand ce guide donne un menu du téléphone, c'est le chemin habituel sur One UI : il peut varier selon la
-> version. Au moindre écart avec ce qui est écrit ici, **arrêtez-vous**, notez ce que vous voyez (message exact,
-> capture d'écran) et reportez-vous au [guide 06](06-verifications-sur-appareil.md). Ne forcez rien.
+> **Verification status: read this.** Nothing in this guide has ever been run on a phone, and the PowerShell scripts
+> have not even been launched once. The commands were checked against the repository's scripts, the expected
+> messages come from the scripts and from the research (`docs/research/android-platform.md`), not from an execution.
+> When this guide gives a phone menu, it is the usual path on One UI: it may vary with the version. At the slightest
+> difference from what is written here, **stop**, note what you see (exact message, screenshot) and refer to
+> [guide 06](06-on-device-checks.md). Do not force anything.
 
-## Ordre d'essai conseillé (et ce qu'il ne faut pas activer trop tôt)
+## Recommended order of trials (and what not to enable too early)
 
-C'est l'ordre recommandé par la revue indépendante de l'application. Chaque phase se juge avant la suivante ; les numéros de
-section renvoient à ce guide.
+This is the order recommended by the independent review of the application. Each phase is judged before the next;
+section numbers refer to this guide.
 
-| Phase | Quoi | Durée conseillée |
+| Phase | What | Recommended duration |
 |---|---|---|
-| 1 | **APK release sans Device Owner** : installation (§3), permissions par ADB (§8, deuxième moitié) et batterie (§9), enrôlement (§10) et vérification des envois (§11), en mode dégradé | 2 à 3 jours |
-| 2 | **Device Owner seul** (§4 à §8), puis `rescue-revert` **à vide** (§12) et un **redémarrage** (l'issue de secours doit encore répondre après le premier déverrouillage) | 1 à 2 jours |
-| 3 | **DNS privé seul** (§14, palier 1) : « Tout décocher », seul le DNS coché, **verrou éteint**, **repli actif** | une semaine |
-| 4 | **Deux ou trois paquets à faible risque** (§14, palier 2), puis « Tout rétablir » et **comparaison** | 1 à 2 jours |
-| 5 | **Profil équilibré**, par lots (§14, palier 3) | une semaine |
-| 6 | **Canal de commandes à distance** (§15) : sonner, localiser, verrouiller avec message ; **jamais l'effacement** à ce stade | 2 à 3 jours |
-| 7 | **Gardes de capacités, une à une** (§16), de la moins risquée à la plus risquée, avec « Tout rétablir » entre deux | une à deux semaines |
-| 8 | **Compagnon de notifications** (§17), facultatif, contenu éteint d'abord | quelques jours |
-| 9 | **Modes de localisation** (§18), facultatif | à votre rythme |
+| 1 | **Release APK without Device Owner**: installation (§3), ADB permissions (§8, second half) and battery (§9), enrollment (§10) and checking the uploads (§11), in degraded mode | 2 to 3 days |
+| 2 | **Device Owner alone** (§4 to §8), then `rescue-revert` **empty** (§12) and a **reboot** (the rescue must still answer after the first unlock) | 1 to 2 days |
+| 3 | **Private DNS alone** (§14, stage 1): "Uncheck everything", only the DNS ticked, **lock off**, **fallback active** | one week |
+| 4 | **Two or three low-risk packages** (§14, stage 2), then "Restore everything" and a **comparison** | 1 to 2 days |
+| 5 | **Balanced profile**, in batches (§14, stage 3) | one week |
+| 6 | **Remote command channel** (§15): ring, locate, lock with a message; **never erase** at this point | 2 to 3 days |
+| 7 | **Capability guards, one at a time** (§16), from the least risky to the most risky, with "Restore everything" between two | one to two weeks |
+| 8 | **Notification companion** (§17), optional, content off at first | a few days |
+| 9 | **Location modes** (§18), optional | at your own pace |
 
-**À ne pas activer tant que ce n'est pas vu fonctionner** sur votre téléphone : le **profil strict** ; le **VPN permanent**
-avec « bloquer sans VPN » ; le **verrou du DNS** (« Verrouiller le réglage ») ; l'**interdiction du mode sans échec** (élément du
-profil strict) ; la **désactivation du repli DNS** (Réglages › Device Owner) ; l'**effacement à distance** (tant que vous ne
-l'avez pas essayé sur un appareil sacrifiable ou entièrement sauvegardé) ; les options « aussi la lecture des SMS » et « aussi le
-journal d'appels » des gardes ; le **contenu des notifications** du compagnon ; les modes de localisation « GPS + réseau » et
-« fusionné » (ils envoient des informations à Google).
+**Do not enable until you have seen it work** on your phone: the **strict profile**; the **always-on VPN** with "Block
+connections without VPN"; the **DNS lock** ("Lock the setting"); the **ban on safe mode** (an item of the strict
+profile); **disabling the DNS fallback** (Settings › Device Owner); **remote erase** (as long as you have not tried it
+on a sacrificial or fully backed-up device); the guards' options "also reading SMS" and "also the call log"; the
+companion's **notification content**; the location modes "GPS + network" and "Fused" (they send information to
+Google).
 
-### Avertissements à garder en tête pendant tout le guide
+### Warnings to keep in mind throughout the guide
 
-1. **L'APK est un build release signé, avec `testOnly` (variante par défaut) et toujours avec la même clé de signature**
-   (guide 02) : c'est ce qui laisse une porte de sortie (`dpm remove-active-admin`) et permet les mises à jour.
-2. **Gardez le débogage USB actif et le PC autorisé** (« Toujours autoriser depuis cet ordinateur ») : l'issue de secours passe
-   par ADB. Vigie ne coupe jamais le débogage ; Auto Blocker peut le faire (§1.2).
-3. **Lancez `rescue-revert` à vide avant toute politique** (§12), et refaites-le après chaque mise à jour de l'APK.
-4. **L'issue de secours ne répond qu'après le premier déverrouillage suivant un redémarrage.**
-5. **Faites toujours « Tout rétablir » (ou `rescue-revert --sweep`) avant de retirer le rôle de Device Owner** : `pm unhide` est
-   probablement refusé au shell ADB, un paquet resté masqué ne se réaffiche alors plus qu'en redonnant le rôle à Vigie.
-6. **Pas d'utilisateur invité, pas de mode maintenance Samsung** tant que le DNS privé est imposé (Android refuse alors les API
-   DNS dédiées ; Vigie se replie par un réglage global, non vérifié sur appareil).
-7. **AdGuard ne doit pas bloquer les domaines de test de connectivité** (`connectivitycheck.gstatic.com`…) : le téléphone
-   afficherait « connecté, sans Internet ». Les exceptions de `vigie-base.txt` les protègent : ne les retirez pas.
-8. **Comptez 15 minutes sans Internet avant le repli du DNS** si le serveur tombe (délai réglable de 5 à 240 minutes).
-9. **Si le serveur est sur un réseau privé** (adresse en 192.168.x, 10.x…), Android 17 exige la permission
-   `ACCESS_LOCAL_NETWORK` : `grant-adb-permissions` l'accorde (avec un VPS public, elle ne sert pas).
-10. **Le code de commande** (§15) : cinq mots tirés au hasard, réservé à cet usage, noté ailleurs que sur le téléphone. Il ne
-    vaut que par son entropie ; le changer sur le téléphone rend caduques toutes les commandes déjà signées.
-11. **Le compagnon de notifications** (§17) doit être signé par la **même clé** que l'agent ; un compagnon signé autrement
-    est refusé à l'installation.
+1. **The APK is a signed release build, with `testOnly` (default variant) and always with the same signing key**
+   (guide 02): this is what leaves an exit door (`dpm remove-active-admin`) and allows updates.
+2. **Keep USB debugging on and the PC authorised** ("Always allow from this computer"): the rescue goes through
+   ADB. Watchpost never turns debugging off; Auto Blocker can (§1.2).
+3. **Run `rescue-revert` empty before any policy** (§12), and again after every APK update.
+4. **The rescue answers only after the first unlock following a reboot.**
+5. **Always "Restore everything" (or `rescue-revert --sweep`) before removing the Device Owner role**: `pm unhide` is
+   probably refused to the ADB shell, so a package left hidden can then only be shown again by giving the role back
+   to Watchpost.
+6. **No guest user, no Samsung maintenance mode** while private DNS is enforced (Android then refuses the dedicated
+   DNS APIs; Watchpost falls back to a global setting, not verified on a device).
+7. **AdGuard must not block the connectivity-check domains** (`connectivitycheck.gstatic.com`…): the phone would
+   show "connected, no Internet". The exceptions in `watchpost-base.txt` protect them: do not remove them.
+8. **Allow 15 minutes without Internet before the DNS fallback** if the server goes down (delay adjustable from 5 to
+   240 minutes).
+9. **If the server is on a private network** (address in 192.168.x, 10.x…), Android 17 requires the
+   `ACCESS_LOCAL_NETWORK` permission: `grant-adb-permissions` grants it (with a public VPS, it is not needed).
+10. **The command passphrase** (§15): five randomly drawn words, reserved for this use, written down somewhere other
+    than on the phone. It is worth only its entropy; changing it on the phone invalidates every command already
+    signed.
+11. **The notification companion** (§17) must be signed with the **same key** as the agent; a companion signed
+    otherwise is refused at installation.
 
-## 0. Ce qui change sur votre téléphone
+## 0. What changes on your phone
 
-Le mode **Device Owner** donne à Vigie les pouvoirs d'un administrateur d'entreprise sur le téléphone : journaux réseau
-et de sécurité du système, DNS privé imposé, désactivation d'applications, restrictions. Il s'active par ADB, sans
-réinitialisation, **mais** à condition que le téléphone n'ait ni compte, ni deuxième utilisateur. Conséquences à
-accepter avant de commencer :
+**Device Owner** mode gives Watchpost the powers of a corporate administrator on the phone: system network and
+security logs, enforced private DNS, disabling apps, restrictions. It is activated through ADB, without a reset,
+**but** only if the phone has no account and no second user. Consequences to accept before starting:
 
-| Effet | Détail | Confiance |
+| Effect | Detail | Confidence |
 |---|---|---|
-| **Dossier sécurisé** indisponible | Il faut le supprimer pour activer le Device Owner ; il reste impossible à recréer ensuite | restriction posée par Android, vérifiée dans le code AOSP ; comportement exact de Samsung non vérifié |
-| **Dual Messenger**, **espace privé**, profil professionnel indisponibles | idem | idem |
-| **Comptes à retirer puis remettre** | Google, Samsung, messageries… Retirer un compte efface du téléphone ce qui n'y existe que localement pour ce compte (contacts ou agenda synchronisés avec lui, par exemple) | comportement général d'Android |
-| Mention **« appareil géré »** | affichée dans les réglages rapides et sur l'écran de verrouillage | documentée |
-| Notification **« réseau surveillé »** | Android l'affiche au plus deux fois (au plus une par 24 h) quand le journal réseau est actif, puis un texte permanent dans les réglages rapides | documentée |
-| **Sauvegarde Android coupée** | Android la désactive à l'activation ; le profil équilibré de Vigie la réactive | vérifié dans le code AOSP |
-| **Samsung Wallet / Pay / Pass** | effet **inconnu** (aucune source fiable) | non vérifié |
-| **Google Wallet, applications bancaires** | le Device Owner n'affecte pas en soi Play Integrity ; les risques indirects (options développeur, débogage USB, Play Protect) sont à tester | non vérifié |
-| Mises à jour Samsung (OTA) | non bloquées par Vigie ; leur interaction avec le Device Owner n'est pas vérifiée | non vérifié |
+| **Secure Folder** unavailable | It must be deleted to activate the Device Owner; it stays impossible to recreate afterwards | restriction set by Android, verified in the AOSP code; Samsung's exact behaviour not verified |
+| **Dual Messenger**, **private space**, work profile unavailable | same | same |
+| **Accounts to remove and put back** | Google, Samsung, messengers… Removing an account erases from the phone whatever exists only locally for that account (contacts or calendar synchronised with it, for example) | general Android behaviour |
+| **"Device managed"** notice | shown in the quick settings and on the lock screen | documented |
+| **"Network monitored"** notification | Android shows it at most twice (at most once per 24 h) when network logging is on, then a permanent text in the quick settings | documented |
+| **Android backup off** | Android disables it at activation; Watchpost's balanced profile re-enables it | verified in the AOSP code |
+| **Samsung Wallet / Pay / Pass** | effect **unknown** (no reliable source) | unverified |
+| **Google Wallet, banking apps** | the Device Owner does not by itself affect Play Integrity; the indirect risks (developer options, USB debugging, Play Protect) are to be tested | unverified |
+| Samsung updates (OTA) | not blocked by Watchpost; their interaction with the Device Owner is not verified | unverified |
 
-Ce qui **ne change pas** : vos applications, photos, fichiers et réglages restent en place.
+What does **not** change: your apps, photos, files and settings stay in place.
 
-## 1. Avant de commencer : sauvegardes et vérifications
+## 1. Before starting: backups and checks
 
-Faites cette section sans la raccourcir. Prévoyez une heure.
+Do this section without shortening it. Allow an hour.
 
-### 1.1 Sauvegardes
+### 1.1 Backups
 
-- **Smart Switch** (Samsung) vers le PC, ou la sauvegarde Samsung/Google de votre choix : une sauvegarde complète
-  récente, **vérifiée** (en connaître le contenu), avant d'ouvrir quoi que ce soit.
-- **Photos et vidéos** : confirmez qu'elles sont synchronisées ou copiées sur le PC.
-- **Contenu du Dossier sécurisé et de Dual Messenger** : à sortir avant suppression (la suppression efface ce qu'ils
-  contiennent). Vérifiez dans les réglages du Dossier sécurisé comment en sortir les fichiers avant de le désinstaller ;
-  pour Dual Messenger, les données de la copie d'une application sont en principe perdues à la désactivation.
-- **Messageries** : exportez ou sauvegardez vos conversations (WhatsApp, Signal, etc.) avec la fonction de sauvegarde de
-  chaque application, **avant** de retirer son compte de la liste d'Android.
-- **Authentification à deux facteurs** : assurez-vous de pouvoir **vous reconnecter** à vos comptes Google et Samsung
-  quand vous les remettrez (mot de passe, codes de secours, second facteur qui ne dépend pas de ce téléphone). Si
-  votre application d'authentification n'existe que sur ce téléphone, sachez la restaurer.
-- **Cartes de paiement et Wallet** : notez ce que contiennent Google Wallet et Samsung Wallet ; sachez
-  ré-enregistrer vos cartes. Gardez une carte physique sur vous pendant les premiers jours.
-- **Réinitialisation d'usine** (dernier recours, guide 04) : sachez que, sur un téléphone qui a un compte Google, Android
-  exige ensuite les identifiants de ce compte (protection antivol « FRP »). Connaissez-les.
+- **Smart Switch** (Samsung) to the PC, or the Samsung/Google backup of your choice: a recent, complete backup,
+  **verified** (know what it contains), before opening anything.
+- **Photos and videos**: confirm that they are synchronised or copied to the PC.
+- **Contents of Secure Folder and Dual Messenger**: to be taken out before deletion (deleting erases what they
+  contain). Check in Secure Folder's settings how to take files out before uninstalling it; for Dual Messenger, the
+  data of an app's copy is in principle lost when it is turned off.
+- **Messengers**: export or back up your conversations (WhatsApp, Signal, etc.) with each application's backup
+  function, **before** removing its account from Android's list.
+- **Two-factor authentication**: make sure you can **log back in** to your Google and Samsung accounts when you put
+  them back (password, backup codes, a second factor that does not depend on this phone). If your authentication
+  app exists only on this phone, know how to restore it.
+- **Payment cards and Wallet**: note what Google Wallet and Samsung Wallet contain; know how to register your cards
+  again. Keep a physical card on you for the first few days.
+- **Factory reset** (last resort, guide 04): know that, on a phone that has a Google account, Android then requires
+  that account's credentials (anti-theft protection "FRP"). Know them.
 
-### 1.2 Vérifier le téléphone
+### 1.2 Check the phone
 
-1. **Version d'Android** : Vigie exige Android 16 ou plus (`minSdk 36`). Paramètres › À propos du téléphone ›
-   Informations sur le logiciel : Android 16 (One UI 8) ou 17 (One UI 9). Plus ancien : mettez à jour d'abord
-   (sinon l'installation échoue avec `INSTALL_FAILED_OLDER_SDK`). Vous le confirmerez par ADB à l'étape 2.
-2. **Blocage automatique (Auto Blocker)** : Paramètres › Sécurité et confidentialité › Auto Blocker (chemin habituel).
-   Actif par défaut depuis One UI 6.1.1, il **bloque les commandes USB et l'installation hors boutique**. Désactivez-le
-   pour les étapes 3 à 12. Une source de la recherche affirme que son mode « restrictions maximales » désactive les
-   applications d'administration de l'appareil (ce qui serait critique pour Vigie) : **non vérifié**. Après
-   l'installation, laissez-le **désactivé pendant toute la première semaine** (c'est le guide 06 qui vous fait tester sa
-   réactivation) : il pourrait couper l'accès ADB, c'est-à-dire votre issue de secours.
-3. **Protection avancée** (mode de Google, Android 16) : Paramètres › Google › Tous les services › Protection avancée
-   (chemin donné par la recherche pour One UI 8). Si elle est active, désactivez-la : elle bloque aussi l'USB et la 2G
-   et son effet sur un Device Owner tiers n'est pas vérifié.
-4. **Dossier sécurisé, Dual Messenger, espace privé, profil professionnel, mode invité, utilisateurs
-   supplémentaires** : à supprimer avant l'activation (chemins habituels : Dossier sécurisé › Paramètres › Plus de
-   paramètres › Désinstaller ; Paramètres › Fonctions avancées › Dual Messenger ; Paramètres › Sécurité et
-   confidentialité › Espace privé). Le script de l'étape 7 détecte ce qui reste ; vous pouvez le vérifier dès maintenant
-   (étape 4).
-5. **Charge** : batterie à plus de 50 %, câble USB de bonne qualité (câble « données », pas un câble de charge seule).
+1. **Android version**: Watchpost requires Android 16 or later (`minSdk 36`). Settings › About phone › Software
+   information: Android 16 (One UI 8) or 17 (One UI 9). Older: update first (otherwise installation fails with
+   `INSTALL_FAILED_OLDER_SDK`). You will confirm it through ADB at step 2.
+2. **Auto Blocker**: Settings › Security and privacy › Auto Blocker (usual path). On by default since One UI 6.1.1,
+   it **blocks USB commands and installation from outside a store**. Turn it off for steps 3 to 12. One source in
+   the research claims that its "maximum restrictions" mode disables device administration apps (which would be
+   critical for Watchpost): **unverified**. After the installation, leave it **off for the whole first week** (guide
+   06 has you test turning it back on): it could cut ADB access, that is, your rescue.
+3. **Advanced Protection** (a Google mode, Android 16): Settings › Google › All services › Advanced Protection
+   (path given by the research for One UI 8). If it is on, turn it off: it also blocks USB and 2G, and its effect on
+   a third-party Device Owner is not verified.
+4. **Secure Folder, Dual Messenger, private space, work profile, guest mode, additional users**: to be deleted
+   before activation (usual paths: Secure Folder › Settings › More settings › Uninstall; Settings › Advanced
+   features › Dual Messenger; Settings › Security and privacy › Private Space). The script of step 7 detects what
+   remains; you can check right now (step 4).
+5. **Charge**: battery above 50 %, a good-quality USB cable (a "data" cable, not a charge-only cable).
 
-## 2. Activer le débogage USB
+## 2. Turn on USB debugging
 
-1. Paramètres › À propos du téléphone › Informations sur le logiciel : touchez sept fois « Numéro de build » ; saisissez
-   votre code d'écran.
-2. Paramètres › Options pour les développeurs › activez **Débogage USB**.
-3. Branchez le téléphone au PC. Sur le téléphone, une fenêtre « Autoriser le débogage USB ? » apparaît : cochez
-   « Toujours autoriser depuis cet ordinateur » et validez.
+1. Settings › About phone › Software information: tap "Build number" seven times; enter your screen lock.
+2. Settings › Developer options › turn on **USB debugging**.
+3. Connect the phone to the PC. On the phone, a window "Allow USB debugging?" appears: tick "Always allow from this
+   computer" and confirm.
 
-Sur le PC :
+On the PC:
 
 ```bash
 adb devices
-adb shell getprop ro.build.version.sdk      # doit afficher 36 ou plus
+adb shell getprop ro.build.version.sdk      # must print 36 or more
 ```
 
 ```powershell
@@ -147,20 +145,20 @@ adb devices
 adb shell getprop ro.build.version.sdk
 ```
 
-Attendu : une ligne `<numéro de série>    device`. Si vous voyez :
+Expected: a line `<serial number>    device`. If you see:
 
-| Affichage | Cause et remède |
+| Display | Cause and remedy |
 |---|---|
-| `unauthorized` | déverrouillez le téléphone, acceptez la fenêtre d'autorisation (débranchez/rebranchez si elle ne s'affiche pas) |
-| liste vide | câble sans données, port USB, Auto Blocker encore actif, ou, sous Windows, pilote USB Samsung manquant (installez le pilote USB Samsung depuis le site du constructeur) ; essayez `adb kill-server` puis `adb devices` |
-| `no permissions` / `offline` | `adb kill-server`, rebrancher, réautoriser |
-| plusieurs appareils | `export ANDROID_SERIAL=<série>` (bash) ou `$env:ANDROID_SERIAL = '<série>'` (PowerShell) |
+| `unauthorized` | unlock the phone, accept the authorisation window (unplug/replug if it does not appear) |
+| empty list | cable without data, USB port, Auto Blocker still on, or, on Windows, Samsung USB driver missing (install the Samsung USB driver from the manufacturer's site); try `adb kill-server` then `adb devices` |
+| `no permissions` / `offline` | `adb kill-server`, replug, authorise again |
+| several devices | `export ANDROID_SERIAL=<serial>` (bash) or `$env:ANDROID_SERIAL = '<serial>'` (PowerShell) |
 
-**Gardez le débogage USB actif tant que vous utilisez Vigie** : c'est la porte de secours. Vigie ne le coupe jamais.
+**Keep USB debugging on as long as you use Watchpost**: it is the escape hatch. Watchpost never turns it off.
 
-## 3. Installer l'APK
+## 3. Install the APK
 
-Depuis le dossier `android/` du dépôt :
+From the repository's `android/` folder:
 
 ```bash
 ./scripts/install-apk.sh app/build/outputs/apk/release/app-release.apk
@@ -170,24 +168,24 @@ Depuis le dossier `android/` du dépôt :
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-apk.ps1 -Apk app\build\outputs\apk\release\app-release.apk
 ```
 
-Donnez toujours le chemin de l'APK **release** (voir le piège du guide 02 : sans argument, le script prend le debug
-s'il n'y a pas de release signé ; il vous demande alors confirmation, répondez `non`). Un chemin relatif est lu depuis le dossier
-d'où vous lancez le script. Attendu : `Success` d'`adb`, puis `Vigie installée.` et la ligne `versionName=…`.
+Always give the path of the **release** APK (see the pitfall in guide 02: with no argument, the script takes the debug
+one if there is no signed release; it then asks for confirmation, answer `no`). A relative path is read from the folder
+you launch the script from. Expected: `Success` from `adb`, then `Watchpost installed.` and the `versionName=…` line.
 
-| Échec | Cause et remède |
+| Failure | Cause and remedy |
 |---|---|
-| `INSTALL_FAILED_OLDER_SDK` | Android inférieur à 16 : mettre à jour le téléphone |
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | une autre version, signée autrement, est déjà installée : la désinstaller (si elle n'est pas Device Owner) ou reprendre le keystore d'origine |
-| `INSTALL_FAILED_VERSION_DOWNGRADE` | `versionCode` plus petit que celui installé |
-| `INSTALL_FAILED_TEST_ONLY` | l'installation sans `-t` : utilisez le script, pas un autre moyen |
-| installation bloquée, ou une alerte Play Protect s'affiche | Auto Blocker encore actif ; ou une analyse Play Protect : notez le texte **exact** de l'alerte (guide 06) et ne désactivez pas Play Protect sans décider en connaissance de cause |
+| `INSTALL_FAILED_OLDER_SDK` | Android older than 16: update the phone |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | another version, signed differently, is already installed: uninstall it (if it is not Device Owner) or use the original keystore |
+| `INSTALL_FAILED_VERSION_DOWNGRADE` | `versionCode` lower than the installed one |
+| `INSTALL_FAILED_TEST_ONLY` | installation without `-t`: use the script, not another means |
+| installation blocked, or a Play Protect alert appears | Auto Blocker still on; or a Play Protect scan: note the **exact** text of the alert (guide 06) and do not turn off Play Protect without deciding knowingly |
 
-Ouvrez l'application **Vigie** sur le téléphone. Elle affiche l'écran d'accueil et, tant qu'elle n'est pas Device
-Owner, un texte « Mode dégradé… » : c'est attendu. Fermez-la. Si elle affiche à la place **« Vigie n'a pas pu démarrer : … »**
-(et « Rien n'est collecté »), notez le message complet : c'est un défaut de l'application, pas de votre téléphone (guide 06) ;
-l'issue de secours reste utilisable si une politique était appliquée.
+Open the **Watchpost** application on the phone. It shows the Home screen and, as long as it is not Device Owner, a
+"Degraded mode…" text: this is expected. Close it. If it shows instead **"Watchpost could not start: …"** (and
+"Nothing is being collected"), note the complete message: it is a defect of the application, not of your phone
+(guide 06); the rescue remains usable if a policy was applied.
 
-## 4. État de départ (à noter)
+## 4. Starting state (to be noted)
 
 ```bash
 adb shell pm list users
@@ -201,34 +199,34 @@ adb shell dumpsys account | Select-String 'Account \{'
 adb shell dpm list-owners
 ```
 
-À activer le Device Owner il faut : **un seul** `UserInfo{…}` (l'utilisateur 0), **aucune** ligne `Account {…}`, et
-`dpm list-owners` sans propriétaire. Notez ce que vous voyez maintenant (la liste des comptes en particulier) : vous
-en aurez besoin pour les remettre.
+To activate the Device Owner you need: **a single** `UserInfo{…}` (user 0), **no** `Account {…}` line, and
+`dpm list-owners` with no owner. Note what you see now (the list of accounts in particular): you will need it to put
+them back.
 
-## 5. Retirer temporairement les comptes
+## 5. Temporarily remove the accounts
 
-Android refuse de nommer un Device Owner tant qu'un compte existe, **quel qu'il soit** (Google, Samsung, WhatsApp,
-Signal, Microsoft…). Pour chaque ligne `Account {name=…, type=…}` listée : Paramètres › Comptes et sauvegarde › Gérer
-les comptes › le compte › Supprimer le compte. Ordre suggéré : les comptes d'applications (messageries…) d'abord,
-Google et Samsung en dernier, une fois vos sauvegardes vérifiées (section 1.1).
+Android refuses to name a Device Owner as long as an account exists, **whatever it is** (Google, Samsung, WhatsApp,
+Signal, Microsoft…). For each `Account {name=…, type=…}` line listed: Settings › Accounts and backup › Manage
+accounts › the account › Remove account. Suggested order: application accounts (messengers…) first, Google and
+Samsung last, once your backups are verified (section 1.1).
 
-Relancez la commande de l'étape 4 : plus aucun `Account {`. Si un compte reste et que vous ne pouvez pas le
-supprimer depuis les Paramètres, **notez son type** (`type=…`) et reportez-vous au guide 06 ; n'essayez pas de le forcer.
+Run the command of step 4 again: no more `Account {`. If an account remains and you cannot remove it from Settings,
+**note its type** (`type=…`) and refer to guide 06; do not try to force it.
 
-> Les comptes seront remis juste après l'activation (étape 7). Le Device Owner ne les interdit pas (la restriction
-> correspondante n'est jamais posée par Vigie).
+> The accounts will be put back right after activation (step 7). The Device Owner does not forbid them (Watchpost
+> never sets the corresponding restriction).
 
-## 6. Dernier contrôle avant l'activation
+## 6. Last check before activation
 
-Tant que Vigie n'est pas Device Owner, tout se défait en désinstallant l'application. Relisez cette liste :
+As long as Watchpost is not Device Owner, everything is undone by uninstalling the application. Reread this list:
 
-- sauvegardes faites et vérifiées (section 1.1) ; vous savez vous reconnecter à vos comptes ;
-- Auto Blocker et Protection avancée désactivés ; débogage USB autorisé (`adb devices` montre `device`) ;
-- l'étape 4 montre un seul utilisateur et aucun compte ;
-- le serveur répond (console accessible) et vous avez, ou pouvez produire, le fichier `.vigie` ;
-- le guide 04 est ouvert et le PC reste branché au téléphone.
+- backups made and verified (section 1.1); you know how to log back in to your accounts;
+- Auto Blocker and Advanced Protection off; USB debugging authorised (`adb devices` shows `device`);
+- step 4 shows a single user and no account;
+- the server answers (console reachable) and you have, or can produce, the `.watchpost` file;
+- guide 04 is open and the PC stays connected to the phone.
 
-## 7. Activer le Device Owner
+## 7. Activate the Device Owner
 
 ```bash
 ./scripts/enable-device-owner.sh
@@ -238,46 +236,47 @@ Tant que Vigie n'est pas Device Owner, tout se défait en désinstallant l'appli
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\enable-device-owner.ps1
 ```
 
-Le script vérifie, dans l'ordre : l'absence d'un autre propriétaire, un seul utilisateur, aucun compte, et signale si
-l'APK n'est pas `testOnly` (auquel cas il demande confirmation : tapez `oui`). Puis il exécute
-`dpm set-device-owner --user 0 io.github.erwsim.vigie/io.github.erwsim.vigie.policy.VigieAdminReceiver`.
+The script checks, in order: that there is no other owner, a single user, no account, and warns if the APK is not
+`testOnly` (in which case it asks for confirmation: type `yes`). Then it runs
+`dpm set-device-owner --user 0 io.github.erwsim.watchpost/io.github.erwsim.watchpost.policy.WatchpostAdminReceiver`.
 
-Attendu : un message de `dpm` du type « Success: Device owner set to package… », puis
-`Vigie est Device Owner. Ouvrez l'app : elle s'accorde ses permissions et active sa protection.` (le texte exact de
-`dpm` est celui d'Android, non vérifié ici).
+Expected: a `dpm` message of the kind "Success: Device owner set to package…", then `Watchpost is Device Owner. Open the
+app: it grants itself its permissions and turns on its protection.` (the exact text of `dpm` is Android's, not
+verified here).
 
-| Message | Cause et remède |
+| Message | Cause and remedy |
 |---|---|
-| « Un autre Device Owner ou Profile Owner est déjà défini » | une application d'entreprise ou de gestion est déjà propriétaire : identifiez-la (`adb shell dpm list-owners`) et retirez-la d'abord |
-| « Plusieurs utilisateurs ou profils existent » | supprimez ce que le script liste (Dossier sécurisé, Dual Messenger…) |
-| « Android refuse… tant qu'un compte existe » | retirez les comptes listés (étape 5) |
-| `already several users` / `already some accounts` / `user limit reached` renvoyés par `dpm` | mêmes causes ; la mention « user limit reached » est signalée sur Samsung par d'autres projets **sans solution connue** : si elle apparaît alors que `pm list users` ne montre qu'un utilisateur, arrêtez-vous et notez tout (guide 06) |
-| tout autre message de `dpm` | copiez-le intégralement ; n'insistez pas |
+| "Another Device Owner or Profile Owner is already set. Remove it first." | a corporate or management application is already the owner: identify it (`adb shell dpm list-owners`) and remove it first |
+| "Several users or profiles exist (…)" | delete what the script lists (Secure Folder, Dual Messenger…) |
+| "Android refuses to set a Device Owner while an account exists" | remove the listed accounts (step 5) |
+| `already several users` / `already some accounts` / `user limit reached` returned by `dpm` | same causes; the "user limit reached" message is reported on Samsung by other projects **with no known solution**: if it appears while `pm list users` shows only one user, stop and note everything (guide 06) |
+| any other `dpm` message | copy it in full; do not insist |
 
-Si l'activation échoue : **rien n'a changé** sur le téléphone. Vous pouvez remettre vos comptes et en rester là.
+If activation fails: **nothing has changed** on the phone. You can put your accounts back and stop there.
 
-**Immédiatement après le succès, remettez vos comptes** (Google d'abord, puis Samsung, puis le reste) : Paramètres ›
-Comptes et sauvegarde › Gérer les comptes › Ajouter un compte. Vérifiez que le Play Store s'ouvre et que vous êtes
-reconnecté. Samsung affiche désormais « appareil géré » : c'est attendu.
+**Immediately after success, put your accounts back** (Google first, then Samsung, then the rest): Settings ›
+Accounts and backup › Manage accounts › Add account. Check that the Play Store opens and that you are logged back in.
+Samsung now shows "device managed": this is expected.
 
-## 8. Premier lancement et permissions
+## 8. First launch and permissions
 
-Ouvrez **Vigie**. En Device Owner, l'application s'accorde elle-même ses permissions d'exécution (localisation, y
-compris en arrière-plan, notifications, Bluetooth, téléphone…) et active la protection contre l'arrêt forcé.
+Open **Watchpost**. As Device Owner, the application grants itself its runtime permissions (location, including in
+the background, notifications, Bluetooth, phone…) and turns on force-stop protection.
 
-Sur l'écran **Accueil**, section « Administration de l'appareil », vous devez lire :
+On the **Home** screen, in the "Device administration" section, you must read:
 
-- **Mode Device Owner : Oui** ;
-- **Protection contre l'arrêt forcé** : active.
+- **Device Owner mode: Yes**;
+- **Force-stop protection**: active.
 
-Si « Mode Device Owner » est « Non » alors que le script a réussi, fermez l'application, rouvrez-la ; sinon, guide 06.
+If "Device Owner mode" is "No" although the script succeeded, close the application and reopen it; otherwise, guide
+06.
 
-Les permissions d'exécution ne sont accordées automatiquement qu'**une seule fois** par activation du Device Owner : si vous en
-retirez une ensuite dans les Paramètres d'Android, Vigie ne la reprend pas d'elle-même. Le collecteur concerné passe
-« indisponible », un événement `agent.tamper` (`permission_revoked`) est émis, et l'onglet Collecteurs propose de la redonner.
+Runtime permissions are granted automatically only **once** per Device Owner activation: if you remove one afterwards
+in Android's Settings, Watchpost does not take it back by itself. The collector concerned becomes "unavailable", an
+`agent.tamper` event (`permission_revoked`) is emitted, and the Collectors tab offers to grant it again.
 
-Puis les permissions qui ne s'obtiennent que par ADB (accès à l'utilisation, réglages sécurisés de la politique, attribution
-expérimentale caméra/micro) :
+Then the permissions that can only be obtained through ADB (usage access, the policy's secure settings, the
+experimental camera/microphone attribution):
 
 ```bash
 ./scripts/grant-adb-permissions.sh
@@ -287,11 +286,11 @@ expérimentale caméra/micro) :
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\grant-adb-permissions.ps1
 ```
 
-Attendu : des lignes `✔ … — …` (PowerShell : `[OK]`) pour chaque permission. Une ligne « ignorée : non déclarée par
-cette version de l'APK » est sans gravité. Une ligne « échec » : notez-la (guide 06). Le script n'accorde pas
-`READ_LOGS` (Android 13 et plus exige un consentement à chaque lecture : inutilisable en continu).
+Expected: `✔ … — …` lines (PowerShell: `[OK]`) for each permission. A line saying the permission is skipped because this
+version of the APK does not declare it is harmless. A "failed" line: note it (guide 06). The script does not grant
+`READ_LOGS` (Android 13 and later requires consent at every read: unusable for continuous collection).
 
-## 9. Batterie
+## 9. Battery
 
 ```bash
 ./scripts/battery-exemptions.sh
@@ -301,83 +300,84 @@ cette version de l'APK » est sans gravité. Une ligne « échec » : notez-la (
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\battery-exemptions.ps1
 ```
 
-Attendu : quatre lignes de succès (exemption Doze, deux autorisations d'arrière-plan, seau de veille « active »). Puis,
-**à la main** (aucune commande connue) : Paramètres › Batterie › Limites d'utilisation en arrière-plan › Applications
-jamais en veille › ajoutez **Vigie** (chemin habituel, peut varier selon One UI). Sur l'Accueil de Vigie, « Optimisation de la
-batterie » doit afficher « Désactivée pour Vigie ». Ne masquez pas l'application « Entretien de l'appareil » : elle
-héberge cet écran (c'est un élément du profil strict, décoché par défaut).
+Expected: four success lines (Doze exemption, two background authorisations, standby bucket "active"). Then,
+**by hand** (no known command): Settings › Battery › Background usage limits › Never sleeping apps › add
+**Watchpost** (usual path, may vary by One UI version). On Watchpost's Home, "Battery optimization" must show
+"Disabled for Watchpost". Do not hide the "Device care" application: it hosts this screen (that is an item of the
+strict profile, unticked by default).
 
-## 10. Enrôler le téléphone
+## 10. Enroll the phone
 
-Dans l'ordre d'essai conseillé, cette section et la suivante se font **dès la phase 1**, avant le Device Owner : l'enrôlement
-fonctionne en mode dégradé, et le fichier est le même après.
+In the recommended order of trials, this section and the next are done **from phase 1**, before the Device Owner:
+enrollment works in degraded mode, and the file is the same afterwards.
 
-1. **Sur le serveur** : `sudo ./enroll.sh s25` (dossier `infra`) produit `s25.vigie`. Récupérez-le sur le PC :
-   `scp vous@vps:~/vigie/infra/s25.vigie .` depuis le dossier `android/` de votre dépôt (les fichiers `*.vigie` y sont
-   ignorés par git).
-2. **Copier sur le téléphone, par câble** :
+1. **On the server**: `sudo ./enroll.sh phone` (in the `infra` folder) produces `phone.watchpost`. Fetch it onto the
+   PC: `scp you@vps:~/watchpost/infra/phone.watchpost .` from your repository's `android/` folder (`*.watchpost`
+   files are ignored by git there).
+2. **Copy to the phone, by cable**:
 
    ```bash
-   ./scripts/push-enrollment.sh s25.vigie
+   ./scripts/push-enrollment.sh phone.watchpost
    ```
 
    ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\push-enrollment.ps1 -File .\s25.vigie
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\push-enrollment.ps1 -File .\phone.watchpost
    ```
 
-   Attendu : `Copié vers /sdcard/Download/s25.vigie`.
-3. **Dans l'application** : Réglages › Enrôlement › « Importer un fichier .vigie » › Téléchargements › `s25.vigie`.
-   Vérifiez le résumé avant de valider : **adresse d'ingestion** (`https://ingest.…`), nom, **autorité du serveur**
-   (« Autorités publiques du système » avec Let's Encrypt), **DNS privé** (`dns.…`). Touchez « Enrôler cet appareil ».
-4. Résultat attendu : le test de connexion affiche « Connexion réussie (heure du serveur : …) » et « Appareil enrôlé. Le
-   fichier .vigie a été supprimé. » La clé privée est alors dans l'Android Keystore (non exportable).
+   Expected: `Copied to /sdcard/Download/phone.watchpost`.
+3. **In the application**: Settings › Enrollment › "Import a .watchpost file" › Downloads › `phone.watchpost`.
+   Check the summary before confirming: **ingest address** (`https://ingest.…`), name, **server authority**
+   ("System public authorities" with Let's Encrypt), **private DNS** (`dns.…`). Tap "Enroll this device".
+4. Expected result: the connection test shows "Connection successful (server time: …)" and "Device enrolled. The
+   .watchpost file was deleted." The private key is then in the Android Keystore (non-exportable).
 
-| Message | Signification |
+| Message | Meaning |
 |---|---|
-| « Fichier refusé : … » (certificat expiré, clé illisible, adresse non https…) | le fichier est invalide : régénérez-le sur le serveur |
-| « Refusé par le serveur (401/403) : jeton ou certificat invalide, ou appareil révoqué » | le serveur ne reconnaît pas cet appareil : `sudo ./enroll.sh --list` ; régénérez un fichier |
-| « Serveur injoignable : … » | DNS de `ingest.…` pas propagé, port 443 fermé, certificat serveur non valide : refaites les contrôles du guide 01 |
-| « Le serveur répond, mais pour un autre identifiant d'appareil » | mauvais fichier : réimportez celui produit pour ce téléphone |
-| « jeton d'appareil invalide » ou « identifiant d'appareil invalide » | le fichier est altéré ou tronqué (transfert, éditeur de texte) : régénérez-le et recopiez-le par câble sans l'ouvrir |
+| "File rejected: …" (expired certificate, unreadable key, non-https address…) | the file is invalid: regenerate it on the server |
+| "Refused by the server (401/403): invalid token or certificate, or device revoked" | the server does not recognise this device: `sudo ./enroll.sh --list`; regenerate a file |
+| "Server unreachable: …" | `ingest.…` DNS not propagated, port 443 closed, invalid server certificate: redo the checks of guide 01 |
+| "The server answers, but for a different device identifier" | wrong file: import again the one produced for this phone |
+| "invalid device token" or "invalid device identifier" | the file is altered or truncated (transfer, text editor): regenerate it and copy it again by cable without opening it |
 
-5. **Supprimez toutes les copies du fichier** (il contient la clé privée et le jeton) :
+5. **Delete every copy of the file** (it contains the private key and the token):
 
    ```bash
-   ./scripts/push-enrollment.sh --remove s25.vigie
-   rm -f s25.vigie            # sur le PC
+   ./scripts/push-enrollment.sh --remove phone.watchpost
+   rm -f phone.watchpost            # on the PC
    ```
 
    ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\push-enrollment.ps1 -File .\s25.vigie -Remove
-   Remove-Item .\s25.vigie
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\push-enrollment.ps1 -File .\phone.watchpost -Remove
+   Remove-Item .\phone.watchpost
    ```
 
-   et `shred -u s25.vigie` sur le serveur (guide 01). Le script de suppression retire la copie du téléphone si
-   l'application n'a pas pu le faire elle-même.
+   and `shred -u phone.watchpost` on the server (guide 01). The removal script deletes the phone's copy if the
+   application could not do it by itself.
 
-## 11. Vérifier que les événements arrivent
+## 11. Check that events arrive
 
-1. **Dans l'application**, onglet Accueil, section « Serveur » : « Dernier envoi réussi » apparaît, sans « Dernière erreur ».
-   Le bouton « Envoyer maintenant » force un envoi. L'onglet **Journal local** montre ce que l'agent émet.
-2. **Sur le serveur** : `sudo ./enroll.sh --list` affiche un « dernier contact » récent pour `s25`.
-3. **Dans la console** (`https://console.…`) : le sélecteur d'appareil en haut affiche `s25` avec un point vert
-   (dernier contact de moins de 35 minutes). Vue d'ensemble : « Dernier contact », « Device Owner : Actif », la liste
-   des collecteurs avec leur état. Page **Événements** : filtrez le type par `agent.` puis `security.posture` : vous
-   devez voir au moins `agent.started`, `agent.heartbeat` (toutes les 15 minutes) et la posture.
-4. **Délais à connaître** : les envois sont groupés (toutes les 15 minutes au plus). Les événements `net.dns`,
-   `net.connect` et `security.log` sont livrés par le système **par lots**, avec jusqu'à 1 h 30 (réseau) ou 2 h
-   (sécurité) de retard : leur absence dans la première heure est normale. `adb shell dpm force-network-logs` et
-   `adb shell dpm force-security-logs` sont les commandes de test citées par la recherche pour les forcer ; elles
-   n'ont pas été vérifiées sur le S25+.
-5. **Lisez la posture initiale** : console › Sécurité › Posture. Un défaut **déjà présent à l'enrôlement** (chiffrement,
-   débogage USB activé — vous l'avez activé — etc.) ne produit **pas d'alerte** Wazuh : c'est à vous de le lire ici.
-6. **Dans Wazuh** (`https://siem.…`) : le tableau de bord « Vigie — sécurité du téléphone » commence à se remplir. Les alertes
-   attendues pendant ces premières heures sont décrites au [guide 05](05-exploitation.md) (vous venez d'utiliser
-   ADB : le journal de sécurité du système le signale).
+1. **In the application**, Home tab, "Server" section: "Last successful upload" appears, with no "Last error". The
+   "Upload now" button forces an upload. The **Local event log** tab shows what the agent emits.
+2. **On the server**: `sudo ./enroll.sh --list` shows a recent "last contact" for `phone`.
+3. **In the console** (`https://console.…`): the device selector at the top shows `phone` with a green dot (last
+   contact less than 35 minutes ago). Overview: "Last contact", "Device Owner: Active", the list of collectors with
+   their state. **Events** page: filter the type by `agent.` and then `security.posture`: you must see at least
+   `agent.started`, `agent.heartbeat` (every 15 minutes) and the posture.
+4. **Delays to know**: uploads are grouped (every 15 minutes at most). The `net.dns`, `net.connect` and
+   `security.log` events are delivered by the system **in batches**, with up to 1 h 30 (network) or 2 h (security)
+   of delay: their absence during the first hour is normal. `adb shell dpm force-network-logs` and
+   `adb shell dpm force-security-logs` are the test commands cited by the research to force them; they have not
+   been verified on a device.
+5. **Read the initial posture**: console › Security › Posture. A defect **already present at enrollment**
+   (encryption, USB debugging on — you turned it on — etc.) produces **no** Wazuh alert: it is up to you to read it
+   here.
+6. **In Wazuh** (`https://siem.…`): the "Watchpost — phone security" dashboard starts filling. The alerts expected
+   during these first hours are described in [guide 05](05-operations.md) (you just used ADB: the system security log
+   reports it).
 
-## 12. Tester l'issue de secours **avant d'en avoir besoin**
+## 12. Test the rescue **before you need it**
 
-Avant toute politique, vérifiez que le téléphone répond à l'ordre « Tout rétablir » envoyé par ADB :
+Before any policy, check that the phone answers the "Restore everything" order sent through ADB:
 
 ```bash
 ./scripts/rescue-revert.sh
@@ -387,290 +387,293 @@ Avant toute politique, vérifiez que le téléphone répond à l'ordre « Tout r
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\rescue-revert.ps1
 ```
 
-Attendu : `Tout est rétabli (reverted=0…)`. Code de sortie 0. (Cette issue de secours ne répond qu'**après le premier
-déverrouillage qui suit un redémarrage** du téléphone.) Si vous obtenez « Pas de réponse exploitable de Vigie » (code
-5), l'issue de secours **ne fonctionne pas** sur votre téléphone : n'appliquez aucune politique, notez le message et
-passez au guide 06. Ce test se refait après chaque mise à jour de l'APK. **Ensuite, redémarrez le téléphone, déverrouillez-le
-et relancez `rescue-revert`** : il doit répondre de nouveau (avant le premier déverrouillage, il ne répond pas).
+Expected: `Everything is restored (reverted=0…)`. Exit code 0. (This rescue answers only **after the
+first unlock that follows a reboot** of the phone.) If you get "No usable answer from Watchpost" (code 5), the rescue
+**does not work** on your phone: apply no policy, note the message and go on to guide 06. This test is redone after
+every APK update. **Then reboot the phone, unlock it and run `rescue-revert` again**: it must answer again (before the
+first unlock, it does not answer).
 
-Faites aussi, une fois, le tour de l'écran **Réglages › Device Owner › Politique** : « Mode Device Owner : Oui »,
-« Journal réseau » et « Journal de sécurité » actifs, aucune erreur.
+Also go once through the **Settings › Device Owner › Policy** screen: "Device Owner mode: Yes", "System network log"
+and "System security log" active, no error.
 
-## 13. Laisser tourner 24 à 48 heures sans politique
+## 13. Let it run 24 to 48 hours without a policy
 
-Vivez normalement. Surveillez : la **batterie** (Paramètres › Batterie : la part de Vigie), la **notification
-permanente** (elle doit rester), les **erreurs** sur l'Accueil de Vigie, et la **régularité des envois** dans la
-console. Un téléphone qui chauffe ou se vide anormalement, ou un agent qui s'arrête, se règle **avant** d'ajouter
-une politique : voir guides 05 et 06.
+Live normally. Watch: the **battery** (Settings › Battery: Watchpost's share), the **permanent notification** (it must
+stay), the **errors** on Watchpost's Home, and the **regularity of the uploads** in the console. A phone that gets hot
+or drains abnormally, or an agent that stops, is dealt with **before** adding a policy: see guides 05 and 06.
 
-## 14. Mettre la politique en service, progressivement
+## 14. Put the policy into service, gradually
 
-### Principes
+### Principles
 
-- Rien n'est appliqué sans votre accord. L'écran est **Vigie › Réglages › Device Owner › Politique**. Vous y choisissez un
-  profil (**Équilibré** par défaut ou **Strict**), des interrupteurs par élément (applications, permissions,
-  restrictions, réglage), puis « Aperçu des changements » (la liste exacte de ce qui va changer) et « Appliquer ».
-  Chaque élément appliqué a son bouton « Rétablir » ; « Tout rétablir » défait tout.
-- **Les éléments recommandés du profil choisi sont allumés par défaut** (35 éléments pour l'équilibré, plus le DNS et
-  la sauvegarde ; le verrou du DNS est **éteint** par défaut). Pour avancer par paliers, utilisez les boutons de l'écran :
-  **« Tout décocher »** (carte Profil : éteint absolument tout, DNS, verrou et sauvegarde compris), puis cochez seulement
-  ce que vous voulez essayer ; dans chaque carte (applications, permissions, restrictions), **« Tout décocher ici »** et
-  **« Cocher les choix par défaut »** agissent sur la seule section ; **« Valeurs par défaut du profil »** réinitialise toute
-  la sélection (et rallume donc tout).
-- **Piège : la sélection est l'état voulu, pas une liste d'ajouts.** Ce qui est déjà appliqué et n'est plus coché est
-  **rétabli** à l'application suivante. D'un palier au suivant, la sélection est mémorisée : **n'ajoutez que le nouvel élément**
-  et ne rappuyez pas sur « Tout décocher » sans recocher ce qui est déjà en place (par exemple le DNS). **Lisez toujours
-  l'aperçu avant « Appliquer »** : il liste chaque changement, « appliquer » ou « rétablir ». Une ligne qui n'est pas du palier :
-  « Fermer » et corrigez.
-- Entre deux paliers : **24 heures minimum** (recommandation de ce guide), avec les contrôles ci-dessous. Une seule
-  chose à la fois : en cas de problème, vous saurez laquelle.
-- Les « profils » de l'application (Équilibré/Strict, **sur le téléphone**) et celui du filtrage DNS (équilibre/strict,
-  **sur le serveur**, `install.sh --profile`) sont **indépendants**. Gardez le DNS du serveur en équilibre tant que le
-  profil du téléphone n'est pas stabilisé.
-- Gardez sous la main : un PC avec `adb` et le [guide 04](04-retour-arriere.md).
+- Nothing is applied without your agreement. The screen is **Watchpost › Settings › Device Owner › Policy**. There
+  you choose a profile (**Balanced** by default or **Strict**), switches per item (apps, permissions, restrictions,
+  setting), then "Preview of the changes" (the exact list of what will change) and "Apply". Each applied item has its
+  "Restore" button; "Restore everything" undoes everything.
+- **The recommended items of the chosen profile are on by default** (35 items for balanced, plus the DNS and the
+  backup; the DNS lock is **off** by default). To proceed in stages, use the screen's buttons: **"Uncheck
+  everything"** (Profile card: switches off absolutely everything, DNS, lock and backup included), then tick only
+  what you want to try; in each card (apps, permissions, restrictions), **"Uncheck everything here"** and **"Check
+  the default choices"** act on that section only; **"Profile defaults"** resets the whole selection (and therefore
+  switches everything back on).
+- **Pitfall: the selection is the wanted state, not a list of additions.** What is already applied and is no longer
+  ticked is **restored** at the next application. From one stage to the next, the selection is remembered: **add only
+  the new item** and do not press "Uncheck everything" again without ticking again what is already in place (the DNS,
+  for example). **Always read the preview before "Apply"**: it lists every change, "apply" or "restore". A line that
+  does not belong to the stage: "Close" and correct.
+- Between two stages: **24 hours minimum** (this guide's recommendation), with the checks below. One thing at a time:
+  if there is a problem, you will know which.
+- The application's "profiles" (Balanced/Strict, **on the phone**) and the DNS filtering one (balanced/strict, **on
+  the server**, `install.sh --profile`) are **independent**. Keep the server's DNS on balanced as long as the phone's
+  profile is not stabilised.
+- Keep at hand: a PC with `adb` and [guide 04](04-rollback.md).
 
-### Contrôles à faire après chaque palier
+### Checks to make after each stage
 
-| Contrôle | Comment |
+| Check | How |
 |---|---|
-| Redémarrage | redémarrez le téléphone ; l'agent revient, la notification Vigie est là |
-| **Notifications push** | demandez à quelqu'un de vous écrire sur votre messagerie, téléphone verrouillé depuis plus de 10 minutes, d'abord sur Wi-Fi puis en données mobiles |
-| **Play Store** | ouvrez-le, cherchez des mises à jour, installez ou mettez à jour une petite application |
-| **Application bancaire** | ouvrez-la, connectez-vous, validez une opération de faible montant (validation par notification incluse) |
-| **Paiement sans contact** | un vrai paiement de faible montant avec l'application que vous utilisez (Google Wallet ou Samsung Wallet), avec une carte physique en secours ; carte de transport si vous en avez une |
-| Fonctions de base | appels, SMS, données mobiles, Wi-Fi, Bluetooth (voiture, écouteurs, montre), appareil photo, clavier |
-| Mise à jour Samsung | Paramètres › Mise à jour logicielle › Télécharger et installer : doit répondre normalement |
-| Vigie | Accueil sans erreur ; console : envois réguliers ; page Sécurité › Politique appliquée : chaque ligne `ok` |
-| AdGuard (si DNS actif) | journal des requêtes : repérez des domaines bloqués liés à une application qui dysfonctionne |
+| Reboot | reboot the phone; the agent comes back, the Watchpost notification is there |
+| **Push notifications** | ask someone to write to you on your messenger, phone locked for more than 10 minutes, first on Wi-Fi and then on mobile data |
+| **Play Store** | open it, look for updates, install or update a small application |
+| **Banking application** | open it, log in, validate a small transaction (validation by notification included) |
+| **Contactless payment** | a real small payment with the application you use (Google Wallet or Samsung Wallet), with a physical card as backup; transit card if you have one |
+| Basic functions | calls, SMS, mobile data, Wi-Fi, Bluetooth (car, earbuds, watch), camera, keyboard |
+| Samsung update | Settings › Software update › Download and install: must answer normally |
+| Watchpost | Home with no error; console: regular uploads; Security › Applied policy page: every line `ok` |
+| AdGuard (if DNS active) | query log: look for blocked domains tied to an application that misbehaves |
 
-Si quelque chose casse : **notez quoi et à partir de quand**, puis « Rétablir » le dernier élément appliqué ; si le
-symptôme disparaît, c'est lui. S'il persiste, « Tout rétablir » : si le symptôme disparaît, la politique est en
-cause ; sinon, la cause est ailleurs. Voir le guide 04 pour la marche à suivre.
+If something breaks: **note what and since when**, then "Restore" the last applied item; if the symptom disappears,
+that is the one. If it persists, "Restore everything": if the symptom disappears, the policy is responsible;
+otherwise, the cause is elsewhere. See guide 04 for what to do.
 
-### Palier 1 : le DNS privé seul
+### Stage 1: private DNS alone
 
-Objectif : vérifier que le téléphone sait résoudre par votre AdGuard et que rien d'autre ne change.
+Goal: check that the phone can resolve through your AdGuard and that nothing else changes.
 
-Avant : depuis votre PC, `python3 infra/tools/dot-query.py dns.vigie.exemple.fr example.org` doit répondre (guide 01).
+Before: from your PC, `python3 infra/tools/dot-query.py dns.watchpost.example.org example.org` must answer (guide 01).
 
-Dans l'écran Politique :
+In the Policy screen:
 
-1. **Profil** : Équilibré. Touchez **« Tout décocher »**.
-2. Carte **DNS privé imposé** : allumez **« Imposer ce DNS »** seul. **« Verrouiller le réglage » reste éteint** (il l'est par
-   défaut) : le verrou interdit de changer le DNS privé dans les Paramètres d'Android et vous ôterait cette porte de sortie
-   tant que le serveur n'est pas éprouvé.
-3. **Aperçu des changements** : une seule ligne doit apparaître, le DNS privé. Sinon « Fermer » et corrigez.
-4. **Appliquer**.
+1. **Profile**: Balanced. Tap **"Uncheck everything"**.
+2. **Enforced private DNS** card: switch on **"Enforce this DNS"** alone. **"Lock the setting" stays off** (it is off
+   by default): the lock forbids changing private DNS in Android's Settings and would take away this exit door as
+   long as the server has not proven itself.
+3. **Preview of the changes**: a single line must appear, the private DNS. Otherwise "Close" and correct.
+4. **Apply**.
 
-Laissez le **repli** actif (Réglages › Device Owner › « Repli automatique du DNS privé », actif par défaut, 15 minutes).
+Leave the **fallback** active (Settings › Device Owner › "Private DNS automatic fallback", active by default, 15
+minutes).
 
-Avant d'appliquer quoi que ce soit, Vigie teste depuis le téléphone que l'hôte répond (poignée de main TLS sur 853 et une
-requête DNS) ; sinon, rien ne change et le journal indique « vérification préalable ».
+Before applying anything, Watchpost tests from the phone that the host answers (TLS handshake on 853 and a DNS
+query); otherwise, nothing changes and the log says "pre-check".
 
-Contrôles : la carte DNS affiche le mode et l'hôte ; sur Wi-Fi **puis en données mobiles**, naviguez et ouvrez deux
-ou trois applications ; Paramètres › Connexions › Plus de paramètres de connexion › DNS privé (chemin habituel) affiche
-votre hôte ; dans AdGuard Home, le journal des requêtes montre des requêtes du téléphone ; dans la console, page Sécurité ›
-Politique appliquée : `private_dns_set` en réussite. Laissez tourner **plusieurs jours** : repérez les applications
-qui se plaignent et les domaines bloqués dans le journal d'AdGuard (guide 05 pour débloquer).
+Checks: the DNS card shows the mode and the host; on Wi-Fi **then on mobile data**, browse and open two or three
+applications; Settings › Connections › More connection settings › Private DNS (usual path) shows your host; in
+AdGuard Home, the query log shows requests from the phone; in the console, Security › Applied policy page:
+`private_dns_set` successful. Let it run **several days**: look for applications that complain and for blocked
+domains in AdGuard's log (guide 05 for unblocking).
 
-**Test du repli (facultatif, jamais exécuté ; chez vous, sur Wi-Fi, PC à portée).** Vigie repasse le DNS en mode
-automatique quand le réseau n'est plus « validé » **et** que l'hôte est injoignable en continu pendant 15 minutes (réglable
-de 5 à 240, Réglages › Device Owner), et signale le repli par un `security.policy` de sévérité 2 (alerte Wazuh). Pour le
-voir : sur le serveur `sudo docker compose stop adguardhome` ; le téléphone perd Internet ; patientez (jusqu'à 15 minutes
-par défaut) jusqu'au retour d'Internet et à l'avertissement « En repli » de la carte DNS ; puis
-`sudo docker compose start adguardhome` : l'hôte est réimposé dès qu'il répond. Si Internet ne revient pas après
-20 minutes : `./scripts/rescue-revert.sh`. Le repli ne tourne que si le processus de Vigie est vivant (service de premier
-plan, ou passage de maintenance toutes les 15 minutes) : un agent tué par la gestion de batterie ne le déclenche pas.
+**Fallback test (optional, never run; at home, on Wi-Fi, PC within reach).** Watchpost sets DNS back to automatic mode
+when the network is no longer "validated" **and** the host is continuously unreachable for 15 minutes (adjustable
+from 5 to 240, Settings › Device Owner), and reports the fallback with a severity-2 `security.policy` (Wazuh alert).
+To see it: on the server `sudo docker compose stop adguardhome`; the phone loses Internet; wait (up to 15 minutes by
+default) for Internet to return and for the "Fallen back" warning on the DNS card; then
+`sudo docker compose start adguardhome`: the host is enforced again as soon as it answers. If Internet does not come
+back after 20 minutes: `./scripts/rescue-revert.sh`. The fallback runs only if Watchpost's process is alive
+(foreground service, or the maintenance pass every 15 minutes): an agent killed by battery management does not
+trigger it.
 
-> Le compromis, dit plainement : avec le repli, quelqu'un qui bloque le port 853 vous fait basculer en DNS automatique
-> (jamais en silence, c'est une alerte). Sans le repli, la protection prime : plus d'Internet tant que le serveur ne
-> répond pas.
+> The trade-off, stated plainly: with the fallback, someone who blocks port 853 makes you switch to automatic DNS
+> (never silently, it is an alert). Without the fallback, protection comes first: no Internet as long as the server
+> does not answer.
 
-### Palier 2 : deux ou trois paquets à faible risque
+### Stage 2: two or three low-risk packages
 
-Objectif : vérifier le mécanisme « désactiver puis rétablir » sur des applications que vous ne regretterez pas.
+Goal: check the "disable then restore" mechanism on applications you will not miss.
 
-1. Gardez le DNS coché (voir le piège ci-dessus) et allumez **« Astuces »** (Samsung Tips, « suspendue » : son icône reste,
-   grisée) et deux paquets « aucun effet visible connu » de risque faible : **Knox Analytics** et **Samsung Attribution**
-   (« masqués »).
-2. Aperçu : trois lignes « appliquer », rien d'autre. Appliquer. L'icône d'Astuces est grisée et ne s'ouvre plus ; le journal
-   d'actions dit « réussi » trois fois.
-3. Redémarrez, faites les contrôles du tableau, vivez un jour ou deux.
-4. **« Tout rétablir »** (bas de l'écran), puis **comparez** : les applications sont redevenues normales, le DNS privé est aussi
-   rétabli (« Tout rétablir » défait *tout* ce que Vigie a appliqué). Réappliquez ensuite le DNS (palier 1) et ce que vous voulez
-   garder. Cette comparaison vous apprend que « Tout rétablir » fait bien ce qu'il dit, avant d'en avoir besoin.
+1. Keep the DNS ticked (see the pitfall above) and switch on **"Tips"** (Samsung Tips, "suspended": its icon stays,
+   greyed out) and two "no known visible effect" packages of low risk: **Knox Analytics** and **Samsung
+   Attribution** ("hidden").
+2. Preview: three "apply" lines, nothing else. Apply. The Tips icon is greyed out and no longer opens; the action log
+   says "succeeded" three times.
+3. Reboot, do the checks of the table, live for a day or two.
+4. **"Restore everything"** (bottom of the screen), then **compare**: the applications are back to normal, private DNS
+   is also restored ("Restore everything" undoes *everything* Watchpost applied). Then apply the DNS again (stage 1)
+   and what you want to keep. This comparison teaches you that "Restore everything" does what it says, before you need
+   it.
 
-Si cet essai échoue (journal « échec »), n'allez pas plus loin : notez l'erreur (guide 06).
+If this trial fails (log "failed"), go no further: note the error (guide 06).
 
-### Palier 3 : le profil équilibré, en trois lots
+### Stage 3: the balanced profile, in three batches
 
-Le profil équilibré coupe la télémétrie et la publicité Samsung/Google qui ne servent à rien d'autre ; les Services Google
-Play, le Play Store, les notifications push et les applications bancaires **doivent** rester fonctionnels. Vous l'appliquez en
-trois lots, avec les contrôles du tableau entre chacun (24 heures minimum). Restez sur le profil Équilibré et gardez coché
-ce qui est déjà appliqué (DNS compris).
+The balanced profile cuts Samsung/Google telemetry and advertising that serve no other purpose; Google Play services,
+the Play Store, push notifications and banking applications **must** remain functional. You apply it in three
+batches, with the checks of the table between each (24 hours minimum). Stay on the Balanced profile and keep ticked
+what is already applied (DNS included).
 
-**Lot 3a : applications Samsung et Meta** (carte Applications : « Cocher les choix par défaut », puis **éteignez** les six
-applications Google du lot 3b ; 19 de Samsung : Customization Service, Knox Analytics, DSMS, Device Quality
-Agent, SVC Agent, Carrier Log Collector, CcInfo, Log Writer, Samsung Attribution, Device ID Service, SOH Service,
-Galaxy Widget, Maps Agent, IPS Geofence, Network Diagnostic, Wi-Fi Network Diagnostics, QoS Indicator, Astuces,
-Smart Suggestions ; plus Meta App Manager, Meta Services, Meta App Installer). Effets connus : plus
-d'identifiant publicitaire Samsung, plus de suggestions personnalisées, diagnostic batterie de Samsung Members moins
-détaillé. `diagmonagent` n'est volontairement jamais touché (liste de refus de Vigie) : le désactiver provoque une boucle de
-relance qui fait chauffer le téléphone ; coupez plutôt « Envoyer les données de diagnostic » dans les réglages Samsung.
+**Batch 3a: Samsung and Meta applications** (Apps card: "Check the default choices", then **switch off** the six Google
+applications of batch 3b; 19 Samsung ones: Customization Service, Knox Analytics, DSMS, Device Quality Agent, SVC
+Agent, Carrier Log Collector, CcInfo, Log Writer, Samsung Attribution, Device ID Service, SOH Service, Galaxy Widget,
+Maps Agent, IPS Geofence, Network Diagnostic, Wi-Fi Network Diagnostics, QoS Indicator, Tips, Smart Suggestions; plus
+Meta App Manager, Meta Services, Meta App Installer). Known effects: no more Samsung advertising identifier, no more
+personalised suggestions, a less detailed battery diagnostic in Samsung Members. `diagmonagent` is deliberately never
+touched (Watchpost's deny list): disabling it causes a restart loop that makes the phone hot; turn off "Send
+diagnostic data" in Samsung's settings instead.
 
-**Lot 3b : applications Google** (cochez-les une à une ; Android AdServices, On-Device Personalization, Federated Compute, Market Feedback Agent,
-Google Partner Setup, Location History stub). Les trois premières sont des **modules système (Mainline)** : l'effet de leur
-masquage est signalé « à vérifier après application ». Faites ce lot **seul**, puis redémarrez et vérifiez
-**particulièrement** le Play Store et les mises à jour système (Paramètres › Mise à jour logicielle ; Google Play system
-update).
+**Batch 3b: Google applications** (tick them one at a time; Android AdServices, On-Device Personalization, Federated
+Compute, Market Feedback Agent, Google Partner Setup, Location History stub). The first three are **system modules
+(Mainline)**: the effect of hiding them is flagged "to be checked after applying". Do this batch **alone**, then
+reboot and check **in particular** the Play Store and the system updates (Settings › Software update; Google Play
+system update).
 
-**Lot 3c : restrictions, permission, réglage** (« Cocher les choix par défaut » dans les cartes Restrictions et Permissions
-refusées, puis le réglage et la sauvegarde)
+**Batch 3c: restrictions, permission, setting** ("Check the default choices" in the Restrictions and Denied
+permissions cards, then the setting and the backup)
 
-- Restrictions (5) : interdire l'ajout d'utilisateurs ; **interdire la 2G** (plus de réseau là où seule la 2G existe ; les appels
-  d'urgence restent possibles) ; **interdire les sources inconnues** ; couper la capture de contenu ; couper les suggestions de
-  contenu.
-- Permission refusée (1) : Appli Google, localisation.
-- Réglage : « Recherche Bluetooth permanente » coupée (exige `WRITE_SECURE_SETTINGS`, accordée à l'étape 8 ; `global:ble_scan_always_enabled` est l'un des deux seuls réglages que Vigie accepte d'écrire).
-- Sauvegarde Android : « Réactiver la sauvegarde Android » (que le Device Owner avait coupée).
+- Restrictions (5): forbid adding users; **forbid 2G** (no network where only 2G exists; emergency calls remain
+  possible); **forbid unknown sources**; turn off content capture; turn off content suggestions.
+- Denied permission (1): Google app, location.
+- Setting: "Permanent Bluetooth scanning" turned off (requires `WRITE_SECURE_SETTINGS`, granted at step 8;
+  `global:ble_scan_always_enabled` is one of the only two settings Watchpost agrees to write).
+- Android backup: "Re-enable Android backup" (which the Device Owner had turned off).
 
-**Contrôle supplémentaire pour « Interdire les sources inconnues »** : le texte de l'application dit que l'installation par
-ADB (donc les mises à jour de Vigie) n'est « pas concernée d'après la documentation (à vérifier) ». **Vérifiez-le
-maintenant**, pas le jour d'une mise à jour : réinstallez le même APK
-(`./scripts/install-apk.sh app/build/outputs/apk/release/app-release.apk` ou, sous PowerShell, la forme `powershell … -File .\scripts\install-apk.ps1 -Apk app\build\outputs\apk\release\app-release.apk` de la section 3) et constatez le succès, puis que
-l'agent redémarre et que le Device Owner est toujours là. En cas d'échec, « Rétablir » cette restriction.
+**Extra check for "Forbid unknown sources"**: the application's text says that installation through ADB (and so
+Watchpost's updates) is "not affected according to the documentation (to be verified)". **Verify it now**, not on
+the day of an update: reinstall the same APK
+(`./scripts/install-apk.sh app/build/outputs/apk/release/app-release.apk` or, in PowerShell, the form
+`powershell … -File .\scripts\install-apk.ps1 -Apk app\build\outputs\apk\release\app-release.apk` of section 3) and
+observe success, then that the agent restarts and that the Device Owner is still there. On failure, "Restore" that
+restriction.
 
-**Après les trois lots**, notez ce qui fonctionne. Plus tard, devant un comportement douteux, la comparaison « Tout
-rétablir » puis réapplication du profil vous dit si la politique en est responsable.
+**After the three batches**, note what works. Later, faced with doubtful behaviour, the comparison "Restore
+everything" then reapplying the profile tells you whether the policy is responsible.
 
-### Palier 4 : le profil strict, élément par élément
+### Stage 4: the strict profile, item by item
 
-Le profil strict **casse volontairement** des fonctions : compte Samsung, Galaxy Store, Samsung Cloud, Find My Mobile (par le
-compte), notifications Samsung, Appli Google, Assistant et recherche vocale, mode sans échec, ajout de certificats. Ne le
-choisissez que si vous avez décidé de vous en passer. Passez au profil Strict dans l'écran (les éléments de l'équilibré
-restent). **À la bascule, les éléments du strict recommandés par défaut se cochent d'eux-mêmes** (8 applications dont le compte
-Samsung, 2 permissions, 6 restrictions) : éteignez-les un par un, puis n'ajoutez **qu'un élément à la fois** en gardant coché ce
-qui est déjà appliqué ; l'aperçu doit toujours montrer **une seule** ligne. Dans cet ordre de risque croissant, avec les
-contrôles du tableau entre chaque :
+The strict profile **deliberately breaks** functions: Samsung account, Galaxy Store, Samsung Cloud, Find My Mobile
+(through the account), Samsung notifications, the Google app, Assistant and voice search, safe mode, adding
+certificates. Choose it only if you have decided to do without them. Switch to the Strict profile in the screen (the
+balanced items stay). **At the switch, the strict items recommended by default tick themselves** (8 applications
+including the Samsung account, 2 permissions, 6 restrictions): switch them off one by one, then add **only one item
+at a time** while keeping ticked what is already applied; the preview must always show **a single** line. In this
+order of increasing risk, with the checks of the table between each:
 
-1. Restrictions peu risquées : couper l'UWB, couper Thread, interdire le partage Bluetooth, couper le contenu envoyé à
-   l'assistant.
-2. Applications Samsung de services : OMC Agent, Update Center, Samsung Push Service, Samsung Cloud, Experience Service,
+1. Low-risk restrictions: turn off UWB, turn off Thread, forbid Bluetooth sharing, turn off content sent to the
+   assistant.
+2. Samsung service applications: OMC Agent, Update Center, Samsung Push Service, Samsung Cloud, Experience Service,
    KLMS Agent.
-3. **Appli Google** (suspendue) et ses permissions (micro, caméra, contacts).
-4. Restrictions « de confort perdu » : **interdire le mode sans échec** (vous perdez un recours si une application bloque le
-   téléphone), **bloquer l'ajout de certificats** (Wi-Fi d'entreprise et VPN à certificat à configurer *avant*).
-5. **Compte Samsung** (risque élevé : casse Galaxy Store, Samsung Cloud, Localiser mon appareil Samsung) : à n'appliquer que si
-   vous n'en dépendez plus.
+3. **Google app** (suspended) and its permissions (microphone, camera, contacts).
+4. "Lost convenience" restrictions: **forbid safe mode** (you lose a recourse if an application locks up the phone),
+   **block adding certificates** (corporate Wi-Fi and certificate VPNs to be configured *before*).
+5. **Samsung account** (high risk: breaks Galaxy Store, Samsung Cloud, Samsung's Find My Mobile): apply only if you no
+   longer depend on it.
 
-**Ne cochez jamais sans un plan précis** (ils sont décochés par défaut et marqués risque élevé ou critique) : Services
-Google Play, Google Services Framework, Play Store (notifications push, applications bancaires, Play Store, Wallet),
-Samsung Wallet / Pay / Pass, NFC (paiement sans contact), Find My Mobile (antivol), Entretien de l'appareil (fait
-disparaître la liste « jamais en veille »), eSIM, transfert de fichiers USB. Le profil strict laisse la sauvegarde Android
-coupée.
+**Never tick without a precise plan** (they are unticked by default and marked high or critical risk): Google Play
+services, Google Services Framework, Play Store (push notifications, banking applications, Play Store, Wallet),
+Samsung Wallet / Pay / Pass, NFC (contactless payment), Find My Mobile (anti-theft), Device care (makes the "never
+sleeping" list disappear), eSIM, USB file transfer. The strict profile leaves Android backup off.
 
-## 15. Mettre en service le canal de commandes à distance
+## 15. Put the remote command channel into service
 
-À faire **après** la phase 5, jamais avant : le canal ajoute une connexion permanente au serveur (consommation à mesurer) et
-des commandes dont l'une est irréversible. Le principe : le serveur ne peut transmettre qu'une liste fermée de commandes
-(sonner, vibrer, arrêter la sonnerie, localiser, verrouiller avec un message, retirer ce message, effacer), jamais un réglage
-ni une politique. Le canal est **coupé par défaut** ; chaque commande reçue s'affiche en notification et dans l'historique.
+Do this **after** phase 5, never before: the channel adds a permanent connection to the server (consumption to be
+measured) and commands one of which is irreversible. The principle: the server can send only a closed list of
+commands (ring, vibrate, stop ringing, locate, lock with a message, clear that message, erase), never a setting or a
+policy. The channel is **off by default**; every command received is shown as a notification and in the history.
 
-**Prérequis** : téléphone enrôlé ; Device Owner pour verrouiller, retirer le message et effacer (sonner, vibrer et localiser n'en
-ont pas besoin).
+**Prerequisites**: enrolled phone; Device Owner to lock, clear the message and erase (ring, vibrate and locate do not
+need it).
 
-1. Vigie › **Réglages › Commandes à distance** (ou la carte « Commandes à distance » de l'accueil). Allumez « Recevoir les
-   commandes à distance ». Mode **Connexion permanente** (par défaut : commande reçue en quelques secondes ; chaque message de
-   maintien du serveur, toutes les 2 minutes, réveille le modem) ou **Interrogation périodique** (1 à 15 minutes). La
-   consommation n'a jamais été mesurée : après 24 heures, comparez la part de Vigie dans Paramètres › Batterie, d'abord en
-   Wi-Fi puis en réseau mobile ; si elle est forte, passez en interrogation.
-2. **Code de commande** (carte « Code de commande ») : 12 caractères au moins, saisi deux fois ; l'application refuse un code de
-   moins de 6 caractères différents, ou fait de chiffres seulement en dessous de 20 chiffres. **Prenez cinq mots tirés au
-   hasard** (par exemple avec des dés), **réservés à cet usage**, et notez-les dans votre gestionnaire de mots de passe : il
-   vous sera demandé dans la console à chaque commande sensible. Saisissez-le à l'identique partout (évitez les caractères
-   accentués composés). Le téléphone n'en garde qu'une clé dérivée, chiffrée par une clé du Keystore, après un calcul de quelques
-   secondes (« Calcul de la clé… ») ; le serveur ne le reçoit jamais.
-3. Dans la console, page **Commandes** : la carte « Canal de commandes » doit indiquer le téléphone connecté (mode permanent) ou
-   un dernier contact récent (interrogation).
-4. **Essais, dans l'ordre** (téléphone à portée de main) :
-   - **Sonner** (carte « Actions simples ») : le téléphone sonne à plein volume même en silencieux ou en vibreur, une
-     notification « Vigie fait sonner ce téléphone » apparaît avec un bouton **Arrêter** ; l'historique de la console passe à
-     « exécutée ». Si « Ne pas déranger » coupe les alarmes, le son reste muet et le résultat le dit
-     (`dnd_alarms_muted`) : la vibration et la notification restent. Essayez en mode silencieux, vibreur et « Ne pas déranger ».
-   - **Localiser maintenant** : une position précise arrive sous une minute au plus (GPS ; en intérieur, il peut n'y en avoir
-     aucune : résultat « échouée », `no_fix`, essayez dehors) et s'affiche sur la carte de la page. Elle respecte le collecteur
-     de localisation : s'il est coupé ou sans permission, la commande échoue (`location_unavailable`).
-   - **Verrouiller avec message** (carte « Actions sensibles ») : confirmation, puis le code de commande ; le téléphone se
-     verrouille et affiche le message sur l'écran de verrouillage. Sans écran de verrouillage sécurisé, seul l'écran s'éteint.
-     Déverrouillez normalement, puis **Effacer le message** (commande, ou bouton de l'écran de Vigie). Si le résultat est
-     `failed` avec `lock_refused` (cas d'une mise à jour depuis une version antérieure), les politiques d'administration n'ont
-     pas été rechargées : notez-le (guide 06).
-   - Un code faux est refusé par le **téléphone** (`bad_signature`, alerte Wazuh de niveau 10) ; **cinq refus en une heure
-     bloquent les commandes sensibles pendant une heure** (`locked_out`, niveau 12). Ne provoquez pas ce cas plus d'une fois.
-5. Les validités par défaut : 1 heure pour une commande simple, 7 jours pour verrouiller ou retirer le message (30 au plus),
-   **15 minutes pour effacer** (24 heures au plus).
+1. Watchpost › **Settings › Remote commands** (or the "Remote commands" card on Home). Switch on "Receive remote
+   commands". Mode **Permanent connection** (default: command received within seconds; each keep-alive message from
+   the server, every 2 minutes, wakes the modem) or **Periodic polling** (1 to 15 minutes). Consumption has never been
+   measured: after 24 hours, compare Watchpost's share in Settings › Battery, first on Wi-Fi then on mobile network;
+   if it is high, switch to polling.
+2. **Command passphrase** ("Command passphrase" card): 12 characters at least, entered twice; the application
+   refuses a passphrase with fewer than 6 distinct characters, or made of digits only below 20 digits. **Take five
+   randomly drawn words** (for example with dice), **reserved for this use**, and write them in your password
+   manager: you will be asked for it in the console for every sensitive command. Enter it identically everywhere
+   (avoid composed accented characters). The phone keeps only a derived key, encrypted by a Keystore key, after a
+   computation of a few seconds ("Computing the key…"); the server never receives it.
+3. In the console, **Commands** page: the "Command channel" card must show the phone connected (permanent mode) or a
+   recent last contact (polling).
+4. **Trials, in order** (phone within reach):
+   - **Ring** ("Simple actions" card): the phone rings at full volume even in silent or vibrate mode, a notification
+     "Watchpost is making this phone ring" appears with a **Stop** button; the console history goes to "executed". If
+     "Do Not Disturb" silences alarms, the sound stays muted and the result says so (`dnd_alarms_muted`): the
+     vibration and the notification remain. Try in silent mode, vibrate mode and "Do Not Disturb".
+   - **Locate now**: a precise position arrives within a minute at most (GPS; indoors there may be none: result
+     "failed", `no_fix`, try outside) and is shown on the page's map. It respects the location collector: if it is
+     off or lacks permission, the command fails (`location_unavailable`).
+   - **Lock with a message** ("Sensitive actions" card): confirmation, then the command passphrase; the phone locks
+     and shows the message on the lock screen. Without a secure lock screen, only the screen turns off. Unlock
+     normally, then **Clear the message** (command, or button on Watchpost's screen). If the result is `failed` with
+     `lock_refused` (the case after an update from an earlier version), the administration policies were not reloaded:
+     note it (guide 06).
+   - A wrong passphrase is refused by the **phone** (`bad_signature`, Wazuh alert of level 10); **five refusals within
+     an hour block the sensitive commands for an hour** (`locked_out`, level 12). Do not provoke this more than once.
+5. Default validities: 1 hour for a simple command, 7 days to lock or clear the message (30 at most), **15 minutes to
+   erase** (24 hours at most).
 
-**L'effacement à distance : ne l'activez pas maintenant.** « Autoriser l'effacement à distance » est éteint par défaut et ne
-s'allume qu'avec un code défini et après avoir tapé « EFFACER ». Une commande signée avec votre code remet alors le téléphone à
-zéro, **sans autre confirmation**, définitivement (la protection contre la réinitialisation, c'est-à-dire le compte Google
-exigé au redémarrage, et les eSIM sont conservées). Son activation exige trois choses que vous n'avez pas encore :
-l'avoir **essayé sur un appareil sacrifiable ou entièrement sauvegardé** (jamais exécuté sur un téléphone), la certitude que
-votre code est fort, et la conviction que le verrouillage ne suffit pas. Dans la plupart des cas de perte, **verrouiller avec un
-message suffit** (guide 04, « Si le téléphone est perdu »).
+**Remote erase: do not enable it now.** "Allow remote erase" is off by default and turns on only with a passphrase set
+and after typing "ERASE". A command signed with your passphrase then resets the phone to zero, **with no other
+confirmation**, permanently (reset protection, that is the Google account required at restart, and eSIMs are
+kept). Enabling it requires three things you do not yet have: having **tried it on a sacrificial or fully backed-up
+device** (never run on a phone), certainty that your passphrase is strong, and the conviction that locking is not
+enough. In most cases of loss, **locking with a message is enough** (guide 04, "If the phone is lost").
 
-**Ce que la signature garantit, et ses limites** (contrat §8) : aucune commande sensible ne s'exécute sans une signature valide
-pour le code défini sur le téléphone. Mais le serveur détient le contenu signé et peut chercher votre code hors ligne (d'où
-les cinq mots) ; la page de la console où vous le tapez est servie par le serveur (un serveur compromis peut la modifier et le
-lire à la saisie suivante) ; une commande signée reste exécutable jusqu'à son expiration, quoi qu'affiche la console (« annulée »
-ou « expirée » n'engage que le serveur). **Seul le changement du code sur le téléphone** rend caduque une commande déjà signée :
-c'est le geste à faire si vous doutez du serveur (guide 04).
+**What the signature guarantees, and its limits** (contract §8): no sensitive command runs without a valid signature
+for the passphrase set on the phone. But the server holds the signed content and can search for your passphrase
+offline (hence the five words); the console page where you type it is served by the server (a compromised server can
+alter it and read the passphrase the next time you type it); a signed command remains executable until it expires,
+whatever the console shows ("cancelled" or "expired" binds only the server). **Only changing the passphrase on the
+phone** invalidates a command that was already signed: that is the gesture to make if you doubt the server (guide
+04).
 
-## 16. Mettre en service les gardes de capacités, une par une
+## 16. Put the capability guards into service, one by one
 
-Les gardes verrouillent les capacités dont un logiciel malveillant a besoin (guide 08 pour le cas des SMS). Écran **Politique ›
-Gardes**. Elles sont **toutes éteintes par défaut**, s'activent **une par une** par « Aperçu et activation » (l'aperçu dit quelle
-application perd quoi), et se défont par « Aperçu et désactivation », « Tout rétablir », le retrait du Device Owner et
-l'issue de secours ADB.
+The guards lock down the capabilities that malware needs (guide 08 for the SMS case). Screen **Policy › Guards**. They
+are **all off by default**, are enabled **one by one** through "Preview and enable" (the preview says which
+application loses what), and are undone through "Preview and disable", "Restore everything", the removal of the
+Device Owner and the ADB rescue.
 
-**Avant** : `rescue-revert` à vide réussi (§12), phase 5 stabilisée. **Méthode pour chaque garde** : activer, faire les
-contrôles ci-dessous, puis **« Tout rétablir »** et vérifier que l'état d'avant revient (Paramètres › Applications › l'appli ›
-Autorisations ; claviers ; accessibilité). « Tout rétablir » défait *tout* ce que Vigie a appliqué (DNS et paquets compris) et
-éteint d'abord toutes les gardes : réappliquez ensuite ce que vous gardez, par « Aperçu » puis « Appliquer » pour la politique
-et « Aperçu et activation » pour les gardes (la sélection est mémorisée). Quand vous avez vu cela fonctionner deux fois, vous
-pouvez espacer les « Tout rétablir » (suggestion de ce guide).
+**Before**: `rescue-revert` on an empty policy succeeded (§12), phase 5 stabilised. **Method for each guard**: enable,
+make the checks below, then **"Restore everything"** and check that the previous state comes back (Settings › Apps ›
+the app › Permissions; keyboards; accessibility). "Restore everything" undoes *everything* Watchpost applied (DNS and
+packages included) and first switches off all the guards: then apply again what you keep, through "Preview of the
+changes" then "Apply" for the policy and "Preview and enable" for the guards (the selection is remembered). Once you
+have seen this work twice, you can space out the "Restore everything" steps (this guide's suggestion).
 
-L'ordre conseillé par l'application elle-même est : **Quarantaine, Claviers, Accessibilité, Appels, SMS, puis seulement les
-options « aussi… »**, du moins au plus risqué.
+The order suggested by the application itself is: **Quarantine, Keyboards, Accessibility, Calls, SMS, and only then the
+"also…" options**, from the least to the most risky.
 
-| # | Garde | Contrôles après activation | Ce qui peut casser |
+| # | Guard | Checks after enabling | What can break |
 |---|---|---|---|
-| 1 | **Quarantaine** (aucun effet immédiat) | Installez une petite application de test (APK ou boutique) : notification « Nouvelle application en quarantaine » ; Paramètres › Applications › l'appli › Autorisations : SMS, contacts, micro… grisés « contrôlé par l'administrateur ». « **Libérer** » (Gardes › Applications en quarantaine) : l'appli redemande. Mettez-la à jour : pas de nouvelle quarantaine. Console › Sécurité › Politique appliquée : `quarantined` et `released`. | une application toute neuve ne peut pas utiliser micro, caméra, contacts, SMS, appels, position en arrière-plan avant d'être libérée ; **l'appairage d'une montre, d'écouteurs, d'une voiture ou d'une serrure dont l'appli vient d'être installée échoue sans message** (Bluetooth et appareils à proximité) |
-| 2 | **Claviers** (liste vide) | L'aperçu doit nommer comme « gardé » le clavier tiers éventuellement activé. Saisie normale, **y compris le code PIN après un redémarrage** (clavier Samsung). Paramètres › Gestion globale › Clavier : un clavier non approuvé n'est pas activable. | activer un nouveau clavier (Gboard, SwiftKey…) sans l'avoir ajouté à la liste ; aucun risque de rester sans clavier (un clavier déjà activé continue, celui du système reste proposé) ; la garde n'est appliquée que dans l'écran des Paramètres de One UI (**à vérifier**) |
-| 3 | **Accessibilité** (liste vide) | Les services déjà activés sont gardés (Android l'exige) ; TalkBack et le Voice Assistant Samsung restent activables ; un service tiers non activé ne l'est plus (« désactivé par l'administrateur »). | nouveau gestionnaire de mots de passe, Tasker, MacroDroid, bloqueur ou lanceur qui utilise l'accessibilité, s'il n'est pas dans la liste |
-| 4 | **Appels** (sans option) | L'aperçu est **rarement vide** (`CALL_PHONE` est demandée par messageries, banques, cartes, montre, voiture ; chaque application qui l'avait est arrêtée au refus). Appelez depuis le composeur et depuis le carnet d'adresses Samsung. Appel d'urgence : ne composez pas réellement, vérifiez seulement que le composeur s'ouvre. | appel direct depuis une appli tierce (domotique, montre, voiture, taxi) ; ouvrir le composeur avec un numéro prérempli reste possible ; le groupe « Téléphone » des applications refusées est gelé |
-| 5 | **SMS** (sans option) | L'aperçu liste les applications tierces qui demandent `SEND_SMS`. Envoyez un SMS depuis Samsung Messages ; le SOS d'urgence reste intact (application du système). Changez d'appli SMS par défaut et vérifiez, en 10 à 20 secondes, la notification « Appli par défaut changée » et que la liste suit ; revenez ensuite à l'application d'origine. | messagerie vocale visuelle de l'opérateur, application de montre ou de voiture qui répond par SMS, vérification de numéro : à mettre dans la liste |
-| 6 | **Options** « aussi… » (lecture des SMS ; décrocher et journal d'appels) | Avec une garde SMS ou Appels active : **changez d'appli SMS par défaut** pour une application que la garde refusait, vérifiez la notification dans les 10 à 20 secondes et que l'application envoie et reçoit sans rien redemander, puis revenez à l'application d'origine. | la saisie automatique des codes reçus par SMS cesse dans les applications tierces |
+| 1 | **Quarantine** (no immediate effect) | Install a small test application (APK or store): notification "New app in quarantine"; Settings › Apps › the app › Permissions: SMS, contacts, microphone… greyed out "controlled by the administrator". "**Release**" (Guards › Quarantined apps): the app asks again. Update it: no new quarantine. Console › Security › Applied policy: `quarantined` and `released`. | a brand-new application cannot use the microphone, camera, contacts, SMS, calls, background location before being released; **pairing a watch, earbuds, car or lock whose app was just installed fails without a message** (Bluetooth and nearby devices) |
+| 2 | **Keyboards** (empty list) | The preview must name as "guarded" any third-party keyboard that is enabled. Normal typing, **including the PIN after a reboot** (Samsung keyboard). Settings › General management › Keyboard: a non-approved keyboard cannot be enabled. | enabling a new keyboard (Gboard, SwiftKey…) without having added it to the list; no risk of being left without a keyboard (a keyboard already enabled continues, the system one remains offered); the guard is applied only in One UI's Settings screen (**to be verified**) |
+| 3 | **Accessibility** (empty list) | Services already enabled are kept (Android requires it); TalkBack and Samsung's Voice Assistant remain enableable; a third-party service that is not enabled can no longer be ("disabled by the administrator"). | a new password manager, Tasker, MacroDroid, a blocker or launcher that uses accessibility, if it is not in the list |
+| 4 | **Calls** (no option) | The preview is **rarely empty** (`CALL_PHONE` is requested by messengers, banks, maps, watch, car; every application that had it is stopped at the denial). Call from the dialer and from Samsung's address book. Emergency call: do not actually dial, just check that the dialer opens. | direct calling from a third-party app (home automation, watch, car, taxi); opening the dialer with a prefilled number remains possible; the "Phone" group of the denied applications is frozen |
+| 5 | **SMS** (no option) | The preview lists the third-party applications that request `SEND_SMS`. Send an SMS from Samsung Messages; the emergency SOS stays intact (system application). Change the default SMS app and check, within 10 to 20 seconds, the "Default app changed" notification and that the list follows; then go back to the original application. | carrier visual voicemail, watch or car app that replies by SMS, number verification: to be put in the list |
+| 6 | **Options** "also…" (reading SMS; answering and call log) | With an SMS or Calls guard active: **change the default SMS app** to an application the guard was refusing, check the notification within 10 to 20 seconds and that the application sends and receives without asking for anything, then go back to the original application. | automatic entry of codes received by SMS stops working in third-party applications |
 
-Après la dernière : `rescue-revert` **avec une garde active** (il doit les défaire), puis seulement en tout dernier
-`remove-device-owner` (guide 04). Les **listes** d'une garde (applications autorisées, services approuvés) se modifient dans
-l'écran ; la modification n'entre en vigueur qu'à « Aperçu et réapplication ». Les raisons des limites des gardes (application du
-système, appli par défaut, service d'accessibilité déjà actif, fenêtre de quelques secondes à 15 minutes, groupes de permissions
-gelés, autres utilisateurs) sont dans `android/README.md`, « Ce que les gardes ne peuvent pas empêcher ».
+After the last one: `rescue-revert` **with a guard active** (it must undo them), and only at the very end
+`remove-device-owner` (guide 04). A guard's **lists** (allowed applications, approved services) are edited in the
+screen; the change takes effect only at "Preview and re-apply". The reasons for the guards' limits (system
+application, default app, accessibility service already active, a window of a few seconds to 15 minutes, frozen
+permission groups, other users) are in `android/README.md`, "What the guards cannot prevent".
 
-**Applications par défaut et profil de risque** : les collecteurs `app_risk` et `app_role` sont actifs par défaut (rien à
-faire) ; ils alimentent la console (Applications › Risque, Sécurité › Rôles par défaut) et les détections. Le comptage
-expérimental `app_ops` est **éteint par défaut** : ne l'activez que pour le vérifier (guide 08, §5).
+**Default apps and risk profile**: the `app_risk` and `app_role` collectors are on by default (nothing to do); they
+feed the console (Apps › Risk, Security › Default roles) and the detections. The experimental `app_ops` counters are
+**off by default**: enable them only to check them (guide 08, §5).
 
-## 17. Installer le compagnon de notifications (facultatif)
+## 17. Install the notification companion (optional)
 
-L'agent dit quelles applications affichent des notifications ; **lire** leur titre et leur texte demande un second APK,
-**Vigie Notifications** (`io.github.erwsim.vigie.notifier`), séparé pour ne pas exposer l'APK Device Owner à Play Protect. Il
-n'a pas la permission `INTERNET`, n'a aucune permission sensible, ne garde rien (ni historique, ni fichier) et remet les
-notifications à l'agent par un canal local protégé par une permission de niveau signature. **Rien n'a jamais été essayé sur un
-téléphone** ; la première inconnue est la réaction de Play Protect à son installation.
+The agent says which applications display notifications; **reading** their title and text requires a second APK,
+**Watchpost Notifications** (`io.github.erwsim.watchpost.notifier`), separate so as not to expose the Device Owner APK
+to Play Protect. It does not have the `INTERNET` permission, has no sensitive permission, keeps nothing (no history,
+no file) and hands notifications to the agent through a local channel protected by a signature-level permission.
+**Nothing has ever been tried on a phone**; the first unknown is Play Protect's reaction to its installation.
 
-1. **Construire** avec la **même clé** que l'agent (guide 02, §5) : `notifier/build/outputs/apk/release/notifier-release.apk`.
-2. **Installer** (depuis `android/`) :
+1. **Build** with the **same key** as the agent (guide 02, §6.1): `notifier/build/outputs/apk/release/notifier-release.apk`.
+2. **Install** (from `android/`):
 
    ```bash
    ./scripts/install-notifier.sh notifier/build/outputs/apk/release/notifier-release.apk
@@ -680,10 +683,10 @@ téléphone** ; la première inconnue est la réaction de Play Protect à son in
    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-notifier.ps1 -Apk notifier\build\outputs\apk\release\notifier-release.apk
    ```
 
-   Attendu : « Vigie Notifications installé », puis « Même clé de signature que l'agent Vigie ». Échecs : `INSTALL_FAILED_DUPLICATE_PERMISSION`
-   (autre clé : installez les deux APK issus de la même construction), alerte Play Protect (« appli nuisible bloquée » : notez le
-   texte exact, l'agent n'est pas concerné et continue sans le compagnon), Auto Blocker (guide 03 §1.2).
-3. **Accorder l'accès aux notifications** :
+   Expected: "Watchpost Notifications installed.", then "Same signing key as the Watchpost agent." Failures: `INSTALL_FAILED_DUPLICATE_PERMISSION` (another key: install both APKs from the same
+   build), a Play Protect alert ("harmful app blocked": note the exact text, the agent is not concerned and continues
+   without the companion), Auto Blocker (guide 03 §1.2).
+3. **Grant notification access**:
 
    ```bash
    ./scripts/notifier-access.sh
@@ -693,40 +696,42 @@ téléphone** ; la première inconnue est la réaction de Play Protect à son in
    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\notifier-access.ps1
    ```
 
-   Le script utilise `cmd notification allow_listener` (non vérifié sur One UI 8/9) puis contrôle
-   `enabled_notification_listeners`. S'il échoue : Paramètres › Notifications › … › « Accès aux notifications » › Vigie
-   Notifications (le chemin varie) ; si l'interrupteur est grisé (« Paramètre restreint ») : Paramètres › Applications › Vigie
-   Notifications › ⋮ › « Autoriser les paramètres restreints », puis accorder l'accès.
-4. Ouvrez **Vigie Notifications** : accès accordé, service d'écoute connecté, agent présent (même clé), collecte active. Dans
-   Vigie › Collecteurs › **Notifications**, le collecteur passe d'« indisponible » à « actif » (au plus tard au passage de
-   maintenance de 15 minutes). Console › Applications › **Notifications** : les événements arrivent, **sans titre ni texte**.
-5. **Régler** : dans Vigie, « Contenu des notifications » est **éteint par défaut** (ne l'allumez qu'après quelques jours) et
-   « Masquer les codes numériques » est allumé ; dans le compagnon, les deux listes (applications exclues du contenu :
-   banques, paiement, authentificateurs, gestionnaires de mots de passe, SMS et téléphone ; applications ignorées : rien
-   ne part), **à compléter avec vos propres applications sensibles** : ce sont des noms de paquets exacts, la liste est donc
-   forcément incomplète. Avec le contenu allumé, le titre et le texte (512 caractères au plus) partent chez **votre** serveur et
-   sont conservés 90 jours dans les archives Wazuh ; le masquage remplace toute suite de 4 à 8 chiffres par `••••` mais masque
-   aussi des années ou des codes postaux, et laisse passer des codes de 3 ou de 9 chiffres ou alphanumériques.
-6. **Retirer** : couper le collecteur « Notifications » dans Vigie ; `./scripts/notifier-access.sh --revoke` (PowerShell : `notifier-access.ps1 -Revoke`) ; ou
-   `./scripts/uninstall-notifier.sh` (PowerShell : même forme, `uninstall-notifier.ps1`).
+   The script uses `cmd notification allow_listener` (unverified on One UI 8/9) and then checks
+   `enabled_notification_listeners`. If it fails: Settings › Notifications › … › "Notification access" › Watchpost
+   Notifications (the path varies); if the switch is greyed out ("Restricted setting"): Settings › Apps › Watchpost
+   Notifications › ⋮ › "Allow restricted settings", then grant access.
+4. Open **Watchpost Notifications**: access granted, listener service connected, agent present (same key), collection
+   active. In Watchpost › Collectors › **Notifications**, the collector goes from "unavailable" to "active" (at the
+   latest at the 15-minute maintenance pass). Console › Apps › **Notifications**: events arrive, **without title or
+   text**.
+5. **Adjust**: in Watchpost, "Notification content" is **off by default** (switch it on only after a few days) and
+   "Mask numeric codes" is on; in the companion, the two lists (apps excluded from content: banks, payment,
+   authenticators, password managers, SMS and phone; ignored apps: nothing is passed on), **to be completed with
+   your own sensitive applications**: these are exact package names, so the list is necessarily incomplete. With
+   content on, the title and the text (512 characters at most) go to **your** server and are kept 90 days in the Wazuh
+   archives; masking replaces any run of 4 to 8 digits with `••••` but also masks years or postal codes, and lets
+   through codes of 3 or 9 digits or alphanumeric codes.
+6. **Remove**: turn off the "Notifications" collector in Watchpost; `./scripts/notifier-access.sh --revoke`
+   (PowerShell: `notifier-access.ps1 -Revoke`); or `./scripts/uninstall-notifier.sh` (PowerShell: same form,
+   `uninstall-notifier.ps1`).
 
-À surveiller : le service d'écoute peut être arrêté par la gestion de batterie Samsung (ajoutez Vigie Notifications à
-« Applications jamais en veille »).
+To watch: the listener service may be stopped by Samsung's battery management (add Watchpost Notifications to "Never
+sleeping apps").
 
-## 18. Choisir le mode de localisation (facultatif)
+## 18. Choose the location mode (optional)
 
-Vigie › Collecteurs › **Localisation** › « Mode de localisation » :
+Watchpost › Collectors › **Location** › "Location mode":
 
-| Mode | Ce qui part chez Google | Effet |
+| Mode | What goes to Google | Effect |
 |---|---|---|
-| **GPS seul** (défaut) | rien de la part de Vigie (l'assistance GNSS XTRA/SUPL est réglée par le système) | souvent aucune position en intérieur |
-| **GPS + réseau** | réseaux Wi-Fi et antennes alentour (fournisseur réseau des Services Google Play, actif si « Précision de la localisation Google » est activée) | position approximative en intérieur en quelques secondes |
-| **Fusionné** | idem (fournisseur fusionné des Services Google Play) | position rapide, souvent précise en intérieur |
+| **GPS only** (default) | nothing on Watchpost's part (GNSS XTRA/SUPL assistance is set by the system) | often no position indoors |
+| **GPS + network** | surrounding Wi-Fi networks and cell towers (the network provider of Google Play services, active if "Google Location Accuracy" is on) | approximate position indoors within seconds |
+| **Fused** | same (the fused provider of Google Play services) | fast position, often precise indoors |
 
-`location.fix.provider` dit le fournisseur réel de chaque position. Si un fournisseur est absent, Vigie se replie sur le GPS seul.
-Ces modes améliorent aussi `locate` (§15) en intérieur, au prix de ce qu'ils transmettent à Google : c'est votre choix.
-Jamais essayés sur un téléphone.
+`location.fix.provider` gives the actual provider of each fix. If a provider is absent, Watchpost falls back to GPS
+only. These modes also improve `locate` (§15) indoors, at the price of what they transmit to Google: it is your
+choice. Never tried on a phone.
 
-Une fois la politique en place, la suite est dans le [guide 05](05-exploitation.md) (exploitation) ; en cas de problème,
-[guide 04](04-retour-arriere.md) ; et les vérifications à faire cette première semaine sont dans le
-[guide 06](06-verifications-sur-appareil.md).
+Once the policy is in place, what follows is in [guide 05](05-operations.md) (operations); in case of problems,
+[guide 04](04-rollback.md); and the checks to make during this first week are in
+[guide 06](06-on-device-checks.md).

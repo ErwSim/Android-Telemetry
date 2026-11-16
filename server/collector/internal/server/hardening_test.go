@@ -75,7 +75,7 @@ func TestLoginRateLimitHoldsUnderConcurrency(t *testing.T) {
 			t.Fatalf("%d password guesses verified (limit 10), %d limited", verified, limited)
 		}
 	})
-	t.Run("successful logins do not lock the owner out", func(t *testing.T) {
+	t.Run("successful logins do not lock the user out", func(t *testing.T) {
 		e := newEnv(t, nil)
 		e.addCheapUser("admin", testPassword)
 		for i := range 15 {

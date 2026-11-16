@@ -69,7 +69,7 @@ class NotificationsCollector : Collector {
     companion object {
         const val ID = "notifications"
 
-        /** "Contenu des notifications": title and text (off by default, contract §10). */
+        /** "Notification content": title and text (off by default, contract §10). */
         val CONTENT = SettingKey.BoolKey("notifications.content", false)
 
         /** Masking of 4-to-8-digit codes (on by default). */

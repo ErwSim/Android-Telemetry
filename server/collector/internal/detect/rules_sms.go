@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Detections of contract §11.4 (review of v1.2), computed without app.ops: SMS do not use the IP network,
+// Detections of contract §11.4, computed without app.ops: SMS do not use the IP network,
 // and app.ops is experimental and may never be available on the phone. They read app.inventory,
 // app.permission_changed and app.role.
 
@@ -54,11 +54,11 @@ func SMSPermission(in SMSPermissionInput) []Finding {
 		risk := ""
 		if r, ok := in.Risks[h.Package]; ok {
 			ev["score"], ev["level"], ev["reasons"] = r.Score, r.Level, toAny(r.Reasons)
-			risk = fmt.Sprintf(" ; profil de risque %s (%d)", r.Level, r.Score)
+			risk = fmt.Sprintf("; risk profile %s (%d)", r.Level, r.Score)
 		}
 		out = append(out, Finding{Type: TypeSMSPermission, Package: h.Package, Subject: h.Package, FromMS: h.SinceMS, ToMS: h.SinceMS + hourMS, Sev: 2,
-			Summary: fmt.Sprintf("%s peut envoyer des SMS (permission SEND_SMS) sans être l'application SMS par défaut ni une application du système%s. "+
-				"Sans la garde SMS, ses envois éventuels ne sont pas comptés (app.ops)", in.Labels.of(h.Package), risk),
+			Summary: fmt.Sprintf("%s can send SMS (SEND_SMS permission) without being the default SMS app or a system application%s. "+
+				"Without the SMS guard, any messages it sends are not counted (app.ops)", in.Labels.of(h.Package), risk),
 			Evidence: ev, Items: []string{"SEND_SMS"}})
 	}
 	return out
@@ -73,7 +73,7 @@ type RoleChange struct {
 // defaultAppRoles are the roles followed by detect.default_app_changed, with their severity.
 var defaultAppRoles = map[string]int{"sms": 3, "dialer": 2, "keyboard": 2, "assistant": 2}
 
-var roleNames = map[string]string{"sms": "SMS", "dialer": "Téléphone", "keyboard": "clavier", "assistant": "assistant"}
+var roleNames = map[string]string{"sms": "SMS app", "dialer": "dialer app", "keyboard": "keyboard", "assistant": "assistant"}
 
 // DefaultAppChanged: the default application of the sms, dialer, keyboard or assistant role changed (the
 // usual way of SMS trojans: being made the default SMS app). One finding per change.
@@ -85,7 +85,7 @@ func DefaultAppChanged(changes []RoleChange, risks map[string]Risk, labels Label
 			continue
 		}
 		ev := map[string]any{"role": c.Role, "new": c.New}
-		old := "inconnue"
+		old := "unknown"
 		if c.Old != "" {
 			ev["old"] = c.Old
 			old = labels.of(c.Old)
@@ -96,10 +96,10 @@ func DefaultAppChanged(changes []RoleChange, risks map[string]Risk, labels Label
 			if len(r.Granted) > 0 {
 				ev["granted"] = toAny(r.Granted)
 			}
-			risk = fmt.Sprintf(" (profil de risque %s, %d)", r.Level, r.Score)
+			risk = fmt.Sprintf(" (risk profile %s, %d)", r.Level, r.Score)
 		}
 		out = append(out, Finding{Type: TypeDefaultAppChanged, Package: c.New, Subject: c.Role, FromMS: c.TS, ToMS: c.TS + hourMS, Sev: sev,
-			Summary:  fmt.Sprintf("Application %s par défaut changée : %s remplace %s%s", roleNames[c.Role], labels.of(c.New), old, risk),
+			Summary:  fmt.Sprintf("Default %s changed: %s replaces %s%s", roleNames[c.Role], labels.of(c.New), old, risk),
 			Evidence: ev, Items: []string{c.New}})
 	}
 	return out
@@ -137,7 +137,7 @@ func InventoryMismatch(dayMS int64, claims []SystemClaim, labels Labels) []Findi
 			continue
 		}
 		out = append(out, Finding{Type: TypeInventoryMismatch, Package: c.Package, Subject: c.Package, FromMS: dayMS, ToMS: dayMS + dayMS, Sev: 3,
-			Summary: fmt.Sprintf("L'inventaire déclare %s application du système, ce que contredisent %s : elle est traitée comme une application ordinaire",
+			Summary: fmt.Sprintf("The inventory declares %s a system application, which %s contradict: it is treated as an ordinary application",
 				labels.of(c.Package), strings.Join(why, ", ")),
 			Evidence: map[string]any{"installer": c.Installer, "contradictions": toAny(why)}, Items: why})
 	}

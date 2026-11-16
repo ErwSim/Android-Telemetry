@@ -9,18 +9,18 @@ type latLon struct{ lat, lon float64 }
 
 // Places around Paris.
 var (
-	placeHome   = latLon{48.85302, 2.38095} // 11e, rue de la Roquette
-	placeOffice = latLon{48.89205, 2.23705} // La Défense
-	routeMetro1 = []latLon{                 // line 1, Bastille -> La Défense
+	placeHome   = latLon{48.85302, 2.38095} // east Paris
+	placeOffice = latLon{48.89205, 2.23705} // business district, west of Paris
+	routeMetro1 = []latLon{                 // metro line, east to west
 		{48.85320, 2.36920}, {48.85574, 2.36079}, {48.85740, 2.35140}, {48.85860, 2.34700}, {48.86070, 2.34090},
 		{48.86370, 2.32720}, {48.86560, 2.32120}, {48.86770, 2.31400}, {48.86880, 2.30970}, {48.87170, 2.30080},
 		{48.87380, 2.29500}, {48.87570, 2.28780}, {48.87810, 2.28260}, {48.88070, 2.27240}, {48.88550, 2.25840},
 		{48.88860, 2.24990}, {48.89190, 2.23800},
 	}
-	routeHomeToBastille  = []latLon{placeHome, {48.85470, 2.37600}, {48.85320, 2.36920}}
-	routeDefenseToOffice = []latLon{{48.89190, 2.23800}, {48.89205, 2.23705}}
+	routeHomeToStation   = []latLon{placeHome, {48.85470, 2.37600}, {48.85320, 2.36920}}
+	routeStationToOffice = []latLon{{48.89190, 2.23800}, {48.89205, 2.23705}}
 	routeLunchLoop       = []latLon{placeOffice, {48.89120, 2.24150}, {48.89000, 2.24480}, {48.88850, 2.24300}, {48.88960, 2.23900}, placeOffice}
-	routeToVincennes     = []latLon{placeHome, {48.85120, 2.38800}, {48.84830, 2.39580}, {48.84150, 2.40020}, {48.83500, 2.40600}, {48.83300, 2.41400}}
+	routeToPark          = []latLon{placeHome, {48.85120, 2.38800}, {48.84830, 2.39580}, {48.84150, 2.40020}, {48.83500, 2.40600}, {48.83300, 2.41400}}
 	routeParkLoop        = []latLon{{48.83300, 2.41400}, {48.83080, 2.42010}, {48.82750, 2.42640}, {48.82920, 2.43300}, {48.83350, 2.43040}, {48.83500, 2.42200}, {48.83300, 2.41400}}
 )
 
@@ -61,27 +61,27 @@ func hm(h, m int) time.Duration { return time.Duration(h)*time.Hour + time.Durat
 
 var weekdayPlan = []segment{
 	{start: 0, end: hm(8, 15), place: "home", mode: modeStill, at: placeHome},
-	{start: hm(8, 15), end: hm(8, 25), mode: modeWalk, route: routeHomeToBastille},
+	{start: hm(8, 15), end: hm(8, 25), mode: modeWalk, route: routeHomeToStation},
 	{start: hm(8, 25), end: hm(8, 50), mode: modeMetro, route: routeMetro1},
-	{start: hm(8, 50), end: hm(9, 0), mode: modeWalk, route: routeDefenseToOffice},
+	{start: hm(8, 50), end: hm(9, 0), mode: modeWalk, route: routeStationToOffice},
 	{start: hm(9, 0), end: hm(12, 30), place: "office", mode: modeStill, at: placeOffice},
 	{start: hm(12, 30), end: hm(13, 30), mode: modeWalk, route: routeLunchLoop},
 	{start: hm(13, 30), end: hm(18, 0), place: "office", mode: modeStill, at: placeOffice},
-	{start: hm(18, 0), end: hm(18, 10), mode: modeWalk, route: reverse(routeDefenseToOffice)},
+	{start: hm(18, 0), end: hm(18, 10), mode: modeWalk, route: reverse(routeStationToOffice)},
 	{start: hm(18, 10), end: hm(18, 35), mode: modeMetro, route: reverse(routeMetro1)},
-	{start: hm(18, 35), end: hm(18, 45), mode: modeWalk, route: reverse(routeHomeToBastille)},
+	{start: hm(18, 35), end: hm(18, 45), mode: modeWalk, route: reverse(routeHomeToStation)},
 	{start: hm(18, 45), end: hm(24, 0), place: "home", mode: modeStill, at: placeHome},
 }
 
 var weekendPlan = []segment{
 	{start: 0, end: hm(14, 0), place: "home", mode: modeStill, at: placeHome},
-	{start: hm(14, 0), end: hm(14, 35), mode: modeBike, route: routeToVincennes},
+	{start: hm(14, 0), end: hm(14, 35), mode: modeBike, route: routeToPark},
 	{start: hm(14, 35), end: hm(16, 40), mode: modeWalk, route: concat(routeParkLoop, routeParkLoop[1:])},
-	{start: hm(16, 40), end: hm(17, 15), mode: modeBike, route: reverse(routeToVincennes)},
+	{start: hm(16, 40), end: hm(17, 15), mode: modeBike, route: reverse(routeToPark)},
 	{start: hm(17, 15), end: hm(24, 0), place: "home", mode: modeStill, at: placeHome},
 }
 
-// awake reports whether the owner is awake at local time t.
+// awake reports whether the user is awake at local time t.
 func awake(t time.Time) bool {
 	d := sinceMidnight(t)
 	if isWeekend(t) {

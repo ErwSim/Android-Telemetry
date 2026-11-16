@@ -59,7 +59,7 @@ class LockExecutor(private val gateway: LockScreenGateway) : CommandExecutor {
     }
 }
 
-/** `clear_lock_message`: removes the Device Owner lock-screen message (the owner's own info shows again). */
+/** `clear_lock_message`: removes the Device Owner lock-screen message (the user's own info shows again). */
 class ClearLockMessageExecutor(private val gateway: LockScreenGateway) : CommandExecutor {
     override suspend fun execute(command: AcceptedCommand): ExecutionResult {
         if (command.type != CommandTypes.CLEAR_LOCK_MESSAGE) return ExecutionResult.refused(Refusal.UNKNOWN_TYPE)
@@ -75,8 +75,8 @@ class ClearLockMessageExecutor(private val gateway: LockScreenGateway) : Command
 
 /**
  * `wipe`: the only irreversible action of the app. Runs the reset only if [WipeGate.allows] holds for
- * the verified command **and** the live state read now (channel on, command code set, "Autoriser
- * l'effacement à distance" on, not expired), and the app is still Device Owner. Anything else is refused
+ * the verified command **and** the live state read now (channel on, command passphrase set, "Allow remote
+ * erase" on, not expired), and the app is still Device Owner. Anything else is refused
  * and [reset] is not called.
  */
 class WipeExecutor(

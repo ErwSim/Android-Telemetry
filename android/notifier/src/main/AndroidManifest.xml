@@ -42,7 +42,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Bound by the system only (BIND_NOTIFICATION_LISTENER_SERVICE) once the owner grants access. -->
+        <!-- Bound by the system only (BIND_NOTIFICATION_LISTENER_SERVICE) once the user grants access. -->
         <service
             android:name=".NotifierListenerService"
             android:exported="true"

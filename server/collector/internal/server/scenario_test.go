@@ -24,7 +24,7 @@ func (e *env) simulate(span time.Duration, opts sim.Options, fake *adguard.Fake)
 		opts.Rate = 1
 	}
 	if fake != nil {
-		opts.OnDNS = func(ts time.Time, host string) { fake.AddQuery(ts, "192.0.2.10", "s25", host) }
+		opts.OnDNS = func(ts time.Time, host string) { fake.AddQuery(ts, "192.0.2.10", "phone", host) }
 	}
 	g := sim.New(opts)
 	g.PlanScenario(opts.Start, now)
@@ -181,13 +181,13 @@ func storeQuery() store.DetectionQuery {
 	return store.DetectionQuery{FromMS: 0, ToMS: time.Now().Add(time.Hour).UnixMilli(), Limit: 500}
 }
 
-// The owner's attack without app.ops (contract §11.4): a store application whose risk profile is only
-// "medium" (so nothing at installation) is reported once, when it holds SEND_SMS (detect.sms_permission).
-// This single detection is all the server sees of that attack without app.ops.
-func TestScenarioOwnerAttackWithoutAppOps(t *testing.T) {
+// A discreet store application (contract §11.4) whose risk profile is only "medium" (so nothing at
+// installation) is reported once, when it holds SEND_SMS (detect.sms_permission). Without app.ops, this single
+// detection is all the server sees of that attack.
+func TestScenarioSilentSMSWithoutAppOps(t *testing.T) {
 	e := newEnv(t, nil)
 	now := time.Now().UTC()
-	e.simulate(72*time.Hour, sim.Options{Seed: 3, Rate: 0.3, AppOps: false, Scenarios: []string{sim.ScenarioSMSQuiet},
+	e.simulate(72*time.Hour, sim.Options{Seed: 3, Rate: 0.3, AppOps: false, Scenarios: []string{sim.ScenarioSilentSMS},
 		ScenarioStart: now.Add(-60 * time.Hour), ScenarioEnd: now}, nil)
 	got := map[string]int{}
 	for _, d := range e.allDetections() {

@@ -9,7 +9,7 @@ import io.github.erwsim.watchpost.notifier.protocol.Limits
 import io.github.erwsim.watchpost.notifier.protocol.TextBounds
 
 /**
- * The project's only `NotificationListenerService`. Bound by the system once the owner has granted
+ * The project's only `NotificationListenerService`. Bound by the system once the user has granted
  * notification access (Settings, or `adb shell cmd notification allow_listener`). Callbacks run on
  * the main thread: they only read the notification and hand it to [Relay]. Nothing is logged and
  * nothing is written to disk.
@@ -32,7 +32,7 @@ class NotifierListenerService : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         Relay.onDisconnected()
-        // Ask the system to bind again (ignored if the owner withdrew the access).
+        // Ask the system to bind again (ignored if the user withdrew the access).
         try {
             requestRebind(ComponentName(this, NotifierListenerService::class.java))
         } catch (_: Exception) {

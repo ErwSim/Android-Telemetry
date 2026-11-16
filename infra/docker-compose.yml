@@ -1,13 +1,13 @@
-# Vigie — pile serveur (VPS 8 Go+). Ne pas lancer directement la première fois : utiliser
-# ./install.sh, qui génère .env, les secrets, les certificats et les configurations.
+# Watchpost: server stack (VPS with 8 GB+). Do not start it directly the first time: use
+# ./install.sh, which generates .env, the secrets, the certificates and the configuration files.
 #
-# Exposé sur Internet : 80/tcp et 443/tcp (Caddy), 853/tcp (DNS-over-TLS d'AdGuard Home),
-# 51820/udp seulement avec le profil « wireguard ». Rien d'autre (pas de 1514/1515/55000/9200).
+# Exposed on the Internet: 80/tcp and 443/tcp (Caddy), 853/tcp (AdGuard Home DNS-over-TLS),
+# 51820/udp only with the "wireguard" profile. Nothing else (no 1514/1515/55000/9200).
 #
-# Mémoire (limites, pas des réservations) : indexeur 2 Go de tas + 1 Go hors tas, manager 1,5 Go,
-# dashboard 1 Go, AdGuard 768 Mo, collecteur 512 Mo, Caddy 256 Mo. Voir README.
+# Memory (limits, not reservations): indexer 2 GB heap + 1 GB off-heap, manager 1.5 GB,
+# dashboard 1 GB, AdGuard 768 MB, collector 512 MB, Caddy 256 MB. See README.
 
-name: vigie
+name: watchpost
 
 x-logging: &logging
   driver: json-file
@@ -22,7 +22,7 @@ x-hardening: &hardening
 services:
   # ------------------------------------------------------------------------------------------
   caddy:
-    image: ${VIGIE_CADDY_IMAGE:-caddy:2.11.9-alpine}
+    image: ${WATCHPOST_CADDY_IMAGE:-caddy:2.11.9-alpine}
     restart: unless-stopped
     <<: *hardening
     cap_drop: [ALL]
@@ -31,19 +31,19 @@ services:
       - "80:80/tcp"
       - "443:443/tcp"
     environment:
-      VIGIE_DOMAIN: ${VIGIE_DOMAIN:?}
-      VIGIE_TLS_MODE: ${VIGIE_TLS_MODE:-acme}
-      VIGIE_ACME_EMAIL: ${VIGIE_ACME_EMAIL:-}
-      VIGIE_ADMIN_ALLOW: ${VIGIE_ADMIN_ALLOW:-0.0.0.0/0 ::/0}
-      VIGIE_ACME_DNS_TOKEN: ${VIGIE_ACME_DNS_TOKEN:-}
+      WATCHPOST_DOMAIN: ${WATCHPOST_DOMAIN:?}
+      WATCHPOST_TLS_MODE: ${WATCHPOST_TLS_MODE:-acme}
+      WATCHPOST_ACME_EMAIL: ${WATCHPOST_ACME_EMAIL:-}
+      WATCHPOST_ADMIN_ALLOW: ${WATCHPOST_ADMIN_ALLOW:-0.0.0.0/0 ::/0}
+      WATCHPOST_ACME_DNS_TOKEN: ${WATCHPOST_ACME_DNS_TOKEN:-}
     volumes:
       - ./caddy:/etc/caddy:ro
       - ./data/caddy:/etc/caddy-generated:ro
       - caddy_data:/data
       - caddy_config:/config
     networks:
-      vigie:
-        ipv4_address: ${VIGIE_CADDY_IP:-172.31.250.10}
+      watchpost:
+        ipv4_address: ${WATCHPOST_CADDY_IP:-172.31.250.10}
     depends_on:
       collector:
         condition: service_healthy
@@ -60,70 +60,70 @@ services:
   collector:
     build:
       context: ../server
-    image: vigie-collector:local
+    image: watchpost-collector:local
     restart: unless-stopped
     <<: *hardening
     cap_drop: [ALL]
     command: ["serve"]
     environment:
-      VIGIE_LISTEN: ":8080"
-      VIGIE_DATA_DIR: /data
-      VIGIE_EXPORT_NDJSON: /export/events.ndjson
-      VIGIE_EXPORT_MAX_BYTES: ${VIGIE_EXPORT_MAX_BYTES:-52428800}
-      VIGIE_EXPORT_KEEP: ${VIGIE_EXPORT_KEEP:-5}
-      # Seul Caddy (adresse fixe sur le réseau interne) peut poser X-Vigie-Client-Cert-Sha256.
-      VIGIE_TRUSTED_PROXIES: ${VIGIE_CADDY_IP:-172.31.250.10}/32
-      VIGIE_REQUIRE_CLIENT_CERT: "true"
-      VIGIE_PUBLIC_INGEST_URL: https://ingest.${VIGIE_DOMAIN:?}
-      VIGIE_PRIVATE_DNS_HOST: ${VIGIE_PRIVATE_DNS_HOST:-}
-      VIGIE_SERVER_CA_FILE: ${VIGIE_SERVER_CA_FILE:-}
-      VIGIE_RETENTION_DAYS: ${VIGIE_RETENTION_DAYS:-90}
-      VIGIE_COOKIE_SECURE: "true"
-      VIGIE_WAZUH_INDEXER_URL: https://wazuh.indexer:9200
-      VIGIE_WAZUH_INDEXER_USER: vigie_reader
-      VIGIE_WAZUH_INDEXER_PASSWORD: ${WAZUH_READER_PASSWORD:?}
-      VIGIE_WAZUH_INDEXER_CA_FILE: /etc/vigie/wazuh-root-ca.pem
-      VIGIE_TILE_URL: ${VIGIE_TILE_URL:-}
-      VIGIE_LOG_LEVEL: ${VIGIE_LOG_LEVEL:-info}
-      # Commandes à distance (contrat §8) : maintien du flux SSE des agents.
-      VIGIE_CMD_KEEPALIVE_S: ${VIGIE_CMD_KEEPALIVE_S:-120}
-      # Vue « pistage » (contrat §9) : API d'AdGuard Home par le réseau interne uniquement, avec le
-      # compte « vigie-collecteur » (administrateur : AdGuard n'a qu'un type de compte).
-      VIGIE_ADGUARD_URL: http://adguardhome:3000
-      VIGIE_ADGUARD_USER: vigie-collecteur
-      VIGIE_ADGUARD_PASSWORD: ${ADGUARD_COLLECTOR_PASSWORD:?}
-      VIGIE_ADGUARD_LEVELS_FILE: /etc/vigie/adguard-niveaux.json
-      VIGIE_ADGUARD_POLL_S: ${VIGIE_ADGUARD_POLL_S:-60}
-      VIGIE_ADGUARD_CLIENTS: ${VIGIE_ADGUARD_CLIENTS:-}
-      # Détections (contrat §11.3) : vides = défauts du collecteur (infra/README.md §7.4). Elles
-      # croisent net.dns avec les blocages des listes « category: threat » de niveaux.json.
-      VIGIE_DETECT_ENABLED: ${VIGIE_DETECT_ENABLED:-}
-      VIGIE_DETECT_DISABLE: ${VIGIE_DETECT_DISABLE:-}
-      VIGIE_DETECT_INTERVAL_S: ${VIGIE_DETECT_INTERVAL_S:-}
-      VIGIE_DETECT_UPLOAD_FLOOR_MB: ${VIGIE_DETECT_UPLOAD_FLOOR_MB:-}
-      VIGIE_DETECT_UPLOAD_FACTOR: ${VIGIE_DETECT_UPLOAD_FACTOR:-}
-      VIGIE_DETECT_UPLOAD_LEARN_DAYS: ${VIGIE_DETECT_UPLOAD_LEARN_DAYS:-}
-      VIGIE_DETECT_FANOUT: ${VIGIE_DETECT_FANOUT:-}
-      VIGIE_DETECT_FANOUT_SCREEN_OFF: ${VIGIE_DETECT_FANOUT_SCREEN_OFF:-}
-      VIGIE_DETECT_MAIL_MIN: ${VIGIE_DETECT_MAIL_MIN:-}
-      VIGIE_DETECT_MAIL_CLIENTS: ${VIGIE_DETECT_MAIL_CLIENTS:-}
-      VIGIE_DETECT_DNS_BYPASS_MIN: ${VIGIE_DETECT_DNS_BYPASS_MIN:-}
-      VIGIE_DETECT_DNS_BYPASS_PORTS: ${VIGIE_DETECT_DNS_BYPASS_PORTS:-}
-      VIGIE_DETECT_DNS_BYPASS_EXEMPT: ${VIGIE_DETECT_DNS_BYPASS_EXEMPT:-}
-      VIGIE_DETECT_SMS_OTHER_MIN: ${VIGIE_DETECT_SMS_OTHER_MIN:-}
-      VIGIE_DETECT_SMS_DAILY_MAX: ${VIGIE_DETECT_SMS_DAILY_MAX:-}
-      VIGIE_DETECT_MIC_BG_MIN: ${VIGIE_DETECT_MIC_BG_MIN:-}
-      VIGIE_DETECT_CAMERA_BG_MIN: ${VIGIE_DETECT_CAMERA_BG_MIN:-}
+      WATCHPOST_LISTEN: ":8080"
+      WATCHPOST_DATA_DIR: /data
+      WATCHPOST_EXPORT_NDJSON: /export/events.ndjson
+      WATCHPOST_EXPORT_MAX_BYTES: ${WATCHPOST_EXPORT_MAX_BYTES:-52428800}
+      WATCHPOST_EXPORT_KEEP: ${WATCHPOST_EXPORT_KEEP:-5}
+      # Only Caddy (fixed address on the internal network) may set X-Watchpost-Client-Cert-Sha256.
+      WATCHPOST_TRUSTED_PROXIES: ${WATCHPOST_CADDY_IP:-172.31.250.10}/32
+      WATCHPOST_REQUIRE_CLIENT_CERT: "true"
+      WATCHPOST_PUBLIC_INGEST_URL: https://ingest.${WATCHPOST_DOMAIN:?}
+      WATCHPOST_PRIVATE_DNS_HOST: ${WATCHPOST_PRIVATE_DNS_HOST:-}
+      WATCHPOST_SERVER_CA_FILE: ${WATCHPOST_SERVER_CA_FILE:-}
+      WATCHPOST_RETENTION_DAYS: ${WATCHPOST_RETENTION_DAYS:-90}
+      WATCHPOST_COOKIE_SECURE: "true"
+      WATCHPOST_WAZUH_INDEXER_URL: https://wazuh.indexer:9200
+      WATCHPOST_WAZUH_INDEXER_USER: watchpost_reader
+      WATCHPOST_WAZUH_INDEXER_PASSWORD: ${WAZUH_READER_PASSWORD:?}
+      WATCHPOST_WAZUH_INDEXER_CA_FILE: /etc/watchpost/wazuh-root-ca.pem
+      WATCHPOST_TILE_URL: ${WATCHPOST_TILE_URL:-}
+      WATCHPOST_LOG_LEVEL: ${WATCHPOST_LOG_LEVEL:-info}
+      # Remote commands (contract §8): keepalive of the agents' SSE stream.
+      WATCHPOST_CMD_KEEPALIVE_S: ${WATCHPOST_CMD_KEEPALIVE_S:-120}
+      # Tracking page (contract §9): AdGuard Home API over the internal network only, with the
+      # "watchpost-collector" account (administrator: AdGuard has a single account type).
+      WATCHPOST_ADGUARD_URL: http://adguardhome:3000
+      WATCHPOST_ADGUARD_USER: watchpost-collector
+      WATCHPOST_ADGUARD_PASSWORD: ${ADGUARD_COLLECTOR_PASSWORD:?}
+      WATCHPOST_ADGUARD_LEVELS_FILE: /etc/watchpost/adguard-levels.json
+      WATCHPOST_ADGUARD_POLL_S: ${WATCHPOST_ADGUARD_POLL_S:-60}
+      WATCHPOST_ADGUARD_CLIENTS: ${WATCHPOST_ADGUARD_CLIENTS:-}
+      # Detections (contract §11.3): empty = collector defaults (infra/README.md §7.4). They
+      # cross net.dns with the blocks of the "category: threat" lists of levels.json.
+      WATCHPOST_DETECT_ENABLED: ${WATCHPOST_DETECT_ENABLED:-}
+      WATCHPOST_DETECT_DISABLE: ${WATCHPOST_DETECT_DISABLE:-}
+      WATCHPOST_DETECT_INTERVAL_S: ${WATCHPOST_DETECT_INTERVAL_S:-}
+      WATCHPOST_DETECT_UPLOAD_FLOOR_MB: ${WATCHPOST_DETECT_UPLOAD_FLOOR_MB:-}
+      WATCHPOST_DETECT_UPLOAD_FACTOR: ${WATCHPOST_DETECT_UPLOAD_FACTOR:-}
+      WATCHPOST_DETECT_UPLOAD_LEARN_DAYS: ${WATCHPOST_DETECT_UPLOAD_LEARN_DAYS:-}
+      WATCHPOST_DETECT_FANOUT: ${WATCHPOST_DETECT_FANOUT:-}
+      WATCHPOST_DETECT_FANOUT_SCREEN_OFF: ${WATCHPOST_DETECT_FANOUT_SCREEN_OFF:-}
+      WATCHPOST_DETECT_MAIL_MIN: ${WATCHPOST_DETECT_MAIL_MIN:-}
+      WATCHPOST_DETECT_MAIL_CLIENTS: ${WATCHPOST_DETECT_MAIL_CLIENTS:-}
+      WATCHPOST_DETECT_DNS_BYPASS_MIN: ${WATCHPOST_DETECT_DNS_BYPASS_MIN:-}
+      WATCHPOST_DETECT_DNS_BYPASS_PORTS: ${WATCHPOST_DETECT_DNS_BYPASS_PORTS:-}
+      WATCHPOST_DETECT_DNS_BYPASS_EXEMPT: ${WATCHPOST_DETECT_DNS_BYPASS_EXEMPT:-}
+      WATCHPOST_DETECT_SMS_OTHER_MIN: ${WATCHPOST_DETECT_SMS_OTHER_MIN:-}
+      WATCHPOST_DETECT_SMS_DAILY_MAX: ${WATCHPOST_DETECT_SMS_DAILY_MAX:-}
+      WATCHPOST_DETECT_MIC_BG_MIN: ${WATCHPOST_DETECT_MIC_BG_MIN:-}
+      WATCHPOST_DETECT_CAMERA_BG_MIN: ${WATCHPOST_DETECT_CAMERA_BG_MIN:-}
     volumes:
       - collector_data:/data
-      - vigie_export:/export
-      - ./secrets/wazuh-certs/root-ca.pem:/etc/vigie/wazuh-root-ca.pem:ro
-      - ./data/caddy:/etc/vigie/caddy:ro
-      # Niveaux de blocage : même fichier que celui qui construit les listes d'AdGuard (install.sh).
-      - ./adguard/niveaux.json:/etc/vigie/adguard-niveaux.json:ro
-    networks: [vigie]
+      - watchpost_export:/export
+      - ./secrets/wazuh-certs/root-ca.pem:/etc/watchpost/wazuh-root-ca.pem:ro
+      - ./data/caddy:/etc/watchpost/caddy:ro
+      # Blocking levels: same file as the one that builds the AdGuard lists (install.sh).
+      - ./adguard/levels.json:/etc/watchpost/adguard-levels.json:ro
+    networks: [watchpost]
     healthcheck:
-      test: ["CMD", "/usr/local/bin/vigie-collector", "healthcheck"]
+      test: ["CMD", "/usr/local/bin/watchpost-collector", "healthcheck"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -138,37 +138,37 @@ services:
     <<: *hardening
     cap_drop: [ALL]
     cap_add: [NET_BIND_SERVICE, CHOWN, FOWNER, DAC_OVERRIDE]
-    # Attend que Caddy ait obtenu le certificat de dns.<domaine> avant de démarrer (sinon le
-    # DoT ne s'active pas).
+    # Waits until Caddy has obtained the dns.<domain> certificate before starting (otherwise
+    # DoT is not enabled).
     entrypoint:
       - /bin/sh
       - -c
       - >-
-        i=0; until [ -s "$$VIGIE_AGH_CERT" ]; do
-        i=$$((i+1)); [ $$i -gt 300 ] && { echo "certificat $$VIGIE_AGH_CERT absent" >&2; exit 1; };
+        i=0; until [ -s "$$WATCHPOST_AGH_CERT" ]; do
+        i=$$((i+1)); [ $$i -gt 300 ] && { echo "certificate $$WATCHPOST_AGH_CERT missing" >&2; exit 1; };
         sleep 2; done;
         exec /opt/adguardhome/AdGuardHome --no-check-update
         -c /opt/adguardhome/conf/AdGuardHome.yaml -w /opt/adguardhome/work
     environment:
-      VIGIE_AGH_CERT: ${VIGIE_AGH_CERT_PATH:?}
+      WATCHPOST_AGH_CERT: ${WATCHPOST_AGH_CERT_PATH:?}
     ports:
       - "853:853/tcp"
     volumes:
       - ./data/adguard/conf:/opt/adguardhome/conf
       - adguard_work:/opt/adguardhome/work
       - adguard_querylog:/opt/adguardhome/querylog
-      - ./adguard:/opt/adguardhome/work/userfilters/vigie:ro
-      - ./data/adguard/userfilters:/opt/adguardhome/work/userfilters/perso:ro
-      # Uniquement le répertoire du certificat DNS (pas les autres clés de Caddy).
+      - ./adguard:/opt/adguardhome/work/userfilters/watchpost:ro
+      - ./data/adguard/userfilters:/opt/adguardhome/work/userfilters/personal:ro
+      # Only the directory of the DNS certificate (not Caddy's other keys).
       - type: volume
         source: caddy_data
         target: /certs
         read_only: true
         volume:
-          subpath: ${VIGIE_AGH_CERT_SUBPATH:?}
+          subpath: ${WATCHPOST_AGH_CERT_SUBPATH:?}
     networks:
-      vigie:
-        ipv4_address: ${VIGIE_ADGUARD_IP:-172.31.250.53}
+      watchpost:
+        ipv4_address: ${WATCHPOST_ADGUARD_IP:-172.31.250.53}
     depends_on:
       caddy:
         condition: service_healthy
@@ -205,9 +205,9 @@ services:
       - ./secrets/wazuh-certs/admin-key.pem:/usr/share/wazuh-indexer/config/certs/admin-key.pem:ro
       - ./wazuh/indexer/opensearch.yml:/usr/share/wazuh-indexer/config/opensearch.yml:ro
       - ./data/wazuh/internal_users.yml:/usr/share/wazuh-indexer/config/opensearch-security/internal_users.yml:ro
-    networks: [vigie]
+    networks: [watchpost]
     healthcheck:
-      # Authentification par le certificat admin : aucun mot de passe dans la configuration.
+      # Authentication with the admin certificate: no password in the configuration.
       test: ["CMD-SHELL", "curl -s --cacert config/certs/root-ca.pem --cert config/certs/admin.pem --key config/certs/admin-key.pem https://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
       interval: 30s
       timeout: 10s
@@ -238,28 +238,28 @@ services:
       SSL_KEY: /etc/ssl/filebeat.key
       API_USERNAME: wazuh-wui
       API_PASSWORD: ${WAZUH_API_PASSWORD:?}
-      VIGIE_PRIVATE_DNS_HOSTS: ${VIGIE_PRIVATE_DNS_HOSTS:-}
-      VIGIE_WATCH_SILENCE_MIN: ${VIGIE_WATCH_SILENCE_MIN:-60}
-      VIGIE_ARCHIVES_FILE_DAYS: ${VIGIE_ARCHIVES_FILE_DAYS:-14}
-      # Notifications optionnelles (README §8.5) : désactivées si URL et serveur SMTP sont vides.
-      VIGIE_NOTIFY_URL: ${VIGIE_NOTIFY_URL:-}
-      VIGIE_NOTIFY_TOPIC: ${VIGIE_NOTIFY_TOPIC:-}
-      VIGIE_NOTIFY_TOKEN: ${VIGIE_NOTIFY_TOKEN:-}
-      VIGIE_NOTIFY_LEVEL: ${VIGIE_NOTIFY_LEVEL:-10}
-      VIGIE_NOTIFY_SMTP_HOST: ${VIGIE_NOTIFY_SMTP_HOST:-}
-      VIGIE_NOTIFY_SMTP_PORT: ${VIGIE_NOTIFY_SMTP_PORT:-587}
-      VIGIE_NOTIFY_SMTP_TLS: ${VIGIE_NOTIFY_SMTP_TLS:-starttls}
-      VIGIE_NOTIFY_SMTP_USER: ${VIGIE_NOTIFY_SMTP_USER:-}
-      VIGIE_NOTIFY_SMTP_PASSWORD: ${VIGIE_NOTIFY_SMTP_PASSWORD:-}
-      VIGIE_NOTIFY_SMTP_FROM: ${VIGIE_NOTIFY_SMTP_FROM:-}
-      VIGIE_NOTIFY_SMTP_TO: ${VIGIE_NOTIFY_SMTP_TO:-}
+      WATCHPOST_PRIVATE_DNS_HOSTS: ${WATCHPOST_PRIVATE_DNS_HOSTS:-}
+      WATCHPOST_WATCH_SILENCE_MIN: ${WATCHPOST_WATCH_SILENCE_MIN:-60}
+      WATCHPOST_ARCHIVES_FILE_DAYS: ${WATCHPOST_ARCHIVES_FILE_DAYS:-14}
+      # Optional notifications (README §8.5): disabled if the URL and the SMTP server are empty.
+      WATCHPOST_NOTIFY_URL: ${WATCHPOST_NOTIFY_URL:-}
+      WATCHPOST_NOTIFY_TOPIC: ${WATCHPOST_NOTIFY_TOPIC:-}
+      WATCHPOST_NOTIFY_TOKEN: ${WATCHPOST_NOTIFY_TOKEN:-}
+      WATCHPOST_NOTIFY_LEVEL: ${WATCHPOST_NOTIFY_LEVEL:-10}
+      WATCHPOST_NOTIFY_SMTP_HOST: ${WATCHPOST_NOTIFY_SMTP_HOST:-}
+      WATCHPOST_NOTIFY_SMTP_PORT: ${WATCHPOST_NOTIFY_SMTP_PORT:-587}
+      WATCHPOST_NOTIFY_SMTP_TLS: ${WATCHPOST_NOTIFY_SMTP_TLS:-starttls}
+      WATCHPOST_NOTIFY_SMTP_USER: ${WATCHPOST_NOTIFY_SMTP_USER:-}
+      WATCHPOST_NOTIFY_SMTP_PASSWORD: ${WATCHPOST_NOTIFY_SMTP_PASSWORD:-}
+      WATCHPOST_NOTIFY_SMTP_FROM: ${WATCHPOST_NOTIFY_SMTP_FROM:-}
+      WATCHPOST_NOTIFY_SMTP_TO: ${WATCHPOST_NOTIFY_SMTP_TO:-}
     volumes:
       - wazuh_api_configuration:/var/ossec/api/configuration
       - wazuh_etc:/var/ossec/etc
       - wazuh_logs:/var/ossec/logs
       - wazuh_queue:/var/ossec/queue
-      # Volumes attendus par le script d'initialisation de l'image (sans eux, un simple
-      # redémarrage du conteneur interrompt l'initialisation avant la copie de la configuration).
+      # Volumes expected by the image's initialisation script (without them, a mere container
+      # restart interrupts the initialisation before the configuration is copied).
       - wazuh_var_multigroups:/var/ossec/var/multigroups
       - wazuh_integrations:/var/ossec/integrations
       - wazuh_active_response:/var/ossec/active-response/bin
@@ -273,13 +273,13 @@ services:
       - ./wazuh/manager/ossec.conf:/wazuh-config-mount/etc/ossec.conf:ro
       - ./wazuh/rules:/wazuh-config-mount/etc/rules:ro
       - ./wazuh/manager/entrypoint-scripts:/entrypoint-scripts:ro
-      - ./wazuh/manager/cont-init/00-vigie-pre:/etc/cont-init.d/00-vigie-pre:ro
-      - ./wazuh/watch:/vigie/watch:ro
-      - ./wazuh/notify:/vigie/notify:ro
-      - ./wazuh/tests:/vigie/tests:ro
-      - vigie_export:/var/vigie:ro
+      - ./wazuh/manager/cont-init/00-watchpost-pre:/etc/cont-init.d/00-watchpost-pre:ro
+      - ./wazuh/watch:/watchpost/watch:ro
+      - ./wazuh/notify:/watchpost/notify:ro
+      - ./wazuh/tests:/watchpost/tests:ro
+      - watchpost_export:/var/watchpost:ro
       - adguard_querylog:/var/adguard:ro
-    networks: [vigie]
+    networks: [watchpost]
     depends_on:
       wazuh.indexer:
         condition: service_healthy
@@ -314,7 +314,7 @@ services:
       - ./wazuh/dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:ro
       - ./data/wazuh/wazuh.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
       - wazuh_dashboard_custom:/usr/share/wazuh-dashboard/plugins/wazuh/public/assets/custom
-    networks: [vigie]
+    networks: [watchpost]
     depends_on:
       wazuh.indexer:
         condition: service_healthy
@@ -330,7 +330,7 @@ services:
     logging: *logging
 
   # ------------------------------------------------------------------------------------------
-  # Option : tunnel WireGuard (profil « wireguard »). Voir README : inconvénients importants.
+  # Option: WireGuard tunnel ("wireguard" profile). See README: significant drawbacks.
   wireguard:
     profiles: ["wireguard"]
     image: ghcr.io/wg-easy/wg-easy:15
@@ -343,10 +343,10 @@ services:
       INIT_ENABLED: "true"
       INIT_USERNAME: admin
       INIT_PASSWORD: ${WG_ADMIN_PASSWORD:-}
-      INIT_HOST: wg.${VIGIE_DOMAIN:?}
+      INIT_HOST: wg.${WATCHPOST_DOMAIN:?}
       INIT_PORT: "51820"
-      INIT_DNS: ${VIGIE_ADGUARD_IP:-172.31.250.53}
-      # Interface web accessible seulement par tunnel SSH (127.0.0.1:51821) : pas de TLS.
+      INIT_DNS: ${WATCHPOST_ADGUARD_IP:-172.31.250.53}
+      # Web interface reachable only through an SSH tunnel (127.0.0.1:51821): no TLS.
       INSECURE: "true"
     ports:
       - "51820:51820/udp"
@@ -354,24 +354,24 @@ services:
     volumes:
       - wireguard_data:/etc/wireguard
     networks:
-      vigie:
-        # Adresse fixe : seule adresse interne autorisée par AdGuard en mode ClientID.
-        ipv4_address: ${VIGIE_WG_IP:-172.31.250.20}
+      watchpost:
+        # Fixed address: the only internal address allowed by AdGuard in ClientID mode.
+        ipv4_address: ${WATCHPOST_WG_IP:-172.31.250.20}
     mem_limit: 256m
     logging: *logging
 
 networks:
-  vigie:
+  watchpost:
     driver: bridge
     ipam:
       config:
-        - subnet: ${VIGIE_SUBNET:-172.31.250.0/24}
+        - subnet: ${WATCHPOST_SUBNET:-172.31.250.0/24}
 
 volumes:
   caddy_data:
   caddy_config:
   collector_data:
-  vigie_export:
+  watchpost_export:
   adguard_work:
   adguard_querylog:
   wazuh_indexer_data:

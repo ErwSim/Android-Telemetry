@@ -24,11 +24,11 @@ const (
 	TypeSMSAbuse         = "detect.sms_abuse"
 	TypeSensorBackground = "detect.sensor_background"
 	TypeNewAppRisky      = "detect.new_app_risky"
-	// Contract §11.4 (review of v1.2): without app.ops.
+	// Contract §11.4: detections that work without app.ops.
 	TypeSMSPermission     = "detect.sms_permission"
 	TypeDefaultAppChanged = "detect.default_app_changed"
 	// An inventory that declares "system" an application its installer or its history show was installed
-	// (contract §11.4: "sans que cela soit signalé").
+	// (contract §11.4).
 	TypeInventoryMismatch = "detect.inventory_mismatch"
 )
 
@@ -122,7 +122,7 @@ func ParseEnv(get func(string) string) (Thresholds, []string) {
 		}
 		n, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || n < min || n > max {
-			errs = append(errs, fmt.Sprintf("%s : entier entre %d et %d attendu", k, min, max))
+			errs = append(errs, fmt.Sprintf("%s: integer between %d and %d expected", k, min, max))
 			return def
 		}
 		return n
@@ -137,7 +137,7 @@ func ParseEnv(get func(string) string) (Thresholds, []string) {
 			known = known || x == typ
 		}
 		if !known {
-			errs = append(errs, fmt.Sprintf("WATCHPOST_DETECT_DISABLE : détection %q inconnue", name))
+			errs = append(errs, fmt.Sprintf("WATCHPOST_DETECT_DISABLE: unknown detection %q", name))
 			continue
 		}
 		t.Disabled[typ] = true
@@ -146,7 +146,7 @@ func ParseEnv(get func(string) string) (Thresholds, []string) {
 	if v := get("WATCHPOST_DETECT_UPLOAD_FACTOR"); v != "" {
 		f, err := strconv.ParseFloat(v, 64)
 		if err != nil || f < 1 || f > 1000 {
-			errs = append(errs, "WATCHPOST_DETECT_UPLOAD_FACTOR : nombre entre 1 et 1000 attendu")
+			errs = append(errs, "WATCHPOST_DETECT_UPLOAD_FACTOR: number between 1 and 1000 expected")
 		} else {
 			t.UploadFactor = f
 		}
@@ -157,7 +157,7 @@ func ParseEnv(get func(string) string) (Thresholds, []string) {
 	t.MailMin = int(intVar("WATCHPOST_DETECT_MAIL_MIN", int64(t.MailMin), 1, 1000000))
 	for _, p := range splitList(get("WATCHPOST_DETECT_MAIL_CLIENTS")) {
 		if !packageRe.MatchString(p) {
-			errs = append(errs, fmt.Sprintf("WATCHPOST_DETECT_MAIL_CLIENTS : %q n'est pas un nom de paquet", p))
+			errs = append(errs, fmt.Sprintf("WATCHPOST_DETECT_MAIL_CLIENTS: %q is not a package name", p))
 			continue
 		}
 		t.MailClients[p] = true
@@ -168,7 +168,7 @@ func ParseEnv(get func(string) string) (Thresholds, []string) {
 		for _, p := range splitList(v) {
 			n, err := strconv.Atoi(p)
 			if err != nil || n < 1 || n > 65535 {
-				errs = append(errs, fmt.Sprintf("WATCHPOST_DETECT_DNS_BYPASS_PORTS : port %q invalide", p))
+				errs = append(errs, fmt.Sprintf("WATCHPOST_DETECT_DNS_BYPASS_PORTS: invalid port %q", p))
 				continue
 			}
 			ports[n] = true
@@ -177,7 +177,7 @@ func ParseEnv(get func(string) string) (Thresholds, []string) {
 	}
 	for _, p := range splitList(get("WATCHPOST_DETECT_DNS_BYPASS_EXEMPT")) {
 		if !packageRe.MatchString(p) {
-			errs = append(errs, fmt.Sprintf("WATCHPOST_DETECT_DNS_BYPASS_EXEMPT : %q n'est pas un nom de paquet", p))
+			errs = append(errs, fmt.Sprintf("WATCHPOST_DETECT_DNS_BYPASS_EXEMPT: %q is not a package name", p))
 			continue
 		}
 		t.DNSBypassExempt[p] = true
@@ -228,20 +228,20 @@ func ParseResolvers(txt string) (*Resolvers, error) {
 			continue
 		}
 		if len(f) < 2 {
-			return nil, fmt.Errorf("resolvers.txt ligne %d : adresse et nom attendus", n)
+			return nil, fmt.Errorf("resolvers.txt line %d: address and name expected", n)
 		}
 		name := strings.Join(f[1:], " ")
 		if strings.Contains(f[0], "/") {
 			p, err := netip.ParsePrefix(f[0])
 			if err != nil {
-				return nil, fmt.Errorf("resolvers.txt ligne %d : %w", n, err)
+				return nil, fmt.Errorf("resolvers.txt line %d: %w", n, err)
 			}
 			r.prefixes = append(r.prefixes, resolverPrefix{p.Masked(), name})
 			continue
 		}
 		a, err := netip.ParseAddr(f[0])
 		if err != nil {
-			return nil, fmt.Errorf("resolvers.txt ligne %d : %w", n, err)
+			return nil, fmt.Errorf("resolvers.txt line %d: %w", n, err)
 		}
 		r.addrs[a] = name
 	}

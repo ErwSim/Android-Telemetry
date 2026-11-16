@@ -88,7 +88,7 @@ class ApkSamples(private val all: List<Collector>, private val t0: Long = 1_763_
         sample(
             "connectivity", "net.connectivity",
             eventData {
-                ConnectivityCollector.Snapshot(listOf("wifi", "vpn"), true, false, true, true, "dns.exemple.fr", listOf("10.0.0.1"), "tun0").writeTo(this)
+                ConnectivityCollector.Snapshot(listOf("wifi", "vpn"), true, false, true, true, "dns.example.org", listOf("10.0.0.1"), "tun0").writeTo(this)
             },
         )
         sample("wifi", "net.wifi", eventData { WifiCollector.WifiState("Maison", "aa:bb:cc:dd:ee:01", -55, 5180, "sae", "11ax").writeTo(this, "connected") })
@@ -101,7 +101,7 @@ class ApkSamples(private val all: List<Collector>, private val t0: Long = 1_763_
         sample("cell", "net.cell", eventData { cell.writeTo(this, -95) })
         sample("cell", "net.cell_security", CellLogic.downgradeData("lte → gsm", cell), Severity.WARNING)
         sample("bluetooth", "net.bluetooth", BluetoothCollector.stateData(true))
-        sample("bluetooth", "net.bluetooth", BluetoothCollector.deviceData("connected", "Écouteurs", "aa:bb:cc:dd:ee:ff", "le"))
+        sample("bluetooth", "net.bluetooth", BluetoothCollector.deviceData("connected", "Headphones", "aa:bb:cc:dd:ee:ff", "le"))
         sample("ble_tracker", "net.ble_tracker", BleTrackerCollector.alertData(TrackerDetector.Alert("aa:bb:cc:dd:ee:ff", "airtag", -70, t0, 5)), Severity.WARNING)
         val hour = t0 / 3_600_000 * 3_600_000
         val usage = NetworkUsageCollector.aggregate(
@@ -127,7 +127,7 @@ class ApkSamples(private val all: List<Collector>, private val t0: Long = 1_763_
                 "org.example.app%03d".format(i), "1.$i", i.toLong(), "%064x".format(i), setOf("android.permission.CAMERA", "android.permission.ACCESS_FINE_LOCATION"),
                 if (i % 3 == 0) null else "com.android.vending", system = i % 5 == 0,
             )
-            AppInventoryLogic.inventoryItem(AppDetails(r.pkg, "Application n° $i", true, i % 50 == 0, i % 40 == 0, 36, t0 - 86_400_000L * i, t0 - 3_600_000L * i), r)
+            AppInventoryLogic.inventoryItem(AppDetails(r.pkg, "App no. $i", true, i % 50 == 0, i % 40 == 0, 36, t0 - 86_400_000L * i, t0 - 3_600_000L * i), r)
         }
         AppInventoryLogic.inventoryParts(items, INVENTORY_ID, 16 * 1024).forEach { sample("apps", "app.inventory", it) }
         sample(
@@ -143,7 +143,7 @@ class ApkSamples(private val all: List<Collector>, private val t0: Long = 1_763_
         )
         val riskyScore = RiskScorer.score(risky)
         sample("app_risk", "app.risk", RiskLogic.data(risky, riskyScore), RiskLogic.severity(riskyScore.level))
-        val clean = AppFacts("org.example", label = "Exemple", versionCode = 12, installer = "com.android.vending")
+        val clean = AppFacts("org.example", label = "Example", versionCode = 12, installer = "com.android.vending")
         sample("app_risk", "app.risk", RiskLogic.data(clean, RiskScorer.score(clean)))
         val roleChange = RoleChange("sms", "com.samsung.android.messaging", "org.fake.fastsms")
         sample("app_role", "app.role", RoleLogic.data(roleChange), RoleLogic.severity(roleChange))
@@ -160,7 +160,7 @@ class ApkSamples(private val all: List<Collector>, private val t0: Long = 1_763_
                 NetRecord.Dns("com.google.android.gms", t0, "app-measurement.com", listOf("142.250.1.1"), 1),
                 NetRecord.Dns("com.google.android.gms", t0 + 1_000, "app-measurement.com", listOf("142.250.1.2"), 1),
                 NetRecord.Dns("com.google.android.gms", t0 + 1_500, "app-measurement.com", listOf("142.250.1.2"), 1),
-                NetRecord.Dns("org.example", t0 + 1_700, "exemple.org", listOf("203.0.113.9"), 1),
+                NetRecord.Dns("org.example", t0 + 1_700, "example.org", listOf("203.0.113.9"), 1),
                 NetRecord.Connect("com.google.android.gms", t0 + 2_000, "142.250.1.1", 443),
                 NetRecord.Connect("com.google.android.gms", t0 + 2_100, "142.250.1.1", 443),
             ),
@@ -190,7 +190,7 @@ class ApkSamples(private val all: List<Collector>, private val t0: Long = 1_763_
         sample("posture", "security.ca_cert", PostureCollector.caCertData(CaChange("added", CaCert("cd".repeat(32), "CN=Proxy"))), Severity.WARNING)
         sample("posture", "security.keyguard", PostureCollector.keyguardData(false, 3), Severity.WARNING)
 
-        // security.policy: the policy engine's journal (also used for the base agent's actions).
+        // security.policy: the policy engine's action log (also used for the base agent's actions).
         val engine = PolicyEngine(
             gateway = Proxy.newProxyInstance(javaClass.classLoader, arrayOf(DevicePolicyGateway::class.java)) { _, _, _ ->
                 throw UnsupportedOperationException("not needed")
@@ -210,7 +210,7 @@ class ApkSamples(private val all: List<Collector>, private val t0: Long = 1_763_
             dnsHost = { null },
         )
         engine.logAction("permission_granted", "android.permission.ACCESS_FINE_LOCATION", null, true, null)
-        engine.logAction("force_stop_protection", "enabled", null, false, "aucun effet constaté")
+        engine.logAction("force_stop_protection", "enabled", null, false, "no observed effect")
         engine.logAction("device_owner_cleared", PolicyEngine.OWNER_TARGET, null, true, null)
         engine.logAction("package_disabled", "com.samsung.android.rubin.app", "balanced", true, null)
         // Capability guards (contract §11.1): target = package or guard key, permission when relevant.
@@ -229,7 +229,7 @@ class ApkSamples(private val all: List<Collector>, private val t0: Long = 1_763_
         val POSTURE = linkedMapOf<String, Any?>(
             "security_patch" to "2026-10-01", "patch_age_days" to 45, "encrypted" to true, "lock_secure" to true, "adb_enabled" to true,
             "adb_wifi_enabled" to false, "dev_options" to true, "unknown_sources" to false, "private_dns_mode" to "hostname",
-            "private_dns_host" to "dns.exemple.fr", "always_on_vpn" to false, "device_owner" to true, "verified_boot_state" to "green",
+            "private_dns_host" to "dns.example.org", "always_on_vpn" to false, "device_owner" to true, "verified_boot_state" to "green",
             "user_ca_certs" to listOf("cd".repeat(32)), "play_protect" to null, "usb_data_signaling" to true,
         )
     }

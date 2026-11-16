@@ -32,14 +32,14 @@ import io.github.erwsim.watchpost.ui.MainActivity
  * `ring`, `vibrate` and `stop_ring` (contract §8), without Device Owner.
  *
  * Sound: audio usage `USAGE_ALARM` on the alarm stream, raised to its maximum for the duration and put
- * back afterwards. The alarm stream is not muted by the ringer's silent or vibrate mode. "Ne pas
- * déranger" is another matter: Android lets alarms through by default, but if the owner's DND mode
+ * back afterwards. The alarm stream is not muted by the ringer's silent or vibrate mode. "Do not
+ * disturb" is another matter: Android lets alarms through by default, but if the user's DND mode
  * mutes alarms ("Silence total", or alarms switched off in the mode), the sound stays muted. An app
  * targeting Android 15+ can no longer turn the user's DND off (its `setInterruptionFilter` only drives
  * its own rule), and being Device Owner gives no DND right: this limit is reported in `detail`
  * (`dnd_alarms_muted`) and documented.
  *
- * Stop: the "Arrêter" action of a high-importance notification (also its tap and its dismissal),
+ * Stop: the "Stop" action of a high-importance notification (also its tap and its dismissal),
  * `stop_ring`, or the end of `duration_s`. A wake lock is held only while ringing (≤ 300 s + margin).
  */
 class RingController(private val context: Context) {
@@ -200,7 +200,7 @@ class RingController(private val context: Context) {
     }
 }
 
-/** "Arrêter la sonnerie" from the notification (action, tap or dismissal). Not exported. */
+/** "Stop ringing" from the notification (action, tap or dismissal). Not exported. */
 class RingStopReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == ACTION) RemoteAlerts.controller(context).stop()

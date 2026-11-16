@@ -81,7 +81,7 @@ func (e *Exporter) Init(ctx context.Context) error {
 	if ok {
 		c, err = strconv.ParseInt(v, 10, 64)
 		if err != nil {
-			return fmt.Errorf("curseur d'export invalide : %q", v)
+			return fmt.Errorf("invalid export cursor: %q", v)
 		}
 	} else {
 		if c, err = e.st.MaxEventPK(ctx); err != nil {
@@ -98,7 +98,7 @@ func (e *Exporter) Init(ctx context.Context) error {
 	// that appears after its own start at the END, so the first lines written would never be
 	// read. A failure is not fatal (missing volume): Run retries with backoff.
 	if err := e.w.ensureOpen(); err != nil {
-		e.log.Warn("export NDJSON : fichier non ouvrable au démarrage, nouvel essai à l'export", "path", e.w.path, "err", err)
+		e.log.Warn("NDJSON export: file cannot be opened at startup, will retry at export time", "path", e.w.path, "err", err)
 	}
 	return nil
 }
@@ -114,7 +114,7 @@ func (e *Exporter) Run(ctx context.Context) {
 	for {
 		err := e.drain(ctx)
 		if err != nil && ctx.Err() == nil {
-			e.log.Error("export NDJSON en échec, nouvel essai", "err", err, "retry_in", backoff.String())
+			e.log.Error("NDJSON export failed, retrying", "err", err, "retry_in", backoff.String())
 			select {
 			case <-ctx.Done():
 			case <-time.After(backoff):
@@ -128,7 +128,7 @@ func (e *Exporter) Run(ctx context.Context) {
 		case <-ctx.Done():
 			fin, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			if err := e.drain(fin); err != nil {
-				e.log.Warn("export NDJSON : vidage final incomplet (repris au prochain démarrage)", "err", err)
+				e.log.Warn("NDJSON export: final flush incomplete (resumed at next startup)", "err", err)
 			}
 			cancel()
 			return

@@ -160,7 +160,7 @@ fun PackageListRow(settings: AgentSettings, spec: SettingSpec.PackageListSpec, t
 
 /**
  * Picker among the installed applications (name, icon, search). [candidates] narrows the list (e.g. the apps
- * that provide an accessibility service), with "Montrer toutes les applications" to widen it; packages already
+ * that provide an accessibility service), with "Show all apps" to widen it; packages already
  * selected but not installed stay listed so that they can be removed.
  */
 @Composable

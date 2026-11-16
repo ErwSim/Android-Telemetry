@@ -2,7 +2,7 @@ package io.github.erwsim.watchpost.policy.engine
 
 import io.github.erwsim.watchpost.core.event.Severity
 
-/** The five capability guards of contract §11.1. [wire] is the `<clé>` of `profile = "guard:<clé>"`. */
+/** The five capability guards of contract §11.1. [wire] is the `<key>` of `profile = "guard:<key>"`. */
 enum class GuardKey(val wire: String) {
     SMS("sms"),
     CALLS("calls"),
@@ -23,7 +23,7 @@ enum class GuardKey(val wire: String) {
     /** Guards acting package by package (applied to packages installed or updated later too). */
     val perPackage: Boolean get() = this == SMS || this == CALLS || this == QUARANTINE
 
-    /** Guards with an exception list chosen by the owner. */
+    /** Guards with an exception list chosen by the user. */
     val hasList: Boolean get() = this != QUARANTINE
 
     /** Guards with the "also deny…" option. */
@@ -38,7 +38,7 @@ enum class GuardKey(val wire: String) {
 object GuardPermissions {
     val SMS_SEND = listOf("android.permission.SEND_SMS")
 
-    /** Option "refuser aussi la lecture et la réception" (contract: READ_SMS/RECEIVE_SMS; MMS and WAP push are the same group). */
+    /** Option "also deny reading and receiving" (contract: READ_SMS/RECEIVE_SMS; MMS and WAP push are the same group). */
     val SMS_EXTENDED = listOf(
         "android.permission.READ_SMS",
         "android.permission.RECEIVE_SMS",
@@ -95,12 +95,12 @@ object GuardSafety {
     const val SELF = "io.github.erwsim.watchpost"
     const val COMPANION = "io.github.erwsim.watchpost.notifier"
 
-    const val REASON_SELF = "Watchpost ou son compagnon"
-    const val REASON_SYSTEM = "application du système"
-    const val REASON_DENY_LIST = "liste de refus (composant vital)"
-    const val REASON_SMS = "appli SMS par défaut"
-    const val REASON_DIALER = "composeur par défaut"
-    const val REASON_LIST = "liste choisie"
+    const val REASON_SELF = "Watchpost or its companion"
+    const val REASON_SYSTEM = "system app"
+    const val REASON_DENY_LIST = "deny list (vital component)"
+    const val REASON_SMS = "default SMS app"
+    const val REASON_DIALER = "default dialer"
+    const val REASON_LIST = "chosen list"
 
     /**
      * Why [app] is out of reach of guard [key] (null: it is not). [allowed] is the guard's exception list.
@@ -145,7 +145,7 @@ object GuardSafety {
     }
 }
 
-/** Something a guard did on its own, to be shown to the owner (never silent). */
+/** Something a guard did on its own, to be shown to the user (never silent). */
 sealed class GuardNotice {
     /** A newly installed app was quarantined; [denied] may be empty (nothing risky requested yet). */
     data class Quarantined(val pkg: String, val denied: List<String>) : GuardNotice()
@@ -164,7 +164,7 @@ sealed class GuardNotice {
 /** One application in a guard preview: what it loses, what it gets back. */
 data class GuardLine(val pkg: String, val deny: List<String> = emptyList(), val restore: List<String> = emptyList(), val note: String? = null)
 
-/** "Ce qui va changer" for one guard. */
+/** "What will change" for one guard. */
 data class GuardPreview(
     val key: GuardKey,
     val enable: Boolean,
@@ -202,12 +202,12 @@ data class GuardStatus(
 /**
  * The capability guards (contract §11.1), built on the policy engine: same lock, same persisted state
  * ([PolicyStore], write-ahead), same undo. Records:
- * - `guard:<clé>` ([ItemKind.GUARD]): the guard is on, with its option and the exception list in force;
+ * - `guard:<key>` ([ItemKind.GUARD]): the guard is on, with its option and the exception list in force;
  *   for `accessibility` / `input_methods` it also holds the permitted list before Watchpost;
- * - `guard:<clé>:<paquet>` ([ItemKind.PERMISSION]): the permissions this guard denied to a package, with
+ * - `guard:<key>:<package>` ([ItemKind.PERMISSION]): the permissions this guard denied to a package, with
  *   their previous state (undone by [PolicyEngine.revertPermissions], crash-safe like a catalog item).
  *
- * "Tout rétablir", the ADB rescue and the removal of the Device Owner undo the guard records first
+ * "Restore everything", the ADB rescue and the removal of the Device Owner undo the guard records first
  * ([PolicyEngine.revertAll]); with an unreadable state the sweep ([sweepLocked]) gives every guarded
  * permission denied without a record back to the user and lifts the permitted lists.
  *
@@ -263,9 +263,9 @@ class CapabilityGuards internal constructor(
             GuardKey.QUARANTINE -> GuardPreview(
                 key, true,
                 notes = listOf(
-                    if (g == null) "Aucune application déjà installée n'est touchée." else "Garde déjà active.",
-                    "Chaque application non système installée ensuite se verra refuser : " +
-                        GuardPermissions.QUARANTINE.joinToString { short(it) } + ", jusqu'à ce que vous la libériez. Une notification l'annonce à chaque fois.",
+                    if (g == null) "No app that is already installed is touched." else "Guard already active.",
+                    "Every non-system app installed afterwards will be denied: " +
+                        GuardPermissions.QUARANTINE.joinToString { short(it) } + ", until you release it. A notification announces it each time.",
                 ),
             )
             GuardKey.ACCESSIBILITY, GuardKey.INPUT_METHODS -> previewServices(key, allowed)
@@ -275,18 +275,18 @@ class CapabilityGuards internal constructor(
     private fun previewDisable(key: GuardKey, g: AppliedRecord?): GuardPreview {
         if (key.perPackage) {
             val lines = e.store.state().records.filter { it.id.startsWith(key.recordId + ":") }.map { r ->
-                GuardLine(r.target, restore = r.permissions.filter { it.applied }.map { it.permission }, note = if (key == GuardKey.QUARANTINE) "libérée" else null)
+                GuardLine(r.target, restore = r.permissions.filter { it.applied }.map { it.permission }, note = if (key == GuardKey.QUARANTINE) "released" else null)
             }
             return GuardPreview(key, false, lines = lines)
         }
         val prev = if (g?.prevListSet == true) g.prevList else null
-        return GuardPreview(key, false, permitted = prev, notes = listOf(if (prev == null) "Plus aucune restriction : tout service peut de nouveau être activé." else "Liste d'avant Watchpost rétablie."))
+        return GuardPreview(key, false, permitted = prev, notes = listOf(if (prev == null) "No restriction any more: any service can be enabled again." else "List from before Watchpost restored."))
     }
 
     private fun previewPermissions(key: GuardKey, extended: Boolean, allowed: Set<String>): GuardPreview {
         val wanted = GuardPermissions.of(key, extended)
         val roles = e.safe { gw.roles() } ?: DeviceRoles()
-        val apps = e.safe { gw.installedApps() } ?: return GuardPreview(key, true, notes = listOf("Liste des applications illisible : rien ne serait appliqué."))
+        val apps = e.safe { gw.installedApps() } ?: return GuardPreview(key, true, notes = listOf("App list unreadable: nothing would be applied."))
         val lines = ArrayList<GuardLine>()
         val exempt = ArrayList<Pair<String, String>>()
         for (app in apps.sortedBy { it.pkg }) {
@@ -310,41 +310,41 @@ class CapabilityGuards internal constructor(
                 lines += GuardLine(
                     app.pkg, deny, restore,
                     listOfNotNull(
-                        "déjà accordée, sera retirée : ${granted.joinToString { short(it) }}".takeIf { granted.isNotEmpty() },
-                        "déjà refusée par un autre élément de Watchpost : ${shared.joinToString { short(it) }}".takeIf { shared.isNotEmpty() },
-                        "déjà refusée hors de Watchpost (laissée telle quelle) : ${outside.joinToString { short(it) }}".takeIf { outside.isNotEmpty() },
-                    ).joinToString(" ; ").ifEmpty { null },
+                        "already granted, will be withdrawn: ${granted.joinToString { short(it) }}".takeIf { granted.isNotEmpty() },
+                        "already denied by another Watchpost item: ${shared.joinToString { short(it) }}".takeIf { shared.isNotEmpty() },
+                        "already denied outside Watchpost (left as is): ${outside.joinToString { short(it) }}".takeIf { outside.isNotEmpty() },
+                    ).joinToString("; ").ifEmpty { null },
                 )
             }
         }
         // Records of packages that are no longer installed: cleaned up.
         val installed = apps.map { it.pkg }.toSet()
         e.store.state().records.filter { it.id.startsWith(key.recordId + ":") && it.target !in installed }
-            .forEach { lines += GuardLine(it.target, restore = it.permissions.filter { p -> p.applied }.map { p -> p.permission }, note = "désinstallée") }
+            .forEach { lines += GuardLine(it.target, restore = it.permissions.filter { p -> p.applied }.map { p -> p.permission }, note = "uninstalled") }
         return GuardPreview(
             key, true, lines = lines, exempt = exempt,
-            notes = listOf("Appliquée aussi aux applications installées ou mises à jour ensuite (sauf exceptions)."),
+            notes = listOf("Also applied to apps installed or updated afterwards (except exceptions)."),
         )
     }
 
     private fun previewServices(key: GuardKey, allowed: Set<String>): GuardPreview {
         val services = e.safe { if (key == GuardKey.ACCESSIBILITY) gw.accessibilityServices() else gw.inputMethods() }
-            ?: return GuardPreview(key, true, notes = listOf("Liste des services illisible : rien ne serait appliqué."))
+            ?: return GuardPreview(key, true, notes = listOf("Service list unreadable: nothing would be applied."))
         val (permitted, kept) = permittedList(services, allowed)
         val blocked = services.filter { !it.system && !it.enabled && it.pkg !in permitted }.map { it.pkg }
         val missing = allowed.filter { a -> services.none { it.pkg == a } }
         return GuardPreview(
             key, true, kept = kept, blocked = blocked, permitted = permitted,
             notes = listOfNotNull(
-                "Les services du système restent toujours permis (Android ne permet pas de les restreindre).",
-                ("Déjà activés, gardés car Android l'exige : ${kept.joinToString()}. Désactivez-les dans les Paramètres d'abord " +
-                    "s'ils ne doivent pas l'être, puis réappliquez.").takeIf { kept.isNotEmpty() },
-                "Dans la liste mais absents (aucun service de ce type installé) : ${missing.joinToString()}.".takeIf { missing.isNotEmpty() },
+                "System services always remain allowed (Android does not let them be restricted).",
+                ("Already enabled, kept because Android requires it: ${kept.joinToString()}. Disable them in Settings first " +
+                    "if they should not be, then apply again.").takeIf { kept.isNotEmpty() },
+                "In the list but absent (no such service installed): ${missing.joinToString()}.".takeIf { missing.isNotEmpty() },
             ),
         )
     }
 
-    /** List to set: the owner's choice plus every enabled non-system service (the platform refuses otherwise). */
+    /** List to set: the user's choice plus every enabled non-system service (the platform refuses otherwise). */
     private fun permittedList(services: List<ServiceApp>, allowed: Set<String>): Pair<List<String>, List<String>> {
         val kept = services.filter { it.enabled && !it.system && it.pkg !in allowed }.map { it.pkg }.distinct()
         return (allowed + kept).sorted() to kept.sorted()
@@ -357,7 +357,7 @@ class CapabilityGuards internal constructor(
      * before anything changes on the device; each package is handled in isolation.
      */
     fun set(key: GuardKey, enable: Boolean, extended: Boolean = false, allowed: Set<String> = emptySet()): EngineReport = synchronized(e.lock) {
-        if (!e.isDeviceOwner()) return@synchronized EngineReport(failed = listOf("Watchpost n'est pas Device Owner"))
+        if (!e.isDeviceOwner()) return@synchronized EngineReport(failed = listOf("Watchpost is not Device Owner"))
         if (!enable) {
             val g = e.record(key.recordId) ?: return@synchronized EngineReport()
             return@synchronized e.isolated(key.recordId) { revertGuardRecord(g) }
@@ -413,7 +413,7 @@ class CapabilityGuards internal constructor(
         e.putRecord(g)
         val error = e.attempt {
             val ok = if (acc) gw.setPermittedAccessibilityServices(permitted) else gw.setPermittedInputMethods(permitted)
-            if (!ok) "refusé par le système (un service activé manque à la liste ?)" else null
+            if (!ok) "refused by the system (an enabled service is missing from the list?)" else null
         }
         val now = e.safe { if (acc) gw.permittedAccessibilityServices() else gw.permittedInputMethods() }
         val ok = now != null && now.toSet() == permitted.toSet()
@@ -421,15 +421,15 @@ class CapabilityGuards internal constructor(
             ok -> e.putRecord(g.copy(status = RecordStatus.APPLIED))
             existing != null -> e.putRecord(existing)
             sameList(now, before) -> e.removeRecord(g.id)
-            // Something changed but not what was asked: kept (pending) so that "Rétablir" restores the list before.
-            else -> e.putRecord(g.copy(lastError = error ?: "aucun effet constaté"))
+            // Something changed but not what was asked: kept (pending) so that "Restore" restores the list before.
+            else -> e.putRecord(g.copy(lastError = error ?: "no observed effect"))
         }
-        return e.outcome("guard_enabled", key.wire, key.profile, ok, if (ok) null else error ?: "aucun effet constaté", if (ok) Severity.NOTABLE else null)
+        return e.outcome("guard_enabled", key.wire, key.profile, ok, if (ok) null else error ?: "no observed effect", if (ok) Severity.NOTABLE else null)
     }
 
     private fun enabledEvent(key: GuardKey, report: EngineReport, reapplied: Boolean): EngineReport {
         val failures = report.failed.size
-        val detail = listOfNotNull("réappliquée".takeIf { reapplied }, "$failures échec(s) sur des paquets".takeIf { failures > 0 }).joinToString(" ; ").ifEmpty { null }
+        val detail = listOfNotNull("re-applied".takeIf { reapplied }, "$failures failure(s) on packages".takeIf { failures > 0 }).joinToString("; ").ifEmpty { null }
         // The guard is on even if a package failed (reported by its own permission_denied event).
         e.logAction("guard_enabled", key.wire, key.profile, true, detail, Severity.NOTABLE)
         return EngineReport(succeeded = listOf("guard_enabled ${key.wire}"))
@@ -454,7 +454,7 @@ class CapabilityGuards internal constructor(
             // (The role comes before the list in [GuardSafety.exemption]: a listed app that becomes the default SMS app is a role holder.)
             val role = reason.takeIf(GuardSafety::isRoleReason)
             val lifted = record?.permissions?.filter { it.applied }?.map { it.permission }.orEmpty()
-            // "La liste suit": a new default SMS app (SMS guard) / dialer (calls guard) requesting the guarded
+            // "the list follows": a new default SMS app (SMS guard) / dialer (calls guard) requesting the guarded
             // permissions joins the list (only the guard's own role is ever a reason here, §11.4).
             if (role != null && requested.isNotEmpty() && app.pkg !in g.guardAllowed.orEmpty()) {
                 g = g.copy(guardAllowed = (g.guardAllowed.orEmpty() + app.pkg).sorted())
@@ -563,7 +563,7 @@ class CapabilityGuards internal constructor(
             // Becoming the default SMS app or dialer is exactly the path of SMS trojans (one system dialog): the
             // app stays in quarantine. Only the permissions of its role are given back (granted, as Android
             // would have done: otherwise incoming SMS or calls would be lost silently), contacts, microphone,
-            // camera, location and nearby devices stay denied, and the owner is told loudly. He releases it,
+            // camera, location and nearby devices stay denied, and the user is told loudly. He releases it,
             // or changes the default app back (the role permissions are then denied again).
             val role = GuardSafety.smsOrDialerRole(app.pkg, roles)
             val roleGrants = if (role != null) GuardSafety.roleGrants(role) else emptySet()
@@ -605,8 +605,8 @@ class CapabilityGuards internal constructor(
         report += e.outcome(
             "quarantined", app.pkg, key.profile, ok,
             when {
-                record == null -> "état non enregistré"
-                failed.isNotEmpty() -> "non refusées : ${failed.joinToString { short(it) }}"
+                record == null -> "state not recorded"
+                failed.isNotEmpty() -> "not denied: ${failed.joinToString { short(it) }}"
                 else -> null
             },
             Severity.NOTABLE,
@@ -615,10 +615,10 @@ class CapabilityGuards internal constructor(
         return report
     }
 
-    /** "Libérer": the quarantined app's permissions go back to their state before the quarantine ("à demander" for a new install). */
+    /** "Release": the quarantined app's permissions go back to their state before the quarantine ("ask" for a new install). */
     fun release(pkg: String): EngineReport = synchronized(e.lock) {
         val record = e.record(GuardKey.QUARANTINE.packageRecordId(pkg)) ?: return@synchronized EngineReport()
-        if (!e.isDeviceOwner()) return@synchronized EngineReport(failed = listOf("Watchpost n'est pas Device Owner"))
+        if (!e.isDeviceOwner()) return@synchronized EngineReport(failed = listOf("Watchpost is not Device Owner"))
         e.isolated(record.id) { releaseLocked(record, auto = null) }
     }
 
@@ -632,7 +632,7 @@ class CapabilityGuards internal constructor(
                 if (firstInstall != null) report += e.bookkeeping(g.id) { e.putRecord(g.copy(released = g.released + (record.target to firstInstall))) }
             }
         }
-        report += e.outcome("released", record.target, key.profile, done, if (done) auto?.let { "automatique : $it" } else report.failed.lastOrNull() ?: "état non restauré")
+        report += e.outcome("released", record.target, key.profile, done, if (done) auto?.let { "automatic: $it" } else report.failed.lastOrNull() ?: "state not restored")
         if (done && auto != null) e.safe { notify(GuardNotice.Released(record.target, auto)) }
         return report
     }
@@ -641,7 +641,7 @@ class CapabilityGuards internal constructor(
 
     /**
      * Re-applies every active guard to the current packages: new installs (quarantine, SMS, calls),
-     * updates that request new permissions, role changes (lifted for the new holder, "la liste suit"),
+     * updates that request new permissions, role changes (lifted for the new holder, "the list follows"),
      * uninstalled packages (cleaned up). Called on package broadcasts, at agent start, by the 15-min
      * maintenance and when the screen opens. A guard left pending by a crash is completed.
      */
@@ -649,7 +649,7 @@ class CapabilityGuards internal constructor(
         val guards = e.store.state().records.filter { it.kind == ItemKind.GUARD }
         if (guards.none { GuardKey.of(it.target)?.perPackage == true }) return@synchronized EngineReport()
         if (!e.isDeviceOwner()) return@synchronized EngineReport()
-        val apps = e.safe { gw.installedApps() } ?: return@synchronized EngineReport(failed = listOf("liste des applications illisible"))
+        val apps = e.safe { gw.installedApps() } ?: return@synchronized EngineReport(failed = listOf("app list unreadable"))
         val roles = e.safe { gw.roles() } ?: DeviceRoles()
         var report = EngineReport()
         for (g in guards) {
@@ -678,28 +678,28 @@ class CapabilityGuards internal constructor(
         if (key.perPackage) {
             // The guard is switched off first: if the process dies while its packages are being restored, it
             // must not deny again (at the next reconciliation) what was already given back. What is left is
-            // undone by the next "Tout rétablir".
+            // undone by the next "Restore everything".
             report += e.bookkeeping(g.id) { e.removeRecord(g.id) }
             for (r in e.store.state().records.filter { it.id.startsWith(key.recordId + ":") }) {
                 report += e.isolated(r.id) { if (key == GuardKey.QUARANTINE) undoQuarantined(r) else e.revertPermissions(r) }
             }
             val left = report.failed.size
-            return report + e.outcome("guard_disabled", key.wire, key.profile, true, if (left > 0) "$left élément(s) non rétabli(s), à réessayer" else null, Severity.NOTABLE)
+            return report + e.outcome("guard_disabled", key.wire, key.profile, true, if (left > 0) "$left item(s) not restored, retry" else null, Severity.NOTABLE)
         }
         val acc = key == GuardKey.ACCESSIBILITY
         val prev = if (g.prevListSet) g.prevList.orEmpty() else null
         val error = e.attempt {
             val ok = if (acc) gw.setPermittedAccessibilityServices(prev) else gw.setPermittedInputMethods(prev)
-            if (!ok) "refusé par le système" else null
+            if (!ok) "refused by the system" else null
         }
         val now = e.safe { if (acc) gw.permittedAccessibilityServices() else gw.permittedInputMethods() }
         val restored = e.safe { gw.isDeviceOwner() } == true && sameList(now, prev)
-        report += e.bookkeeping(g.id) { if (restored) e.removeRecord(g.id) else e.putRecord(g.copy(lastError = error ?: "état non restauré")) }
-        return report + e.outcome("guard_disabled", key.wire, key.profile, restored, if (restored) null else error ?: "état non restauré", Severity.NOTABLE)
+        report += e.bookkeeping(g.id) { if (restored) e.removeRecord(g.id) else e.putRecord(g.copy(lastError = error ?: "state not restored")) }
+        return report + e.outcome("guard_disabled", key.wire, key.profile, restored, if (restored) null else error ?: "state not restored", Severity.NOTABLE)
     }
 
     /**
-     * "Tout rétablir", first step: a per-package guard stops applying itself (its record goes, nothing changes on
+     * "Restore everything", first step: a per-package guard stops applying itself (its record goes, nothing changes on
      * the device; its package records are undone next, like any other record). Accessibility and keyboards
      * guards are undone by [revertGuardRecord] in the second step (they hold the list before Watchpost).
      */
@@ -710,11 +710,11 @@ class CapabilityGuards internal constructor(
         return report + e.outcome("guard_disabled", g.target, g.profile, report.allOk, report.failed.lastOrNull(), Severity.NOTABLE)
     }
 
-    /** Undo of a quarantined app outside "Libérer" (guard switched off, "Tout rétablir"): reported as released. */
+    /** Undo of a quarantined app outside "Release" (guard switched off, "Restore everything"): reported as released. */
     internal fun undoQuarantined(r: AppliedRecord): EngineReport {
         val sub = e.revertPermissions(r)
         val done = e.record(r.id) == null
-        return sub + e.outcome("released", r.target, GuardKey.QUARANTINE.profile, done, if (done) "quarantaine levée" else sub.failed.lastOrNull() ?: "état non restauré")
+        return sub + e.outcome("released", r.target, GuardKey.QUARANTINE.profile, done, if (done) "quarantine lifted" else sub.failed.lastOrNull() ?: "state not restored")
     }
 
     /**
@@ -732,18 +732,18 @@ class CapabilityGuards internal constructor(
         for (app in apps.filter { !it.system }) {
             for (p in GuardPermissions.ALL.filter { it in app.requested }) {
                 if (e.safe { gw.permissionGrantState(app.pkg, p) } != Dpm.GRANT_DENIED || claimed(app.pkg, p)) continue
-                val error = e.attempt { if (!gw.setPermissionGrantState(app.pkg, p, Dpm.GRANT_DEFAULT)) "refusé par le système" else null }
+                val error = e.attempt { if (!gw.setPermissionGrantState(app.pkg, p, Dpm.GRANT_DEFAULT)) "refused by the system" else null }
                 val freed = e.safe { gw.permissionGrantState(app.pkg, p) } == Dpm.GRANT_DEFAULT
-                report += e.outcome("permission_restored", app.pkg, null, freed, if (freed) null else error ?: "état non restauré", permission = p)
+                report += e.outcome("permission_restored", app.pkg, null, freed, if (freed) null else error ?: "state not restored", permission = p)
             }
         }
         for (key in listOf(GuardKey.ACCESSIBILITY, GuardKey.INPUT_METHODS)) {
             if (records.any { it.id == key.recordId }) continue
             val acc = key == GuardKey.ACCESSIBILITY
             if (e.safe { if (acc) gw.permittedAccessibilityServices() else gw.permittedInputMethods() } == null) continue
-            val error = e.attempt { if (!(if (acc) gw.setPermittedAccessibilityServices(null) else gw.setPermittedInputMethods(null))) "refusé par le système" else null }
+            val error = e.attempt { if (!(if (acc) gw.setPermittedAccessibilityServices(null) else gw.setPermittedInputMethods(null))) "refused by the system" else null }
             val lifted = e.safe { if (acc) gw.permittedAccessibilityServices() else gw.permittedInputMethods() } == null
-            report += e.outcome("guard_disabled", key.wire, key.profile, lifted, if (lifted) "balayage" else error ?: "aucun effet constaté")
+            report += e.outcome("guard_disabled", key.wire, key.profile, lifted, if (lifted) "balayage" else error ?: "no observed effect")
         }
         return report
     }

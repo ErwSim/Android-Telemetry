@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# Génère la PKI interne de Wazuh (AC + certificats indexeur, manager/Filebeat, dashboard, admin).
-# Remplace wazuh-certs-generator, qui télécharge son outil depuis Internet au lancement.
-# Usage : gen-certs.sh <répertoire de sortie> [--renew | --renew-ca]
-#   sans option : idempotent, ne régénère rien d'existant ;
-#   --renew     : régénère les certificats des nœuds et du compte admin (même AC, mêmes noms) ;
-#   --renew-ca  : régénère aussi l'AC (tous les composants qui lui font confiance redémarrent).
-# L'ancien jeu est conservé dans <sortie>/ancien-<date>/.
+# Generates the Wazuh internal PKI (CA + certificates for the indexer, manager/Filebeat, dashboard, admin).
+# Replaces wazuh-certs-generator, which downloads its tool from the Internet when it starts.
+# Usage: gen-certs.sh <output directory> [--renew | --renew-ca]
+#   no option:  idempotent, regenerates nothing that exists;
+#   --renew:    regenerates the certificates of the nodes and of the admin account (same CA, same names);
+#   --renew-ca: also regenerates the CA (every component that trusts it restarts).
+# The previous set is kept in <output>/old-<date>/.
 set -Eeuo pipefail
 
-OUT="${1:?répertoire de sortie}"
+OUT="${1:?output directory}"
 MODE="${2:-}"
 DAYS_CA=3650
 DAYS=1825
-SUBJ_BASE="/C=FR/L=Vigie/O=Vigie/OU=Wazuh"
+SUBJ_BASE="/O=Watchpost/OU=Wazuh"
 
 mkdir -p "$OUT"
 chmod 700 "$OUT"
 cd "$OUT"
 
-command -v openssl >/dev/null || { echo "openssl est requis" >&2; exit 1; }
+command -v openssl >/dev/null || { echo "openssl is required" >&2; exit 1; }
 
 if [[ "$MODE" == --renew || "$MODE" == --renew-ca ]]; then
-  OLD="ancien-$(date +%Y%m%d-%H%M%S)"
+  OLD="old-$(date +%Y%m%d-%H%M%S)"
   mkdir -p "$OLD"
   for f in admin wazuh.indexer wazuh.manager wazuh.dashboard; do
     [[ -f "$f.pem" ]] && mv "$f.pem" "$f-key.pem" "$OLD/"
@@ -31,18 +31,18 @@ if [[ "$MODE" == --renew || "$MODE" == --renew-ca ]]; then
   fi
   chmod 700 "$OLD"
 elif [[ -n "$MODE" ]]; then
-  echo "option inconnue : $MODE" >&2
+  echo "unknown option: $MODE" >&2
   exit 2
 fi
 
 if [[ ! -f root-ca.pem ]]; then
   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out root-ca-key.pem 2>/dev/null
   openssl req -x509 -new -key root-ca-key.pem -sha256 -days "$DAYS_CA" \
-    -subj "$SUBJ_BASE/CN=Vigie Wazuh Root CA" -out root-ca.pem \
+    -subj "$SUBJ_BASE/CN=Watchpost Wazuh Root CA" -out root-ca.pem \
     -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign"
 fi
 
-# cert <nom> <CN> <SAN> <usages étendus>
+# cert <name> <CN> <SAN> <extended key usages>
 cert() {
   local name="$1" cn="$2" san="$3" eku="$4"
   [[ -f "$name.pem" ]] && return 0
@@ -66,8 +66,8 @@ cert wazuh.indexer   wazuh.indexer   "DNS:wazuh.indexer,DNS:localhost,IP:127.0.0
 cert wazuh.manager   wazuh.manager   "DNS:wazuh.manager"                        serverAuth,clientAuth
 cert wazuh.dashboard wazuh.dashboard "DNS:wazuh.dashboard,DNS:localhost"        serverAuth,clientAuth
 
-# Les conteneurs Wazuh tournent sous des UID différents (indexeur et dashboard : 1000) et lisent ces
-# fichiers via des montages en lecture seule : on les rend lisibles, le répertoire parent reste en 700.
+# The Wazuh containers run under different UIDs (indexer and dashboard: 1000) and read these
+# files through read-only mounts: they are made readable, the parent directory stays 700.
 chmod 644 ./*.pem
 rm -f root-ca.srl
-echo "Certificats Wazuh prêts dans $OUT"
+echo "Wazuh certificates ready in $OUT"

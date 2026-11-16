@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * (granted by ADB only) and `Debug.dumpService("appops", …, ["--op", OP])`, i.e. the text of
  * `adb shell dumpsys appops --op CAMERA`, which lists the ops currently running per package
  * ("Running start at: …"). The text format is not an API: it may change with any update, and
- * Samsung or SELinux may refuse the dump. On any doubt, nothing is attributed.
+ * a vendor build or SELinux may refuse the dump. On any doubt, nothing is attributed.
  */
 object AppOpsDump {
     private const val MAX_BYTES = 2 * 1024 * 1024

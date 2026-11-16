@@ -157,11 +157,11 @@ class NotificationsAgentSideTest {
             assertEquals(PackageLists.DEFAULT_CONTENT_EXCLUDED.toSet(), defaults.contentExcluded)
             assertTrue(defaults.ignored.isEmpty())
 
-            val reply = r.call(P.METHOD_SET_LISTS, mapOf(P.KEY_CONTENT_EXCLUDED to listOf("com.bank.a", "pas valide"), P.KEY_IGNORED to arrayOf("com.noisy")))
+            val reply = r.call(P.METHOD_SET_LISTS, mapOf(P.KEY_CONTENT_EXCLUDED to listOf("com.bank.a", "not valid"), P.KEY_IGNORED to arrayOf("com.noisy")))
             val c = NotifierConfig.fromValues(MapValues(reply))!!
             assertEquals(setOf("com.bank.a"), c.contentExcluded)
             assertEquals(setOf("com.noisy"), c.ignored)
-            assertEquals(listOf("pas valide"), reply[P.KEY_REJECTED])
+            assertEquals(listOf("not valid"), reply[P.KEY_REJECTED])
             assertEquals(1, r.listsChanged)
             assertTrue(c.version != defaults.version)
             // Each changed list emits agent.config_changed.

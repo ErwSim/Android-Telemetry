@@ -8,7 +8,7 @@ import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Builds the `data` object of an event. Every `put` with a null value is a no-op, so optional
- * fields are naturally absent (contract §1: "champs absents plutôt que null").
+ * fields are naturally absent (contract §1: "absent fields rather than null").
  *
  * Keys must be snake_case (`[a-z0-9_]+`); a bad key is a programming error and throws.
  */

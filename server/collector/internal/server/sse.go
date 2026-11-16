@@ -34,7 +34,7 @@ func NewBroker(max int) *Broker {
 	return &Broker{subs: map[*subscriber]struct{}{}, max: max}
 }
 
-var errTooManySubscribers = errors.New("trop de flux ouverts")
+var errTooManySubscribers = errors.New("too many open streams")
 
 // Subscribe registers a subscriber for one device ("" for all).
 func (b *Broker) Subscribe(device string) (*subscriber, error) {

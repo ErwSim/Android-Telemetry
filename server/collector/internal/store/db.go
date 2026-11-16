@@ -57,7 +57,7 @@ func dsn(path string, readOnly bool) string {
 // Open opens (and creates or migrates) the database at path.
 func Open(ctx context.Context, path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, fmt.Errorf("création du répertoire de données : %w", err)
+		return nil, fmt.Errorf("creating the data directory: %w", err)
 	}
 	if err := restrictFiles(path); err != nil {
 		return nil, err
@@ -87,14 +87,14 @@ func Open(ctx context.Context, path string) (*Store, error) {
 }
 
 // restrictFiles makes the database file (created empty if needed) and any
-// leftover -wal/-shm/-journal files private to the owner before SQLite opens
+// leftover -wal/-shm/-journal files private to the service account before SQLite opens
 // them. SQLite creates its WAL and shared-memory files with the mode of the
 // database file, so creating the database 0600 first keeps the WAL, which holds
 // the most recent events, from being readable by other local users.
 func restrictFiles(path string) error {
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
-		return fmt.Errorf("ouverture de la base : %w", err)
+		return fmt.Errorf("opening the database: %w", err)
 	}
 	f.Close()
 	for _, p := range []string{path, path + "-wal", path + "-shm", path + "-journal"} {
@@ -527,15 +527,15 @@ var SchemaVersion = len(migrations)
 func (s *Store) migrate(ctx context.Context) error {
 	conn, err := s.w.Conn(ctx)
 	if err != nil {
-		return fmt.Errorf("ouverture de la base : %w", err)
+		return fmt.Errorf("opening the database: %w", err)
 	}
 	defer conn.Close()
 	var v int
 	if err := conn.QueryRowContext(ctx, "PRAGMA user_version").Scan(&v); err != nil {
-		return fmt.Errorf("lecture de la version du schéma : %w", err)
+		return fmt.Errorf("reading the schema version: %w", err)
 	}
 	if v > len(migrations) {
-		return fmt.Errorf("schéma de base en version %d, plus récent que ce binaire (%d)", v, len(migrations))
+		return fmt.Errorf("database schema at version %d, newer than this binary (%d)", v, len(migrations))
 	}
 	if v == 0 {
 		// Must be set before the first table is created; lets the purge give space back.
@@ -550,14 +550,14 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 		if _, err := tx.ExecContext(ctx, migrations[i]); err != nil {
 			tx.Rollback()
-			return fmt.Errorf("migration %d : %w", i+1, err)
+			return fmt.Errorf("migration %d: %w", i+1, err)
 		}
 		if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", i+1)); err != nil {
 			tx.Rollback()
 			return err
 		}
 		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("migration %d : %w", i+1, err)
+			return fmt.Errorf("migration %d: %w", i+1, err)
 		}
 	}
 	return nil

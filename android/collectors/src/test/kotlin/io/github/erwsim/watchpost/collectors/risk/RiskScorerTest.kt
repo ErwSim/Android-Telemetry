@@ -124,7 +124,7 @@ class RiskScorerTest {
             val a = RiskScorer.score(capped)
             assertEquals(RiskLevel.LOW, a.level)
             assertEquals(RiskLevel.LOW_MAX, a.score)
-            // The reasons are still reported (the owner sees what a system app can do).
+            // The reasons are still reported (the user sees what a system app can do).
             assertTrue(RiskReason.ACCESSIBILITY_SERVICE in a.reasons && RiskReason.COMBO_BANKING_TROJAN in a.reasons)
             // But nothing about installers, launcher icon, target SDK, debug for a preinstalled app.
             assertTrue(a.reasons.none { it in setOf(RiskReason.SIDELOADED, RiskReason.UNKNOWN_INSTALLER, RiskReason.NO_LAUNCHER_ICON) })
@@ -246,15 +246,15 @@ class RiskScorerTest {
         println("  malicious low (missed): $badLow")
         println("  malicious medium (under-rated): $badMedium")
         RiskCorpus.ALL.forEach { println("  %-34s %-9s %3d %-6s %s".format(it.id, it.kind, RiskScorer.score(it.facts).score, level(it), RiskScorer.score(it.facts).reasonCodes)) }
-        // What the owner relies on: the four families the contract targets are all at least "medium", and the
+        // What the user relies on: the four families the contract targets are all at least "medium", and the
         // three canonical ones (banking trojan, SMS fraud, full spyware) are "high".
-        assertEquals(listOf("installateur_charge_utile_boutique"), badLow)
-        assertTrue(listOf("troyen_bancaire", "fraude_sms", "fraude_sms_avant_octroi", "espion_sans_icone", "espion_minimal", "espion_avant_octroi").all { id -> level(bad.first { it.id == id }) == RiskLevel.HIGH })
-        assertEquals(setOf("identification_appelant", "controle_parental", "antivirus", "automatisation"), legitHigh.toSet())
+        assertEquals(listOf("payload_installer_store"), badLow)
+        assertTrue(listOf("banking_trojan", "sms_fraud", "sms_fraud_before_grant", "spyware_no_icon", "minimal_spyware", "spyware_before_grant").all { id -> level(bad.first { it.id == id }) == RiskLevel.HIGH })
+        assertEquals(setOf("caller_id", "parental_control", "antivirus", "automation"), legitHigh.toSet())
         // A store messenger that declares SMS rights without holding them is noisy (medium) but never a false alarm.
-        assertEquals(RiskLevel.MEDIUM, level(legit.first { it.id == "messagerie_declare_sms" }))
+        assertEquals(RiskLevel.MEDIUM, level(legit.first { it.id == "messenger_declares_sms" }))
         // No ordinary app (messaging, bank, keyboard, browser, launcher, VPN, dialer, authenticator, files) is above "low".
-        val ordinary = setOf("messagerie_chiffree", "banque", "clavier_tiers", "navigateur", "lanceur", "vpn", "composeur_tiers", "authentificateur", "gestionnaire_fichiers", "navigation_hors_ligne", "banque_ancienne", "banque_declare_sms")
+        val ordinary = setOf("encrypted_messenger", "bank", "third_party_keyboard", "browser", "launcher", "vpn", "third_party_dialer", "authenticator", "file_manager", "offline_navigation", "old_bank", "bank_declares_sms")
         assertTrue(legit.filter { it.id in ordinary }.all { level(it) == RiskLevel.LOW })
     }
 

@@ -17,33 +17,33 @@ import (
 
 // Scenario names (sim --scenario).
 const (
-	ScenarioHealthy   = "sain"
-	ScenarioSMSFraud  = "fraude-sms"
-	ScenarioBanking   = "cheval-de-troie"
-	ScenarioProxy     = "proxy"
-	ScenarioSpam      = "spam"
-	ScenarioExfil     = "exfiltration"
-	ScenarioDNSBypass = "contournement-dns"
-	ScenarioSpy       = "espion"
-	ScenarioSMSQuiet  = "sms-discret"
-	ScenarioAll       = "tout"
+	ScenarioHealthy     = "healthy"
+	ScenarioSMSFraud    = "sms-fraud"
+	ScenarioBanking     = "banking-trojan"
+	ScenarioProxy       = "proxy"
+	ScenarioSpam        = "spam"
+	ScenarioExfil       = "exfiltration"
+	ScenarioDNSBypass   = "dns-bypass"
+	ScenarioStalkerware = "stalkerware"
+	ScenarioSilentSMS   = "silent-sms"
+	ScenarioAll         = "all"
 )
 
 // ScenarioInfo describes the scenarios for the command line help.
 var ScenarioInfo = []struct{ Name, Desc string }{
-	{ScenarioHealthy, "téléphone sain (par défaut) : aucune détection attendue avec les seuils par défaut"},
-	{ScenarioSMSFraud, "fraude au SMS : appli sans icône installée hors store, permission d'envoi, ~2000 SMS par jour, contacts lus, panneau de commande bloqué ; garde SMS activée au bout de 24 h (envois refusés)"},
-	{ScenarioBanking, "cheval de Troie bancaire : accessibilité + superposition + lecture des notifications, serveurs de commande bloqués par la liste de menaces"},
-	{ScenarioProxy, "relais réseau (proxy résidentiel) : centaines d'adresses par heure la nuit, écran éteint"},
-	{ScenarioSpam, "spam par e-mail : connexions aux ports 25 et 587 d'une appli qui n'est pas un client de messagerie"},
-	{ScenarioExfil, "exfiltration : envoi de plus de 3 Gio en une heure par une appli de galerie"},
-	{ScenarioDNSBypass, "contournement du DNS : appli qui interroge Cloudflare et Google en DoH/DoT"},
-	{ScenarioSpy, "logiciel espion : micro et caméra en arrière-plan, administrateur de l'appareil"},
-	{ScenarioSMSQuiet, "attaque vécue par le propriétaire : appli du Play Store sans icône, SEND_SMS obtenue 30 h après l'installation, envoi massif de SMS, aucun domaine de menace (à jouer aussi avec --app-ops=false)"},
-	{ScenarioAll, "tous les scénarios d'attaque à la fois"},
+	{ScenarioHealthy, "healthy phone (default): no detection expected with the default thresholds"},
+	{ScenarioSMSFraud, "SMS fraud: app without a launcher icon installed outside a store, send permission, ~2000 SMS per day, contacts read, control panel blocked; SMS guard enabled after 24 h (sends refused)"},
+	{ScenarioBanking, "banking trojan: accessibility + overlay + notification reading, command servers blocked by the threat list"},
+	{ScenarioProxy, "network relay (residential proxy): hundreds of addresses per hour at night, screen off"},
+	{ScenarioSpam, "e-mail spam: connections to ports 25 and 587 from an app that is not a mail client"},
+	{ScenarioExfil, "exfiltration: more than 3 GiB sent in one hour by a gallery app"},
+	{ScenarioDNSBypass, "DNS bypass: app that queries Cloudflare and Google over DoH/DoT"},
+	{ScenarioStalkerware, "stalkerware: microphone and camera in the background, device administrator"},
+	{ScenarioSilentSMS, "a discreet store app that obtains SEND_SMS a day after installation and then sends in bulk: no launcher icon, no threat domain (also worth playing with --app-ops=false)"},
+	{ScenarioAll, "all the attack scenarios at once"},
 }
 
-// ParseScenarios checks a comma-separated list of scenarios ("tout" expands to every attack).
+// ParseScenarios checks a comma-separated list of scenarios ("all" expands to every attack).
 func ParseScenarios(v string) ([]string, error) {
 	var out []string
 	seen := map[string]bool{}
@@ -54,7 +54,7 @@ func ParseScenarios(v string) ([]string, error) {
 		}
 		names := []string{s}
 		if s == ScenarioAll {
-			names = []string{ScenarioSMSFraud, ScenarioBanking, ScenarioProxy, ScenarioSpam, ScenarioExfil, ScenarioDNSBypass, ScenarioSpy, ScenarioSMSQuiet}
+			names = []string{ScenarioSMSFraud, ScenarioBanking, ScenarioProxy, ScenarioSpam, ScenarioExfil, ScenarioDNSBypass, ScenarioStalkerware, ScenarioSilentSMS}
 		}
 		for _, n := range names {
 			known := false
@@ -62,7 +62,7 @@ func ParseScenarios(v string) ([]string, error) {
 				known = known || i.Name == n
 			}
 			if !known {
-				return nil, fmt.Errorf("scénario %q inconnu", s)
+				return nil, fmt.Errorf("unknown scenario %q", s)
 			}
 			if !seen[n] {
 				seen[n] = true
@@ -86,7 +86,7 @@ type attack struct {
 	uid       int
 	installer string
 	start     time.Time // installation (or start of the abuse)
-	spikeAt   time.Time // exfiltration: the hour of the spike; sms-discret: the grant of SEND_SMS
+	spikeAt   time.Time // exfiltration: the hour of the spike; silent-sms: the grant of SEND_SMS
 	started   bool
 	perms     []string // dangerous permissions granted (inventory)
 	granted   []string // capabilities granted (app.risk "granted")
@@ -366,15 +366,15 @@ func (g *Generator) planAttacks(names []string, start, end time.Time) {
 		a := &attack{name: n, start: start.Add(time.Duration(i*7+g.srng.Intn(5)) * time.Minute), uid: 10900 + i}
 		switch n {
 		case ScenarioSMSFraud:
-			a.pkg, a.label, a.installer = "com.flashlight.pro.tools", "Lampe Torche Pro", "com.google.android.packageinstaller"
+			a.pkg, a.label, a.installer = "com.flashlight.pro.tools", "Flashlight Pro", "com.google.android.packageinstaller"
 		case ScenarioBanking:
-			a.pkg, a.label, a.installer = "com.android.systemupdate.service", "Mise à jour du système", "com.google.android.packageinstaller"
+			a.pkg, a.label, a.installer = "com.android.systemupdate.service", "System Update", "com.google.android.packageinstaller"
 		case ScenarioProxy:
 			a.pkg, a.label, a.installer = "com.puzzle.relax.free", "Puzzle Relax", "com.android.vending"
 		case ScenarioSpam:
-			a.pkg, a.label, a.installer = "com.cleaner.boost.free", "Nettoyeur Boost", "com.android.vending"
+			a.pkg, a.label, a.installer = "com.cleaner.boost.free", "Cleaner Boost", "com.android.vending"
 		case ScenarioExfil:
-			a.pkg, a.label, a.installer = "com.gallery.vault.hide", "Coffre Photos", "com.android.vending"
+			a.pkg, a.label, a.installer = "com.gallery.vault.hide", "Photo Vault", "com.android.vending"
 			spike := a.start.Add(36 * time.Hour)
 			switch {
 			case end.IsZero():
@@ -387,10 +387,10 @@ func (g *Generator) planAttacks(names []string, start, end time.Time) {
 			}
 			a.spikeAt = spike.Truncate(time.Hour)
 		case ScenarioDNSBypass:
-			a.pkg, a.label, a.installer = "com.fastvpn.browser", "Navigateur Rapide", "com.android.vending"
-		case ScenarioSpy:
+			a.pkg, a.label, a.installer = "com.fastvpn.browser", "Fast Browser", "com.android.vending"
+		case ScenarioStalkerware:
 			a.pkg, a.label, a.installer = "com.android.battery.service", "Battery Service", "com.google.android.packageinstaller"
-		case ScenarioSMSQuiet:
+		case ScenarioSilentSMS:
 			a.pkg, a.label, a.installer = "com.coupons.promo.deals", "Promo Coupons", "com.android.vending"
 			grant := a.start.Add(30 * time.Hour)
 			switch {
@@ -421,7 +421,7 @@ func attackRisk(a *attack) map[string]any {
 	case ScenarioBanking:
 		reasons, score = []string{"sideloaded", "unknown_installer", "no_launcher_icon", "accessibility_service", "overlay", "notification_listener",
 			"install_packages", "combo_banking_trojan"}, 97
-	case ScenarioSpy:
+	case ScenarioStalkerware:
 		reasons, score = []string{"sideloaded", "unknown_installer", "no_launcher_icon", "background_location", "mic_camera_background",
 			"device_admin", "boot_receiver", "combo_stalkerware"}, 95
 	case ScenarioProxy, ScenarioExfil:
@@ -430,7 +430,7 @@ func attackRisk(a *attack) map[string]any {
 		reasons, score = []string{"boot_receiver", "overlay"}, 25
 	case ScenarioDNSBypass:
 		reasons, score = []string{"vpn_service"}, 20
-	case ScenarioSMSQuiet:
+	case ScenarioSilentSMS:
 		// A store application: the agent's scorer gives such a profile "medium" (30-69), not "high".
 		reasons, score = []string{"no_launcher_icon", "sms_send", "boot_receiver", "combo_sms_fraud"}, 57
 	}
@@ -468,7 +468,7 @@ func specialAccess(extra map[string][]string) map[string]any {
 	return out
 }
 
-// smsGuardAfter is when the owner turns the SMS guard on in the SMS fraud scenario.
+// smsGuardAfter is when the user turns the SMS guard on in the SMS fraud scenario.
 const smsGuardAfter = 24 * time.Hour
 
 // attackStart emits the installation of an attack application and what follows within minutes.
@@ -501,7 +501,7 @@ func (g *Generator) attackStart(a *attack) {
 		perm(3*time.Minute, "SEND_SMS")
 		perm(3*time.Minute+2*time.Second, "READ_CONTACTS")
 		grantedAt(4*time.Minute, "sms_send")
-		// A day later the owner turns the SMS guard on (contract §11.1): the attempts go on, refused.
+		// A day later the user turns the SMS guard on (contract §11.1): the attempts go on, refused.
 		g.later(t.Add(smsGuardAfter), func(at time.Time) {
 			g.emitS(at, "security.policy", 0, map[string]any{"action": "guard_enabled", "target": "sms", "profile": "guard:sms", "ok": true})
 			g.emitS(at.Add(200*time.Millisecond), "security.policy", 1, map[string]any{"action": "permission_denied", "target": a.pkg,
@@ -518,7 +518,7 @@ func (g *Generator) attackStart(a *attack) {
 		grantedAt(7*time.Minute, "accessibility_service", "notification_listener", "overlay")
 		// The usual way of SMS trojans: being made the default SMS app (accessibility clicks the dialog).
 		g.emitS(t.Add(8*time.Minute), "app.role", 2, map[string]any{"role": "sms", "old": "com.samsung.android.messaging", "new": a.pkg})
-	case ScenarioSpy:
+	case ScenarioStalkerware:
 		perm(2*time.Minute, "RECORD_AUDIO")
 		perm(2*time.Minute+time.Second, "CAMERA")
 		perm(2*time.Minute+2*time.Second, "ACCESS_BACKGROUND_LOCATION")
@@ -526,7 +526,7 @@ func (g *Generator) attackStart(a *attack) {
 		grantedAt(6*time.Minute, "background_location", "mic_camera_background", "device_admin")
 	case ScenarioDNSBypass:
 		g.emitS(t.Add(4*time.Minute), "app.special_access", 0, specialAccess(map[string][]string{"vpn_apps": {a.pkg}}))
-	case ScenarioSMSQuiet:
+	case ScenarioSilentSMS:
 		// SEND_SMS obtained long after the installation (here without the SMS guard).
 		after := a.spikeAt.Sub(t)
 		perm(after, "SEND_SMS")
@@ -640,7 +640,7 @@ func (g *Generator) attackHour(a *attack, h time.Time) {
 			g.sconnect(at(), a.pkg, a.uid, ep.ip, ep.port)
 		}
 		g.addUsage(a.pkg, int64(5+g.srng.Intn(20))<<20, int64(1+g.srng.Intn(3))<<20)
-	case ScenarioSMSQuiet:
+	case ScenarioSilentSMS:
 		// A small hourly poll of its server (in no threat list), then, once SEND_SMS is granted, mass sending.
 		g.sdns(at(), a.pkg, a.uid, "api.promo-coupons-cdn.example", 443)
 		g.addUsage(a.pkg, int64(10+g.srng.Intn(30))<<10, int64(5+g.srng.Intn(20))<<10)
@@ -652,7 +652,7 @@ func (g *Generator) attackHour(a *attack, h time.Time) {
 			n := g.spoisson(85 * part)
 			g.op(a.pkg, "send_sms", n, n)
 		}
-	case ScenarioSpy:
+	case ScenarioStalkerware:
 		n := g.spoisson(4 * frac) // short recordings, every 15 min or so
 		g.op(a.pkg, "record_audio", n, n)
 		if lt.Hour()%3 == 0 {

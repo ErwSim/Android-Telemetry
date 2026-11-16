@@ -51,15 +51,15 @@ object DnsMessage {
      * resolves), otherwise the reason.
      */
     fun checkResponse(response: ByteArray, id: Int): String? {
-        if (response.size < 12) return "réponse DNS tronquée (${response.size} octets)"
+        if (response.size < 12) return "truncated DNS response (${response.size} bytes)"
         val rid = ((response[0].toInt() and 0xFF) shl 8) or (response[1].toInt() and 0xFF)
-        if (rid != id) return "identifiant de réponse inattendu"
-        if (response[2].toInt() and 0x80 == 0) return "le message reçu n'est pas une réponse"
+        if (rid != id) return "unexpected response ID"
+        if (response[2].toInt() and 0x80 == 0) return "the message received is not a response"
         return when (val rcode = response[3].toInt() and 0x0F) {
             0, 3 -> null
-            2 -> "SERVFAIL : le serveur ne sait pas résoudre"
-            5 -> "REFUSED : le serveur refuse cet appareil (ClientID ? liste d'accès ?)"
-            else -> "code de réponse DNS $rcode"
+            2 -> "SERVFAIL: the server cannot resolve"
+            5 -> "REFUSED: the server refuses this device (ClientID? access list?)"
+            else -> "DNS response code $rcode"
         }
     }
 
@@ -86,9 +86,9 @@ class DotProbe(
             candidates += resolve(host)
             null
         } catch (e: IOException) {
-            "résolution de $host impossible : ${e.message}"
+            "cannot resolve $host: ${e.message}"
         }
-        if (candidates.isEmpty()) return ProbeResult(false, error = resolveError ?: "aucune adresse pour $host")
+        if (candidates.isEmpty()) return ProbeResult(false, error = resolveError ?: "no address for $host")
         var lastError: String? = null
         for (address in candidates.take(MAX_ADDRESSES)) {
             val error = tryOne(host, address)
@@ -114,7 +114,7 @@ class DotProbe(
                 tls.outputStream.apply { write(DnsMessage.frame(DnsMessage.query(id, host))); flush() }
                 val input = DataInputStream(tls.inputStream)
                 val length = input.readUnsignedShort()
-                if (length !in 12..65_535) return "longueur de réponse invalide ($length)"
+                if (length !in 12..65_535) return "invalid response length ($length)"
                 val response = ByteArray(length).also { input.readFully(it) }
                 DnsMessage.checkResponse(response, id)
             }

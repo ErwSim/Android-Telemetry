@@ -23,7 +23,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	b, err := model.Marshal(v)
 	if err != nil {
 		status = http.StatusInternalServerError
-		b = []byte(`{"error":"internal","message":"encodage de la réponse impossible"}`)
+		b = []byte(`{"error":"internal","message":"cannot encode the response"}`)
 	}
 	h := w.Header()
 	h.Set("Content-Type", "application/json; charset=utf-8")
@@ -131,9 +131,9 @@ func (s *Server) withCommon(next http.Handler) http.Handler {
 				if v == http.ErrAbortHandler {
 					panic(v)
 				}
-				s.log.Error("panique dans un gestionnaire HTTP", "path", r.URL.Path, "panic", v, "stack", string(debug.Stack()))
+				s.log.Error("panic in an HTTP handler", "path", r.URL.Path, "panic", v, "stack", string(debug.Stack()))
 				if rec.status == 0 {
-					writeError(rec, http.StatusInternalServerError, "internal", "erreur interne")
+					writeError(rec, http.StatusInternalServerError, "internal", "internal error")
 				}
 			}
 			// Paths only: query strings may contain search text; never log headers (tokens, cookies).

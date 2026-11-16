@@ -27,7 +27,7 @@ class PackageListSettingTest {
     @Test
     fun `invalid names and oversized lists are refused, nothing is written`() {
         val settings = AgentSettings(MemoryPrefs())
-        assertFalse(settings.set(key, setOf("org.example.a", "pas un paquet")))
+        assertFalse(settings.set(key, setOf("org.example.a", "not a package")))
         assertFalse(settings.set(key, setOf("org.example.a", "a")))
         assertFalse(settings.set(key, setOf("org.example.a\ncom.evil.b")))
         assertFalse(settings.set(key, setOf("a.b", "c.d", "e.f", "g.h")))

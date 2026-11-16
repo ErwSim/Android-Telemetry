@@ -1,0 +1,84 @@
+! Title: Watchpost: base rules (all blocking levels)
+! Description: Exceptions essential to a Galaxy phone (Play Services, Play Store, FCM push,
+!   banking apps, updates) + Google/Samsung telemetry blocks, one per line, each one commented.
+!   Loaded by AdGuard Home as a local list (ID 1), in addition to the HaGeZi lists.
+! Homepage: infra/adguard/ in the Watchpost repository
+!
+! AdGuard syntax: "||domain^" blocks the domain and its subdomains;
+! "@@||domain^$important" allows it, even if it appears in another list (HaGeZi, threats).
+! The exceptions are deliberately limited to what really breaks the phone: each one also
+! weakens threat filtering for that domain.
+!
+! ============================== EXCEPTIONS (do not block) ==============================
+!
+! --- Android connectivity check: blocked => "Connected, no Internet", switch to mobile data
+@@||connectivitycheck.gstatic.com^$important
+@@||connectivitycheck.android.com^$important
+@@||clients3.google.com^$important
+@@||clients4.google.com^$important
+!
+! --- Push notifications (Firebase Cloud Messaging): messaging apps, banking apps (3-D Secure
+!     payment approval), alerts. mtalk = persistent FCM connection.
+@@||mtalk.google.com^$important
+@@||mtalk4.google.com^$important
+@@/^alt[0-9]+-mtalk\.google\.com$/$important
+@@||android.googleapis.com^$important
+@@||fcm.googleapis.com^$important
+@@||fcmtoken.googleapis.com^$important
+! Firebase installation token: required to obtain an FCM push token since 2020.
+@@||firebaseinstallations.googleapis.com^$important
+!
+! --- Play Store and Play Services: accounts, device registration, downloads,
+!     Play Integrity (required by most banking apps).
+@@||android.clients.google.com^$important
+@@||play.googleapis.com^$important
+@@||play-fe.googleapis.com^$important
+@@||play-lh.googleusercontent.com^$important
+@@||accounts.google.com^$important
+@@||www.googleapis.com^$important
+@@||gvt1.com^$important
+@@||dl.google.com^$important
+!
+! --- Google system updates (Mainline modules, Play System Update)
+@@||update.googleapis.com^$important
+!
+! --- Samsung software updates (FOTA). If an update fails, look at the AdGuard query log
+!     (domains *.samsungdm.com, *.samsungapps.com blocked by HaGeZi).
+@@||ospserver.net^$important
+@@||samsungotn.net^$important
+!
+! ============================== TELEMETRY BLOCKS ==============================
+!
+! --- Google / Firebase: audience measurement and diagnostic logs of the apps
+! Firebase Analytics (Google Analytics for Firebase), built into most apps.
+||app-measurement.com^
+! Firebase logging (usage events sent by the Firebase SDK).
+||firebaselogging.googleapis.com^
+||firebaselogging-pa.googleapis.com^
+! Crashlytics crash reports (contain model, memory state, installation identifiers).
+||firebasecrashlytics.googleapis.com^
+||crashlyticsreports-pa.googleapis.com^
+||crashlytics.com^
+! Google Play Services telemetry (usage and performance statistics).
+||play-services-telemetry.googleapis.com^
+! Client metrics of the Google apps (Chrome, WebView).
+||clientmetrics-pa.googleapis.com^
+! Google Analytics for the web and Tag Manager (web pages and app WebViews).
+||google-analytics.com^
+||googletagmanager.com^
+!
+! --- Google: advertising (advertising identifier, bidding, conversions)
+||doubleclick.net^
+||googlesyndication.com^
+||googleadservices.com^
+||adservice.google.com^
+!
+! --- Samsung: advertising and diagnostic collection
+! Samsung ad network (ads in Samsung apps: Weather, Health, Themes, Galaxy Store).
+||samsungads.com^
+! "Device Intelligence" collection (usage diagnostic data).
+||dc.di.atlas.samsung.com^
+! Knox usage statistics (sent by the Knox components, outside enterprise management).
+||analytics.samsungknox.com^
+! Game Optimizing Service (GOS) telemetry: game profiles and usage.
+||gos-gsp.io^

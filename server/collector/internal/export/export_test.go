@@ -56,13 +56,13 @@ func parse(t *testing.T, b []byte) lineT {
 }
 
 func TestLineBasic(t *testing.T) {
-	lines := Lines(stored("net.dns", 0, `{"package":"com.google.android.gms","hostname":"app-measurement.com","addresses":["1.2.3.4"],"x":{"y":[1,2]}}`), "s25")
+	lines := Lines(stored("net.dns", 0, `{"package":"com.google.android.gms","hostname":"app-measurement.com","addresses":["1.2.3.4"],"x":{"y":[1,2]}}`), "phone")
 	if len(lines) != 1 {
 		t.Fatalf("%d lines", len(lines))
 	}
 	l := parse(t, lines[0])
 	v := l.Watchpost
-	if v.DeviceName != "s25" || v.Domain != "net" || v.Type != "net.dns" || v.TS != "2025-11-15T21:43:20.000Z" || v.Seq != 7 {
+	if v.DeviceName != "phone" || v.Domain != "net" || v.Type != "net.dns" || v.TS != "2025-11-15T21:43:20.000Z" || v.Seq != 7 {
 		t.Fatalf("bad line %+v", v)
 	}
 	if v.Data["hostname"] != "app-measurement.com" || len(v.Data["addresses"].([]any)) != 1 {
@@ -73,7 +73,7 @@ func TestLineBasic(t *testing.T) {
 func TestLineArraysOfObjects(t *testing.T) {
 	data := `{"part":1,"parts":2,"apps":[{"package":"a","granted_dangerous":["p1"],"nested":[{"z":1}]},{"package":"b"},"weird"],
 		"meta":{"list":[{"k":1}],"ok":[1,"a"]},"mixed":[1,{"a":1}]}`
-	lines := Lines(stored("app.inventory", 0, data), "s25")
+	lines := Lines(stored("app.inventory", 0, data), "phone")
 	if len(lines) != 3 { // main + 2 objects (the string element is skipped)
 		t.Fatalf("%d lines", len(lines))
 	}
@@ -161,8 +161,8 @@ func TestLineLocationReserved(t *testing.T) {
 }
 
 func TestLineTruncated(t *testing.T) {
-	big := fmt.Sprintf(`{"text":%q}`, strings.Repeat("é", 20000))
-	lines := Lines(stored("app.notification", 1, big), "s25")
+	big := fmt.Sprintf(`{"text":%q}`, strings.Repeat("ö", 20000))
+	lines := Lines(stored("app.notification", 1, big), "phone")
 	l := parse(t, lines[0]).Watchpost
 	if len(l.Data) != 1 || l.Data["truncated"] != true || l.Sev != 1 {
 		t.Fatalf("not truncated: %v", l.Data)
@@ -266,7 +266,7 @@ func TestExporterResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	if err := st.CreateDevice(ctx, &store.Device{DeviceID: "dev_1", Name: "s25", TokenHash: []byte("h"), CertSHA256: "x", CertPEM: "x", EnrolledAt: time.Now()}); err != nil {
+	if err := st.CreateDevice(ctx, &store.Device{DeviceID: "dev_1", Name: "phone", TokenHash: []byte("h"), CertSHA256: "x", CertPEM: "x", EnrolledAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	rng := rand.New(rand.NewSource(1))
@@ -338,7 +338,7 @@ func TestExporterResume(t *testing.T) {
 			t.Fatalf("duplicate %s", x.Watchpost.ID)
 		}
 		seen[x.Watchpost.ID] = true
-		if x.Watchpost.DeviceName != "s25" {
+		if x.Watchpost.DeviceName != "phone" {
 			t.Fatal("device name")
 		}
 	}
@@ -377,17 +377,17 @@ func TestExporterInitCreatesFile(t *testing.T) {
 func TestLineSourceAndNotification(t *testing.T) {
 	ev := stored("command.issued", 1, `{"command_id":"01JCQ8Z3K4M5N6P7Q8R9S0T1V2","type":"lock","signed":true,"params":{}}`)
 	ev.Source = "server"
-	line := string(Lines(ev, "s25")[0])
+	line := string(Lines(ev, "phone")[0])
 	if !strings.Contains(line, `"source":"server"`) || !strings.HasPrefix(line, `{"watchpost":{`) {
 		t.Fatalf("server event line %s", line)
 	}
-	dev := string(Lines(stored("command.result", 0, `{"command_id":"x","status":"executed"}`), "s25")[0])
+	dev := string(Lines(stored("command.result", 0, `{"command_id":"x","status":"executed"}`), "phone")[0])
 	if strings.Contains(dev, `"source"`) {
 		t.Fatalf("device event carries a source: %s", dev)
 	}
 	// app.notification with content (contract §10): scalar fields exported as they are.
-	n := string(Lines(stored("app.notification", 0, `{"package":"com.whatsapp","event":"posted","category":"msg","channel":"messages","ongoing":false,"importance":4,"title":"Alice","text":"Ton code : ••••••","redacted":true}`), "s25")[0])
-	for _, want := range []string{`"title":"Alice"`, `"text":"Ton code : ••••••"`, `"redacted":true`, `"importance":4`, `"type":"app.notification"`, `"domain":"app"`} {
+	n := string(Lines(stored("app.notification", 0, `{"package":"com.whatsapp","event":"posted","category":"msg","channel":"messages","ongoing":false,"importance":4,"title":"Alice","text":"Your code: ••••••","redacted":true}`), "phone")[0])
+	for _, want := range []string{`"title":"Alice"`, `"text":"Your code: ••••••"`, `"redacted":true`, `"importance":4`, `"type":"app.notification"`, `"domain":"app"`} {
 		if !strings.Contains(n, want) {
 			t.Fatalf("notification line lacks %s: %s", want, n)
 		}

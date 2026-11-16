@@ -5,7 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Floor on the command code: what an offline search of a relayed signature finds in days is refused. */
+/** Floor on the command passphrase: what an offline search of a relayed signature finds in days is refused. */
 class CommandCodeTest {
     @Test
     fun codesWithoutLettersOrWithFewDistinctCharactersAreRefused() {
@@ -27,7 +27,7 @@ class CommandCodeTest {
     fun passphrasesAndLongRandomDigitsAreAccepted() {
         for (ok in listOf(
             CommandVector.CODE,
-            "Phrase de passe très longue 2026",
+            "A long and unusual passphrase 2026",
             "pässwörd-código-密码-🔑🔑",
             "kX9#mQ2\$vL7@pR4!",
             "4729 1853 6027 3391 8840", // 20 random digits ≈ 66 bits

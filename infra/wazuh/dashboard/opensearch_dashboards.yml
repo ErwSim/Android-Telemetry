@@ -1,4 +1,4 @@
-# Wazuh dashboard — derrière Caddy (siem.<domaine>), jamais publié directement.
+# Wazuh dashboard: behind Caddy (siem.<domain>), never published directly.
 server.host: 0.0.0.0
 server.port: 5601
 opensearch.hosts: https://wazuh.indexer:9200
@@ -11,7 +11,7 @@ server.ssl.key: "/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem"
 server.ssl.certificate: "/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem"
 opensearch.ssl.certificateAuthorities: ["/usr/share/wazuh-dashboard/certs/root-ca.pem"]
 uiSettings.overrides.defaultRoute: /app/wz-home
-# Le cookie de session n'est envoyé qu'en HTTPS (Caddy termine TLS).
+# The session cookie is sent over HTTPS only (Caddy terminates TLS).
 opensearch_security.cookie.secure: true
 opensearch_security.cookie.ttl: 3600000
 opensearch_security.session.ttl: 3600000
