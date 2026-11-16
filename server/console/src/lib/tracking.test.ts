@@ -6,6 +6,7 @@ import {
   domainStatus,
   effectiveOverride,
   filterApps,
+  hasStatusData,
   levelTexts,
   mergeDomains,
   parseConflict,
@@ -13,6 +14,7 @@ import {
   sortPublishers,
   splitApps,
   totalsOf,
+  trackingErrorMessage,
 } from './tracking.ts';
 
 describe('niveaux de blocage', () => {
@@ -136,5 +138,21 @@ describe('actions proposées pour un domaine', () => {
     expect(availableActions('mixed', undefined)).toEqual(['block', 'allow']);
     expect(availableActions(undefined, undefined)).toEqual(['block', 'allow']);
     expect(availableActions('mixed', 'block')).toEqual(['allow', 'default']);
+  });
+});
+
+describe('erreurs et données de statut', () => {
+  it('traduit les codes du collecteur', () => {
+    for (const code of ['adguard_unavailable', 'adguard_error', 'levels_not_configured']) {
+      const m = trackingErrorMessage({ status: 503, code, message: 'brut' });
+      expect(m).not.toBe('brut');
+    }
+    expect(trackingErrorMessage({ status: 409, code: 'corrupt_rules', message: 'bloc altéré' })).toContain('bloc altéré');
+    expect(trackingErrorMessage({ status: 500, code: 'autre', message: 'brut' })).toBe('brut');
+  });
+  it('décomptes de statut présents ou non', () => {
+    expect(hasStatusData(undefined)).toBe(false);
+    expect(hasStatusData({ queries: 5, blocked: 0, allowed: 0 })).toBe(false);
+    expect(hasStatusData({ queries: 5, blocked: 1, allowed: 4 })).toBe(true);
   });
 });

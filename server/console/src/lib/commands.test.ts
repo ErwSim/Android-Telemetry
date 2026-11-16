@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPayload,
   channelState,
+  clockProblem,
+  commandErrorMessage,
+  hasForbiddenControl,
   badSignatureCount,
   codeProblem,
   defaultValidityMs,
@@ -191,5 +194,32 @@ describe('signatures invalides récentes', () => {
       now,
     );
     expect(n).toBe(2);
+  });
+});
+
+describe('contrat §8 : précisions du collecteur', () => {
+  it('message de verrouillage : contrôles interdits sauf le saut de ligne', () => {
+    expect(hasForbiddenControl('ligne 1\nligne 2')).toBe(false);
+    expect(hasForbiddenControl('a\tb')).toBe(true);
+    expect(hasForbiddenControl('a\u0007b')).toBe(true);
+    expect(hasForbiddenControl('a\u0085b')).toBe(true);
+    expect(validateParams('lock', { message: 'a\u0000b' })).toContain('contrôle');
+    expect(validateParams('lock', { message: 'Rendez-moi\nmon téléphone' })).toBeUndefined();
+  });
+  it('message de 200 unités UTF-16 : un emoji en vaut deux', () => {
+    expect(validateParams('lock', { message: `${'x'.repeat(198)}😀` })).toBeUndefined();
+    expect(validateParams('lock', { message: `${'x'.repeat(199)}😀` })).toBeDefined();
+  });
+  it('horloge décalée : avertit avant la limite de 10 minutes', () => {
+    expect(clockProblem(undefined)).toBeUndefined();
+    expect(clockProblem(5 * 60_000)).toBeUndefined();
+    expect(clockProblem(-9 * 60_000)).toContain('en avance');
+    expect(clockProblem(2 * 3_600_000)).toContain('120 minutes');
+  });
+  it('erreur d’envoi : horloge, limites, révocation', () => {
+    expect(commandErrorMessage({ status: 400, code: 'invalid_validity', message: "issued_at doit être à moins de 10 minutes de l'heure du serveur" })).toContain('Horloge de cet ordinateur décalée');
+    expect(commandErrorMessage({ status: 400, code: 'invalid_validity', message: 'expires_at doit suivre issued_at' })).toContain('Commande invalide');
+    expect(commandErrorMessage({ status: 429, code: 'rate_limited', message: 'trop' })).toContain('20 commandes par heure');
+    expect(commandErrorMessage({ status: 409, code: 'device_revoked', message: 'x' })).toContain('révoqué');
   });
 });

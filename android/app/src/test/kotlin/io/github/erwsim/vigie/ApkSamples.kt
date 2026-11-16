@@ -19,6 +19,7 @@ import io.github.erwsim.vigie.collectors.network.ConnectivityCollector
 import io.github.erwsim.vigie.collectors.network.NetworkUsageCollector
 import io.github.erwsim.vigie.collectors.network.WifiCollector
 import io.github.erwsim.vigie.collectors.network.WifiScanCollector
+import io.github.erwsim.vigie.collectors.notifications.NotificationEvents
 import io.github.erwsim.vigie.collectors.sensors.CameraCollector
 import io.github.erwsim.vigie.collectors.sensors.MicState
 import io.github.erwsim.vigie.collectors.sensors.MicrophoneCollector
@@ -29,6 +30,7 @@ import io.github.erwsim.vigie.core.sink.EventSink
 import io.github.erwsim.vigie.core.testing.CollectorHarness
 import io.github.erwsim.vigie.core.testing.FakeClock
 import io.github.erwsim.vigie.core.testing.MemoryPrefs
+import io.github.erwsim.vigie.notifier.protocol.NotificationPayload
 import io.github.erwsim.vigie.policy.engine.DevicePolicyGateway
 import io.github.erwsim.vigie.policy.engine.PolicyCatalog
 import io.github.erwsim.vigie.policy.engine.PolicyEngine
@@ -109,6 +111,9 @@ class ApkSamples(private val all: List<Collector>, private val t0: Long = 1_763_
         sample("apps", "app.updated", AppInventoryLogic.changeData(record))
         sample("apps", "app.removed", AppInventoryLogic.changeData(record), Severity.NOTABLE)
         sample("apps", "app.permission_changed", AppInventoryLogic.permissionData(PermissionChange("org.example", "android.permission.CAMERA", true)))
+        // Relayed by the companion APK through NotificationsProvider: same public builder as on the device.
+        sample("notifications", "app.notification", NotificationEvents.data(NotificationPayload("org.example.chat", "posted", "msg", "messages", false, "high", "Alice", "Code ••••", true)))
+        sample("notifications", "app.notification", NotificationEvents.data(NotificationPayload("org.example.chat", "removed", "msg", "messages", false, "high")))
         // A phone-sized inventory: several parts sharing one inventory id.
         val items = (1..INVENTORY_APPS).map { i ->
             val r = AppRecord(

@@ -56,6 +56,15 @@ export interface CommandParams {
   message?: string;
 }
 
+/** Caractère de contrôle (C0, DEL, C1) autre que le saut de ligne. */
+export function hasForbiddenControl(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if ((c < 0x20 && c !== 0x0a) || (c >= 0x7f && c <= 0x9f)) return true;
+  }
+  return false;
+}
+
 /** Message d'erreur en français si les paramètres sont hors bornes, sinon undefined. */
 export function validateParams(type: CommandType, p: CommandParams): string | undefined {
   const dur = (v: number | undefined, max: number): string | undefined =>
@@ -66,8 +75,10 @@ export function validateParams(type: CommandType, p: CommandParams): string | un
     case 'vibrate':
       return dur(p.duration_s, LIMITS.vibrateMax);
     case 'lock':
-      // « 200 caractères » : on compte en unités UTF-16, le décompte le plus strict (agent Kotlin comme collecteur Go).
-      return p.message !== undefined && p.message.length > LIMITS.messageMax ? `Le message ne doit pas dépasser ${LIMITS.messageMax} caractères.` : undefined;
+      // Contrat §8 : 200 unités UTF-16 au plus, aucun caractère de contrôle sauf le saut de ligne.
+      if (p.message !== undefined && p.message.length > LIMITS.messageMax) return `Le message ne doit pas dépasser ${LIMITS.messageMax} caractères.`;
+      if (p.message !== undefined && hasForbiddenControl(p.message)) return 'Le message ne doit contenir aucun caractère de contrôle (seul le saut de ligne est permis).';
+      return undefined;
     default:
       return undefined;
   }
@@ -199,7 +210,12 @@ export function statusInfo(status: string): StatusInfo {
     case 'pending':
       return { label: 'En attente', tone: 'info', active: true, help: "Le serveur la garde : le téléphone ne l'a pas encore récupérée. Elle peut être annulée." };
     case 'delivered':
-      return { label: 'Remise', tone: 'info', active: true, help: "Remise au téléphone, résultat attendu. Elle ne peut plus être annulée." };
+      return {
+        label: 'Remise',
+        tone: 'info',
+        active: true,
+        help: "Remise au téléphone, résultat attendu ; elle ne peut plus être annulée. Si le résultat n'arrive pas, le serveur la renvoie après 5 minutes (3 fois au plus) : elle peut rester « Remise » un moment.",
+      };
     case 'executed':
       return { label: 'Exécutée', tone: 'ok', active: false, help: 'Le téléphone a exécuté la commande.' };
     case 'failed':
@@ -359,4 +375,40 @@ export function badSignatureCount(cmds: { status: string; detail?: string | unde
     const t = Date.parse(c.result_at ?? c.created_at ?? '');
     return Number.isFinite(t) && t >= since;
   }).length;
+}
+
+// ------------------------------------------------------------------------- horloge et erreurs d'envoi
+
+/** Écart d'horloge au-delà duquel le serveur refuse `issued_at` (10 min) : on prévient un peu avant. */
+export const SKEW_WARN_MS = 8 * 60_000;
+
+export function clockProblem(skewMs: number | undefined): string | undefined {
+  if (skewMs === undefined || Math.abs(skewMs) < SKEW_WARN_MS) return undefined;
+  const min = Math.round(Math.abs(skewMs) / 60_000);
+  return `L'horloge de cet ordinateur est décalée d'environ ${min} minutes par rapport au serveur (${skewMs > 0 ? 'en retard' : 'en avance'}) : le serveur refusera les commandes (écart de 10 minutes au plus). Corrigez la date et l'heure de cet appareil.`;
+}
+
+/** Message utile pour l'échec de `POST /commands`. */
+export function commandErrorMessage(e: { status: number; code: string; message: string }): string {
+  if (e.code === 'invalid_validity' && /issued_at|10 minutes/.test(e.message)) {
+    return "Horloge de cet ordinateur décalée : l'heure d'émission de la commande est à plus de 10 minutes de l'heure du serveur. Corrigez la date et l'heure de cet appareil, puis recommencez.";
+  }
+  switch (e.code) {
+    case 'rate_limited':
+      return `Limite atteinte (20 commandes par heure, 10 en attente par appareil) : ${e.message}`;
+    case 'device_revoked':
+      return 'Cet appareil est révoqué : aucune commande ne peut lui être envoyée.';
+    case 'duplicate_id':
+      return 'Identifiant de commande déjà utilisé : recommencez.';
+    case 'signature_required':
+    case 'invalid_signature':
+    case 'signature_not_allowed':
+      return `Signature refusée par le serveur (${e.message}).`;
+    case 'bad_params':
+    case 'invalid_payload':
+    case 'invalid_validity':
+      return `Commande invalide : ${e.message}`;
+    default:
+      return e.status === 429 ? `Limite atteinte : ${e.message}` : e.message;
+  }
 }

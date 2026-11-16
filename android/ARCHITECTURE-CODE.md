@@ -14,9 +14,9 @@ Références : `docs/contrat/contrat.md` (format des événements, **spécificat
 
 | Module | Package | Contenu |
 |---|---|---|
-| `:core` | `io.github.erwsim.vigie.core` | `Agent` (câblage), modèle d'événement, `EventSink`, tampon `outbox` (Room), envoi (`Uploader`, WorkManager), enrôlement, réglages, interface `Collector` + `CollectorHost`, `Capabilities`, `IntegrityMonitor` (`agent.tamper`). Banc de test partagé (testFixtures) : `CollectorHarness`, référence du contrat `Contract`. |
-| `:collectors` | `…vigie.collectors` | 18 collecteurs **sans** privilège Device Owner. Point d'entrée : `CollectorsModule.all(context)`. |
-| `:policy` | `…vigie.policy` | Tout ce qui exige le Device Owner : `VigieAdminReceiver`, `DeviceOwnerManager` (auto-attribution des permissions, protection contre l'arrêt forcé), moteur de politique réversible (`engine/`), DNS privé et son repli (`dns/`), 3 collecteurs (journaux de sécurité et réseau, posture), issue de secours ADB (`rescue/RescueReceiver`), état de l'écran Politique (`ui/PolicyController`). Point d'entrée : `PolicyModule`. |
+| `:core` | `io.github.erwsim.vigie.core` | `Agent` (câblage), commandes à distance (`command/` : vérification, canal, état), modèle d'événement, `EventSink`, tampon `outbox` (Room), envoi (`Uploader`, WorkManager), enrôlement, réglages, interface `Collector` + `CollectorHost`, `Capabilities`, `IntegrityMonitor` (`agent.tamper`). Banc de test partagé (testFixtures) : `CollectorHarness`, référence du contrat `Contract`. |
+| `:collectors` | `…vigie.collectors` | 19 collecteurs **sans** privilège Device Owner (dont `notifications`, alimenté par l'APK compagnon `:notifier`). Point d'entrée : `CollectorsModule.all(context)`. |
+| `:policy` | `…vigie.policy` | Tout ce qui exige le Device Owner : `VigieAdminReceiver`, `DeviceOwnerManager` (auto-attribution des permissions, protection contre l'arrêt forcé), moteur de politique réversible (`engine/`), DNS privé et son repli (`dns/`), 3 collecteurs (journaux de sécurité et réseau, posture), issue de secours ADB (`rescue/RescueReceiver`), état de l'écran Politique (`ui/PolicyController`), exécuteurs `lock`/`clear_lock_message`/`wipe` (`remote/`). Point d'entrée : `PolicyModule`. |
 | `:app` | `…vigie` | `VigieApplication`, service de premier plan `AgentService`, `BootReceiver`, interface Compose (dont l'écran Politique), test de conformité au contrat de bout en bout. |
 
 `VigieApplication` fait `Agent.init(this) { CollectorsModule.all(it) + PolicyModule.collectors(it) }`.
@@ -178,8 +178,11 @@ ctx.emit("device.battery", Severity.INFO) {
 
 ## 7. Réglages
 
-- `SettingKey.IntKey("<id>.<nom>", défaut, min, max)` ou `SettingKey.BoolKey(...)`, exposés via
-  `settings = listOf(SettingSpec.IntSpec(key, titreRes, résuméRes, "s"))`. Lecture : `ctx.settings[KEY]`.
+- `SettingKey.IntKey("<id>.<nom>", défaut, min, max)`, `SettingKey.BoolKey(...)` ou
+  `SettingKey.ChoiceKey(nom, défaut, valeurs)` (liste fermée de chaînes : une valeur hors liste n'est jamais
+  écrite et se lit comme le défaut), exposés via `settings = listOf(SettingSpec.IntSpec(key, titreRes,
+  résuméRes, "s"))` ou `SettingSpec.ChoiceSpec(key, titreRes, résuméRes, options)` (chaque option a son libellé
+  et une explication affichée sous elle, ex. le mode de localisation). Lecture : `ctx.settings[KEY]`.
   Ils sont affichés dans la carte du collecteur (onglet Collecteurs). `experimental = true` ajoute la
   mention « Expérimental » (comportement non garanti par Android, ex. attribution par `DUMP`) ;
   `defaultEnabled = false` fait afficher « Désactivé par défaut », `Requirement.DeviceOwner` « Device Owner
@@ -235,7 +238,7 @@ CollectorHarness(MyCollector()).use { h ->
   un type ou une clé inconnus, un `null`, un mauvais type de valeur. Tout nouveau champ s'y ajoute (après
   le contrat). `app/src/test/…/ContractConformanceTest` fait produire à chaque collecteur de l'APK ses
   événements types (constructeurs de données publics, processeurs de journaux, banc) et vérifie aussi
-  `agent.heartbeat.collectors` (les 21 collecteurs, état `running`/`disabled`/`unavailable`) ; un type
+  `agent.heartbeat.collectors` (les 22 collecteurs, état `running`/`disabled`/`unavailable`) ; un type
   déclaré qui ne peut pas être produit sur la JVM doit y être listé avec sa raison. Les échantillons sont
   dans `ApkSamples`, repris par `CrossServerTest` : envoi au **vrai collecteur** (`server/collector`) par le
   vrai `Uploader`, avec un `.vigie` du vrai `enroll` (ignoré sans `VIGIE_CROSS_ENROLL` ; mode d'emploi en
@@ -327,3 +330,43 @@ le tampon ; un saut en arrière rabat l'horizon aussitôt (les événements écr
   ne s'arrête jamais sur un élément (`isolated`, `bookkeeping`).
 - Les appels bloquants (`setGlobalPrivateDnsModeSpecifiedHost`, sonde DoT) se font hors fil principal.
 - Ne jamais poser `DISALLOW_DEBUGGING_FEATURES` ni couper la signalisation USB (porte de secours ADB).
+
+## 12. Commandes à distance (contrat §8)
+
+Le seul flux serveur → téléphone. Liste fermée, rien d'autre : aucun code de ce chemin n'a accès en écriture
+aux réglages, à la politique ou à l'enrôlement.
+
+| Élément | Où | Rôle |
+|---|---|---|
+| Modèle | `core/command/CommandModel.kt` | `CommandTypes` (liste fermée, sensibles, Device Owner), `Refusal` (motifs du contrat), `CommandParams` (seuls champs qui atteignent un exécuteur), `AcceptedCommand` (constructeur `internal` : seul le vérificateur en crée), `CommandExecutor`. |
+| Cryptographie | `CommandCrypto.kt` | PBKDF2-HMAC-SHA256 écrit sur `Mac("HmacSHA256")` (l'encodage du mot de passe de `SecretKeyFactory` varie selon le fournisseur : ici toujours UTF-8, sans normalisation, comme `TextEncoder`), HMAC, comparaison `MessageDigest.isEqual`. |
+| État | `CommandStore.kt` | `CommandKeyStore` : `K` scellé par `SecretBox` (clé AES-GCM du Keystore, alias `vigie_command_key`), lié au `device_id`. `CommandStateStore` : deux fenêtres anti-rejeu de 500 (signées / simples), signatures invalides et verrouillage, historique (50), résultats en attente. Tout en `commit()` : ce qui garde une exécution est sur disque avant elle. |
+| Vérification | `CommandVerifier.kt` | Ordre exact du contrat ; avant la signature, seuls `v`, `id`, `device_id`, `type` sont lus. `WipeGate` : les six conditions de l'effacement et leur revérification sur l'état courant. |
+| Traitement | `CommandProcessor.kt` | Un à la fois : vérification → exécuteur → `command.result` (sévérités du contrat) → historique → résultat à poster. Livraison en double dont le résultat attend : ignorée. `wipe` : événement et envoi borné à 10 s **avant** l'exécuteur. |
+| Canal | `CommandChannel.kt`, `AndroidChannelPlatform.kt` | Boucle (une coroutine, `Dispatchers.IO`) : désactivé / non enrôlé / refusé (401-403) / sans réseau → attente d'un signal ; sinon flux SSE (`SseParser`) ou interrogation ; backoff à gigue en `elapsedRealtime` ; signaux : réglages, réseau (`Agent.startNetworkWatch`), envoi de lot (`Agent.handleUploadOutcome`), alarme (`CommandAlarmReceiver`), maintenance. Une file + un ouvrier traitent les commandes pendant que la lecture continue. |
+| Câblage | `RemoteCommands.kt`, `Agent.commands` | Réglages `commands.*`, code (`setCode` lent : hors fil principal), enregistrement des exécuteurs par module (`register`). |
+| Exécuteurs | `LocateExecutor` (`:core`, via `OnDemandLocator` implémenté par `LocationCollector`) ; `RemoteAlerts`/`RingController` (`:app`) ; `remote/RemoteExecutors.kt` (`:policy`) | `lock`/`clear_lock_message` derrière `LockScreenGateway` ; `wipe` derrière `FactoryReset`, dont la seule implémentation réelle (`AndroidFactoryReset`, `wipeDevice(0)`) est construite dans `PolicyModule.registerCommandExecutors`. |
+| Interface | `app/…/ui/CommandsScreen.kt`, `CommandLabels.kt`, `service/AgentNotifications.kt` | Écran, accueil, notification permanente (« commandes à distance : à l'écoute »), une notification par commande, sonnerie avec « Arrêter ». |
+
+**Choix de sobriété** (le point non mesurable ici, voir le README pour les mesures à faire) :
+
+- pas de verrou de veille permanent : la lecture du flux est une lecture bloquante d'une connexion au repos ;
+  verrous bornés pendant une commande (2 min), une interrogation (60 s), après une alarme (30 s), une sonnerie
+  (durée + 10 s) ;
+- délai de lecture 300 s = 2,5 × le maintien de 120 s du serveur (`CommandChannel.STREAM_READ_TIMEOUT_MS`) ; le
+  serveur ne doit donc pas dépasser environ 240 s de maintien. Les minuteries ne comptent pas le sommeil du
+  processeur : la détection d'un flux mort repose aussi sur une alarme `setAndAllowWhileIdle` (15 min) et la
+  maintenance, qui comparent la dernière réception à `elapsedRealtime` (sommeil compris) ;
+- aucune tentative sans réseau (on attend `onAvailable`), backoff exponentiel à gigue, flux « mort-né » compté
+  comme un échec, `401`/`403` = arrêt affiché, `404` = 6 h ; une seule alarme en attente à la fois ;
+- l'interrogation à chaque envoi de lot n'a lieu que si le flux n'est pas ouvert, au plus une fois par minute.
+
+**Tests** : `core/src/test/…/command/` (vérification, ordre, vecteur, rejeu, verrouillage, canal contre
+MockWebServer), `policy/src/test/…/RemoteCommandsPolicyTest` (matrice des 64 combinaisons de `wipe`,
+isolement de l'appel réel vérifié dans les sources), `app/src/test/…/CommandResultContractTest` (conformité de
+`command.result`). Banc partagé : `CommandKit`, `CommandVector`, `RecordingSink`, `PlainSecretBox`
+(`core/src/testFixtures/…/CommandFixtures.kt`).
+
+**Ajouter une commande** : d'abord le contrat (§8) et la console/le collecteur ; puis `CommandTypes`,
+`CommandVerifier.parseParams` (bornes fermées), un exécuteur enregistré par le module qui possède l'appel
+plateforme, les libellés (`CommandLabels`, `strings_commands.xml`) et `Contract.COMMAND_TYPES`.

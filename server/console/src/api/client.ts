@@ -16,6 +16,14 @@ export class ApiError extends Error {
 
 const BASE = '/api/console';
 
+// Décalage entre l'horloge du serveur (en-tête `Date` des réponses, précision d'une seconde) et celle de ce
+// navigateur : `issued_at` d'une commande doit être à moins de 10 min de l'heure du serveur (contrat §8).
+let serverSkewMs: number | undefined;
+/** serveur − navigateur, en ms, d'après la dernière réponse ; undefined si inconnu. */
+export function clockSkewMs(): number | undefined {
+  return serverSkewMs;
+}
+
 type Listener = () => void;
 const unauthorizedListeners = new Set<Listener>();
 
@@ -84,6 +92,11 @@ export async function request<T>(path: string, query?: Query, opts: RequestOptio
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') throw e;
     throw new ApiError(0, 'network', 'Serveur injoignable. Vérifiez la connexion.');
+  }
+  const dateHeader = res.headers.get('Date');
+  if (dateHeader) {
+    const t = Date.parse(dateHeader);
+    if (Number.isFinite(t)) serverSkewMs = t - Date.now();
   }
   if (res.status === 401 && !opts.noAuthRedirect) {
     unauthorizedListeners.forEach((fn) => fn());

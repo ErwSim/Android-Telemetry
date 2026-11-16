@@ -5,8 +5,11 @@ Android 16/17, One UI 8/9, non rooté), promu **Device Owner** par ADB. Il colle
 dans un tampon hors-ligne et les envoie par lots (HTTPS + certificat client) au collecteur Vigie enrôlé.
 
 Principes (voir `../docs/ARCHITECTURE.md`) : notification permanente et icône visible, aucun envoi ailleurs que
-vers l'adresse enrôlée, le serveur ne peut rien commander, aucune dépendance Google (ni Play Services, ni
-Firebase, ni ML Kit), pas de contenu privé de tiers, chaque collecteur désactivable, tout réversible.
+vers l'adresse enrôlée, le serveur ne peut transmettre que des commandes d'une liste fermée (sonner, vibrer,
+localiser, verrouiller, effacer ; les sensibles signées par un code qu'il ne connaît pas, canal coupé par
+défaut), aucune dépendance Google (ni Play Services, ni Firebase, ni ML Kit ; les modes de localisation
+« réseau » et « fusionné » passent par les Services Google Play sur choix explicite), pas de contenu privé de
+tiers, chaque collecteur désactivable, tout réversible.
 
 Développeurs (ajout de collecteurs, module Device Owner) : lire **`ARCHITECTURE-CODE.md`**.
 
@@ -22,7 +25,9 @@ téléphone ni sur un émulateur** (voir la dernière section).
 | Envoi : lots ≤ 500 événements et ≤ 1 Mio gzip, suppression après accusé, 400 (lot empoisonné : bissection) / 401 / 413 / 429 / 5xx, `Retry-After`, backoff avec gigue, « gros volumes en Wi-Fi seulement », reprise au retour du réseau | fait, testé (MockWebServer) ; **jamais exercé sur appareil ni contre un vrai serveur en 400** |
 | Enrôlement `.vigie` : clé dans l'Android Keystore, jeton chiffré, mTLS, épinglage de l'AC serveur, test `GET /api/v1/ping`, désenrôlement | fait ; analyse et mTLS testés, Keystore Android **non testé** |
 | Service de premier plan (`specialUse` + `location`), démarrage au boot et après mise à jour, redémarrage (sticky + maintenance 15 min), `agent.started/stopped/heartbeat/collector_error/config_changed` | fait, non testé sur appareil |
-| 21 collecteurs : 18 sans privilège (`:collectors`) et 3 Device Owner (`:policy`), voir « Collecteurs » | faits ; logique et conformité au contrat testées, comportement réel non testé |
+| 22 collecteurs : 19 sans privilège (`:collectors`, dont `notifications` qui dépend de l'APK compagnon) et 3 Device Owner (`:policy`), voir « Collecteurs » | faits ; logique et conformité au contrat testées, comportement réel non testé |
+| Commandes à distance (contrat §8) : vérification complète (signature HMAC, anti-rejeu, expiration, verrouillage), canal SSE ou interrogation, sonner / vibrer / localiser / verrouiller + message / effacer, écran « Commandes à distance » | fait ; vérification, canal (MockWebServer) et garde-fous de l'effacement testés (JVM) ; **jamais exécuté sur appareil**, consommation **non mesurée** |
+| Modes de localisation (contrat §10) : GPS seul (défaut), GPS + réseau, fusionné, avec repli | fait ; logique testée, fournisseurs réels non testés |
 | Device Owner : récepteur d'administration, auto-attribution des permissions et protection contre l'arrêt forcé (avec `security.policy`), `agent.tamper`, retrait volontaire sans fausse alerte | fait ; logique testée, non testé sur appareil |
 | Politique Device Owner : profils, DNS privé imposé et repli, paquets, permissions, restrictions, réglages, VPN permanent, « Tout rétablir », retrait du Device Owner, issue de secours ADB | fait ; moteur testé contre une passerelle factice, non testé sur appareil |
 | Interface Material 3 (Accueil, Collecteurs avec réglages par collecteur, Journal local, Réglages, Enrôlement, Politique) | faite, non testée sur appareil |
@@ -233,7 +238,7 @@ types émis et **réglages propres** au collecteur. Y sont signalés « Désacti
 | Battement de cœur (`heartbeat`) | `agent.heartbeat` | — | WorkManager 15 min |
 | Appareil (`device`) | `device.inventory`, `boot`, `shutdown`, `screen`, `battery`, `power_save`, `storage`, `thermal`, `time_changed`, `timezone_changed`, `airplane_mode` | — | diffusions + relevé quotidien |
 | USB (`usb`) | `device.usb` (câble, fonctions dont `adb`, appareil ou accessoire branché) | — | diffusions, ≤ 60/h |
-| Localisation (`location`) | `location.fix`, `location.provider` | localisation précise (+ arrière-plan) | GPS adaptatif + passif |
+| Localisation (`location`) | `location.fix`, `location.provider` | localisation précise (+ arrière-plan) | GPS adaptatif + passif ; modes « GPS + réseau » et « fusionné » en option (voir ci-dessous) |
 | Connectivité (`connectivity`) | `net.connectivity` | — (ACCESS_NETWORK_STATE) | rappel système, ≤ 60/h |
 | Wi-Fi (`wifi`) | `net.wifi` connecté/déconnecté | localisation précise pour SSID/BSSID (sinon omis) | rappel système, aucun balayage |
 | Réseaux Wi-Fi voisins (`wifi_scan`, **désactivé par défaut**) | `net.wifi_scan` (≤ 60 points d'accès) | localisation précise | passif (balayages des autres) ; actif optionnel ≥ 30 min ; ≤ 1 événement / 15 min |
@@ -262,6 +267,20 @@ Détails et limites :
   Localiser de Google en mode anti-pistage (0xFEAA, trame 0x41). Alerte si vu ≥ 4 fois (une fois par minute au
   plus), sur ≥ 30 min, pendant un déplacement ≥ 500 m (réglables), positions tirées du cache passif ; rien
   sans position connue. Un changement d'adresse du traceur (rotation) remet le compte à zéro.
+- **Modes de localisation** (réglage « Mode de localisation » du collecteur, contrat §10) :
+
+  | Mode | Fournisseurs demandés | Ce qui part chez Google | Gain attendu |
+  |---|---|---|---|
+  | `gps` (défaut) | `GPS_PROVIDER` (+ passif si activé) | rien par Vigie (l'assistance GNSS XTRA/SUPL est réglée par le système) | — ; souvent aucune position en intérieur |
+  | `gps_network` | GPS + `NETWORK_PROVIDER` | réseaux Wi-Fi et antennes alentour (fournisseur réseau = Services Google Play, actif seulement si « Précision de la localisation Google » est activée) | position approximative en intérieur en quelques secondes ; un peu plus de consommation |
+  | `fused` | `FUSED_PROVIDER` seul | idem (fournisseur fusionné des Services Google Play) | position rapide, souvent précise en intérieur, moins de temps GNSS |
+
+  `location.fix.provider` est le fournisseur réel de chaque position (`gps`, `network`, `fused`, `passive`). Un
+  fournisseur absent ou désactivé est ignoré ; s'il ne reste rien, repli sur le GPS seul (réévalué à chaque
+  changement de fournisseur et toutes les minutes tant qu'on est en repli). La cadence adaptative (mouvement /
+  arrêt, mouvement significatif) et la détection `mock` s'appliquent dans les trois modes. En `gps_network`,
+  une position réseau arrivée moins d'un demi-intervalle après une position GPS n'est pas émise.
+  `location.provider` est émis pour le GPS et les fournisseurs du mode choisi.
 - **`net.usage`** : le système compte par tranches d'environ 2 h et répartit au prorata : valeurs horaires
   estimées, fenêtre terminée depuis au moins 30 min, rattrapage ≤ 24 h, 100 apps au plus par événement.
 - **`app.special_access`** : services d'accessibilité et administrateurs (API publiques) ; écouteurs de
@@ -417,6 +436,144 @@ longue (téléphone, IBAN, carte), seuls ses groupes de 4 à 8 chiffres le sont.
      compagnon) ; diffusion « réglages modifiés » reçue par le compagnon ;
   6. contenu réel des notifications des apps courantes (messageries, codes reçus par SMS déjà masqués par
      Android 15+, notifications groupées) et volume quotidien.
+
+## Commandes à distance
+
+Décision du propriétaire du 16/11/2026 (principe 2 révisé, contrat §8) : le serveur peut transmettre au
+téléphone des commandes d'une **liste fermée**, et rien d'autre. Aucune commande ne peut modifier un réglage,
+la politique ou l'enrôlement : un type inconnu, un paramètre en trop ou hors bornes est **refusé**, jamais
+interprété. Écran **Réglages › Commandes à distance** (ou carte « Commandes à distance » de l'accueil).
+
+| Commande | Effet sur le téléphone | Exige | API Android |
+|---|---|---|---|
+| `ring` (`duration_s` 1–300, `vibrate`) | sonnerie d'alarme en boucle à plein volume (flux alarme, volume remis ensuite), vibration en option, notification « Vigie fait sonner ce téléphone » avec **Arrêter** | canal activé | `MediaPlayer` en `USAGE_ALARM`, `AudioManager.setStreamVolume(STREAM_ALARM)`, `VibrationAttributes.USAGE_ALARM` |
+| `vibrate` (`duration_s` 1–60) | vibration seule | canal activé | `VibratorManager` |
+| `stop_ring` | arrête sonnerie ou vibration | canal activé | — |
+| `locate` | position immédiate par le collecteur `location` dans **son** mode (jusqu'à 60 s), puis envoi immédiat du tampon | canal activé, collecteur `location` actif | `LocationManager.getCurrentLocation` |
+| `lock` (`message` ≤ 200 caractères, optionnel) | message sur l'écran de verrouillage puis verrouillage immédiat | **signée**, Device Owner | `setDeviceOwnerLockScreenInfo`, `lockNow` |
+| `clear_lock_message` | retire le message | **signée**, Device Owner | `setDeviceOwnerLockScreenInfo(null)` |
+| `wipe` | réinitialisation d'usine | **signée**, Device Owner, « Autoriser l'effacement à distance » | `DevicePolicyManager.wipeDevice(0)` |
+
+Chaque commande traitée produit `command.result` (`command_id`, `type`, `status` = `executed`/`failed`/`refused`,
+`detail`, `signed`), une ligne de l'historique local et **une notification sur le téléphone** (une commande ne
+passe jamais inaperçue) ; le résultat est aussi envoyé au serveur (`POST /api/v1/commands/{id}/result`, gardé et
+renvoyé tant qu'il n'est pas acquitté). La notification permanente et l'accueil disent quand le canal est actif.
+
+### Mettre en service
+
+1. Enrôler l'appareil (le code dépend de son identifiant).
+2. **Commandes à distance** › « Recevoir les commandes à distance » (**désactivé par défaut**), mode
+   « Connexion permanente » (défaut) ou « Interrogation périodique » (1 à 15 min).
+3. **Code de commande** : 12 caractères au moins, saisi deux fois. Il n'est connu que du téléphone et de vous ;
+   le serveur ne le reçoit jamais et ne peut donc ni verrouiller ni effacer sans lui. Il est ressaisi dans la
+   console à chaque commande sensible. Le téléphone n'en garde que la clé dérivée
+   `K = PBKDF2-HMAC-SHA256(code, "vigie-cmd-v1:" + device_id, 600 000, 32 octets)`, chiffrée par une clé AES du
+   Keystore ; le code lui-même n'est conservé nulle part (pas même dans l'écran). Après un réenrôlement sous un
+   autre identifiant, l'app demande de le ressaisir. « Supprimer le code » remet aussi l'effacement à distance
+   à « interdit ».
+4. Optionnel : **Autoriser l'effacement à distance** (désactivé par défaut ; activation seulement avec un code
+   défini et après avoir tapé EFFACER dans la confirmation). Chaque changement de ces réglages émet
+   `agent.config_changed` (`commands.enabled`, `commands.mode`, `commands.allow_wipe`, `commands.code` avec
+   `set`/`changed`/`unset`, jamais le code).
+5. Si un message de verrouillage a été posé, l'écran propose « Effacer le message » (localement, sans commande).
+
+### Vérifications (dans l'ordre du contrat)
+
+canal activé (`disabled`) → `payload` analysable, `v` = 1, même `id` (`malformed`) → `device_id` (`wrong_device`)
+→ type de la liste (`unknown_type`) → pour un type sensible : code défini (`no_code_configured`), pas de
+verrouillage temporaire (`locked_out`), HMAC-SHA256 sur les **octets UTF-8 exacts** de `payload`, comparé en
+temps constant (`bad_signature`) → `wipe` autorisé (`disabled`) → non expirée, 5 min de tolérance (`expired`) →
+jamais vue (`replay`) → paramètres dans les bornes (`bad_params`) → Device Owner pour `lock`,
+`clear_lock_message`, `wipe` (`not_device_owner`). Avant la signature, seuls `v`, `id`, `device_id` et `type`
+sont lus, pour refuser ; le reste (paramètres, dates) n'est analysé qu'après. Cinq `bad_signature` en une heure
+bloquent les commandes sensibles une heure (persistant). Anti-rejeu persistant : 500 derniers `id` signés et
+500 derniers `id` simples (deux fenêtres : un serveur compromis qui enverrait des commandes simples en masse ne
+peut pas faire sortir un `id` signé de sa fenêtre). Précisions retenues là où le contrat se tait : clé inconnue
+au premier niveau de `payload` ou `expires_at` antérieur à `issued_at` → `malformed` ; validité de plus de
+30 jours ou `issued_at` à plus de 5 min dans le futur → `expired` ; `sig` sur une commande simple →
+`malformed` ; contrôle de longueur du message en unités UTF-16 (comme la console) ; caractères de contrôle
+du message affichés comme des espaces. Le vecteur de test du §8 est reproduit à l'octet près
+(`CommandVerifierTest`).
+
+### Effacement à distance : garde-fous
+
+`wipe` est la seule action irréversible de l'app. Elle exige **toutes** ces conditions : canal activé, code
+défini, signature valide, « Autoriser l'effacement à distance » activé, commande non expirée et jamais vue, et
+Vigie Device Owner. L'agent émet d'abord `command.result` (`executed`, sév. 2), tente d'envoyer le tampon et le
+résultat (10 s au plus), **revérifie toutes les conditions sur l'état courant** (un interrupteur coupé pendant
+ces 10 s annule tout), puis appelle `wipeDevice(0)`. Choix d'API : `wipeData` lève `IllegalStateException` pour
+une app ciblant l'API 34+ appelée sur l'utilisateur système (là où vit un Device Owner) ; `wipeDevice` (API 34)
+est l'appel prévu pour réinitialiser l'appareil et exige la politique `<wipe-data/>` (déclarée dans
+`policy/src/main/res/xml/device_admin.xml`, avec `<force-lock/>` pour `lockNow`). Drapeaux 0 : la protection
+contre la réinitialisation (compte Google) et les eSIM sont **conservées** — un voleur ne peut pas réutiliser le
+téléphone, vous gardez votre ligne. L'appel réel n'existe qu'à un endroit (`AndroidFactoryReset`), construit à
+un seul endroit (`PolicyModule.registerCommandExecutors`) ; `RemoteCommandsPolicyTest` vérifie les 64
+combinaisons des six conditions (une seule efface) et, dans les sources, qu'aucun autre chemin n'appelle
+`wipeDevice`/`wipeData`.
+
+### Limites réelles
+
+- **« Ne pas déranger »** : la sonnerie utilise le flux alarme, qui n'est coupé ni par le mode silencieux ni
+  par le mode vibreur. Si le mode « Ne pas déranger » du propriétaire coupe les alarmes (« Silence total », ou
+  alarmes désactivées dans le mode), le son reste coupé : une app ciblant Android 15+ ne peut plus désactiver le
+  « Ne pas déranger » de l'utilisateur (`setInterruptionFilter` ne pilote plus que sa propre règle), et être
+  Device Owner ne donne aucun droit sur ce mode. Le résultat le dit (`detail` = `dnd_alarms_muted`) ; la
+  vibration et la notification restent.
+- **`lock` sans écran de verrouillage sécurisé** (pas de code, schéma ou empreinte) : `lockNow` éteint seulement
+  l'écran. Le message s'affiche sur l'écran de verrouillage tant qu'il n'est pas retiré (commande ou app).
+- **`locate` en mode GPS seul** : en intérieur, souvent aucune position en 60 s (`failed`, `no_fix`) ; les modes
+  réseau/fusionné répondent mieux, au prix de ce qu'ils transmettent à Google. Collecteur `location` coupé ou
+  sans permission : `failed`, `location_unavailable` (une commande ne passe jamais outre un choix local).
+- **Politiques d'administration ajoutées** (`force-lock`, `wipe-data`) : elles sont lues à l'activation de
+  l'administrateur. Sur un téléphone où Vigie était déjà Device Owner avec une version antérieure, vérifier que
+  `lock` fonctionne après la mise à jour (sinon : `SecurityException` → `failed`, `lock_refused`).
+
+### Canal et consommation (à mesurer sur le téléphone)
+
+- **Connexion permanente** : `GET /api/v1/commands/stream` (Server-Sent Events) avec le même client TLS à
+  certificat client que l'envoi. Aucun verrou de veille permanent : une lecture bloquante sur une connexion TCP
+  au repos. Délai de lecture 300 s (2,5 × le maintien de 120 s du serveur : un maintien perdu est toléré). Les
+  minuteries s'arrêtent quand le processeur dort : une alarme inexacte autorisée en veille profonde
+  (`setAndAllowWhileIdle`, au plus une fois toutes les 15 min environ ; Android en espace l'effet d'au moins
+  9 min en Doze) vérifie qu'un octet est arrivé depuis moins de 5 min, sinon la connexion est rouverte. Verrou
+  de veille seulement pendant le traitement d'une commande (≤ 2 min), autour d'une interrogation (≤ 60 s) et
+  après une alarme (≤ 30 s).
+- **Coût attendu** : chaque maintien du serveur (toutes les 2 min) réveille le modem s'il est au repos — c'est
+  la principale dépense, surtout en réseau mobile. Un service de premier plan garde normalement l'accès réseau
+  en Doze (à vérifier sur One UI). Si la consommation est trop forte : mode « Interrogation périodique ».
+- **Interrogation** : `GET /api/v1/commands` à l'intervalle choisi (alarme inexacte ; en veille profonde
+  l'intervalle réel s'allonge), et à chaque envoi d'événements quand le flux n'est pas ouvert (au plus une fois
+  par minute ; inutile quand le flux est ouvert, qui livre déjà les commandes en attente).
+- **Pas de boucle** : sans réseau, rien n'est tenté jusqu'au retour du réseau (rappel système) ; échecs en
+  backoff exponentiel avec gigue (5 s → 15 min ; `429` et `Retry-After` respectés ; `404` = serveur sans canal :
+  6 h) ; un flux qui meurt aussitôt ouvert compte comme un échec ; un flux qui a vécu est rouvert après 2 à 10 s.
+  **`401`/`403` arrête tout** et l'écran l'affiche (« refusé par le serveur ») jusqu'à un réenrôlement, un
+  changement de réglage ou « Reconnecter ». Changement de réseau (Wi-Fi ↔ mobile) : le flux est rouvert aussitôt.
+- Une commande livrée deux fois (flux puis interrogation, ou nouvelle livraison par le serveur) dont le
+  résultat n'est pas encore acquitté n'est pas exécutée deux fois.
+
+### Ce qui est vérifié, ce qui ne l'est pas
+
+- **Vérifié (JVM)** : vecteur de test du §8 (et vecteurs PBKDF2 de la RFC 7914), chaque motif de refus et
+  l'ordre des vérifications, anti-rejeu après redémarrage, verrouillage après 5 signatures invalides, matrice
+  des garde-fous de `wipe`, revérification avant l'effacement, client du canal contre MockWebServer (flux SSE,
+  coupure, reconnexion, surveillance du flux, `401`, absence de réseau, bascule vers l'interrogation, résultat
+  renvoyé après coupure, livraison en double), conformité de `command.result` au contrat (`CommandResultContractTest`).
+- **Rien n'a été exécuté sur un téléphone.** À vérifier sur le S25+, par ordre de risque :
+  1. **`wipe`** : avec un téléphone de test ou une sauvegarde complète, vérifier que `wipeDevice(0)` réinitialise
+     bien (et qu'il ne se passe rien tant que l'interrupteur est coupé) ;
+  2. **`lock`** : `lockNow` et l'affichage du message par One UI sur l'écran de verrouillage
+     (`setDeviceOwnerLockScreenInfo`), puis `clear_lock_message` et « Effacer le message » ;
+  3. **consommation du canal permanent** sur 24 h en Wi-Fi puis en réseau mobile (Paramètres › Batterie,
+     `adb shell dumpsys batterystats`), comparée au mode interrogation ; si elle est forte, essayer un maintien
+     serveur plus long (`VIGIE_CMD_KEEPALIVE_S`, **240 s au plus** : le délai de lecture de l'agent est de
+     300 s, et sans dépasser le délai de NAT de l'opérateur) ou le mode interrogation ;
+  4. **réception en Doze** : écran éteint depuis plus d'une heure, envoyer `ring` ; noter le délai (la connexion
+     doit rester ouverte grâce au service de premier plan) ; `adb shell dumpsys deviceidle force-idle` pour forcer ;
+  5. **sonnerie** en mode silencieux, vibreur et « Ne pas déranger » (avec et sans alarmes autorisées), volume
+     d'alarme remis ensuite, bouton « Arrêter » sur l'écran de verrouillage ;
+  6. `locate` dans les trois modes de localisation, en intérieur et dehors ; reconnexion après passage Wi-Fi ↔
+     mobile, mode avion, redémarrage du serveur ; comportement après révocation (`401` affiché, plus d'essais).
 
 ## Politique Device Owner
 

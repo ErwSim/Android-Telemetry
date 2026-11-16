@@ -170,12 +170,19 @@ class AgentService : Service() {
         @Volatile
         private var pendingStopReason: String? = null
 
+        /** A start was requested in this process (the service may not be created yet). */
+        @Volatile
+        var startRequested = false
+            private set
+
         /** Returns false if the system refused the start (background start restrictions). */
         fun start(context: Context, reason: String): Boolean = try {
+            startRequested = true
             context.startForegroundService(Intent(context, AgentService::class.java).putExtra(EXTRA_REASON, reason))
             true
         } catch (e: Exception) {
             Log.w(TAG, "cannot start the agent service ($reason)", e)
+            startRequested = false
             false
         }
 

@@ -208,3 +208,28 @@ export function availableActions(status: string | undefined, override: 'block' |
 }
 
 export const ACTION_LABELS: Record<TrackAction, string> = { block: 'Bloquer', allow: 'Autoriser', default: 'Remettre par défaut' };
+
+// ------------------------------------------------------------------------ erreurs et données de statut
+
+/** Y a-t-il des décomptes bloqué/autorisé ? Faux sans AdGuard (jamais configuré) : on n'affiche alors aucun pourcentage. */
+export function hasStatusData(totals: TrackingTotals | undefined): boolean {
+  return (totals?.blocked ?? 0) + (totals?.allowed ?? 0) > 0;
+}
+
+/** Traduit les erreurs de `PUT /tracking/*` (contrat §9 et précisions). */
+export function trackingErrorMessage(e: { status: number; code: string; message: string }): string {
+  switch (e.code) {
+    case 'adguard_unavailable':
+      return "AdGuard Home n'est pas configuré ou pas joignable depuis le collecteur : rien n'a été modifié.";
+    case 'adguard_error':
+      return "AdGuard Home a refusé ou n'a pas répondu : rien n'a été modifié (ou seulement en partie). Réessayez, ou vérifiez AdGuard Home.";
+    case 'corrupt_rules':
+      return `Le bloc de règles géré par Vigie dans AdGuard Home est altéré : ${e.message}`;
+    case 'levels_not_configured':
+      return "Le choix du niveau n'est pas disponible : le collecteur n'a pas de fichier de correspondance niveaux → listes (VIGIE_ADGUARD_LEVELS_FILE).";
+    case 'invalid_domain':
+      return `Nom de domaine invalide : ${e.message}`;
+    default:
+      return e.message;
+  }
+}

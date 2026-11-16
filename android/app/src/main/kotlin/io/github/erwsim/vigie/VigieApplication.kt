@@ -42,6 +42,21 @@ class VigieApplication : Application() {
             }
         }
         step("background work") { agent.ensureBackgroundWork() }
+        // Any start of the process (notifications companion calling its provider, command alarm, worker…)
+        // brings the agent service back at once if it should run, instead of at the next maintenance pass.
+        // Allowed from the background for a Device Owner; otherwise refused and logged by AgentService.start.
+        // Checked a little later so that a boot, update or app start keeps its own reason in agent.started.
+        step("service watchdog") {
+            android.os.Handler(mainLooper).postDelayed({
+                try {
+                    if (agent.settings[CoreSettings.AGENT_ENABLED] && !AgentService.running.value && !AgentService.startRequested) {
+                        AgentService.start(this, AgentService.REASON_WATCHDOG)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "service watchdog failed", e)
+                }
+            }, WATCHDOG_DELAY_MS)
+        }
     }
 
     private inline fun <T> step(name: String, block: () -> T): T? = try {
@@ -54,6 +69,7 @@ class VigieApplication : Application() {
 
     companion object {
         private const val TAG = "Vigie"
+        private const val WATCHDOG_DELAY_MS = 3_000L
 
         /** First start-up failure of this process, null when everything started. */
         @Volatile

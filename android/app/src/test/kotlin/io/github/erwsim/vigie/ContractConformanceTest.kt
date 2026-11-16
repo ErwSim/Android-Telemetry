@@ -58,7 +58,7 @@ class ContractConformanceTest {
         assertEquals(
             listOf(
                 "heartbeat", "device", "usb", "location", "connectivity", "wifi", "wifi_scan", "hotspot", "nfc", "cell", "bluetooth",
-                "ble_tracker", "net_usage", "apps", "special_access", "foreground", "camera", "microphone",
+                "ble_tracker", "net_usage", "apps", "special_access", "foreground", "notifications", "camera", "microphone",
                 "security_log", "network_log", "posture",
             ),
             ids,

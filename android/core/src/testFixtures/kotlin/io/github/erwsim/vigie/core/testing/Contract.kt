@@ -149,7 +149,8 @@ object Contract {
             "unknown_sources_apps" to LIST, "usage_access_apps" to LIST, "vpn_apps" to LIST, "default_apps" to OBJ,
         ),
         "app.notification" to mapOf(
-            "package" to S, "event" to oneOf("posted", "removed"), "category" to S, "channel" to S, "ongoing" to B, "title" to S, "text" to S,
+            "package" to S, "event" to oneOf("posted", "removed"), "category" to S, "channel" to S, "ongoing" to B,
+            "importance" to oneOf("none", "min", "low", "default", "high", "max"), "title" to S, "text" to S, "redacted" to B,
         ),
         // sensor.*
         "sensor.camera" to mapOf("camera_id" to S, "in_use" to B, "package" to S, "screen_on" to B, "locked" to B),
