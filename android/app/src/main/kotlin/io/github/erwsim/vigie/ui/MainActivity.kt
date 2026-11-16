@@ -21,6 +21,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +46,7 @@ enum class Screen(val titleRes: Int, val topLevel: Boolean) {
     Enrollment(R.string.screen_enrollment, false),
     Policy(R.string.screen_policy, false),
     Commands(R.string.screen_commands, false),
+    Quarantine(R.string.screen_quarantine, false),
 }
 
 class MainActivity : ComponentActivity() {
@@ -66,13 +68,27 @@ class MainActivity : ComponentActivity() {
             }
             return
         }
-        setContent { VigieTheme { VigieApp() } }
+        openRequest.value = intent?.getStringExtra(EXTRA_OPEN)
+        setContent { VigieTheme { VigieApp(openRequest) } }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        openRequest.value = intent.getStringExtra(EXTRA_OPEN)
+    }
+
+    /** Screen asked for by a notification (e.g. a new app in quarantine). */
+    private val openRequest = androidx.compose.runtime.mutableStateOf<String?>(null)
+
+    companion object {
+        /** Extra of the launch intent: name of a [Screen] to open (notifications). */
+        const val EXTRA_OPEN = "io.github.erwsim.vigie.extra.OPEN"
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VigieApp() {
+fun VigieApp(openRequest: androidx.compose.runtime.MutableState<String?> = remember { mutableStateOf(null) }) {
     val agent = remember { Agent.get() }
     var screen by rememberSaveable { mutableStateOf(Screen.Home) }
     var previous by rememberSaveable { mutableStateOf(Screen.Home) }
@@ -86,6 +102,14 @@ fun VigieApp() {
     fun navigate(to: Screen) {
         if (!to.topLevel) previous = screen
         screen = to
+    }
+
+    val requested = openRequest.value
+    LaunchedEffect(requested) {
+        if (requested != null) {
+            openRequest.value = null
+            Screen.entries.firstOrNull { it.name == requested }?.let { navigate(it) }
+        }
     }
 
     BackHandler(enabled = screen != Screen.Home) {
@@ -130,7 +154,8 @@ fun VigieApp() {
             Screen.Journal -> JournalScreen(agent, modifier)
             Screen.Settings -> SettingsScreen(agent, resumeTick, modifier, ::navigate)
             Screen.Enrollment -> EnrollmentScreen(agent, modifier)
-            Screen.Policy -> PolicyScreen(agent, resumeTick, modifier)
+            Screen.Policy -> PolicyScreen(agent, resumeTick, modifier, ::navigate)
+            Screen.Quarantine -> QuarantineScreen(agent, resumeTick, modifier)
             Screen.Commands -> CommandsScreen(agent, resumeTick, modifier)
         }
     }

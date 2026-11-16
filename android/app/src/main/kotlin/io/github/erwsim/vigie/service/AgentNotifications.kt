@@ -11,9 +11,14 @@ import io.github.erwsim.vigie.core.Agent
 import io.github.erwsim.vigie.core.command.ChannelPhase
 import io.github.erwsim.vigie.core.command.CommandHistoryEntry
 import io.github.erwsim.vigie.core.command.CommandSettings
+import io.github.erwsim.vigie.policy.engine.CapabilityGuards
+import io.github.erwsim.vigie.policy.engine.GuardKey
+import io.github.erwsim.vigie.policy.engine.GuardNotice
+import io.github.erwsim.vigie.ui.Apps
 import io.github.erwsim.vigie.ui.CommandLabels
 import io.github.erwsim.vigie.ui.Format
 import io.github.erwsim.vigie.ui.MainActivity
+import io.github.erwsim.vigie.ui.Screen
 
 /** The permanent notification: always visible while the agent collects (no stealth). */
 object AgentNotifications {
@@ -27,6 +32,12 @@ object AgentNotifications {
     const val CHANNEL_COMMANDS = "vigie_commands"
     private const val RING_NOTIFICATION_ID = 2
     private const val COMMAND_NOTIFICATION_ID = 3
+
+    /** What a capability guard did on its own (quarantine, role change): never silent (contract §11.1). */
+    const val CHANNEL_GUARDS = "vigie_guards"
+
+    /** One notification per package (ids from this base, by package hash), so that several stay visible. */
+    private const val GUARD_NOTIFICATION_BASE = 1000
 
     fun createChannel(context: Context) {
         val channel = NotificationChannel(
@@ -52,7 +63,74 @@ object AgentNotifications {
             context.getString(R.string.cmd_channel_name),
             NotificationManager.IMPORTANCE_DEFAULT,
         ).apply { description = context.getString(R.string.cmd_channel_description) }
-        context.getSystemService(NotificationManager::class.java)?.createNotificationChannels(listOf(channel, alert, commands))
+        val guards = NotificationChannel(
+            CHANNEL_GUARDS,
+            context.getString(R.string.guard_channel_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply { description = context.getString(R.string.guard_channel_description) }
+        context.getSystemService(NotificationManager::class.java)?.createNotificationChannels(listOf(channel, alert, commands, guards))
+    }
+
+    /** Notification for a [GuardNotice]: tapping it opens the quarantine screen (or the policy screen). */
+    fun guardNotice(context: Context, notice: GuardNotice) {
+        fun label(pkg: String) = Apps.label(context, pkg)
+        fun perms(list: List<String>) = list.joinToString { CapabilityGuards.short(it) }
+        fun guardTitle(key: GuardKey) = context.getString(
+            when (key) {
+                GuardKey.SMS -> R.string.guard_sms_title
+                GuardKey.CALLS -> R.string.guard_calls_title
+                GuardKey.ACCESSIBILITY -> R.string.guard_accessibility_title
+                GuardKey.INPUT_METHODS -> R.string.guard_input_methods_title
+                GuardKey.QUARANTINE -> R.string.guard_quarantine_title
+            },
+        )
+        val (pkg, title, text, screen) = when (notice) {
+            is GuardNotice.Quarantined -> listOf(
+                notice.pkg,
+                context.getString(R.string.guard_notif_quarantined_title),
+                if (notice.denied.isEmpty()) {
+                    context.getString(R.string.guard_notif_quarantined_nothing, label(notice.pkg))
+                } else {
+                    context.getString(R.string.guard_notif_quarantined_text, label(notice.pkg), perms(notice.denied))
+                },
+                Screen.Quarantine.name,
+            )
+            is GuardNotice.RoleHolder -> listOf(
+                notice.pkg,
+                context.getString(R.string.guard_notif_role_title),
+                context.getString(
+                    R.string.guard_notif_role_text, label(notice.pkg), notice.role, guardTitle(notice.key),
+                    if (notice.lifted.isEmpty()) "" else context.getString(R.string.guard_notif_role_lifted, perms(notice.lifted)),
+                ),
+                Screen.Policy.name,
+            )
+            is GuardNotice.Released -> listOf(
+                notice.pkg,
+                context.getString(R.string.guard_notif_released_title),
+                context.getString(R.string.guard_notif_released_text, label(notice.pkg), notice.reason),
+                Screen.Quarantine.name,
+            )
+        }
+        val open = PendingIntent.getActivity(
+            context,
+            pkg.hashCode(),
+            Intent(context, MainActivity::class.java).putExtra(MainActivity.EXTRA_OPEN, screen)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notification = Notification.Builder(context, CHANNEL_GUARDS)
+            .setSmallIcon(R.drawable.ic_stat_vigie)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        try {
+            context.getSystemService(NotificationManager::class.java)?.notify(GUARD_NOTIFICATION_BASE + (pkg.hashCode() and 0xFFFF), notification)
+        } catch (_: Exception) {
+            // Notifications refused: the journal and security.policy still say it.
+        }
     }
 
     fun showRinging(context: Context) {

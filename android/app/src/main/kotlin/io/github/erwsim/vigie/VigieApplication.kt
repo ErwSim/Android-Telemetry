@@ -28,6 +28,8 @@ class VigieApplication : Application() {
         } ?: return
         step("policy") { PolicyModule.install(agent) }
         step("notification channel") { AgentNotifications.createChannel(this) }
+        // What a guard does on its own (quarantine, role change) is always shown (contract §11.1).
+        PolicyModule.guardNoticeListener = { notice -> AgentNotifications.guardNotice(this, notice) }
         step("remote commands") {
             // ring / vibrate / stop_ring need no Device Owner; lock / wipe are registered by PolicyModule.install.
             agent.commands.register(CommandTypes.RING, RemoteAlerts.ring(this))

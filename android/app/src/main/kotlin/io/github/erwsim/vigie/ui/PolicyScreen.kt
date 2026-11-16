@@ -61,7 +61,7 @@ import io.github.erwsim.vigie.policy.ui.PolicyUiState
  * Owner". Nothing is applied before the owner confirms the preview.
  */
 @Composable
-fun PolicyScreen(agent: Agent, resumeTick: Int, modifier: Modifier) {
+fun PolicyScreen(agent: Agent, resumeTick: Int, modifier: Modifier, navigate: (Screen) -> Unit = {}) {
     val controller = remember { PolicyModule.controller(agent) }
     val state by controller.state.collectAsStateWithLifecycle()
     LaunchedEffect(resumeTick) { controller.refresh() }
@@ -101,6 +101,9 @@ fun PolicyScreen(agent: Agent, resumeTick: Int, modifier: Modifier) {
         }
         item { ProfileCard(state, controller) }
         item { DnsCard(state, controller) }
+        // Capability guards (contract §11.1): switched on one by one, each after its own preview.
+        item { GuardsIntroCard() }
+        GUARD_ORDER.forEach { key -> item(key = "guard_${key.wire}") { GuardCard(agent, key, state, controller, navigate, resumeTick) } }
         item {
             val items = catalog.packages.filter(::visible)
             ItemsCard(stringResource(R.string.policy_packages_title), stringResource(R.string.policy_packages_desc), state, controller, items) {
@@ -145,6 +148,9 @@ fun PolicyScreen(agent: Agent, resumeTick: Int, modifier: Modifier) {
         item { RescueCard() }
     }
 
+    state.guardPreview?.let { preview ->
+        GuardPreviewDialog(preview, onDismiss = controller::dismissGuardPreview, onApply = controller::applyGuard)
+    }
     state.preview?.let { preview ->
         PreviewDialog(preview, onDismiss = controller::dismissPreview, onApply = controller::applySelection)
     }

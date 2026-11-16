@@ -127,6 +127,7 @@ fun SettingRow(settings: AgentSettings, spec: SettingSpec, tick: Int) {
                 }
             }
         }
+        is SettingSpec.PackageListSpec -> PackageListRow(settings, spec, tick)
         is SettingSpec.ChoiceSpec -> {
             var value by remember(tick) { mutableStateOf(settings[spec.key]) }
             Column(Modifier.fillMaxWidth().selectableGroup()) {
