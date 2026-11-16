@@ -1,836 +1,827 @@
-# Vigie — infrastructure serveur
+# Watchpost: server infrastructure
 
-Déploiement Docker Compose de la partie serveur de Vigie sur **un VPS Linux public de 8 Go de RAM ou
-plus** : frontal TLS **Caddy**, **collecteur Vigie** (ingestion + console), **AdGuard Home** (DNS privé
-filtrant en DNS-over-TLS) et **Wazuh** 4.14.10 nœud unique (manager, indexeur, dashboard), plus un
-tunnel **WireGuard** optionnel. L'installation tient en trois commandes ; tout ce qui est secret est
-généré sur le serveur et n'est jamais versionné.
+Docker Compose deployment of the server side of Watchpost on **a public Linux VPS with 8 GB of RAM or
+more**: **Caddy** TLS front end, **Watchpost collector** (ingestion + console), **AdGuard Home**
+(filtering private DNS over DNS-over-TLS) and **Wazuh** 4.14.10 single node (manager, indexer,
+dashboard), plus an optional **WireGuard** tunnel. Installation takes three commands; every secret is
+generated on the server and is never committed.
 
 ```
-Internet ──► 80/443 Caddy ─┬─ console.D  ─► collecteur:8080 (console + /api/console, dont commandes et pistage)
-                           ├─ ingest.D   ─► collecteur:8080 (/api/v1, certificat client OBLIGATOIRE ;
-                           │                 dont le flux de commandes SSE /api/v1/commands/stream)
-                           ├─ siem.D     ─► wazuh.dashboard:5601   ┐ liste d'IP + mot de passe Caddy,
-                           ├─ adguard.D  ─► adguardhome:3000       ┘ puis compte propre au service
-                           └─ dns.D      (certificat seulement)
-         ──► 853 AdGuard Home (DoT, certificat de dns.D fourni par Caddy, rechargé à chaud)
-collecteur ──events.ndjson──► wazuh.manager ◄──querylog.json── AdGuard Home
-collecteur ──API :3000 (réseau interne, compte vigie-collecteur)──► AdGuard Home (vue « pistage », niveaux)
+Internet ──► 80/443 Caddy ─┬─ console.D  ─► collector:8080 (console + /api/console, including commands and tracking)
+                           ├─ ingest.D   ─► collector:8080 (/api/v1, client certificate REQUIRED;
+                           │                 including the SSE command stream /api/v1/commands/stream)
+                           ├─ siem.D     ─► wazuh.dashboard:5601   ┐ IP list + Caddy password,
+                           ├─ adguard.D  ─► adguardhome:3000       ┘ then the service's own account
+                           └─ dns.D      (certificate only)
+         ──► 853 AdGuard Home (DoT, dns.D certificate provided by Caddy, hot-reloaded)
+collector ──events.ndjson──► wazuh.manager ◄──querylog.json── AdGuard Home
+collector ──API :3000 (internal network, watchpost-collector account)──► AdGuard Home (Tracking page, levels)
 wazuh.manager ──Filebeat──► wazuh.indexer (wazuh-alerts-*, wazuh-archives-*) ◄── wazuh.dashboard
 ```
 
-## 1. Prérequis
+## 1. Prerequisites
 
-| | Minimum | Conseillé |
+| | Minimum | Recommended |
 |---|---|---|
-| RAM | 8 Go (Wazuh n'est pas pris en charge en dessous) | 8 Go + 2 Go de swap |
+| RAM | 8 GB (Wazuh is not supported below) | 8 GB + 2 GB of swap |
 | CPU | 2 vCPU | 4 vCPU |
-| Disque | 30 Go SSD | 50 Go SSD (≈ 90 jours d'archives pour un téléphone) |
-| Système | Debian 12 / Ubuntu 24.04, noyau ≥ 5.10 | |
-| Logiciels | Docker Engine **≥ 26** et le greffon `docker compose` v2, `git`, `openssl`, `curl` | |
-| Réseau | IPv4 publique fixe, ports 80, 443, 853/tcp joignables | IPv6 en plus |
+| Disk | 30 GB SSD | 50 GB SSD (≈ 90 days of archives for one phone) |
+| System | Debian 12 / Ubuntu 24.04, kernel ≥ 5.10 | |
+| Software | Docker Engine **≥ 26** and the `docker compose` v2 plugin, `git`, `openssl`, `curl` | |
+| Network | Fixed public IPv4, ports 80, 443, 853/tcp reachable | IPv6 as well |
 
-Installer Docker : <https://docs.docker.com/engine/install/> (dépôt officiel ; les paquets
-`docker.io` des distributions sont souvent trop anciens). `install.sh` règle `vm.max_map_count=262144`
-(exigé par l'indexeur) et le rend persistant dans `/etc/sysctl.d/99-vigie-wazuh.conf`.
+Install Docker: <https://docs.docker.com/engine/install/> (official repository; the distributions'
+`docker.io` packages are often too old). `install.sh` sets `vm.max_map_count=262144` (required by the
+indexer) and makes it persistent in `/etc/sysctl.d/99-watchpost-wazuh.conf`.
 
-## 2. Enregistrements DNS
+## 2. DNS records
 
-Avec un domaine `vigie.exemple.fr` (n'importe quel sous-domaine d'un domaine à vous, ou un nom gratuit
-DuckDNS/deSEC), créez chez votre fournisseur DNS, **avant** l'installation :
+With a domain `watchpost.example.org` (any subdomain of a domain you own, or a free DuckDNS/deSEC
+name), create at your DNS provider, **before** the installation:
 
-| Nom | Type | Valeur |
+| Name | Type | Value |
 |---|---|---|
-| `console.vigie.exemple.fr` | A (et AAAA) | IP du VPS |
-| `ingest.vigie.exemple.fr` | A (et AAAA) | IP du VPS |
-| `siem.vigie.exemple.fr` | A (et AAAA) | IP du VPS |
-| `adguard.vigie.exemple.fr` | A (et AAAA) | IP du VPS |
-| `dns.vigie.exemple.fr` | A (et AAAA) | IP du VPS |
-| `*.dns.vigie.exemple.fr` | A (et AAAA) | IP du VPS — **seulement** en mode ClientID (§6.3) |
+| `console.watchpost.example.org` | A (and AAAA) | VPS IP address |
+| `ingest.watchpost.example.org` | A (and AAAA) | VPS IP address |
+| `siem.watchpost.example.org` | A (and AAAA) | VPS IP address |
+| `adguard.watchpost.example.org` | A (and AAAA) | VPS IP address |
+| `dns.watchpost.example.org` | A (and AAAA) | VPS IP address |
+| `*.dns.watchpost.example.org` | A (and AAAA) | VPS IP address, **only** in ClientID mode (§6.3) |
 
-Let's Encrypt valide chaque nom par le port 80 (défi HTTP-01) : les noms doivent déjà pointer vers le
-VPS. Un TTL court (300 s) facilite un changement de serveur.
+Let's Encrypt validates each name through port 80 (HTTP-01 challenge): the names must already point
+to the VPS. A short TTL (300 s) makes a server change easier.
 
 ## 3. Installation
 
 ```bash
-git clone <ce dépôt> vigie && cd vigie/infra
-sudo ./install.sh --domain vigie.exemple.fr --email vous@exemple.fr --tls acme
-sudo ./firewall/ufw.sh            # pare-feu de l'hôte (SSH, 80, 443, 853)
-sudo ./enroll.sh s25              # fichier d'enrôlement du téléphone : s25.vigie
+git clone <this repository> watchpost && cd watchpost/infra
+sudo ./install.sh --domain watchpost.example.org --email you@example.org --tls acme
+sudo ./firewall/ufw.sh            # host firewall (SSH, 80, 443, 853)
+sudo ./enroll.sh phone            # enrollment file of the phone: phone.watchpost
 ```
 
-Sans option, `install.sh` pose les questions. Il :
+Without options, `install.sh` asks questions. It:
 
-1. vérifie Docker, Compose, la RAM, le disque, `vm.max_map_count` ;
-2. écrit `infra/.env` (droits 600) avec **tous les secrets générés** (mots de passe de l'indexeur, de
-   l'API Wazuh, d'AdGuard et du compte AdGuard du collecteur, du compte d'administration Caddy, de la
-   console) ; les valeurs existantes
-   sont conservées d'une exécution à l'autre ;
-3. génère la PKI interne de Wazuh (`secrets/wazuh-certs/`, openssl, sans téléchargement) ;
-4. génère les configurations (`data/`) : comptes de l'indexeur hachés (bcrypt) — les comptes de
-   démonstration de l'image (`kibanaro`, `logstash`, `readall`, `snapshotrestore`, mots de passe
-   publics) sont supprimés —, `wazuh.yml` du dashboard, `AdGuardHome.yaml`, compte d'administration
-   Caddy ;
-5. construit l'image du collecteur (`server/Dockerfile`) si elle est absente (`--build` pour forcer) ;
-6. démarre l'indexeur ; au premier démarrage, les comptes sont créés depuis `internal_users.yml` ;
-   ensuite, un compte Vigie (admin, kibanaserver, vigie_reader) dont le mot de passe ne correspond
-   plus à `.env` est corrigé, un par un, par l'API de sécurité (les utilisateurs créés dans le
-   dashboard sont conservés) ; vérifie le mot de passe admin ; pose le modèle d'index et les
-   politiques de rétention ;
-7. démarre le collecteur, récupère l'AC de ses certificats clients pour Caddy (mTLS), démarre Wazuh,
-   Caddy (obtention des certificats), puis AdGuard Home dès que le certificat de `dns.D` existe ;
-8. crée le compte console `admin` (`vigie-collector user set-password`) **à la première installation
-   seulement** et importe les tableaux de bord Wazuh « Vigie » ;
-9. affiche le récapitulatif : adresses, enregistrements DNS, ports à ouvrir, où sont les mots de passe.
+1. checks Docker, Compose, the RAM, the disk, `vm.max_map_count`;
+2. writes `infra/.env` (mode 600) with **all the generated secrets** (passwords of the indexer, of the
+   Wazuh API, of AdGuard and of the collector's AdGuard account, of the Caddy administration account,
+   of the console); existing values are kept from one run to the next;
+3. generates the Wazuh internal PKI (`secrets/wazuh-certs/`, openssl, no download);
+4. generates the configuration (`data/`): hashed indexer accounts (bcrypt), with the demonstration
+   accounts of the image (`kibanaro`, `logstash`, `readall`, `snapshotrestore`, public passwords)
+   removed; the dashboard's `wazuh.yml`, `AdGuardHome.yaml`, the Caddy administration account;
+5. builds the collector image (`server/Dockerfile`) if it is missing (`--build` to force it);
+6. starts the indexer; on the first start, the accounts are created from `internal_users.yml`;
+   afterwards, a Watchpost account (admin, kibanaserver, watchpost_reader) whose password no longer
+   matches `.env` is corrected, one by one, through the security API (users created in the dashboard
+   are kept); checks the admin password; sets the index template and the retention policies;
+7. starts the collector, fetches the CA of its client certificates for Caddy (mTLS), starts Wazuh,
+   Caddy (certificates are obtained), then AdGuard Home as soon as the `dns.D` certificate exists;
+8. creates the `admin` console account (`watchpost-collector user set-password`) **on the first
+   installation only** and imports the "Watchpost" Wazuh dashboards;
+9. prints the summary: addresses, DNS records, ports to open, where the passwords are.
 
-Il est **rejouable** : on le relance après toute modification de `.env` ou une mise à jour du dépôt
-(vérifié : deux exécutions successives laissent `.env` identique octet pour octet et la pile saine).
-Il ne défait pas ce que vous avez réglé dans les interfaces : mot de passe de la console changé
-avec `set-password`, niveau de blocage DNS et règles posées depuis la console (§6.2), réglages
-d'AdGuard, utilisateurs créés dans le dashboard Wazuh.
+It can be **rerun**: run it again after any change to `.env` or an update of the repository
+(verified: two successive runs leave `.env` byte-for-byte identical and the stack healthy).
+It does not undo what you set in the interfaces: console password changed with `set-password`, DNS
+blocking level and rules set from the console (§6.2), AdGuard settings, users created in the Wazuh
+dashboard.
 
-Options utiles : `--profile permissif|equilibre|strict` (applique un niveau de blocage DNS, §6.2),
+Useful options: `--profile permissive|balanced|strict` (applies a DNS blocking level, §6.2),
 `--clientid` (§6.3), `--admin-allow
 "203.0.113.0/24 2001:db8::/32"` (§5), `--rotate-passwords` (§8.3), `--reset-console-password`
 (§8.3), `--reset-adguard` (§6.2), `--renew-wazuh-certs` / `--renew-wazuh-ca` (§8.6), `--build`,
 `--no-start`.
 
-**Où sont les mots de passe ?** `infra/secrets/identifiants.txt` (récapitulatif lisible) et
-`infra/.env` (source de vérité), droits 600, jamais versionnés. Sauvegardez-les (§8.2).
+**Where are the passwords?** `infra/secrets/credentials.txt` (readable summary) and `infra/.env`
+(source of truth), mode 600, never committed. Back them up (§8.2).
 
-### Sur le téléphone
+### On the phone
 
-1. Transférer `s25.vigie` par câble (`adb push s25.vigie /sdcard/Download/`), l'importer dans Vigie
-   Agent, puis le détruire des deux côtés (`shred -u s25.vigie`) : il contient la clé privée et le
-   jeton de l'appareil.
-2. Paramètres → Connexions → Plus de paramètres → DNS privé → *Nom d'hôte du fournisseur* :
-   `dns.vigie.exemple.fr` (l'app Vigie peut l'imposer en mode Device Owner). En mode strict, si le
-   serveur est injoignable le téléphone **n'a plus de DNS** : c'est voulu (pas de fuite en clair), mais
-   gardez en tête qu'une panne du VPS se voit immédiatement sur le téléphone.
+1. Transfer `phone.watchpost` over a cable (`adb push phone.watchpost /sdcard/Download/`), import it
+   into Watchpost Agent, then destroy it on both sides (`shred -u phone.watchpost`): it contains the
+   private key and the token of the device.
+2. Settings → Connections → More connection settings → Private DNS → *Private DNS provider
+   hostname*: `dns.watchpost.example.org` (the Watchpost app can enforce it in Device Owner mode). In
+   strict mode, if the server is unreachable the phone **has no DNS at all**: this is intended (no
+   leak in clear text), but keep in mind that an outage of the VPS shows up immediately on the phone.
 
-### Mode TLS interne (tests, réseau local)
+### Internal TLS mode (tests, local network)
 
-`--tls internal` utilise l'AC interne de Caddy au lieu de Let's Encrypt (aucun port 80 public ni
-domaine réel nécessaires). Il faut alors faire confiance à `data/caddy/server-root-ca.crt` : dans le
-navigateur, et sur Android (Paramètres → Sécurité → Chiffrement → Installer un certificat AC) pour
-que le DNS privé fonctionne. Les fichiers `.vigie` contiennent cette AC (`server_ca_pem`) pour
-l'agent. Ce mode est celui des essais décrits au §11.
+`--tls internal` uses Caddy's internal CA instead of Let's Encrypt (no public port 80 nor real domain
+needed). You must then trust `data/caddy/server-root-ca.crt`: in the browser, and on Android
+(Settings → Security → Encryption → Install a certificate → CA certificate) for the private DNS to
+work. The `.watchpost` files contain this CA (`server_ca_pem`) for the agent. This is the mode used
+for the test runs described in §11.
 
-## 4. Ce qui est exposé sur Internet, et pourquoi
+## 4. What is exposed on the Internet, and why
 
-| Port | Service | Pourquoi |
+| Port | Service | Why |
 |---|---|---|
-| 80/tcp | Caddy | Défi ACME HTTP-01 de Let's Encrypt, redirection vers HTTPS |
-| 443/tcp | Caddy | Console, ingestion (mTLS), dashboard Wazuh et AdGuard (protégés, §5) |
-| 853/tcp | AdGuard Home | DNS-over-TLS : seul protocole du « DNS privé » d'Android |
-| 51820/udp | WireGuard | **Seulement** avec le profil optionnel `wireguard` |
+| 80/tcp | Caddy | Let's Encrypt ACME HTTP-01 challenge, redirect to HTTPS |
+| 443/tcp | Caddy | Console, ingestion (mTLS), Wazuh dashboard and AdGuard (protected, §5) |
+| 853/tcp | AdGuard Home | DNS-over-TLS: the only protocol of Android's "private DNS" |
+| 51820/udp | WireGuard | **Only** with the optional `wireguard` profile |
 
-Rien d'autre n'est publié : pas de 53 (DNS en clair), ni 1514/1515 (agents Wazuh : il n'y en a pas,
-`remoted` n'écoute que sur la boucle locale du conteneur et l'enrôlement exige un mot de passe
-aléatoire), ni 55000 (API Wazuh), ni 9200 (indexeur), ni 3000 (AdGuard), ni 2019 (admin Caddy). Les
-conteneurs communiquent sur un réseau Docker privé (`172.31.250.0/24`, modifiable par `VIGIE_SUBNET`).
+Nothing else is published: no 53 (plain DNS), no 1514/1515 (Wazuh agents: there are none, `remoted`
+listens only on the container's loopback and enrollment requires a random password), no 55000 (Wazuh
+API), no 9200 (indexer), no 3000 (AdGuard), no 2019 (Caddy admin). The containers communicate over a
+private Docker network (`172.31.250.0/24`, can be changed with `WATCHPOST_SUBNET`).
 
-> **Docker et ufw** : les ports publiés par Docker contournent les règles `ufw`/INPUT. La liste
-> ci-dessus est donc garantie par `docker-compose.yml`, pas par le pare-feu ; `firewall/ufw.sh` et
-> `firewall/nftables.conf` protègent le reste de l'hôte (SSH…) et expliquent comment filtrer un port
-> publié (chaîne `DOCKER-USER`).
+> **Docker and ufw**: the ports published by Docker bypass the `ufw`/INPUT rules. The list above is
+> therefore guaranteed by `docker-compose.yml`, not by the firewall; `firewall/ufw.sh` and
+> `firewall/nftables.conf` protect the rest of the host (SSH…) and explain how to filter a published
+> port (`DOCKER-USER` chain).
 
-Durcissement des conteneurs : images épinglées, `no-new-privileges`, toutes les capacités retirées
-pour Caddy, le collecteur (image `scratch`, UID 65532) et AdGuard (sauf celles nécessaires),
-limites mémoire, journaux Docker bornés (3 × 20 Mo). Les conteneurs Wazuh gardent leurs réglages
-d'origine (l'image du manager a besoin de root pour s6-overlay et Filebeat).
+Container hardening: pinned images, `no-new-privileges`, all capabilities dropped for Caddy, the
+collector (`scratch` image, UID 65532) and AdGuard (except the ones it needs), memory limits, bounded
+Docker logs (3 × 20 MB). The Wazuh containers keep their original settings (the manager image needs
+root for s6-overlay and Filebeat).
 
-## 5. Protection des interfaces d'administration
+## 5. Protection of the administration interfaces
 
-`siem.D` (dashboard Wazuh) et `adguard.D` passent par **deux barrières** :
+`siem.D` (Wazuh dashboard) and `adguard.D` go through **two barriers**:
 
-1. **Caddy** : liste d'adresses autorisées (`VIGIE_ADMIN_ALLOW`, défaut : toutes) puis
-   authentification HTTP (`basic_auth`, compte `admin`, mot de passe généré, haché bcrypt) ;
-2. le **compte propre** du service (Wazuh `admin`, AdGuard `admin`).
+1. **Caddy**: list of allowed addresses (`WATCHPOST_ADMIN_ALLOW`, default: all), then HTTP
+   authentication (`basic_auth`, `admin` account, generated password, bcrypt-hashed);
+2. the service's **own account** (Wazuh `admin`, AdGuard `admin`).
 
-Pourquoi : ces deux interfaces sont de grosses applications web dont l'historique compte des failles
-exploitables **avant** authentification ; la barrière Caddy les rend invisibles aux robots qui
-balaient Internet, sans ajouter de service (Authelia, SSO) ni de certificat client à installer dans
-le navigateur. La liste d'IP est optionnelle car l'IP d'un accès mobile change : si vous administrez
-depuis une connexion fixe ou via WireGuard, restreignez-la :
+Why: these two interfaces are large web applications whose history includes vulnerabilities
+exploitable **before** authentication; the Caddy barrier hides them from the bots that sweep the
+Internet, without adding a service (Authelia, SSO) nor a client certificate to install in the
+browser. The IP list is optional because the IP address of a mobile connection changes: if you
+administer from a fixed connection or through WireGuard, restrict it:
 
 ```bash
 sudo ./install.sh --admin-allow "203.0.113.7/32 2001:db8:1234::/48"
 ```
 
-L'en-tête `Authorization` de Caddy est retiré avant le dashboard (sinon il le prendrait pour des
-identifiants de l'indexeur). La console Vigie (`console.D`) n'a pas cette barrière : elle a sa propre
-authentification (argon2id, limitation des essais, cookie `__Host-`, CSP stricte) et c'est
-l'interface du quotidien. L'ingestion exige un certificat client émis par le collecteur **et** le
-jeton de l'appareil ; Caddy n'y expose que `/api/v1/*`, supprime tout en-tête `X-Vigie-*` entrant et
-pose `X-Vigie-Client-Cert-Sha256`, que le collecteur n'accepte que de l'adresse fixe de Caddy.
+Caddy's `Authorization` header is removed before the dashboard (otherwise it would take it for
+indexer credentials). The Watchpost console (`console.D`) does not have this barrier: it has its own
+authentication (argon2id, attempt limiting, `__Host-` cookie, strict CSP) and it is the everyday
+interface. Ingestion requires a client certificate issued by the collector **and** the device token;
+Caddy exposes only `/api/v1/*` there, removes every incoming `X-Watchpost-*` header and sets
+`X-Watchpost-Client-Cert-Sha256`, which the collector accepts only from Caddy's fixed address.
 
-### 5.1 Commandes à distance (v1.1) : ce qui transite
+### 5.1 Remote commands (v1.1): what goes through
 
-Depuis la v1.1 (principe n° 2 révisé de `docs/ARCHITECTURE.md`, contrat §8), la console peut envoyer au
-téléphone des commandes d'une **liste fermée** : sonner, vibrer, arrêter la sonnerie, localiser
-(simples) ; verrouiller avec un message, retirer ce message, effacer (sensibles).
+Since v1.1 (revised principle no. 2 of `docs/ARCHITECTURE.md`, contract §8), the console can send the
+phone commands from a **closed list**: ring, vibrate, stop ringing, locate (simple); lock with a
+message, remove that message, erase (sensitive).
 
-- **Chemin** : navigateur → `console.D` (`/api/console/commands*`, session console) → collecteur →
-  `ingest.D` → agent, par le flux `GET /api/v1/commands/stream` (Server-Sent Events) que l'agent
-  ouvre lui-même avec son certificat client et son jeton (ou par interrogation `GET /api/v1/commands`).
-  Le résultat revient par `POST /api/v1/commands/{id}/result` et un événement `command.result`. Rien
-  n'est ouvert vers le téléphone : c'est lui qui se connecte. Les routes `/api/console/*` ne passent
-  que par `console.D` ; `ingest.D` n'expose que `/api/v1/*` (404 sinon).
-- **Ce que le serveur peut faire** : relayer une commande de la liste, telle que le navigateur l'a
-  construite (le collecteur la transmet à l'octet près), au plus 20 par heure et 10 en attente par
-  appareil. Un serveur compromis peut au pire faire sonner, vibrer ou localiser le téléphone.
-- **Ce qu'il ne peut pas faire** : signer une commande sensible. La signature (HMAC-SHA256) est
-  calculée dans le navigateur avec une clé dérivée d'un **code de commande** saisi à chaque fois,
-  jamais envoyé au serveur ni stocké par lui ; l'agent la vérifie et refuse (`bad_signature`), puis
-  se ferme aux commandes sensibles pendant une heure après 5 échecs (`locked_out`). L'effacement est
-  en plus désactivé par défaut dans l'app. Aucune commande ne peut modifier un réglage, la politique
-  ou l'enrôlement ; le canal se coupe dans l'app.
-- **Ce qui est journalisé** : chaque émission, annulation, expiration et résultat est un événement
-  (`command.issued`, `.cancelled`, `.expired`, `.reported` produits par le collecteur avec
-  `vigie.source = "server"`, `command.result` produit par l'appareil), exporté vers Wazuh (§7.2). Le
-  **message de verrouillage n'est jamais exporté** (seulement `message_set`) ni journalisé : il reste
-  dans la base du collecteur pour la console.
-- **Caddy et le flux SSE** : réponse transmise sans tampon (`flush_interval -1`), aucun délai de
-  Caddy ne coupe une réponse en cours (`read_body`/`read_header` ne visent que la lecture de la
-  requête, `idle` les connexions inactives entre deux requêtes) ; le collecteur envoie un maintien
-  toutes les 120 s (`VIGIE_CMD_KEEPALIVE_S`). Le journal d'accès de Caddy compte **une ligne par
-  connexion** (écrite à sa fermeture), pas une par message ; l'en-tête `Authorization` (jeton) y est
-  masqué. Les limites de taille de corps (9 Mo sur `ingest.D`, 1 Mo sur `console.D`) sont inchangées.
-  Vérifié (§11) : flux ouvert plus de 5 min à travers Caddy en HTTP/1.1 et HTTP/2 sans coupure.
+- **Path**: browser → `console.D` (`/api/console/commands*`, console session) → collector →
+  `ingest.D` → agent, through the `GET /api/v1/commands/stream` stream (Server-Sent Events) that the
+  agent opens itself with its client certificate and its token (or by polling `GET /api/v1/commands`).
+  The result comes back through `POST /api/v1/commands/{id}/result` and a `command.result` event.
+  Nothing is opened towards the phone: the phone connects. The `/api/console/*` routes go only through
+  `console.D`; `ingest.D` exposes only `/api/v1/*` (404 otherwise).
+- **What the server can do**: relay a command from the list, as the browser built it (the collector
+  passes it on byte for byte), at most 20 per hour and 10 pending per device. A compromised server can
+  at worst make the phone ring, vibrate or report its location.
+- **What it cannot do**: sign a sensitive command. The signature (HMAC-SHA256) is computed in the
+  browser with a key derived from a **command passphrase** typed every time, never sent to the server
+  nor stored by it; the agent checks it and refuses (`bad_signature`), then closes itself to sensitive
+  commands for one hour after 5 failures (`locked_out`). Erase is, in addition, disabled by default in
+  the app. No command can change a setting, the policy or the enrollment; the channel can be turned
+  off in the app.
+- **What is logged**: every issue, cancellation, expiry and result is an event (`command.issued`,
+  `.cancelled`, `.expired`, `.reported` produced by the collector with `watchpost.source = "server"`,
+  `command.result` produced by the device), exported to Wazuh (§7.2). The **lock message is never
+  exported** (only `message_set`) nor logged: it stays in the collector database for the console.
+- **Caddy and the SSE stream**: response passed on without buffering (`flush_interval -1`), no Caddy
+  timeout cuts a response in progress (`read_body`/`read_header` only cover reading the request,
+  `idle` the idle connections between two requests); the collector sends a keepalive every 120 s
+  (`WATCHPOST_CMD_KEEPALIVE_S`). Caddy's access log has **one line per connection** (written when it
+  closes), not one per message; the `Authorization` header (token) is masked in it. The body size
+  limits (9 MB on `ingest.D`, 1 MB on `console.D`) are unchanged.
+  Verified (§11): stream open for more than 5 min through Caddy over HTTP/1.1 and HTTP/2 without a cut.
 
-## 6. DNS privé filtrant (AdGuard Home)
+## 6. Filtering private DNS (AdGuard Home)
 
-### 6.1 Résolveur, amont, DNSSEC
+### 6.1 Resolver, upstream, DNSSEC
 
-- **DoT sur 853** avec le certificat de `dns.D` obtenu par Caddy (volume `caddy_data`, seul le
-  répertoire de ce certificat est monté, en lecture seule). AdGuard surveille le fichier et **recharge
-  le certificat renouvelé sans redémarrer** (vérifié, §11).
-- **Amont : Quad9** (`https://dns.quad9.net/dns-query` et `tls://dns.quad9.net`) — fondation suisse à
-  but non lucratif, pas de journalisation des adresses IP, pas d'ECS sur ce point d'accès, **validation
-  DNSSEC** ; secours : **Mullvad DNS** (DoH, sans filtrage ni journalisation). Ni Google ni Cloudflare.
-  AdGuard demande DNSSEC à l'amont (`enable_dnssec`) : une réponse à signature invalide revient en
-  SERVFAIL et le bit AD est transmis au téléphone.
-- DNS en clair (53) : actif seulement sur le réseau Docker interne (WireGuard), jamais publié.
+- **DoT on 853** with the `dns.D` certificate obtained by Caddy (`caddy_data` volume; only the
+  directory of this certificate is mounted, read-only). AdGuard watches the file and **reloads the
+  renewed certificate without restarting** (verified, §11).
+- **Upstream: Quad9** (`https://dns.quad9.net/dns-query` and `tls://dns.quad9.net`): a Swiss
+  non-profit foundation, no logging of IP addresses, no ECS on this endpoint, **DNSSEC validation**;
+  fallback: **Mullvad DNS** (DoH, no filtering, no logging). Neither Google nor Cloudflare.
+  AdGuard requests DNSSEC from the upstream (`enable_dnssec`): an answer with an invalid signature
+  comes back as SERVFAIL and the AD bit is passed on to the phone.
+- Plain DNS (53): active only on the internal Docker network (WireGuard), never published.
 
-### 6.2 Listes de blocage et niveaux
+### 6.2 Blocklists and levels
 
-Trois **niveaux de blocage** ; la correspondance niveau → listes est **un seul fichier versionné**,
-[`adguard/niveaux.json`](adguard/niveaux.json), lu à la fois par `install.sh` (qui construit les
-listes d'AdGuard) et par le collecteur (`VIGIE_ADGUARD_LEVELS_FILE`, vue « pistage » de la console).
+Three **blocking levels**; the level → lists mapping is **a single committed file**,
+[`adguard/levels.json`](adguard/levels.json), read both by `install.sh` (which builds the AdGuard
+lists) and by the collector (`WATCHPOST_ADGUARD_LEVELS_FILE`, Tracking page of the console).
 
-| ID | Liste | Permissif | Équilibré | Strict |
+| ID | List | Permissive | Balanced | Strict |
 |---|---|---|---|---|
-| 1 | `adguard/vigie-base.txt` (versionné) : exceptions indispensables + télémétrie Google/Samsung commentée ligne à ligne | ✓ | ✓ | ✓ |
-| 2 | `adguard/vigie-strict.txt` (versionné) : Firebase Remote Config, Galaxy Store, push et cloud Samsung… | | | ✓ |
-| 10 | HaGeZi **Multi PRO** (publicité, pistage, télémétrie ; faux positifs rares) | | ✓ | |
-| 11 | HaGeZi **Multi PRO++** (plus agressive) | | | ✓ |
+| 1 | `adguard/watchpost-base.txt` (committed): essential exceptions + Google/Samsung telemetry commented line by line | ✓ | ✓ | ✓ |
+| 2 | `adguard/watchpost-strict.txt` (committed): Firebase Remote Config, Galaxy Store, Samsung push and cloud… | | | ✓ |
+| 10 | HaGeZi **Multi PRO** (advertising, tracking, telemetry; rare false positives) | | ✓ | |
+| 11 | HaGeZi **Multi PRO++** (more aggressive) | | | ✓ |
 | 20 | HaGeZi **Native Tracker Samsung** | | ✓ | ✓ |
-| 30 | HaGeZi **Threat Intelligence Feeds (medium)** : maliciels, hameçonnage, C2 | ✓ | ✓ | ✓ |
-| 90 | `data/adguard/userfilters/regles-perso.txt` (vos règles, non versionnées, sauvegardées) — hors niveaux, toujours active | ✓ | ✓ | ✓ |
+| 30 | HaGeZi **Threat Intelligence Feeds (medium)**: malware, phishing, C2 | ✓ | ✓ | ✓ |
+| 90 | `data/adguard/userfilters/personal-rules.txt` (your rules, not committed, backed up), outside the levels, always active | ✓ | ✓ | ✓ |
 
-**Équilibré** (défaut à la première installation, décision du propriétaire) : Play Services, Play
-Store, notifications push FCM et apps bancaires (Play Integrity) restent fonctionnels grâce aux
-exceptions `@@…$important` de `vigie-base.txt` (test de connectivité, `mtalk*.google.com`, FCM,
-installations Firebase, Play, comptes Google, mises à jour Google et Samsung FOTA) ; Firebase
-Analytics, Crashlytics, journaux Firebase, télémétrie Play Services, régies Google et Samsung,
-diagnostic Samsung sont bloqués. **Strict** : PRO++ au lieu de PRO, plus `vigie-strict.txt`.
-**Permissif** : le minimum jugé utile — le flux de menaces (protection, pas confort : il ne casse
-rien d'ordinaire) et `vigie-base.txt` (une vingtaine de domaines de télémétrie et de régie Google
-et Samsung choisis un par un, sans effet visible, plus les exceptions qui garantissent push, Play et
-mises à jour) ; aucune liste publicitaire générale, pour dépanner une app récalcitrante sans
-renoncer à la protection contre les domaines malveillants.
+**Balanced** (default on the first installation): Play Services, Play Store, FCM push notifications
+and banking apps (Play Integrity) keep working thanks to the `@@…$important` exceptions of
+`watchpost-base.txt` (connectivity check, `mtalk*.google.com`, FCM, Firebase installations, Play,
+Google accounts, Google updates and Samsung FOTA); Firebase Analytics, Crashlytics, Firebase logs,
+Play Services telemetry, Google and Samsung ad networks, Samsung diagnostics are blocked. **Strict**:
+PRO++ instead of PRO, plus `watchpost-strict.txt`. **Permissive**: the minimum considered useful, the
+threat feed (protection, not comfort: it breaks nothing ordinary) and `watchpost-base.txt` (about
+twenty Google and Samsung telemetry and advertising domains chosen one by one, without visible effect,
+plus the exceptions that guarantee push, Play and updates); no general advertising list, to work
+around a misbehaving app without giving up protection against malicious domains.
 
-Chaque liste de `niveaux.json` porte une **catégorie** (`category`) : `threat` (menaces : hameçonnage,
-maliciels, serveurs de commande), `ads`, `tracking`, `mixed` (liste générale qui mêle publicité, pistage et
-quelques menaces), `custom`, `allowlist`. Seule `threat` change un comportement : un blocage dû à une liste
-`threat` alimente la détection `detect.threat_domain` du collecteur (§7.4) ; sans aucune liste `threat`, cette
-détection reste muette. Ici : HaGeZi TIF (30) est `threat` ; Multi PRO et PRO++ sont `mixed` ; Vigie base,
-Vigie strict et Samsung sont `tracking`. Le collecteur refuse de démarrer sur une catégorie inconnue ;
-`merge-config.py` la vérifie dès l'installation. Si vous ajoutez une liste de menaces au fichier, donnez-lui
-`"category": "threat"` (le nom ou l'adresse ne suffisent pas).
+Each list of `levels.json` has a **category** (`category`): `threat` (threats: phishing, malware,
+command-and-control servers), `ads`, `tracking`, `mixed` (general list that mixes advertising,
+tracking and a few threats), `custom`, `allowlist`. Only `threat` changes a behaviour: a block caused
+by a `threat` list feeds the collector's `detect.threat_domain` detection (§7.4); without any `threat`
+list, this detection stays silent. Here: HaGeZi TIF (30) is `threat`; Multi PRO and PRO++ are
+`mixed`; Watchpost base, Watchpost strict and Samsung are `tracking`. The collector refuses to start
+on an unknown category; `merge-config.py` checks it at installation time. If you add a threat list to
+the file, give it `"category": "threat"` (the name or the address is not enough).
 
-Toutes les listes sont **présentes** dans AdGuard quel que soit le niveau ; un niveau n'est qu'un
-jeu de listes **activées** (une liste désactivée n'est ni téléchargée ni chargée en mémoire). Les
-listes HaGeZi (GPL-3.0) sont téléchargées par AdGuard depuis jsDelivr (chemins vérifiés dans le
-dépôt `hagezi/dns-blocklists`) et rafraîchies toutes les 12 h.
+All the lists are **present** in AdGuard whatever the level; a level is only a set of **enabled**
+lists (a disabled list is neither downloaded nor loaded in memory). The HaGeZi lists (GPL-3.0) are
+downloaded by AdGuard from jsDelivr (paths checked in the `hagezi/dns-blocklists` repository) and
+refreshed every 12 h.
 
-**Changer de niveau** : dans la console (vue « Pistage »), ou `sudo ./install.sh --profile strict`
-(`permissif`, `equilibre`). Les deux font la même chose : activer exactement les listes du niveau.
+**Changing the level**: in the console (Tracking page), or `sudo ./install.sh --profile strict`
+(`permissive`, `balanced`). Both do the same thing: enable exactly the lists of the level.
 
-**Source de vérité du niveau : l'état des listes dans la configuration d'AdGuard Home**, et rien
-d'autre. La console le change par l'API d'AdGuard (qui l'écrit aussitôt dans `AdGuardHome.yaml`) ;
-`install.sh` (et donc `update.sh`) le **conserve** ; seul `--profile` le change, ponctuellement — il
-n'est mémorisé nulle part ailleurs (`VIGIE_DNS_PROFILE` de la v1 n'est plus utilisé : lu une fois
-pour la migration, puis retiré de `.env`). Le niveau courant est celui dont les listes activées sont
-exactement celles du fichier (`install.sh` l'affiche ; « personnalisé » si vous avez activé ou
-désactivé une liste à la main dans AdGuard). Une liste ajoutée au fichier par une mise à jour du dépôt
-prend l'état du niveau en service.
+**Source of truth of the level: the state of the lists in the AdGuard Home configuration**, and
+nothing else. The console changes it through the AdGuard API (which writes it immediately into
+`AdGuardHome.yaml`); `install.sh` (and therefore `update.sh`) **keeps** it; only `--profile` changes
+it, once: it is stored nowhere else (`WATCHPOST_DNS_PROFILE` from v1 is no longer used: read once for
+the migration, then removed from `.env`). The current level is the one whose enabled lists are
+exactly those of the file (`install.sh` prints it; "custom" if you enabled or disabled a list by hand
+in AdGuard). A list added to the file by a repository update takes the state of the level in service.
 
-**Règles posées par la console** (`PUT /tracking/override`) : le collecteur les écrit dans un bloc
-`! vigie:begin … ! vigie:end` des « règles de filtrage personnalisées » d'AdGuard (`||domaine^$important`
-ou `@@||domaine^$important`). `install.sh` ne touche jamais aux règles personnalisées, et
-`--reset-adguard` recopie ce bloc dans la configuration régénérée (ainsi que le niveau).
+**Rules set by the console** (`PUT /tracking/override`): the collector writes them into a
+`! watchpost:begin … ! watchpost:end` block of AdGuard's "custom filtering rules"
+(`||domain^$important` or `@@||domain^$important`). `install.sh` never touches the custom rules, and
+`--reset-adguard` copies this block into the regenerated configuration (as well as the level).
 
-**Qui décide de quoi** (`adguard/merge-config.py`) : à chaque `install.sh`, la configuration gérée
-par Vigie est **fusionnée** dans celle en service (AdGuard est arrêté quelques secondes, ce qui
-l'oblige à écrire sa configuration à jour avant la fusion).
+**Who decides what** (`adguard/merge-config.py`): on every `install.sh`, the configuration managed by
+Watchpost is **merged** into the one in service (AdGuard is stopped for a few seconds, which forces it
+to write its up-to-date configuration before the merge).
 
-| Géré par Vigie (réappliqué à chaque `install.sh`, depuis `.env` et le dépôt) | Décidé dans la console (conservé) | À vous (conservé) |
+| Managed by Watchpost (reapplied on every `install.sh`, from `.env` and the repository) | Decided in the console (kept) | Yours (kept) |
 |---|---|---|
-| comptes `admin` et `vigie-collecteur` et leurs mots de passe ; TLS/DoT et certificat ; écoute DNS ; amonts (Quad9, Mullvad) et DNSSEC ; clients autorisés (mode ClientID) et client « Telephone (Vigie) » ; journal des requêtes lu par Wazuh et le collecteur (dont `size_memory: 50`, ci-dessous) ; **présence**, adresse, nom et identifiant des listes de `niveaux.json` et de la liste 90 | niveau de blocage (listes activées) ; bloc `! vigie:begin … ! vigie:end` des règles personnalisées | autres règles personnalisées, listes ajoutées (autres adresses), listes d'autorisation, clients, services bloqués, réécritures DNS, limitation de débit, cache, statistiques, durée du journal |
+| `admin` and `watchpost-collector` accounts and their passwords; TLS/DoT and certificate; DNS listener; upstreams (Quad9, Mullvad) and DNSSEC; allowed clients (ClientID mode) and the "Phone (Watchpost)" client; query log read by Wazuh and the collector (including `size_memory: 50`, below); **presence**, address, name and identifier of the lists of `levels.json` and of list 90 | blocking level (enabled lists); `! watchpost:begin … ! watchpost:end` block of the custom rules | other custom rules, added lists (other addresses), allowlists, clients, blocked services, DNS rewrites, rate limiting, cache, statistics, log retention |
 
-Vérifié (§11) : niveau changé dans la console et règle posée par la console conservés par
-`install.sh` rejoué ; `--profile` appliqué puis vu identique par la console. Pour repartir de zéro :
-`sudo ./install.sh --reset-adguard` (l'ancienne configuration est gardée dans
-`data/adguard/conf/AdGuardHome.yaml.avant-reset-*` ; niveau et bloc de la console conservés). Les
-règles versionnables à la main restent possibles dans `data/adguard/userfilters/regles-perso.txt`.
+Verified (§11): level changed in the console and rule set by the console kept by a rerun of
+`install.sh`; `--profile` applied, then seen identically by the console. To start from scratch:
+`sudo ./install.sh --reset-adguard` (the previous configuration is kept in
+`data/adguard/conf/AdGuardHome.yaml.before-reset-*`; console level and block kept). Rules you want to
+version by hand remain possible in `data/adguard/userfilters/personal-rules.txt`.
 
-**Journal des requêtes (`querylog.size_memory: 50`, v1.2)** : nombre d'entrées qu'AdGuard garde en mémoire
-avant de les écrire sur disque. À 1 (valeur de la v1 et de la v1.1), AdGuard perd lui-même des entrées sous
-requêtes simultanées (mesuré : 187 entrées écrites pour 240 réponses avec 8 clients) ; au-delà de 500 (une page
-de son API), le relevé du collecteur peut en sauter. 50 est réappliqué par chaque `install.sh`, **y compris sur
-une installation existante** (vérifié : 1 → 50 au rejeu). Conséquence : le journal arrive dans Wazuh par paquets
-de 50 requêtes (quelques secondes à quelques minutes de retard avec un téléphone).
+**Query log (`querylog.size_memory: 50`, v1.2)**: number of entries AdGuard keeps in memory before
+writing them to disk. At 1 (the value of v1 and v1.1), AdGuard itself loses entries under concurrent
+queries (measured: 187 entries written for 240 answers with 8 clients); above 500 (one page of its
+API), the collector's polling can skip some. 50 is reapplied by every `install.sh`, **including on an
+existing installation** (verified: 1 → 50 on a rerun). Consequence: the log reaches Wazuh in batches
+of 50 queries (a few seconds to a few minutes of delay with one phone).
 
-### 6.3 Risque de résolveur ouvert
+### 6.3 Open resolver risk
 
-Un serveur DoT public répond à quiconque connaît son nom. Le DoT étant en TCP+TLS, il ne sert pas à
-l'amplification (contrairement au DNS UDP), mais il peut être utilisé comme résolveur gratuit.
+A public DoT server answers anyone who knows its name. Since DoT runs over TCP+TLS, it cannot be used
+for amplification (unlike UDP DNS), but it can be used as a free resolver.
 
-**Mode par défaut (simple, raisonnablement protégé)** : pas de port 53 public ; limitation de débit
-par client (50 requêtes/s par /24 IPv4 ou /56 IPv6) ; `refuse_any` ; requêtes de version refusées ;
-**tout est journalisé** et part dans Wazuh (on voit qui utilise le résolveur).
+**Default mode (simple, reasonably protected)**: no public port 53; rate limiting per client (50
+queries/s per IPv4 /24 or IPv6 /56); `refuse_any`; version queries refused; **everything is logged**
+and goes to Wazuh (you can see who uses the resolver).
 
-**Option durcie, `--clientid`** : AdGuard n'accepte plus que l'identifiant secret du téléphone,
-présenté par le nom d'hôte DoT `tel-xxxxxxxxxxxx.dns.D` (+ l'adresse fixe du conteneur WireGuard).
-Toute autre connexion reçoit REFUSED. Exigences :
+**Hardened option, `--clientid`**: AdGuard only accepts the secret identifier of the phone,
+presented through the DoT host name `tel-xxxxxxxxxxxx.dns.D` (+ the fixed address of the WireGuard
+container). Any other connection receives REFUSED. Requirements:
 
-- un enregistrement DNS joker `*.dns.D` ;
-- un certificat joker `*.dns.D`, que Let's Encrypt ne délivre que par **défi DNS-01** : il faut un
-  fournisseur DNS doté d'une API et d'un jeton (`--dns-provider cloudflare|desec|duckdns
-  --dns-token …`) ; `install.sh` construit alors une image Caddy avec le module correspondant
-  (`caddy/Dockerfile.dns`, quelques minutes, accès Internet requis) ;
-- le nom d'hôte DNS privé à saisir sur le téléphone devient `tel-….dns.D` (affiché par `install.sh`,
-  écrit dans les fichiers `.vigie`).
+- a wildcard DNS record `*.dns.D`;
+- a wildcard certificate `*.dns.D`, which Let's Encrypt issues only through the **DNS-01
+  challenge**: you need a DNS provider with an API and a token (`--dns-provider cloudflare|desec|duckdns
+  --dns-token …`); `install.sh` then builds a Caddy image with the matching module
+  (`caddy/Dockerfile.dns`, a few minutes, Internet access required);
+- the private DNS host name to type on the phone becomes `tel-….dns.D` (printed by `install.sh`,
+  written into the `.watchpost` files).
 
 ```bash
-sudo ./install.sh --clientid --dns-provider desec --dns-token 'jeton-deSEC'
+sudo ./install.sh --clientid --dns-provider desec --dns-token 'deSEC-token'
 ```
 
-Le mode ClientID a été vérifié en mode TLS interne (§11) ; l'obtention réelle d'un joker par DNS-01
-ne peut pas être testée sans domaine et jeton réels. Le sous-réseau Docker n'est volontairement pas
-autorisé : sa passerelle est l'adresse vue pour toute connexion relayée par `docker-proxy` (IPv6
-sans ip6tables), ce qui rouvrirait le résolveur.
+The ClientID mode was verified in internal TLS mode (§11); actually obtaining a wildcard through
+DNS-01 cannot be tested without a real domain and token. The Docker subnet is deliberately not
+allowed: its gateway is the address seen for every connection relayed by `docker-proxy` (IPv6 without
+ip6tables), which would reopen the resolver.
 
-### 6.4 Vue « pistage » : accès du collecteur à AdGuard Home
+### 6.4 Tracking page: collector access to AdGuard Home
 
-Le collecteur lit le journal des requêtes d'AdGuard et change niveaux et règles par l'**API
-d'AdGuard sur le réseau Docker interne** (`VIGIE_ADGUARD_URL=http://adguardhome:3000`) ; rien de plus
-n'est publié (le port 3000 ne l'est pas, `adguard.D` garde ses deux barrières). Il utilise un compte
-dédié, **`vigie-collecteur`**, dont le mot de passe est généré par `install.sh`
-(`ADGUARD_COLLECTOR_PASSWORD` dans `.env`, haché bcrypt dans `AdGuardHome.yaml`, transmis au
-collecteur par variable d'environnement, jamais journalisé). **AdGuard Home n'a qu'un type de
-compte : ce compte est administrateur complet d'AdGuard.** Le secret est donc traité comme celui
-d'`admin` (`.env` en 600, sauvegardes chiffrées, `--rotate-passwords`) ; un compte distinct permet de
-le changer sans toucher à celui que vous utilisez, et de voir qu'il ne sert qu'au collecteur.
+The collector reads the AdGuard query log and changes levels and rules through the **AdGuard API on
+the internal Docker network** (`WATCHPOST_ADGUARD_URL=http://adguardhome:3000`); nothing more is
+published (port 3000 is not, `adguard.D` keeps its two barriers). It uses a dedicated account,
+**`watchpost-collector`**, whose password is generated by `install.sh`
+(`ADGUARD_COLLECTOR_PASSWORD` in `.env`, bcrypt-hashed in `AdGuardHome.yaml`, passed to the collector
+through an environment variable, never logged). **AdGuard Home has a single account type: this
+account is a full AdGuard administrator.** The secret is therefore treated like `admin`'s (`.env` in
+600, encrypted backups, `--rotate-passwords`); a separate account makes it possible to change it
+without touching the one you use, and to see that it serves only the collector.
 
-Variables du collecteur posées par `docker-compose.yml` : `VIGIE_ADGUARD_URL`, `VIGIE_ADGUARD_USER`,
-`VIGIE_ADGUARD_PASSWORD`, `VIGIE_ADGUARD_LEVELS_FILE` (= `adguard/niveaux.json`, monté en lecture
-seule), `VIGIE_ADGUARD_POLL_S` (`.env`, défaut 60), `VIGIE_CMD_KEEPALIVE_S` (`.env`, défaut 120) et,
-en mode ClientID (§6.3), `VIGIE_ADGUARD_CLIENTS` : `install.sh` et `enroll.sh` y écrivent
-`<device_id>=<ClientID>` pour chaque appareil actif, afin que la vue n'attribue au téléphone que les
-requêtes de son ClientID. Hors mode ClientID, l'adresse IP d'un téléphone change sans cesse : la
-variable reste vide et tout le journal d'AdGuard est attribué à l'appareil consulté (avec plusieurs
-téléphones, un blocage « menace » de l'un peut donc être rattaché à une application d'un autre qui a
-demandé le même domaine le même jour). Les variables `VIGIE_DETECT_*` des détections sont au §7.4.
+Collector variables set by `docker-compose.yml`: `WATCHPOST_ADGUARD_URL`, `WATCHPOST_ADGUARD_USER`,
+`WATCHPOST_ADGUARD_PASSWORD`, `WATCHPOST_ADGUARD_LEVELS_FILE` (= `adguard/levels.json`, mounted
+read-only), `WATCHPOST_ADGUARD_POLL_S` (`.env`, default 60), `WATCHPOST_CMD_KEEPALIVE_S` (`.env`,
+default 120) and, in ClientID mode (§6.3), `WATCHPOST_ADGUARD_CLIENTS`: `install.sh` and `enroll.sh`
+write `<device_id>=<ClientID>` into it for each active device, so that the page attributes to the
+phone only the queries of its ClientID. Outside ClientID mode, the IP address of a phone keeps
+changing: the variable stays empty and the whole AdGuard log is attributed to the device being viewed
+(with several phones, a "threat" block of one of them can therefore be attached to an application of
+another one that requested the same domain the same day). The `WATCHPOST_DETECT_*` variables of the
+detections are in §7.4.
 
-**Lecture du journal d'AdGuard (limite de l'essai §11.1, corrigée depuis dans le collecteur)** : AdGuard
-Home v0.107.80 ne trouve, pour `older_than=T`, que l'horodatage exact d'une entrée. Le collecteur ne
-passe donc plus d'instant arbitraire : première page sans `older_than`, puis l'horodatage exact de la plus
-ancienne entrée lue ; chaque entrée est comptée une fois (détail : `server/collector/README.md`, relevé du
-journal). Condition côté infrastructure : `size_memory` entre 1 et 500 exclus, d'où 50 (§6.2).
+**Reading the AdGuard log (limit found in the §11.1 test, fixed since in the collector)**: AdGuard
+Home v0.107.80 only finds, for `older_than=T`, the exact timestamp of an entry. The collector
+therefore no longer passes an arbitrary instant: first page without `older_than`, then the exact
+timestamp of the oldest entry read; each entry is counted once (details: `server/collector/README.md`,
+query log polling). Condition on the infrastructure side: `size_memory` strictly between 1 and 500,
+hence 50 (§6.2).
 
 ## 7. Wazuh
 
-### 7.1 Ingestion et archives
+### 7.1 Ingestion and archives
 
-- Le collecteur écrit `events.ndjson` (contrat §5) dans le volume `vigie_export`, monté en lecture
-  seule dans le manager (`/var/vigie`) ; AdGuard écrit `querylog.json` dans `adguard_querylog`
-  (`/var/adguard`). Deux `<localfile>` au format `json` (voir `wazuh/manager/ossec.conf`).
-- `logall_json` + Filebeat (archives activées par `vigie-init.sh`) : **tous** les événements vont dans
-  `wazuh-archives-4.x-AAAA.MM.JJ`, les alertes (niveau ≥ 3) dans `wazuh-alerts-4.x-*`.
-- Le champ `Answer`/`OrigAnswer` du journal AdGuard (réponse DNS en base64) est retiré par Filebeat
-  avant l'indexation (il reste dans `archives.json` sur disque, purgé après 14 jours).
-- Rotation **par renommage** des deux fichiers : aucune perte constatée, et la règle 591 (« fichier
-  tourné ») est neutralisée pour eux par la règle 100290 (niveau 0). Une troncature resterait
-  signalée par la règle 592 (falsification de journal).
-- `@timestamp`/`timestamp` = heure d'ingestion par Wazuh. L'heure réelle d'un événement de l'appareil
-  est `data.vigie.ts` (un historique envoyé en différé arrive « d'un coup »).
+- The collector writes `events.ndjson` (contract §5) into the `watchpost_export` volume, mounted
+  read-only in the manager (`/var/watchpost`); AdGuard writes `querylog.json` into `adguard_querylog`
+  (`/var/adguard`). Two `<localfile>` in `json` format (see `wazuh/manager/ossec.conf`).
+- `logall_json` + Filebeat (archives enabled by `watchpost-init.sh`): **all** events go to
+  `wazuh-archives-4.x-YYYY.MM.DD`, the alerts (level ≥ 3) to `wazuh-alerts-4.x-*`.
+- The `Answer`/`OrigAnswer` field of the AdGuard log (DNS answer in base64) is removed by Filebeat
+  before indexing (it stays in `archives.json` on disk, purged after 14 days).
+- **Rename-based** rotation of both files: no loss observed, and rule 591 ("file rotated") is
+  neutralised for them by rule 100290 (level 0). A truncation would still be reported by rule 592
+  (log tampering).
+- `@timestamp`/`timestamp` = ingestion time by Wazuh. The real time of a device event is
+  `data.watchpost.ts` (a history sent late arrives "all at once").
 
-### 7.2 Règles Vigie (`wazuh/rules/`, identifiants 100100-100549)
+### 7.2 Watchpost rules (`wazuh/rules/`, identifiers 100100-100549)
 
-| Domaine | Détections (niveau) |
+| Area | Detections (level) |
 |---|---|
-| Agent | altération `agent.tamper` (12), collecte ou envoi désactivé (5), tampon saturé (6), arrêt (3) |
-| Absence | aucun événement depuis 60 min (7, `VIGIE_WATCH_SILENCE_MIN`), reprise (3), trous de séquence (6, ou 3 si expliqués par une purge), compteur revenu en arrière (8) — sonde `wazuh/watch/vigie_watch.py` toutes les 10 min |
-| Posture (`security.posture_change`, une alerte par champ modifié) | démarrage vérifié dégradé (12), chiffrement perdu (10), perte du Device Owner (10), DNS privé désactivé/non strict (10) ou vers un hôte inattendu (10, liste CDB générée), ADB sans fil (9), verrouillage sécurisé supprimé (8), ADB (7), sources inconnues (6), Play Protect désactivé (5), options développeur (4), correctif installé et retours à la normale (3) |
-| Posture (`security.posture`, état complet) | correctif > 6 mois (9) / > 3 mois (6), au plus une fois par semaine ; les autres constats sont marqués sans alerte (niveau 2, groupe `vigie_posture_state`) pour ne pas doubler les alertes de changement |
-| Capteurs | micro (10) ou caméra (10) utilisés appareil verrouillé ; micro hors appel (6) ou caméra (8) utilisés écran éteint ; tout usage marqué (2) |
-| Apps | installée hors Play/Galaxy Store (8) ou sans installateur/ADB (8), nouvelle app d'accessibilité (10), administrateur de l'appareil (10), écoute des notifications (8), VPN (7), permission sensible accordée (5) |
-| Sécurité | AC utilisateur ajoutée (10, une seule alerte : `security.ca_cert` ; le journal système et la posture sont marqués), déverrouillages échoués répétés (10 : 5 en 10 min, ou ≥ 10 consécutifs), `security.log` (champs nommés selon la table du contrat) : shell ADB (10), commande/transfert ADB (8), journalisation arrêtée (12), tampon critique (7), violation d'intégrité de clé (12), autotest crypto (10), dm-verity non appliqué (7), échec d'effacement (8), restriction retirée (5), échec d'opération sur une clé (5), support monté (3), code modifié (3) |
-| Réseau | chiffrement cellulaire nul (12), rétrogradation 2G / IMSI-catcher (10), traceur BLE qui suit (10), position simulée (9), Wi-Fi ouvert (4), réseau sans DNS privé (5), changement d'heure ≥ 1 h (5), USB avec ADB (5) |
-| Pistage | requête DNS d'une app vers la télémétrie Google/Samsung (2 : sans alerte, marquée pour les tableaux) |
-| AdGuard | domaine du flux de menaces demandé (10), répété (12), rafale de blocages (5) |
-| Commandes à distance (émises par le collecteur, `vigie.source = "server"` exigé : un appareil ne peut pas les imiter) | effacement demandé (12), verrouillage demandé (10), retrait du message (5), localisation demandée (5), autre commande émise (3), rafale de 8 commandes en 10 min (8, déclenchée par une commande simple pour ne jamais masquer une alerte de niveau 10-12), commande sensible expirée sans résultat (6), autre expiration et annulation (3), résultat reçu par l'API `command.reported` (2 : marqué seulement) |
-| Commandes à distance (résultat dit par le téléphone, `command.result`) | effacement exécuté (12), canal des commandes sensibles verrouillé après 5 signatures invalides `locked_out` (12), signature invalide `bad_signature` : quelqu'un essaie de commander le téléphone sans le code (10), verrouillage exécuté (10), commande échouée (6), commande refusée pour un autre motif (5), commande simple exécutée (3), refus `replay` d'un renvoi (2) |
-| Notifications (`app.notification`, APK compagnon) | marquées sans alerte (2) ; le titre et le texte ne figurent jamais dans une description |
-| Détections du collecteur (v1.2, `detect.*`, `vigie.source = "server"` exigé) | voir §7.4 : de 3 (trace) à 12, et 13 quand plusieurs types de détection visent la même application en 24 h |
-| Profil de risque (`app.risk`) | marqué (2) ; risque élevé à l'installation, corrélé avec `app.installed` du même paquet dans l'heure (9), avec une raison `combo_*` (11) ; risque élevé hors installation (4) ; rien sur `low` |
-| Rôles (`app.role`) | nouvelle appli SMS par défaut (8), clavier (8), téléphone (7), assistant ou saisie automatique (7), autre rôle (3) |
-| Opérations (`app.ops.app`) | marquées (2) ; envoi de SMS refusé = tentative bloquée par une garde (4) ; autre accès refusé (3) |
-| Permissions SMS (`app.permission_changed`) | `SEND_SMS`, `READ_SMS`, `RECEIVE_SMS`, `RECEIVE_MMS` accordée (8 : défense en profondeur, indépendante du collecteur) ; `CALL_PHONE` dans les permissions sensibles (5) |
-| Gardes (`security.policy`, `profile = "guard:…"`) | garde **désactivée** (8), libération de quarantaine (5), activation, mise en quarantaine, permission rendue (3), permission refusée (2 : marqué) ; un échec reste alerté par 100187 (5) |
-| Vue « pistage » (`tracking.*`, émis par le collecteur) | blocage affaibli : niveau abaissé ou posé depuis un état inconnu (8), domaine **autorisé de force** (8), blocage forcé d'un domaine indispensable (6), blocage manuel retiré (5), autre changement (3) |
-| Repli | sévérité 3 / 2 signalée par l'agent pour un type sans règle dédiée (10 / 6) ; pour un type `detect.*` sans règle dédiée (ajouté au collecteur après ces règles) : 10 / 6, 3 sinon |
+| Agent | tampering `agent.tamper` (12), collection or upload disabled (5), buffer full (6), stopped (3) |
+| Absence | no event for 60 min (7, `WATCHPOST_WATCH_SILENCE_MIN`), resumed (3), sequence gaps (6, or 3 if explained by a purge), counter gone backwards (8); watcher `wazuh/watch/watchpost_watch.py` every 10 min |
+| Posture (`security.posture_change`, one alert per changed field) | verified boot degraded (12), encryption lost (10), Device Owner lost (10), private DNS disabled/not strict (10) or pointed to an unexpected host (10, generated CDB list), wireless ADB (9), secure lock removed (8), ADB (7), unknown sources (6), Play Protect disabled (5), developer options (4), patch installed and returns to normal (3) |
+| Posture (`security.posture`, full state) | patch > 6 months (9) / > 3 months (6), at most once a week; the other findings are marked without an alert (level 2, group `watchpost_posture_state`) so as not to duplicate the change alerts |
+| Sensors | microphone (10) or camera (10) used while the device is locked; microphone outside a call (6) or camera (8) used with the screen off; every use marked (2) |
+| Apps | installed outside Play/Galaxy Store (8) or without an installer/ADB (8), new accessibility app (10), device administrator (10), notification listener (8), VPN (7), sensitive permission granted (5) |
+| Security | user CA added (10, a single alert: `security.ca_cert`; the system log and the posture are marked), repeated failed unlocks (10: 5 in 10 min, or ≥ 10 consecutive), `security.log` (fields named according to the contract table): ADB shell (10), ADB command/transfer (8), logging stopped (12), critical buffer (7), key integrity violation (12), crypto self-test (10), dm-verity not enforced (7), wipe failure (8), restriction removed (5), key operation failure (5), media mounted (3), credential changed (3) |
+| Network | null cellular cipher (12), 2G downgrade / IMSI catcher (10), BLE tracker following (10), simulated position (9), open Wi-Fi (4), network without private DNS (5), clock change ≥ 1 h (5), USB with ADB (5) |
+| Tracking | DNS query from an app to Google/Samsung telemetry (2: no alert, marked for the dashboards) |
+| AdGuard | threat feed domain requested (10), repeated (12), burst of blocks (5) |
+| Remote commands (issued by the collector, `watchpost.source = "server"` required: a device cannot imitate them) | erase requested (12), lock requested (10), message removal (5), location requested (5), other command issued (3), burst of 8 commands in 10 min (8, fired by a simple command so as never to hide a level 10-12 alert), sensitive command expired without a result (6), other expiry and cancellation (3), result received by the API `command.reported` (2: marked only) |
+| Remote commands (result reported by the phone, `command.result`) | erase executed (12), sensitive command channel locked after 5 invalid signatures `locked_out` (12), invalid signature `bad_signature`: someone is trying to command the phone without the passphrase (10), lock executed (10), command failed (6), command refused for another reason (5), simple command executed (3), `replay` refusal of a resend (2) |
+| Notifications (`app.notification`, companion APK) | marked without an alert (2); the title and the text never appear in a description |
+| Collector detections (v1.2, `detect.*`, `watchpost.source = "server"` required) | see §7.4: from 3 (trace) to 12, and 13 when several detection types target the same application within 24 h |
+| Risk profile (`app.risk`) | marked (2); high risk at installation, correlated with `app.installed` of the same package within the hour (9), with a `combo_*` reason (11); high risk outside installation (4); nothing on `low` |
+| Roles (`app.role`) | new default SMS app (8), keyboard (8), phone (7), assistant or autofill (7), other role (3) |
+| Operations (`app.ops.app`) | marked (2); SMS sending refused = attempt blocked by a guard (4); other access refused (3) |
+| SMS permissions (`app.permission_changed`) | `SEND_SMS`, `READ_SMS`, `RECEIVE_SMS`, `RECEIVE_MMS` granted (8: defence in depth, independent of the collector); `CALL_PHONE` among the sensitive permissions (5) |
+| Guards (`security.policy`, `profile = "guard:…"`) | guard **disabled** (8), release from quarantine (5), enabling, quarantine, permission restored (3), permission denied (2: marked); a failure is still alerted by 100187 (5) |
+| Tracking page (`tracking.*`, emitted by the collector) | blocking weakened: level lowered or set from an unknown state (8), domain **force-allowed** (8), forced block of an essential domain (6), manual block removed (5), other change (3) |
+| Fallback | severity 3 / 2 reported by the agent for a type without a dedicated rule (10 / 6); for a `detect.*` type without a dedicated rule (added to the collector after these rules): 10 / 6, 3 otherwise |
 
-Correspondances MITRE ATT&CK **Mobile** (T1629.003, T1638, T1461, T1453, T1517, T1626.001…) : la base
-MITRE embarquée dans Wazuh ne connaît que la matrice Entreprise (une balise `<mitre>` mobile est
-rejetée et disparaît de l'alerte) ; elles sont donc portées par les groupes `attack_mobile_<ID>`.
+MITRE ATT&CK **Mobile** mappings (T1629.003, T1638, T1461, T1453, T1517, T1626.001…): the MITRE
+database embedded in Wazuh only knows the Enterprise matrix (a mobile `<mitre>` tag is rejected and
+disappears from the alert); they are therefore carried by the `attack_mobile_<ID>` groups.
 
-**Tests** : `wazuh/tests/cases/*.log` (210 cas, un fichier par cas, la dernière ligne doit déclencher
-la règle attendue) ; `./wazuh/tests/run-tests.sh` les rejoue avec `wazuh-logtest` dans le manager ;
-`wazuh/tests/generer-cas.py` les régénère.
+**Tests**: `wazuh/tests/cases/*.log` (210 cases, one file per case, the last line must fire the
+expected rule); `./wazuh/tests/run-tests.sh` replays them with `wazuh-logtest` in the manager;
+`wazuh/tests/generate-cases.py` regenerates them.
 
-Limites (de Wazuh, documentées dans les règles) : un événement ne déclenche qu'**une** règle (les
-règles filles sont essayées par niveau décroissant), d'où les événements `security.posture_change`
-(un par champ) ; un défaut **déjà présent à l'enrôlement** ne produit pas de changement, donc pas
-d'alerte : vérifier la posture initiale dans la console. Un micro utilisé écran éteint pendant un
-appel (source `voice_communication`, capteur de proximité) n'alerte pas. `wazuh-logtest` n'applique
-pas l'option `ignore` des règles (vérifiée dans le flux réel). Le résultat d'une commande arrive deux
-fois (`command.result` de l'appareil, `command.reported` du collecteur) : seul le premier alerte.
-Les règles de corrélation (`if_matched_group`) doivent suivre dans le fichier les règles du groupe
-qu'elles observent (sinon elles ne voient aucun événement passé : constaté). **Un seul fil d'analyse**
-(`analysisd.event_threads=1`, `rule_matching_threads=1`, posés par `vigie-init.sh`) : avec un fil par
-processeur, des événements arrivés dans la même milliseconde (le collecteur écrit ses détections par
-rafales) étaient évalués en parallèle et les corrélations 100489 et 100502/100503 les manquaient une fois
-sur deux dans l'essai ; avec un fil, 20 sur 20. Débit mesuré avec un fil : 121 000 événements analysés et
-indexés en 54 s.
+Limits (of Wazuh, documented in the rules): an event fires only **one** rule (the child rules are
+tried by decreasing level), hence the `security.posture_change` events (one per field); a defect
+**already present at enrollment** produces no change, hence no alert: check the initial posture in
+the console. A microphone used with the screen off during a call (source `voice_communication`,
+proximity sensor) does not alert. `wazuh-logtest` does not apply the `ignore` option of the rules
+(checked in the real flow). The result of a command arrives twice (`command.result` from the device,
+`command.reported` from the collector): only the first one alerts. The correlation rules
+(`if_matched_group`) must follow in the file the rules of the group they observe (otherwise they see
+no past event: observed). **A single analysis thread** (`analysisd.event_threads=1`,
+`rule_matching_threads=1`, set by `watchpost-init.sh`): with one thread per CPU, events arriving in the
+same millisecond (the collector writes its detections in bursts) were evaluated in parallel and the
+correlations 100489 and 100502/100503 missed them one time out of two in testing; with one thread,
+20 out of 20. Throughput measured with one thread: 121,000 events analysed and indexed in 54 s.
 
-Les changements de niveau de blocage et les règles posées par la vue « pistage » sont exportés depuis
-la v1.2 (`tracking.level_changed`, `tracking.override`, un événement par appareil non révoqué) et
-alertés quand ils affaiblissent le blocage (ci-dessus).
+Blocking level changes and the rules set by the Tracking page are exported since v1.2
+(`tracking.level_changed`, `tracking.override`, one event per non-revoked device) and alerted when
+they weaken the blocking (above).
 
-### 7.3 Rétention, carte, tableaux de bord
+### 7.3 Retention, map, dashboards
 
-- Politiques ISM : alertes 180 jours (`WAZUH_ALERTS_RETENTION_DAYS`), archives 90 jours
-  (`WAZUH_ARCHIVES_RETENTION_DAYS`), supervision 30 jours. Modifier `.env` puis `./install.sh`.
-- Modèle d'index `vigie` (ordre 1, complète celui de Wazuh) : 1 shard sans réplique ;
-  `data.vigie.data.location` en **geo_point** (carte) ; feuilles de `data.vigie.data.*` en `keyword`
-  (un même nom de champ porte des types différents selon l'événement : sans cela l'indexeur rejetait
-  des documents) ; champs numériques connus typés pour les graphiques. Un modèle ne s'applique qu'aux
-  index créés après lui (index quotidiens : effet le lendemain d'une modification). Les champs
-  libres de la v1.1 — `title` et `text` d'`app.notification` (512 caractères chacun, n'importe quel
-  contenu), `params.*` et `message_set` des commandes, `vigie.source` — sont indexés en `keyword`
-  (au-delà de 1024 caractères une valeur reste dans le document sans être indexée : jamais de rejet) ;
-  le message de verrouillage n'est pas exporté. Vérifié (§11) : notification de 512 caractères avec
-  guillemets, barres obliques inverses, sauts de ligne et émojis indexée, export = archives à l'unité,
-  politiques de rétention rattachées aux index du jour. Le contenu des notifications est donc dans
-  `wazuh-archives-*` (90 jours) si l'option « contenu » est activée dans l'app.
-- Tableaux de bord importés : **« Vigie — sécurité du téléphone »** (alertes dans le temps, par règle,
-  par technique ATT&CK Mobile, liste, carte des positions), **« Vigie — pistage et DNS »** (apps qui
-  contactent la télémétrie, domaines bloqués, événements par type) et, depuis la v1.2, **« Vigie —
-  détections et applications »** (détections par type et application, applications à risque moyen ou
-  élevé, refus et actions des gardes), + recherches enregistrées (dont « détections du collecteur » et
-  « profil de risque des applications »). Import vérifié (API `_import`, objets relus, requêtes non
-  vides) ; l'affichage dans un navigateur n'a pas été regardé pour le troisième.
-  Le fond de la carte est chargé par le navigateur depuis le service de tuiles d'OpenSearch (tiers) ;
-  la console Vigie a sa propre carte.
+- ISM policies: alerts 180 days (`WAZUH_ALERTS_RETENTION_DAYS`), archives 90 days
+  (`WAZUH_ARCHIVES_RETENTION_DAYS`), monitoring 30 days. Change `.env`, then `./install.sh`.
+- `watchpost` index template (order 1, complements Wazuh's): 1 shard without replica;
+  `data.watchpost.data.location` as **geo_point** (map); leaves of `data.watchpost.data.*` as
+  `keyword` (the same field name carries different types depending on the event: without this the
+  indexer rejected documents); known numeric fields typed for the charts. A template applies only to
+  indices created after it (daily indices: effect the day after a change). The free-form fields of
+  v1.1 (`title` and `text` of `app.notification`, 512 characters each, any content; `params.*` and
+  `message_set` of the commands; `watchpost.source`) are indexed as `keyword` (beyond 1024
+  characters a value stays in the document without being indexed: never a rejection); the lock
+  message is not exported. Verified (§11): a 512-character notification with quotes, backslashes,
+  line breaks and emojis indexed, export = archives one for one, retention policies attached to the
+  day's indices. The notification content is therefore in `wazuh-archives-*` (90 days) if the
+  "content" option is enabled in the app.
+- Imported dashboards: **"Watchpost — phone security"** (alerts over time, by rule, by ATT&CK Mobile
+  technique, list, map of positions), **"Watchpost — tracking and DNS"** (apps that contact
+  telemetry, blocked domains, events by type) and, since v1.2, **"Watchpost — detections and
+  applications"** (detections by type and application, applications with a medium or high risk,
+  guard refusals and actions), + saved searches (including "collector detections" and "risk profile
+  of the applications"). Import verified (`_import` API, objects read back, non-empty queries);
+  display in a browser was not checked for the third one.
+  The map background is loaded by the browser from the OpenSearch tile service (third party); the
+  Watchpost console has its own map.
 
-### 7.4 Détections du collecteur (v1.2) : règles, que faire quand elles sonnent
+### 7.4 Collector detections (v1.2): rules, what to do when they fire
 
-Le collecteur calcule des détections comportementales sur les données reçues (contrat §11.3 et §11.4,
-`server/collector/README.md`) et les exporte comme événements `detect.*` avec `vigie.source = "server"`.
-Une détection par application, par type et par jour UTC (24 h après l'installation pour
-`new_app_risky`). Une **mise à jour** (`update: true`, réexportée seulement si un élément nouveau apparaît,
-une fois par heure au plus) donne une alerte de niveau 5, sans notification ; si elle fait passer à la
-sévérité 3 une détection émise sous 3 dans les 24 h : « détection aggravée » (100452, 12). Une détection
-`recurring: true` (déjà signalée dans les 30 jours, sévérité plafonnée à 1) n'est qu'une trace (100456, 3).
-Deux **types** différents pour la même application en 24 h : 100489, niveau 13, qui remplace l'alerte du
-second type et le nomme.
+The collector computes behavioural detections on the received data (contract §11.3 and §11.4,
+`server/collector/README.md`) and exports them as `detect.*` events with
+`watchpost.source = "server"`. One detection per application, per type and per UTC day (24 h after
+installation for `new_app_risky`). An **update** (`update: true`, exported again only if a new item
+appears, at most once per hour) gives a level 5 alert, without notification; if it takes to severity
+3 a detection emitted below 3 within 24 h: "escalated detection" (100452, 12). A detection with
+`recurring: true` (already reported within 30 days, severity capped at 1) is only a trace (100456,
+3). Two different **types** for the same application within 24 h: 100489, level 13, which replaces
+the alert of the second type and names it.
 
-| Détection | Règle (niveau) | Que faire |
+| Detection | Rule (level) | What to do |
 |---|---|---|
-| `threat_domain` : l'application a demandé un domaine bloqué par une liste `threat` | 100460 (12) ; navigateur ou moins de 3 requêtes : 100461 (10) | Domaine de commande d'un maliciel probable : identifier l'application, la désinstaller (ou la mettre en quarantaine), vérifier ses accès spéciaux. Navigateur : lien d'hameçonnage suivi, vérifier qu'aucun mot de passe n'a été saisi. Ne jamais autoriser le domaine dans la console. |
-| `sms_abuse` : envoi (ou tentative) de SMS par une autre appli que l'appli SMS, ou volume (exige `app_ops`) | 100462 (12) | Fraude au SMS : activer la garde SMS si ce n'est fait, désinstaller l'application, vérifier la facture chez l'opérateur, bloquer les SMS surtaxés chez l'opérateur. |
-| `sms_permission` (§11.4) : une appli qui n'est ni l'appli SMS ni du système détient `SEND_SMS` | 100475 (10) | Savoir pourquoi elle peut envoyer des SMS ; sinon retirer la permission ou désinstaller ; garde SMS. |
-| `default_app_changed` (§11.4) rôle `sms` | 100476 (12) ; autres rôles : 100477 (3, déjà alerté par `app.role`) | Si vous n'avez pas choisi cette appli SMS, remettre Messages par défaut et désinstaller l'application. |
-| `sensor_background` : micro ou caméra en arrière-plan au-delà du seuil (exige `app_ops`) | micro 100463 (10), caméra 100464 (10) | Logiciel espion probable : retirer micro et caméra, désinstaller ; s'il est administrateur de l'appareil, le retirer d'abord. |
-| `new_app_risky` : appli installée depuis moins de 24 h qui obtient une capacité sensible | sév. 3 : 100470 (12) ; 2 : 100471 (9) ; 1 (VPN, superposition) : 100472 (4) ; risque élevé sans capacité : 100473/100474 (3, déjà alerté par `app.risk` 100502/100503) | Vérifier que l'installation est voulue ; sinon désinstaller (la quarantaine aurait refusé ces permissions). |
-| `mail_ports` : appli ordinaire qui envoie du courriel | 100467 (8) ; volume de spam : 100468 (10) | Spam envoyé depuis le téléphone : désinstaller. Client de messagerie légitime absent de la liste : `VIGIE_DETECT_MAIL_CLIENTS`. |
-| `fanout` : centaines d'adresses en une heure | 100466 (8) | Relais / proxy résidentiel (votre connexion revendue) : désinstaller. Pair à pair ou test de débit : ignorer, ou relever `VIGIE_DETECT_FANOUT`. |
-| `dns_bypass` : résolveur DoH/DoT public utilisé | 100469 (7) | L'appli échappe au filtrage DNS. Navigateur avec « DNS sécurisé » : le désactiver, ou l'exempter (`VIGIE_DETECT_DNS_BYPASS_EXEMPT`, ou sourdine dans la console). |
-| `upload_spike` : envoi massif en une heure | 100465 (7) | Sauvegarde ou vidéo : rien. Sinon (galerie « coffre », appli inconnue) : exfiltration possible, désinstaller et changer les mots de passe exposés. |
-| `inventory_mismatch` (§11.4, non masquable) : l'appareil déclare « système » une appli que son installateur ou un `app.installed` antérieur contredisent | 100481 (12) | Une appli qui se fait passer pour le système échapperait aux autres détections : vérifier son installateur dans la console, la désinstaller si elle n'est pas d'origine. |
-| `flood` (§11.4) : plus de 200 détections dans la journée | 100478 (12) | Données incohérentes ou appareil compromis : regarder la console, l'état de l'agent et la posture. |
-| `muted` / `unmuted` (§11.4) : sourdine posée / levée dans la console (`POST`/`DELETE /api/console/detections/mute` ; `sms_abuse`, `default_app_changed`, `inventory_mismatch`, `flood` refusées : `400 not_mutable`) | 100479 (6) / 100480 (3) | Sourdine non voulue = quelqu'un a utilisé la console : changer le mot de passe console. |
-| type `detect.*` sans règle dédiée | 100454 (sév. 3 : 10), 100455 (sév. 2 : 6), 100450 (3) | Lire le résumé ; mettre à jour le dépôt. |
+| `threat_domain`: the application requested a domain blocked by a `threat` list | 100460 (12); browser or fewer than 3 queries: 100461 (10) | Probable malware command server: identify the application, uninstall it (or quarantine it), check its special access. Browser: phishing link followed, check that no password was typed. Never allow the domain in the console. |
+| `sms_abuse`: sending (or attempt) of SMS by an app other than the SMS app, or volume (requires `app_ops`) | 100462 (12) | SMS fraud: enable the SMS guard if not done, uninstall the application, check the bill with the carrier, block premium-rate SMS with the carrier. |
+| `sms_permission` (§11.4): an app that is neither the SMS app nor a system app holds `SEND_SMS` | 100475 (10) | Find out why it can send SMS; otherwise remove the permission or uninstall; SMS guard. |
+| `default_app_changed` (§11.4) `sms` role | 100476 (12); other roles: 100477 (3, already alerted by `app.role`) | If you did not choose this SMS app, set Messages back as the default and uninstall the application. |
+| `sensor_background`: microphone or camera in the background above the threshold (requires `app_ops`) | microphone 100463 (10), camera 100464 (10) | Probable spyware: remove microphone and camera, uninstall; if it is a device administrator, remove that first. |
+| `new_app_risky`: app installed less than 24 h ago that obtains a sensitive capability | sev. 3: 100470 (12); 2: 100471 (9); 1 (VPN, overlay): 100472 (4); high risk without capability: 100473/100474 (3, already alerted by `app.risk` 100502/100503) | Check that the installation was intended; otherwise uninstall (quarantine would have refused these permissions). |
+| `mail_ports`: ordinary app that sends e-mail | 100467 (8); spam volume: 100468 (10) | Spam sent from the phone: uninstall. Legitimate mail client missing from the list: `WATCHPOST_DETECT_MAIL_CLIENTS`. |
+| `fanout`: hundreds of addresses in one hour | 100466 (8) | Relay / residential proxy (your connection resold): uninstall. Peer-to-peer or speed test: ignore, or raise `WATCHPOST_DETECT_FANOUT`. |
+| `dns_bypass`: public DoH/DoT resolver used | 100469 (7) | The app escapes DNS filtering. Browser with "secure DNS": turn it off, or exempt it (`WATCHPOST_DETECT_DNS_BYPASS_EXEMPT`, or mute in the console). |
+| `upload_spike`: massive upload in one hour | 100465 (7) | Backup or video: nothing. Otherwise ("vault" gallery, unknown app): possible exfiltration, uninstall and change the exposed passwords. |
+| `inventory_mismatch` (§11.4, cannot be muted): the device declares "system" an app that its installer or an earlier `app.installed` contradict | 100481 (12) | An app that passes itself off as a system app would escape the other detections: check its installer in the console, uninstall it if it is not original. |
+| `flood` (§11.4): more than 200 detections in the day | 100478 (12) | Inconsistent data or compromised device: look at the console, the state of the agent and the posture. |
+| `muted` / `unmuted` (§11.4): mute set / lifted in the console (`POST`/`DELETE /api/console/detections/mute`; `sms_abuse`, `default_app_changed`, `inventory_mismatch`, `flood` refused: `400 not_mutable`) | 100479 (6) / 100480 (3) | Unwanted mute = someone used the console: change the console password. |
+| `detect.*` type without a dedicated rule | 100454 (sev. 3: 10), 100455 (sev. 2: 6), 100450 (3) | Read the summary; update the repository. |
 
-**Ce qui sonne pour l'attaque « SMS discret »** (application de boutique sans icône, `SEND_SMS` accordée
-25 à 30 h après l'installation, puis envois en masse ; scénario `sms-discret` du simulateur, rejoué ici,
-§11.2) :
+**What fires for the "silent SMS" attack** (store application without an icon, `SEND_SMS` granted
+25 to 30 h after installation, then mass sending; `silent-sms` scenario of the simulator, replayed
+here, §11.2):
 
-| | Sans `app_ops` (cas réel probable) | Avec `app_ops` |
+| | Without `app_ops` (probable real case) | With `app_ops` |
 |---|---|---|
-| À l'installation | `app.risk` `medium` : marqué, aucune alerte (pas de `new_app_risky`) | idem |
-| À l'octroi de `SEND_SMS` | 100161 (8, `app.permission_changed`) **et** `detect.sms_permission` 100475 (**10, notifiée** au seuil par défaut) | idem |
-| Pendant les envois | rien : les SMS ne sont pas comptés | `detect.sms_abuse` 100462 (12), ou 100489 (13) si une autre détection vise la même appli dans les 24 h ; refus de la garde : 100522 (4) |
-| Si elle se fait appli SMS par défaut | 100511 (8, `app.role`) et `detect.default_app_changed` 100476 (12) | idem |
+| At installation | `app.risk` `medium`: marked, no alert (no `new_app_risky`) | same |
+| When `SEND_SMS` is granted | 100161 (8, `app.permission_changed`) **and** `detect.sms_permission` 100475 (**10, notified** at the default threshold) | same |
+| While sending | nothing: the SMS are not counted | `detect.sms_abuse` 100462 (12), or 100489 (13) if another detection targets the same app within 24 h; guard refusal: 100522 (4) |
+| If it makes itself the default SMS app | 100511 (8, `app.role`) and `detect.default_app_changed` 100476 (12) | same |
 
-**Sans le collecteur expérimental `app_ops` de l'agent, l'envoi de SMS lui-même n'est pas compté** :
-`sms_abuse` et `sensor_background` restent muettes (les SMS ne passent pas par le réseau IP). La protection
-contre la fraude au SMS repose alors sur la **garde SMS** de l'application (qui refuse `SEND_SMS` à tout
-sauf l'appli SMS), sur `detect.sms_permission` et `detect.default_app_changed`, et, indépendamment du
-collecteur, sur les alertes Wazuh de permission (100161 : `SEND_SMS`/`READ_SMS`/`RECEIVE_SMS` accordée,
-niveau 8) et de rôle (100511 : nouvelle appli SMS par défaut, 8 ; 100512 : téléphone, 7). Ces deux
-dernières ne sont pas notifiées au seuil par défaut (10) : abaissez `VIGIE_NOTIFY_LEVEL` à 8 pour les
-recevoir.
+**Without the agent's experimental `app_ops` collector, the sending of SMS itself is not counted**:
+`sms_abuse` and `sensor_background` stay silent (SMS do not go through the IP network). Protection
+against SMS fraud then relies on the app's **SMS guard** (which refuses `SEND_SMS` to everything except
+the SMS app), on `detect.sms_permission` and `detect.default_app_changed`, and, independently of the
+collector, on the Wazuh permission alerts (100161: `SEND_SMS`/`READ_SMS`/`RECEIVE_SMS` granted,
+level 8) and role alerts (100511: new default SMS app, 8; 100512: phone, 7). These last two are not
+notified at the default threshold (10): lower `WATCHPOST_NOTIFY_LEVEL` to 8 to receive them.
 
-Doubles alertes évitées ou assumées : `new_app_risky` sans capacité répète l'`app.risk` de l'installation
-(marquée seulement) ; `default_app_changed` hors `sms` répète `app.role` (marquée) ; `default_app_changed`
-`sms` (12) et `app.role` `sms` (8) coexistent volontairement (la seconde ne dépend pas du collecteur) ; une
-appli installée hors store et à risque élevé donne 100151 (8) **et** 100502/100503 (9/11) : deux faits ; un
-domaine de menaces donne l'alerte AdGuard 100402 (10, par requête, sans l'application) **et**
-`threat_domain` (une par jour, avec l'application).
+Double alerts avoided or accepted: `new_app_risky` without capability repeats the `app.risk` of the
+installation (marked only); `default_app_changed` outside `sms` repeats `app.role` (marked);
+`default_app_changed` `sms` (12) and `app.role` `sms` (8) coexist on purpose (the second one does not
+depend on the collector); an app installed outside a store and with a high risk gives 100151 (8)
+**and** 100502/100503 (9/11): two facts; a threat domain gives the AdGuard alert 100402 (10, per
+query, without the application) **and** `threat_domain` (one per day, with the application).
 
-**Variables** (`.env`, créées vides par `install.sh` et jamais écrasées ; vide = défaut du collecteur ;
-après modification : `./install.sh`). Une valeur invalide empêche le collecteur de démarrer
+**Variables** (`.env`, created empty by `install.sh` and never overwritten; empty = collector
+default; after a change: `./install.sh`). An invalid value prevents the collector from starting
 (`docker compose logs collector`).
 
-| Variable | Défaut du collecteur | Rôle |
+| Variable | Collector default | Role |
 |---|---|---|
-| `VIGIE_DETECT_ENABLED` | `true` | `false` : aucune détection |
-| `VIGIE_DETECT_DISABLE` | vide | détections éteintes, ex. `fanout,mail_ports` |
-| `VIGIE_DETECT_INTERVAL_S` | `300` | intervalle entre deux passages (10 à 86400 s) |
-| `VIGIE_DETECT_UPLOAD_FLOOR_MB` / `_UPLOAD_FACTOR` / `_UPLOAD_LEARN_DAYS` | `1024` / `10` / `7` | `upload_spike` : plancher en Mio/h, k × médiane, jours d'apprentissage |
-| `VIGIE_DETECT_FANOUT` / `_FANOUT_SCREEN_OFF` | `300` / `100` | adresses distinctes par heure (écran allumé / éteint) |
-| `VIGIE_DETECT_MAIL_MIN` / `_MAIL_CLIENTS` | `1` / vide | connexions SMTP par jour ; clients de messagerie ajoutés |
-| `VIGIE_DETECT_DNS_BYPASS_MIN` / `_PORTS` / `_EXEMPT` | `1` / `443,853` / vide | résolveurs publics : connexions, ports suivis, applications exemptées |
-| `VIGIE_DETECT_SMS_OTHER_MIN` / `_SMS_DAILY_MAX` | `1` / `200` | SMS par jour (autre appli / toute appli) |
-| `VIGIE_DETECT_MIC_BG_MIN` / `_CAMERA_BG_MIN` | `10` / `3` | accès en arrière-plan par jour |
+| `WATCHPOST_DETECT_ENABLED` | `true` | `false`: no detection |
+| `WATCHPOST_DETECT_DISABLE` | empty | detections turned off, e.g. `fanout,mail_ports` |
+| `WATCHPOST_DETECT_INTERVAL_S` | `300` | interval between two passes (10 to 86400 s) |
+| `WATCHPOST_DETECT_UPLOAD_FLOOR_MB` / `_UPLOAD_FACTOR` / `_UPLOAD_LEARN_DAYS` | `1024` / `10` / `7` | `upload_spike`: floor in MiB/h, k × median, learning days |
+| `WATCHPOST_DETECT_FANOUT` / `_FANOUT_SCREEN_OFF` | `300` / `100` | distinct addresses per hour (screen on / off) |
+| `WATCHPOST_DETECT_MAIL_MIN` / `_MAIL_CLIENTS` | `1` / empty | SMTP connections per day; added mail clients |
+| `WATCHPOST_DETECT_DNS_BYPASS_MIN` / `_PORTS` / `_EXEMPT` | `1` / `443,853` / empty | public resolvers: connections, watched ports, exempted applications |
+| `WATCHPOST_DETECT_SMS_OTHER_MIN` / `_SMS_DAILY_MAX` | `1` / `200` | SMS per day (other app / any app) |
+| `WATCHPOST_DETECT_MIC_BG_MIN` / `_CAMERA_BG_MIN` | `10` / `3` | background accesses per day |
 
-## 8. Exploitation
+## 8. Operations
 
-### 8.1 Mises à jour
-
-```bash
-sudo ./update.sh        # sauvegarde, git pull, images, reconstruction du collecteur, install.sh
-```
-
-Les versions sont épinglées (`docker-compose.yml`) : Wazuh 4.14.10, AdGuard Home v0.107.80,
-Caddy 2.11.9. Pour monter de version, modifier le fichier (les trois images Wazuh ensemble, après
-lecture des notes de version), puis `update.sh`. Les listes de blocage se mettent à jour seules.
-
-### 8.2 Sauvegarde et restauration
+### 8.1 Updates
 
 ```bash
-sudo ./backup.sh                    # backups/vigie-AAAAMMJJ-HHMMSS.tar.gz (secrets compris)
-gpg -c backups/vigie-….tar.gz       # chiffrer avant de sortir l'archive du serveur
-sudo ./restore.sh backups/vigie-….tar.gz
+sudo ./update.sh        # backup, git pull, images, collector rebuild, install.sh
 ```
 
-La sauvegarde contient `.env`, `secrets/`, `data/` et les volumes du collecteur (**base et AC des
-appareils : sans elle, il faut réenrôler les téléphones**), de Caddy (certificats), d'AdGuard et de
-l'état du manager. L'index Wazuh n'y est pas par défaut (volumineux ; les événements restent dans la
-base du collecteur) : `--with-siem` l'inclut en arrêtant Wazuh. Vérifié : destruction de tous les
-volumes et de la configuration, puis `restore.sh` → pile saine, téléphone enrôlé accepté.
+The versions are pinned (`docker-compose.yml`): Wazuh 4.14.10, AdGuard Home v0.107.80,
+Caddy 2.11.9. To upgrade, change the file (the three Wazuh images together, after reading the
+release notes), then run `update.sh`. The blocklists update themselves.
 
-### 8.3 Mots de passe
+### 8.2 Backup and restore
+
+```bash
+sudo ./backup.sh                        # backups/watchpost-YYYYMMDD-HHMMSS.tar.gz (secrets included)
+gpg -c backups/watchpost-….tar.gz       # encrypt before taking the archive off the server
+sudo ./restore.sh backups/watchpost-….tar.gz
+```
+
+The backup contains `.env`, `secrets/`, `data/` and the volumes of the collector (**database and
+device CA: without it, the phones must be enrolled again**), of Caddy (certificates), of AdGuard and
+the manager state. The Wazuh index is not included by default (large; the events stay in the
+collector database): `--with-siem` includes it, stopping Wazuh. Verified: destruction of every volume
+and of the configuration, then `restore.sh` → healthy stack, enrolled phone accepted.
+
+### 8.3 Passwords
 
 ```bash
 sudo ./install.sh --rotate-passwords
 ```
 
-régénère tous les mots de passe de `.env` et les applique partout : comptes de l'indexeur (par
-l'API de sécurité, compte par compte : les utilisateurs créés dans le dashboard sont conservés),
-Filebeat, dashboard, API Wazuh, collecteur, AdGuard (`admin` et `vigie-collecteur` : vérifié, ancien
-mot de passe refusé par AdGuard, collecteur reconnecté avec le nouveau), Caddy, et le compte console `admin` (vérifié :
-ancien mot de passe refusé, nouveau accepté, utilisateur ajouté dans le dashboard toujours valide).
+regenerates every password of `.env` and applies them everywhere: indexer accounts (through the
+security API, account by account: users created in the dashboard are kept), Filebeat, dashboard,
+Wazuh API, collector, AdGuard (`admin` and `watchpost-collector`: verified, old password refused by
+AdGuard, collector reconnected with the new one), Caddy, and the `admin` console account (verified:
+old password refused, new one accepted, user added in the dashboard still valid).
 
-Règle par compte :
+Rule per account:
 
-| Compte | Source de vérité | Changer le mot de passe |
+| Account | Source of truth | Changing the password |
 |---|---|---|
-| Console Vigie `admin` | la base du collecteur | `docker compose exec collector vigie-collector user set-password admin` : conservé par `install.sh` ; `--reset-console-password` repose celui de `.env` |
-| Indexeur `admin`, `kibanaserver`, `vigie_reader` ; API `wazuh-wui` | `.env` | modifier `.env` puis `./install.sh` (pas dans le dashboard : Filebeat, le dashboard et le collecteur utilisent ces comptes ; une modification faite ailleurs est remise à la valeur de `.env`) |
-| Autres utilisateurs du dashboard Wazuh | le dashboard | dans le dashboard (jamais touchés par `install.sh`) |
-| AdGuard `admin`, AdGuard `vigie-collecteur` (compte du collecteur, administrateur comme tout compte AdGuard), accès Caddy `admin`, WireGuard | `.env` | modifier `.env` puis `./install.sh` |
+| Watchpost console `admin` | the collector database | `docker compose exec collector watchpost-collector user set-password admin`: kept by `install.sh`; `--reset-console-password` sets the one from `.env` again |
+| Indexer `admin`, `kibanaserver`, `watchpost_reader`; API `wazuh-wui` | `.env` | change `.env`, then `./install.sh` (not in the dashboard: Filebeat, the dashboard and the collector use these accounts; a change made elsewhere is reset to the `.env` value) |
+| Other Wazuh dashboard users | the dashboard | in the dashboard (never touched by `install.sh`) |
+| AdGuard `admin`, AdGuard `watchpost-collector` (collector account, administrator like every AdGuard account), Caddy `admin` access, WireGuard | `.env` | change `.env`, then `./install.sh` |
 
-### 8.4 Dépannage
+### 8.4 Troubleshooting
 
-| Symptôme | Piste |
+| Symptom | Lead |
 |---|---|
-| État des services | `docker compose ps` (tous doivent être `healthy`), `docker compose logs -f <service>` |
-| Le téléphone n'a plus d'Internet | DNS privé injoignable : `python3 tools/dot-query.py dns.D example.org` ; `docker compose logs adguardhome` ; désactiver temporairement le DNS privé sur le téléphone |
-| Une app est cassée | Journal des requêtes AdGuard (`adguard.D`) ou tableau « pistage et DNS » : repérer le domaine bloqué, ajouter `@@\|\|domaine^$important` à `data/adguard/userfilters/regles-perso.txt`, `./install.sh` |
-| Pas de certificat | DNS pas encore propagé ou port 80 fermé : `docker compose logs caddy` |
-| Rien dans Wazuh | `./wazuh/tests/run-tests.sh` ; `docker compose exec wazuh.manager tail /var/ossec/logs/ossec.log` ; erreurs d'indexation : `docker compose logs wazuh.manager \| grep 'Cannot index'` |
-| Indexeur en lecture seule, dashboard `unhealthy` (« create-index blocked ») | disque trop plein (seuils 90/95/97 %) : réduire la rétention, libérer de la place ; le blocage se lève seul quand l'espace revient |
-| Après un redémarrage de l'hôte | tout redémarre seul (`restart: unless-stopped`) ; un défaut de l'image wazuh-manager (réinitialisation interrompue au redémarrage) est contourné par `wazuh/manager/cont-init/00-vigie-pre` |
+| State of the services | `docker compose ps` (all must be `healthy`), `docker compose logs -f <service>` |
+| The phone has no Internet any more | Private DNS unreachable: `python3 tools/dot-query.py dns.D example.org`; `docker compose logs adguardhome`; temporarily turn off private DNS on the phone |
+| An app is broken | AdGuard query log (`adguard.D`) or "tracking and DNS" dashboard: find the blocked domain, add `@@\|\|domain^$important` to `data/adguard/userfilters/personal-rules.txt`, `./install.sh` |
+| No certificate | DNS not propagated yet or port 80 closed: `docker compose logs caddy` |
+| Nothing in Wazuh | `./wazuh/tests/run-tests.sh`; `docker compose exec wazuh.manager tail /var/ossec/logs/ossec.log`; indexing errors: `docker compose logs wazuh.manager \| grep 'Cannot index'` |
+| Indexer read-only, dashboard `unhealthy` ("create-index blocked") | disk too full (thresholds 90/95/97 %): reduce retention, free space; the block lifts by itself when space comes back |
+| After a host restart | everything restarts by itself (`restart: unless-stopped`); a defect of the wazuh-manager image (initialisation interrupted on restart) is worked around by `wazuh/manager/cont-init/00-watchpost-pre` |
 
-### 8.5 Notifications (optionnelles)
+### 8.5 Notifications (optional)
 
-Sans notification, une alerte grave ne se voit qu'en ouvrant la console ou le dashboard. Dans
-`.env` (désactivé tant que `VIGIE_NOTIFY_URL` et `VIGIE_NOTIFY_SMTP_HOST` sont vides), puis
-`./install.sh` :
+Without notifications, a severe alert is only seen by opening the console or the dashboard. In
+`.env` (disabled while `WATCHPOST_NOTIFY_URL` and `WATCHPOST_NOTIFY_SMTP_HOST` are empty), then
+`./install.sh`:
 
-| Variable | Rôle |
+| Variable | Role |
 |---|---|
-| `VIGIE_NOTIFY_LEVEL` | niveau Wazuh minimal notifié (défaut 10) ; le silence de l'agent (règle 100301) et la remise à zéro de séquence (100305) sont toujours notifiés |
-| `VIGIE_NOTIFY_URL` | webhook : `POST` d'un JSON `{"title","message","priority","tags"}` |
-| `VIGIE_NOTIFY_TOPIC` | sujet ntfy : ajouté au JSON (`"topic"`) ; avec ntfy, `VIGIE_NOTIFY_URL` est la racine du serveur, ex. `https://ntfy.sh` |
-| `VIGIE_NOTIFY_TOKEN` | jeton facultatif, envoyé en `Authorization: Bearer …` |
-| `VIGIE_NOTIFY_SMTP_HOST`, `_PORT` (587), `_TLS` (`starttls`, `tls` ou `none`), `_USER`, `_PASSWORD`, `_FROM`, `_TO` (adresses séparées par des virgules) | e-mail par un relais SMTP (celui de votre messagerie) |
+| `WATCHPOST_NOTIFY_LEVEL` | minimum Wazuh level notified (default 10); the agent silence (rule 100301) and the sequence reset (100305) are always notified |
+| `WATCHPOST_NOTIFY_URL` | webhook: `POST` of a JSON `{"title","message","priority","tags"}` |
+| `WATCHPOST_NOTIFY_TOPIC` | ntfy topic: added to the JSON (`"topic"`); with ntfy, `WATCHPOST_NOTIFY_URL` is the root of the server, e.g. `https://ntfy.sh` |
+| `WATCHPOST_NOTIFY_TOKEN` | optional token, sent as `Authorization: Bearer …` |
+| `WATCHPOST_NOTIFY_SMTP_HOST`, `_PORT` (587), `_TLS` (`starttls`, `tls` or `none`), `_USER`, `_PASSWORD`, `_FROM`, `_TO` (comma-separated addresses) | e-mail through an SMTP relay (the one of your mail provider) |
 
-Exemple avec ntfy : `VIGIE_NOTIFY_URL='https://ntfy.sh'` et `VIGIE_NOTIFY_TOPIC='un-nom-long-et-secret'`,
-puis s'abonner à ce sujet dans l'app ntfy. Contenu : titre de la règle, niveau, nom de l'appareil,
-type d'événement, heures, techniques ATT&CK Mobile — **jamais** le journal brut, les données de
-l'événement (position GPS, identifiants, contenu) ni un secret : la notification part chez un tiers.
-Un sujet ntfy public est lisible par quiconque en connaît le nom : choisissez-le long et aléatoire,
-ou utilisez votre propre serveur ntfy avec jeton. Vérifié avec un récepteur local : alerte de niveau
-12 et silence de l'agent reçus (webhook et e-mail), alertes sous le seuil non envoyées. Mise en
-œuvre : intégration Wazuh `custom-vigie-notify` (`wazuh/notify/`), configurée au démarrage du manager.
-Les échéances des certificats d'appareils ne sont pas notifiées : `./enroll.sh --list` (§8.7).
+Example with ntfy: `WATCHPOST_NOTIFY_URL='https://ntfy.sh'` and
+`WATCHPOST_NOTIFY_TOPIC='a-long-and-secret-name'`, then subscribe to this topic in the ntfy app.
+Content: rule title, level, device name, event type, times, ATT&CK Mobile techniques: **never** the
+raw log, the event data (GPS position, identifiers, content) nor a secret: the notification goes to a
+third party. A public ntfy topic can be read by anyone who knows its name: choose it long and random,
+or use your own ntfy server with a token. Verified with a local receiver: level 12 alert and agent
+silence received (webhook and e-mail), alerts below the threshold not sent. Implementation: Wazuh
+integration `custom-watchpost-notify` (`wazuh/notify/`), configured when the manager starts.
+The expiry dates of the device certificates are not notified: `./enroll.sh --list` (§8.7).
 
-Détections (v1.2) : au seuil par défaut (10), sont notifiés les domaines de menaces contactés, la fraude au
-SMS, la permission SMS détenue par une autre appli, le changement d'appli SMS par défaut, le micro ou la
-caméra en arrière-plan, une appli récente qui obtient des capacités graves, le spam, le plafond de
-détections, les aggravations et les corrélations (13) ; pas les pics d'envoi, l'éventail d'adresses, le
-contournement DNS, les mises à jour de détection ni les traces. Le titre nomme l'application (son libellé
-et son paquet) et le fait ; aucun contenu de notification ni message de verrouillage.
+Detections (v1.2): at the default threshold (10), the following are notified: threat domains
+contacted, SMS fraud, SMS permission held by another app, change of the default SMS app, microphone or
+camera in the background, a recent app that obtains severe capabilities, spam, the detection limit,
+escalations and correlations (13); not the upload spikes, the address fan-out, the DNS bypass, the
+detection updates nor the traces. The title names the application (its label and its package) and
+the fact; no notification content nor lock message.
 
-Commandes à distance (v1.1) : au seuil par défaut (10), sont notifiés le verrouillage et l'effacement
-demandés, le verrouillage et l'effacement exécutés, une signature invalide et le verrouillage du canal
-après 5 signatures invalides. La notification ne contient jamais le **message de verrouillage** (le
-collecteur ne l'exporte pas) ni le **contenu d'une notification** du téléphone (`app.notification`
-est de niveau 2 et sa description ne reprend ni titre ni texte). Vérifié avec un récepteur local
-(§11).
+Remote commands (v1.1): at the default threshold (10), the following are notified: lock and erase
+requested, lock and erase executed, an invalid signature and the locking of the channel after 5
+invalid signatures. The notification never contains the **lock message** (the collector does not
+export it) nor the **content of a notification** of the phone (`app.notification` is level 2 and its
+description repeats neither title nor text). Verified with a local receiver (§11).
 
-### 8.6 Certificats internes Wazuh
+### 8.6 Wazuh internal certificates
 
-La PKI interne (indexeur, manager, dashboard, admin) est valable 5 ans (AC : 10 ans). L'échéance est
-rappelée à la fin de chaque `install.sh` (avertissement sous 90 jours).
+The internal PKI (indexer, manager, dashboard, admin) is valid for 5 years (CA: 10 years). The expiry
+date is recalled at the end of every `install.sh` (warning under 90 days).
 
 ```bash
-sudo ./install.sh --renew-wazuh-certs   # nouveaux certificats, même AC (cas normal)
-sudo ./install.sh --renew-wazuh-ca      # nouvelle AC et nouveaux certificats (AC compromise ou expirée)
+sudo ./install.sh --renew-wazuh-certs   # new certificates, same CA (normal case)
+sudo ./install.sh --renew-wazuh-ca      # new CA and new certificates (CA compromised or expired)
 ```
 
-Les anciens fichiers sont gardés dans `secrets/wazuh-certs/ancien-<date>/` ; les conteneurs Wazuh (et
-le collecteur, avec `--renew-wazuh-ca`) sont recréés, Caddy rechargé. Vérifié pour les deux : pile
-saine, données de l'indexeur conservées, nouveaux événements indexés, alertes lues par la console,
-dashboard joignable par Caddy.
+The previous files are kept in `secrets/wazuh-certs/old-<date>/`; the Wazuh containers (and the
+collector, with `--renew-wazuh-ca`) are recreated, Caddy reloaded. Verified for both: healthy stack,
+indexer data kept, new events indexed, alerts read by the console, dashboard reachable through Caddy.
 
-### 8.7 Appareils : liste, renouvellement, révocation
+### 8.7 Devices: list, renewal, revocation
 
 ```bash
-sudo ./enroll.sh --list                 # appareils, dernier contact, expiration du certificat (« à renouveler » sous 30 jours)
-sudo ./enroll.sh --renew s25            # s25-renouvellement.vigie : nouveau jeton et certificat, même appareil
-sudo ./enroll.sh --revoke s25           # ou dev_… : jeton et certificat refusés immédiatement
+sudo ./enroll.sh --list                 # devices, last contact, certificate expiry ("renew" under 30 days)
+sudo ./enroll.sh --renew phone          # phone-renewal.watchpost: new token and certificate, same device
+sudo ./enroll.sh --revoke phone         # or dev_…: token and certificate refused immediately
 ```
 
-Après `--renew`, importer le nouveau fichier dans l'app (puis le détruire) : l'ancien couple reste
-accepté jusqu'au premier envoi fait avec le nouveau, puis il est refusé. Vérifié à travers Caddy en
-mTLS : ancien accepté (200), nouveau accepté (200), ancien refusé ensuite (401). Les certificats
-d'appareils durent 2 ans.
+After `--renew`, import the new file into the app (then destroy it): the old pair stays accepted
+until the first upload made with the new one, then it is refused. Verified through Caddy in mTLS: old
+pair accepted (200), new pair accepted (200), old pair refused afterwards (401). Device certificates
+last 2 years.
 
-## 9. Dimensionnement mémoire (hôte 8 Go)
+## 9. Memory sizing (8 GB host)
 
-| Service | Limite | Mesuré au repos (essai) |
+| Service | Limit | Measured at rest (test) |
 |---|---|---|
-| wazuh.indexer | 3 Go (tas Java `WAZUH_INDEXER_HEAP=2g`) | 2,4 Go |
-| wazuh.manager | 1,5 Go | 0,3 Go |
-| wazuh.dashboard | 1 Go (tas Node 640 Mo) | 0,2-0,5 Go |
-| adguardhome | 768 Mo | 110 Mo avec les vraies listes chargées (niveau strict : PRO++, Samsung, menaces ≈ 620 000 règles ; équilibré : 107 Mo) |
-| collector | 512 Mo | < 50 Mo |
-| caddy | 256 Mo | 15 Mo |
+| wazuh.indexer | 3 GB (Java heap `WAZUH_INDEXER_HEAP=2g`) | 2.4 GB |
+| wazuh.manager | 1.5 GB | 0.3 GB |
+| wazuh.dashboard | 1 GB (Node heap 640 MB) | 0.2-0.5 GB |
+| adguardhome | 768 MB | 110 MB with the real lists loaded (strict level: PRO++, Samsung, threats ≈ 620,000 rules; balanced: 107 MB) |
+| collector | 512 MB | < 50 MB |
+| caddy | 256 MB | 15 MB |
 
-Total des limites ≈ 7 Go ; prévoir 2 Go de swap. Sur un hôte plus grand, augmenter
-`WAZUH_INDEXER_HEAP` (au plus la moitié de la RAM) et `WAZUH_INDEXER_MEM_LIMIT` (tas + 1 Go).
-Sous 8 Go : `WAZUH_INDEXER_HEAP=1g` et `WAZUH_INDEXER_MEM_LIMIT=2g`, à vos risques.
+Total of the limits ≈ 7 GB; plan 2 GB of swap. On a larger host, increase `WAZUH_INDEXER_HEAP` (at
+most half of the RAM) and `WAZUH_INDEXER_MEM_LIMIT` (heap + 1 GB). Under 8 GB:
+`WAZUH_INDEXER_HEAP=1g` and `WAZUH_INDEXER_MEM_LIMIT=2g`, at your own risk.
 
 ## 10. Options
 
-### 10.1 WireGuard (profil `wireguard`)
+### 10.1 WireGuard (`wireguard` profile)
 
 ```bash
 sudo docker compose --profile wireguard up -d wireguard
-ssh -L 51821:127.0.0.1:51821 vps     # interface wg-easy : http://127.0.0.1:51821 (admin / WG_ADMIN_PASSWORD)
+ssh -L 51821:127.0.0.1:51821 vps     # wg-easy interface: http://127.0.0.1:51821 (admin / WG_ADMIN_PASSWORD)
 sudo ./firewall/ufw.sh --wireguard
 ```
 
-Le tunnel donne au téléphone une adresse fixe, utilise AdGuard en DNS interne et fait passer tout son
-trafic par le VPS. **Inconvénients** : Android n'accepte qu'un VPN actif (incompatible avec un
-pare-feu local de type VpnService) ; batterie et latence ; toute la bande passante passe par le VPS ;
-si le VPS tombe, plus d'Internet en mode « VPN permanent » ; le contenu reste chiffré en TLS (seules
-les métadonnées sont visibles) ; module noyau WireGuard requis. À n'activer que si l'on en a l'usage.
-Non testé ici (configuration Compose validée seulement).
+The tunnel gives the phone a fixed address, uses AdGuard as internal DNS and sends all its traffic
+through the VPS. **Drawbacks**: Android accepts only one active VPN (incompatible with a local
+VpnService-type firewall); battery and latency; all the bandwidth goes through the VPS; if the VPS
+goes down, no more Internet in "always-on VPN" mode; the content stays TLS-encrypted (only the
+metadata is visible); WireGuard kernel module required. Enable it only if you need it.
+Not tested here (Compose configuration validated only).
 
-### 10.2 Tuiles de la carte de la console (`VIGIE_TILE_URL`)
+### 10.2 Tiles of the console map (`WATCHPOST_TILE_URL`)
 
-La console charge le fond de carte depuis `VIGIE_TILE_URL` (défaut :
-`https://tile.openstreetmap.org/{z}/{x}/{y}.png`). Le serveur de tuiles voit donc l'adresse IP du
-navigateur et **les zones consultées** (donc les lieux fréquentés par le téléphone). Pour l'éviter :
+The console loads the base map from `WATCHPOST_TILE_URL` (default:
+`https://tile.openstreetmap.org/{z}/{x}/{y}.png`). The tile server therefore sees the IP address of
+the browser and **the areas viewed** (hence the places the phone visits). To avoid this:
 
-- choisir un fournisseur dont la politique de confidentialité vous convient (clé d'API souvent
-  requise) : `VIGIE_TILE_URL='https://tuiles.fournisseur.example/{z}/{x}/{y}.png'` dans `.env`, puis
-  `./install.sh` (la CSP de la console suit automatiquement) ;
-- ou auto-héberger un serveur de tuiles (par exemple tileserver-gl ou un fichier PMTiles de votre
-  région derrière Caddy) : plusieurs Go de disque et un peu de travail, non fourni ici.
+- choose a provider whose privacy policy suits you (an API key is often required):
+  `WATCHPOST_TILE_URL='https://tiles.provider.example/{z}/{x}/{y}.png'` in `.env`, then
+  `./install.sh` (the console CSP follows automatically);
+- or self-host a tile server (for example tileserver-gl or a PMTiles file of your region behind
+  Caddy): several GB of disk and some work, not provided here.
 
-L'URL doit être en `https://` avec les marqueurs `{z}`, `{x}`, `{y}`.
+The URL must use `https://` with the `{z}`, `{x}`, `{y}` placeholders.
 
-## 11. Ce qui a été vérifié (essai du 15/11/2026, mode TLS interne)
+## 11. What was verified (test run, internal TLS mode)
 
-Environnement : Docker 29, 16 Go de RAM, sans accès Internet sortant pour les conteneurs. Prouvé :
-installation complète puis rejouée (idempotente) ; indexeur, manager, dashboard sains avec les mots de
-passe générés (anciens et comptes de démonstration refusés) ; rotation des mots de passe ; collecteur
-réel : enrôlement, simulateur (48 types, dont `security.posture_change` et les capteurs avec état de
-l'écran) envoyé à travers Caddy en mTLS, 13 131 lignes exportées = 13 131 documents dans
-`wazuh-archives-*` (aucun rejet de l'indexeur), alertes dans `wazuh-alerts-*` lues par la console
-(`/api/console/alerts`) ; rotation par renommage sans perte ni alerte ; mTLS (refus sans certificat
-et avec une autre AC, acceptation avec le certificat enrôlé) ; DoT avec le certificat de Caddy,
-blocage d'un domaine de `vigie-base.txt`, rechargement du certificat renouvelé sans redémarrage ;
-mode ClientID (identifiant inconnu → REFUSED) ; geo_point ; import et affichage des tableaux de bord ;
-sauvegarde puis restauration après destruction totale ; 121 cas de règles.
+Test conditions: Docker 29, 16 GB of RAM, no outbound Internet access for the containers. Proven:
+full installation, then rerun (idempotent); indexer, manager, dashboard healthy with the generated
+passwords (old passwords and demonstration accounts refused); password rotation; real collector:
+enrollment, simulator (48 types, including `security.posture_change` and the sensors with screen
+state) sent through Caddy in mTLS, 13,131 lines exported = 13,131 documents in `wazuh-archives-*` (no
+indexer rejection), alerts in `wazuh-alerts-*` read by the console (`/api/console/alerts`); rotation
+by renaming without loss nor alert; mTLS (refusal without a certificate and with another CA,
+acceptance with the enrolled certificate); DoT with Caddy's certificate, blocking of a domain of
+`watchpost-base.txt`, reload of the renewed certificate without restart; ClientID mode (unknown
+identifier → REFUSED); geo_point; import and display of the dashboards; backup, then restore after
+total destruction; 121 rule cases.
 
-Non vérifié ici (limites de l'environnement) : Let's Encrypt (pas d'accès entrant/sortant), défi
-DNS-01 et image Caddy à module DNS, téléchargement des listes HaGeZi et résolution par Quad9 (pas
-d'Internet dans les conteneurs), WireGuard, `ulimits` d'origine (l'hôte d'essai plafonne `nofile` à
-20 000 : surcharge de test uniquement), consommation mémoire avec les listes chargées.
+Not verified here (limits of the test environment): Let's Encrypt (no inbound/outbound access),
+DNS-01 challenge and Caddy image with a DNS module, download of the HaGeZi lists and resolution
+through Quad9 (no Internet in the containers), WireGuard, original `ulimits` (the test host caps
+`nofile` at 20,000: test override only), memory consumption with the lists loaded.
 
-### 11.1 Version 1.1 (essai du 16/11/2026, mode TLS interne)
+### 11.1 Version 1.1 (test run, internal TLS mode)
 
-Pile installée avec l'image du collecteur reconstruite depuis le code courant, trois appareils
-enrôlés, simulateur du collecteur en agent de commandes **à travers Caddy en mTLS**
-(`sim --enroll s25.vigie --follow --command-code 'correct horse battery staple'`, conteneur sur le
-réseau `vigie`). Prouvé :
+Stack installed with the collector image rebuilt from the current code, three devices enrolled, the
+collector's simulator acting as a command agent **through Caddy in mTLS**
+(`sim --enroll phone.watchpost --follow --command-code 'correct horse battery staple'`, container on
+the `watchpost` network). Proven:
 
-- **flux SSE** : `curl -N` sur `https://ingest.D/api/v1/commands/stream` (certificat et jeton d'un
-  appareil) ouvert 7 min en HTTP/1.1 et en HTTP/2, maintiens reçus toutes les 120 s, aucune coupure
-  par Caddy ; une commande émise pendant ce temps arrive dans la seconde (pas de tampon) ; une seule
-  ligne de journal d'accès par connexion, jeton masqué ; le simulateur se reconnecte seul après une
-  recréation du collecteur ;
-- **commandes** : `ring` émise par `POST /api/console/commands` → exécutée, résultat revenu
-  (`executed`) ; `lock` signée avec le code du vecteur de test du contrat (§8, clé dérivée pour
-  l'identifiant de l'appareil) → exécutée ; `lock` signée avec un autre code → `bad_signature` ; 5
-  signatures invalides → `locked_out` ; annulation d'une commande en attente ; alertes Wazuh
-  correspondantes (100230-100245) dans `wazuh-alerts-*`, webhook reçu pour les niveaux ≥ 10, sans
-  message de verrouillage ni contenu de notification ; message de verrouillage absent de
-  `events.ndjson`, des archives et des alertes ;
-- **routage** : `/api/console/*` → 404 sur `ingest.D` ; `/api/v1/*` → 404 sur `console.D` ; refus
-  TLS sans certificat client ou avec une autre AC ; certificat d'un appareil + jeton d'un autre →
-  401 ; en-tête `X-Vigie-Client-Cert-Sha256` forgé ignoré ; corps de 2 Mo → 413 sur `console.D` ;
-- **AdGuard réel** : listes HaGeZi réelles téléchargées par AdGuard (depuis un faux CDN de test,
-  voir ci-dessous) ; requêtes DoT (`tools/dot-query.py`) vers des domaines de `vigie-base.txt`
-  bloquées et visibles dans la vue « pistage » avec leur motif ; `PUT /tracking/override` →
-  domaine bloqué par une requête DoT (avant : non bloqué ; après : `0.0.0.0`), domaine
-  indispensable refusé (`409 essential_domain`) ; `PUT /tracking/level` strict puis permissif →
-  listes 2/11/20 et 10 activées ou désactivées dans AdGuard (PRO++ téléchargée à l'activation) ;
-- **source de vérité** : `install.sh` rejoué → niveau `permissif` et bloc `vigie:begin` conservés, `.env`
-  identique octet pour octet ; `install.sh --profile strict` → la console lit `strict` (au relevé
-  suivant, ≤ 60 s) ; `--reset-adguard` → configuration régénérée, niveau et bloc conservés ;
-  `--rotate-passwords` → compte `vigie-collecteur` changé, ancien mot de passe refusé, vue
-  « pistage » joignable ;
-- **indexation** : 435 lignes exportées = 435 documents dans `wazuh-archives-*` (dont 25 événements
-  serveur), aucun rejet ; `run-tests.sh` : 143 cas sur 143.
+- **SSE stream**: `curl -N` on `https://ingest.D/api/v1/commands/stream` (certificate and token of a
+  device) open 7 min over HTTP/1.1 and HTTP/2, keepalives received every 120 s, no cut by Caddy; a
+  command issued in the meantime arrives within the second (no buffering); a single access log line
+  per connection, token masked; the simulator reconnects by itself after the collector is recreated;
+- **commands**: `ring` issued by `POST /api/console/commands` → executed, result returned
+  (`executed`); `lock` signed with the passphrase of the contract test vector (§8, key derived for the
+  device identifier) → executed; `lock` signed with another passphrase → `bad_signature`; 5 invalid
+  signatures → `locked_out`; cancellation of a pending command; matching Wazuh alerts
+  (100230-100245) in `wazuh-alerts-*`, webhook received for levels ≥ 10, without lock message nor
+  notification content; lock message absent from `events.ndjson`, from the archives and from the
+  alerts;
+- **routing**: `/api/console/*` → 404 on `ingest.D`; `/api/v1/*` → 404 on `console.D`; TLS refusal
+  without a client certificate or with another CA; certificate of one device + token of another →
+  401; forged `X-Watchpost-Client-Cert-Sha256` header ignored; 2 MB body → 413 on `console.D`;
+- **real AdGuard**: real HaGeZi lists downloaded by AdGuard (from a fake test CDN, see below); DoT
+  queries (`tools/dot-query.py`) to domains of `watchpost-base.txt` blocked and visible on the
+  Tracking page with their reason; `PUT /tracking/override` → domain blocked by a DoT query (before:
+  not blocked; after: `0.0.0.0`), essential domain refused (`409 essential_domain`);
+  `PUT /tracking/level` strict, then permissive → lists 2/11/20 and 10 enabled or disabled in
+  AdGuard (PRO++ downloaded when enabled);
+- **source of truth**: `install.sh` rerun → level `permissive` and `watchpost:begin` block kept,
+  `.env` byte-for-byte identical; `install.sh --profile strict` → the console reads `strict` (at the
+  next polling, ≤ 60 s); `--reset-adguard` → configuration regenerated, level and block kept;
+  `--rotate-passwords` → `watchpost-collector` account changed, old password refused, Tracking page
+  reachable;
+- **indexing**: 435 lines exported = 435 documents in `wazuh-archives-*` (including 25 server
+  events), no rejection; `run-tests.sh`: 143 cases out of 143.
 
-Aménagements propres à l'environnement d'essai (fichier Compose supplémentaire hors dépôt, par
-`VIGIE_COMPOSE_EXTRA`) : faux CDN `cdn.jsdelivr.net` (alias réseau, AC d'essai ajoutée au magasin
-d'AdGuard, amont `[/jsdelivr.net/]127.0.0.11` posé par l'API le temps de l'essai) servant les vraies
-listes HaGeZi récupérées depuis GitHub ; `nofile`/`memlock` plafonnés ; seuils disque de l'indexeur
-en valeurs absolues (disque de 252 Go presque plein en proportion). Non vérifié ici : `update.sh`
-(reconstruction depuis les registres d'images), expiration réelle d'une commande (1 h au moins),
-vrai téléphone et vrai agent Android.
+Test-only adjustments (additional Compose file outside the repository, through
+`WATCHPOST_COMPOSE_EXTRA`): fake `cdn.jsdelivr.net` CDN (network alias, test CA added to AdGuard's
+store, upstream `[/jsdelivr.net/]127.0.0.11` set through the API for the duration of the test)
+serving the real HaGeZi lists fetched from GitHub; `nofile`/`memlock` capped; indexer disk thresholds
+as absolute values (large disk almost full in proportion). Not verified here: `update.sh` (rebuild
+from the image registries), real expiry of a command (1 h at least), real phone and real Android
+agent.
 
-### 11.2 Version 1.2 (essai du 16/11/2026, mode TLS interne)
+### 11.2 Version 1.2 (test run, internal TLS mode)
 
-Pile installée avec l'image du collecteur reconstruite depuis le code courant (`docker build` avec
-`mirror.gcr.io`), cinq appareils enrôlés par `enroll.sh`, simulateur en conteneur sur le réseau `vigie`
-**à travers Caddy en mTLS** : `sim --enroll s25-fraude.vigie --backfill 72h --scenario fraude-sms`, puis
-`--scenario tout` et `--scenario sain` (un appareil chacun ; puis `fraude-sms` et `tout` rejoués sur deux
-appareils neufs après le passage à un fil d'analyse). Prouvé :
+Stack installed with the collector image rebuilt from the current code (`docker build` with
+`mirror.gcr.io`), five devices enrolled with `enroll.sh`, simulator in a container on the `watchpost`
+network **through Caddy in mTLS**: `sim --enroll phone-fraud.watchpost --backfill 72h --scenario
+sms-fraud`, then `--scenario all` and `--scenario healthy` (one device each; then `sms-fraud` and
+`all` replayed on two new devices after switching to a single analysis thread). Proven:
 
-- **indexation** : 298 231 lignes exportées (dont trois fichiers après rotation) = 298 231 documents Vigie
-  dans `wazuh-archives-*`, aucun rejet (`docker compose logs wazuh.manager | grep 'Cannot index'` vide),
-  champs d'`evidence` de types variables compris ;
-- **détections** : les 8 types du §11.3 exportés et indexés, chacun avec la règle attendue (100460,
-  100462, 100465, 100466, 100468, 100470, 100472) ou, quand la même application avait déjà une détection
-  d'un autre type dans les 24 h, avec la corrélation 100489 (13) — toujours le cas pour
-  `sensor_background` et `dns_bypass`, précédées par `new_app_risky` de la même application : leurs
-  règles propres (100463, 100469) ne sont vérifiées que par `run-tests.sh` ; `app.risk` à l'installation : 100503 pour les trois applications `combo_*` ; envois
-  de SMS refusés après activation de la garde : 100522 ; `guard_enabled` : 100531 ; **scénario sain :
-  zéro détection**, zéro alerte `detect.*` ;
-- **`detect.threat_domain` avec le vrai AdGuard Home et le vrai `niveaux.json`** : la vraie liste HaGeZi
-  TIF (353 203 domaines, récupérée sur GitHub) servie par un faux `cdn.jsdelivr.net` à l'adresse exacte du
-  fichier, plus les 4 domaines de commande des scénarios ajoutés à la fin (le simulateur n'en demande pas
-  d'autres) ; requêtes DoT par `tools/dot-query.py` → `0.0.0.0`, relevé du collecteur, détections
-  `threat_domain` (sév. 3) pour les applications qui avaient demandé ces domaines. Un domaine réel de la
-  liste (`pl.0003201.site`) est bloqué de même ; il n'a pas fait de détection faute de `net.dns` simulé
-  pour lui ;
-- **vue « pistage »** : `PUT /tracking/level` permissif → 100541 (8) ; `PUT /tracking/override` allow →
-  100543 (8), block → 100542 (3) (un événement par appareil) ;
-- **notifications** (récepteur webhook et SMTP local) : alertes ≥ 10 reçues, dont les détections graves et
-  les corrélations ; aucune sous le seuil ; aucun titre ni texte de notification du téléphone dans les 155
-  corps reçus ;
-- **`install.sh` rejoué** : `.env` identique (`sha256sum -c`), niveau `permissif` et bloc `vigie:begin`
-  conservés, `size_memory` remis de 1 à 50, tableaux de bord importés ;
-- `run-tests.sh` : 210 cas sur 210.
+- **indexing**: 298,231 lines exported (including three files after rotation) = 298,231 Watchpost
+  documents in `wazuh-archives-*`, no rejection (`docker compose logs wazuh.manager | grep 'Cannot
+  index'` empty), `evidence` fields of variable types included;
+- **detections**: the 8 types of §11.3 exported and indexed, each with the expected rule (100460,
+  100462, 100465, 100466, 100468, 100470, 100472) or, when the same application already had a
+  detection of another type within 24 h, with the correlation 100489 (13); always the case for
+  `sensor_background` and `dns_bypass`, preceded by `new_app_risky` of the same application: their
+  own rules (100463, 100469) are only verified by `run-tests.sh`; `app.risk` at installation: 100503
+  for the three `combo_*` applications; SMS sending refused after the guard was enabled: 100522;
+  `guard_enabled`: 100531; **healthy scenario: zero detection**, zero `detect.*` alert;
+- **`detect.threat_domain` with the real AdGuard Home and the real `levels.json`**: the real HaGeZi
+  TIF list (353,203 domains, fetched from GitHub) served by a fake `cdn.jsdelivr.net` at the exact
+  address of the file, plus the 4 command domains of the scenarios added at the end (the simulator
+  requests no others); DoT queries through `tools/dot-query.py` → `0.0.0.0`, collector polling,
+  `threat_domain` detections (sev. 3) for the applications that had requested these domains. A real
+  domain of the list (`pl.0003201.site`) is blocked the same way; it produced no detection for lack of
+  a simulated `net.dns` for it;
+- **Tracking page**: `PUT /tracking/level` permissive → 100541 (8); `PUT /tracking/override` allow →
+  100543 (8), block → 100542 (3) (one event per device);
+- **notifications** (local webhook and SMTP receiver): alerts ≥ 10 received, including the severe
+  detections and the correlations; none below the threshold; no title nor text of a phone
+  notification in the 155 bodies received;
+- **`install.sh` rerun**: `.env` identical (`sha256sum -c`), level `permissive` and `watchpost:begin`
+  block kept, `size_memory` set back from 1 to 50, dashboards imported;
+- `run-tests.sh`: 210 cases out of 210.
 
-**Second essai (même jour, collecteur avec le §11.4, image reconstruite deux fois)** : scénarios
-`sms-discret --app-ops=false`, `cheval-de-troie`, `tout`, `sain`, puis `contournement-dns` sur un appareil
-mis en sourdine, et `sms-discret --app-ops=false` rejoué avec le simulateur aligné sur les seuils réels du
-profil de risque. Prouvé : 320 585 lignes exportées = 320 585 documents, aucun rejet ;
-**`sms-discret` sans `app_ops` → une seule détection, `detect.sms_permission`, règle 100475 (10), reçue par
-le webhook et par SMTP** (plus 100161, 8, à l'octroi) ; `cheval-de-troie` → `default_app_changed` exporté
-(`evidence.role = sms`) et alerté (100489 en direct car corrélé à `new_app_risky` ; la ligne exportée,
-rejouée seule dans `wazuh-logtest`, donne 100476, 12) ; `app.role` réel → 100511 (8) ; `tout` →
-`sms_permission` 100475, `recurring` → 100456 ; **sourdine** par `POST /api/console/detections/mute` →
-`detect.muted` exporté (`type`, `package`, `reason`, `user`) et alerté (100479) ; la détection couverte est
-`muted: true` dans l'API et **absente de l'export** ; type non masquable → `400 not_mutable` ; `sain` :
-aucune détection. Non produits par le simulateur, vérifiés par `run-tests.sh` seulement :
-`inventory_mismatch`, `flood`, `unmuted`.
+**Second run (collector with §11.4, image rebuilt twice)**: scenarios `silent-sms --app-ops=false`,
+`banking-trojan`, `all`, `healthy`, then `dns-bypass` on a device with a mute, and `silent-sms
+--app-ops=false` replayed with the simulator aligned on the real thresholds of the risk profile.
+Proven: 320,585 lines exported = 320,585 documents, no rejection; **`silent-sms` without `app_ops` →
+a single detection, `detect.sms_permission`, rule 100475 (10), received by the webhook and through
+SMTP** (plus 100161, 8, when the permission is granted); `banking-trojan` → `default_app_changed`
+exported (`evidence.role = sms`) and alerted (100489 live because it is correlated with
+`new_app_risky`; the exported line, replayed alone in `wazuh-logtest`, gives 100476, 12); real
+`app.role` → 100511 (8); `all` → `sms_permission` 100475, `recurring` → 100456; **mute** through
+`POST /api/console/detections/mute` → `detect.muted` exported (`type`, `package`, `reason`, `user`)
+and alerted (100479); the covered detection is `muted: true` in the API and **absent from the
+export**; type that cannot be muted → `400 not_mutable`; `healthy`: no detection. Not produced by the
+simulator, verified by `run-tests.sh` only: `inventory_mismatch`, `flood`, `unmuted`.
 
-Constaté et corrigé pendant l'essai : corrélations manquées une fois sur deux avec plusieurs fils
-d'analyse (§7.2) ; règle de corrélation placée avant les règles de son groupe (jamais déclenchée).
-Aménagements de l'environnement d'essai (hors dépôt, `VIGIE_COMPOSE_EXTRA`) : faux CDN, `nofile`
-plafonné, seuils disque de l'indexeur en valeurs absolues. Non vérifié ici : vrai téléphone, collecteur
-`app_ops` réel, listes Multi PRO (non servies par le faux CDN), types du §11.4 émis par le vrai collecteur.
+Found and fixed during the test: correlations missed one time out of two with several analysis
+threads (§7.2); correlation rule placed before the rules of its group (never fired). Test-only
+adjustments (outside the repository, `WATCHPOST_COMPOSE_EXTRA`): fake CDN, `nofile` capped, indexer
+disk thresholds as absolute values. Not verified here: real phone, real `app_ops` collector, Multi
+PRO lists (not served by the fake CDN), §11.4 types emitted by the real collector.
 
-## 12. Fichiers
+## 12. Files
 
 ```
 infra/
 ├── install.sh  enroll.sh  backup.sh  restore.sh  update.sh
 ├── docker-compose.yml
-├── lib/common.sh                    fonctions communes
-├── caddy/                           Caddyfile, modes TLS, sites DNS, Dockerfile.dns (DNS-01)
-├── adguard/                         gabarit AdGuardHome.yaml, règles Vigie (base, strict),
-│                                    niveaux.json (niveaux de blocage, lu aussi par le collecteur),
-│                                    merge-config.py (fusion de la configuration en service)
+├── lib/common.sh                    shared functions
+├── caddy/                           Caddyfile, TLS modes, DNS sites, Dockerfile.dns (DNS-01)
+├── adguard/                         AdGuardHome.yaml template, Watchpost rules (base, strict),
+│                                    levels.json (blocking levels, also read by the collector),
+│                                    merge-config.py (merge into the configuration in service)
 ├── wazuh/
-│   ├── gen-certs.sh                 PKI interne Wazuh (openssl)
-│   ├── indexer/  dashboard/          configurations (gabarits *.tmpl rendus dans data/)
-│   ├── manager/                     ossec.conf, scripts d'initialisation
-│   ├── rules/                       règles Vigie et AdGuard
-│   ├── watch/vigie_watch.py         sonde silence / séquence
-│   ├── setup/indexer-setup.sh       modèle d'index, politiques ISM
-│   ├── dashboards/                  objets sauvegardés (ndjson) et leur générateur
-│   └── tests/                       cas de test, run-tests.sh
+│   ├── gen-certs.sh                 Wazuh internal PKI (openssl)
+│   ├── indexer/  dashboard/          configuration (*.tmpl templates rendered into data/)
+│   ├── manager/                     ossec.conf, initialisation scripts
+│   ├── rules/                       Watchpost and AdGuard rules
+│   ├── watch/watchpost_watch.py     silence / sequence watcher
+│   ├── setup/indexer-setup.sh       index template, ISM policies
+│   ├── dashboards/                  saved objects (ndjson) and their generator
+│   └── tests/                       test cases, run-tests.sh
 ├── firewall/                        ufw.sh, nftables.conf
-├── tools/dot-query.py               client DoT de diagnostic
-├── .env              (généré)       paramètres et secrets
-├── secrets/          (généré)       identifiants.txt, PKI Wazuh, cache de hachages
-└── data/             (généré)       configurations rendues, règles AdGuard personnelles
+├── tools/dot-query.py               diagnostic DoT client
+├── .env              (generated)    settings and secrets
+├── secrets/          (generated)    credentials.txt, Wazuh PKI, hash cache
+└── data/             (generated)    rendered configuration, personal AdGuard rules
 ```
