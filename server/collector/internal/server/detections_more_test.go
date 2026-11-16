@@ -123,7 +123,7 @@ func TestDetectionsMuteRecurrenceFlood(t *testing.T) {
 		{map[string]any{"device_id": dev, "type": "detect.default_app_changed", "package": "x.y"}, 400},
 		{map[string]any{"device_id": dev, "type": "detect.nope", "package": "x.y"}, 400},
 		{map[string]any{"device_id": dev, "type": "detect.dns_bypass"}, 400},
-		{map[string]any{"device_id": "dev_autre", "type": "detect.dns_bypass", "package": "x.y"}, 404},
+		{map[string]any{"device_id": "dev_other", "type": "detect.dns_bypass", "package": "x.y"}, 404},
 		{map[string]any{"device_id": dev, "type": "detect.dns_bypass", "package": "x.y", "extra": 1}, 400},
 	} {
 		if r := e.mute(c, http.MethodPost, tc.body); r.StatusCode != tc.code {

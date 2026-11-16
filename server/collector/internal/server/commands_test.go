@@ -207,7 +207,7 @@ func TestCommandValidation(t *testing.T) {
 	_, long := mk("ring", `{}`, now, now.Add(31*24*time.Hour))
 	_, bad := mk("ring", `{"duration_s":301}`, now, now.Add(time.Hour))
 	_, unknown := mk("reboot", `{}`, now, now.Add(time.Hour))
-	otherDev := strings.Replace(ring, dev, "dev_autre", 1)
+	otherDev := strings.Replace(ring, dev, "dev_other", 1)
 	cases := []struct {
 		name string
 		body map[string]any
@@ -225,8 +225,8 @@ func TestCommandValidation(t *testing.T) {
 		{"lock message with U+2028", map[string]any{"device_id": dev, "payload": lockSep, "sig": sig}, 400, "bad_params"},
 		{"bad params", map[string]any{"device_id": dev, "payload": bad}, 400, "bad_params"},
 		{"unknown type", map[string]any{"device_id": dev, "payload": unknown}, 400, "unknown_type"},
-		{"device mismatch", map[string]any{"device_id": "dev_autre", "payload": ring}, 400, "wrong_device"},
-		{"unknown device", map[string]any{"device_id": "dev_autre", "payload": otherDev}, 404, "not_found"},
+		{"device mismatch", map[string]any{"device_id": "dev_other", "payload": ring}, 400, "wrong_device"},
+		{"unknown device", map[string]any{"device_id": "dev_other", "payload": otherDev}, 404, "not_found"},
 		{"payload not string", map[string]any{"device_id": dev, "payload": map[string]any{"v": 1}}, 400, "invalid_json"},
 		{"unknown field", map[string]any{"device_id": dev, "payload": ring, "status": "executed"}, 400, "invalid_json"},
 		{"id mismatch", map[string]any{"device_id": dev, "payload": ring, "id": model.NewULID(now)}, 400, "invalid_payload"},

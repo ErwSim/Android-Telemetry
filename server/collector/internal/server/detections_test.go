@@ -245,7 +245,7 @@ func TestDetectionsEndToEnd(t *testing.T) {
 	if rec := e.get(c, "/api/console/detections", url.Values{"package": {"a b"}}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("bad package: %d", rec.Code)
 	}
-	if list, _ := e.detections(c, url.Values{"device_id": {"dev_autre"}}); len(list) != 0 {
+	if list, _ := e.detections(c, url.Values{"device_id": {"dev_other"}}); len(list) != 0 {
 		t.Fatal("device filter")
 	}
 	if rec := e.get(c, "/api/console/detections", url.Values{"cursor": {"!!"}}); rec.Code != http.StatusBadRequest {
