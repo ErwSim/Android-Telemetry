@@ -303,8 +303,8 @@ Doit échouer à la poignée de main TLS (erreur curl, pas de code HTTP) : sans 
 ./wazuh/tests/run-tests.sh
 ```
 
-Doit se terminer avec 0 échec (code de sortie 0) : 209 cas dans l'état actuel du dépôt (règles de la v1, des commandes à
-distance, des détections, des gardes et du pistage). C'est la preuve que les règles sont chargées dans le manager.
+Doit se terminer avec 0 échec (code de sortie 0) : plus de 200 cas (209 lors du dernier essai documenté dans `infra/README.md`, 210 fichiers de cas aujourd'hui : règles de
+la v1, des commandes à distance, des détections, des gardes et du pistage). C'est la preuve que les règles sont chargées dans le manager.
 
 **Port 853 depuis un réseau mobile** : certains réseaux filtrent le DNS sur TLS. Le test décisif se fait avec le
 téléphone, au [guide 03](03-telephone.md) (palier 1, « DNS privé seul »).

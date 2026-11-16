@@ -217,6 +217,9 @@ chemins relatifs des scripts bash, politique d'exécution PowerShell, `install-a
 - **`infra/README.md`, §6.4** (« Limite constatée lors de l'essai… à corriger dans le collecteur ») : le collecteur lit désormais le
   journal d'AdGuard par pages sans `older_than` arbitraire (`server/collector/README.md`, « Lecture », `readLog`) ; le texte de
   l'infrastructure décrit encore l'ancienne lecture comme un défaut ouvert.
+- **`infra/README.md` §7.4 et §7.2** : le tableau des détections ne cite pas `inventory_mismatch` (règle 100481, niveau 12,
+  ajoutée dans `infra/wazuh/rules/vigie_rules.xml`) ; le texte compte 209 cas de règles, il y a 210 fichiers dans
+  `infra/wazuh/tests/cases/`.
 - **Désenrôler** efface toujours clé, jeton et événements en attente (voulu, annoncé par l'application) : seul « Importer un
   nouveau fichier .vigie » conserve le tampon.
 - **Notifications des alertes** : optionnelles et désactivées par défaut ; SMTP avec TLS et authentification, et un vrai serveur
