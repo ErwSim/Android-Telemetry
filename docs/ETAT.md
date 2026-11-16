@@ -19,6 +19,19 @@ croisé de son code d'envoi contre le vrai collecteur.
 | Agent Android | `android/` | fait, revue indépendante faite | `./gradlew lint test assembleDebug assembleRelease` vert : 221 tests JVM (1 ignoré : essai croisé, à lancer avec `VIGIE_CROSS_ENROLL`), APK release signé inspecté |
 | Guides utilisateur | `README.md`, `docs/guides/01` à `07` | faits | commandes relues contre les scripts ; aucune exécutée sur un VPS ni sur un téléphone |
 
+## Version 1.1 en cours (demandée par le propriétaire le 16/11/2026)
+
+Spécifiée dans `docs/contrat/contrat.md` §8, §9, §10 et `docs/ARCHITECTURE.md` (principes 2 à 4 révisés).
+
+| Lot | Répertoire | État |
+|---|---|---|
+| Commandes à distance (sonner, vibrer, localiser, verrouiller + message, effacer ; sensibles signées par un code inconnu du serveur ; connexion permanente) | `server/collector/`, `server/console/`, `android/` (`:core`, `:policy`, `:app`) | en cours |
+| Vue « pistage » : bloqué / autorisé par éditeur, domaine et application, actions sur AdGuard, niveau de blocage | `server/collector/`, `server/console/`, puis `infra/` | en cours |
+| APK compagnon de notifications (titre et texte en option) | `android/notifier/`, `android/collectors/…/notifications` | en cours |
+| Modes de localisation (GPS seul / + réseau / fusionné) | `android/collectors/…/location` | en cours |
+| Adaptation de l'infrastructure (flux de commandes à travers Caddy, accès du collecteur à AdGuard, fichier de niveaux, règles Wazuh `command.*`) | `infra/` | à faire après le collecteur |
+| Revue de sécurité du canal de commandes de bout en bout, alignement des guides | — | à faire ensuite |
+
 ## Jamais testé (à faire par le propriétaire)
 
 - **Tout le comportement sur le Galaxy S25+** : activation Device Owner, service permanent, collecteurs,
