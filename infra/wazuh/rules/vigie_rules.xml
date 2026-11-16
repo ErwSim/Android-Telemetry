@@ -971,7 +971,7 @@
 
   <rule id="100454" level="10">
     <if_sid>100450</if_sid>
-    <field name="vigie.type" type="pcre2" negate="yes">^detect\.(threat_domain|upload_spike|fanout|mail_ports|dns_bypass|sms_abuse|sensor_background|new_app_risky|sms_permission|default_app_changed|flood|muted|unmuted)$</field>
+    <field name="vigie.type" type="pcre2" negate="yes">^detect\.(threat_domain|upload_spike|fanout|mail_ports|dns_bypass|sms_abuse|sensor_background|new_app_risky|sms_permission|default_app_changed|inventory_mismatch|flood|muted|unmuted)$</field>
     <field name="vigie.sev">^3$</field>
     <match type="pcre2" negate="yes">"update":true</match>
     <description>Vigie : détection $(vigie.type) (sans règle dédiée, sévérité 3) : $(vigie.data.summary)</description>
@@ -980,7 +980,7 @@
 
   <rule id="100455" level="6">
     <if_sid>100450</if_sid>
-    <field name="vigie.type" type="pcre2" negate="yes">^detect\.(threat_domain|upload_spike|fanout|mail_ports|dns_bypass|sms_abuse|sensor_background|new_app_risky|sms_permission|default_app_changed|flood|muted|unmuted)$</field>
+    <field name="vigie.type" type="pcre2" negate="yes">^detect\.(threat_domain|upload_spike|fanout|mail_ports|dns_bypass|sms_abuse|sensor_background|new_app_risky|sms_permission|default_app_changed|inventory_mismatch|flood|muted|unmuted)$</field>
     <field name="vigie.sev">^2$</field>
     <match type="pcre2" negate="yes">"update":true</match>
     <description>Vigie : détection $(vigie.type) (sans règle dédiée, sévérité 2) : $(vigie.data.summary)</description>
@@ -1185,11 +1185,22 @@
     <group>vigie_detect,vigie_detect_new,vigie_detect_below3,vigie_detect_app,</group>
   </rule>
 
+  <!-- detect.inventory_mismatch : l'inventaire déclare « système » une appli que son installateur ou
+       un app.installed antérieur contredisent (non masquable). Une appli qui se fait passer pour le
+       système échapperait aux autres détections ; le collecteur la traite en appli ordinaire. -->
+  <rule id="100481" level="12">
+    <if_sid>100450</if_sid>
+    <field name="vigie.type">^detect.inventory_mismatch$</field>
+    <match type="pcre2" negate="yes">"update":true</match>
+    <description>Vigie : $(vigie.data.label) ($(vigie.data.package)) déclarée « système » par l'appareil alors que $(vigie.data.evidence.contradictions) disent le contraire (déguisement ou inventaire falsifié ?)</description>
+    <group>vigie_detect,vigie_detect_new,vigie_detect_app,attack_mobile_T1655,</group>
+  </rule>
+
   <!-- detect.flood : plus de 200 détections dans la journée pour un appareil -->
   <rule id="100478" level="12">
     <if_sid>100450</if_sid>
     <field name="vigie.type">^detect.flood$</field>
-    <description>Vigie : plafond de détections atteint pour $(vigie.device_name) (plus de 200 dans la journée : données incohérentes ou appareil compromis)</description>
+    <description>Vigie : plafond de $(vigie.data.evidence.limit) détections par jour atteint pour $(vigie.device_name) ($(vigie.data.evidence.suppressed) écartées à ce stade) : données incohérentes ou appareil compromis</description>
     <group>vigie_detect,vigie_detect_flood,</group>
   </rule>
 

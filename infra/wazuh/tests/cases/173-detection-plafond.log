@@ -1,0 +1,3 @@
+# Plus de 200 détections dans la journée
+# attendu: 100478
+{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001192","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":0,"type":"detect.flood","domain":"detect","sev":3,"source":"server","data":{"summary":"plafond atteint","window_from":"2026-11-15T00:00:00.000Z","window_to":"2026-11-16T00:00:00.000Z","evidence":{"suppressed":37,"limit":200}}}}

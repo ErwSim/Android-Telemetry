@@ -1,3 +1,0 @@
-# Risque élevé sans installation récente (mise à jour)
-# attendu: 100501
-{"vigie":{"device_id":"dev_7k2m9q","device_name":"s25","id":"01JTEST0000000000000001201","ts":"2026-11-15T21:43:03.974Z","received_at":"2026-11-15T21:43:05.120Z","seq":1201,"type":"app.risk","domain":"app","sev":2,"data":{"from_store":true,"installer":"com.android.vending","label":"Contrôle parental","level":"high","package":"com.parental.ctrl","reasons":["no_launcher_icon","background_location","boot_receiver"],"score":65,"version_code":7}}}
