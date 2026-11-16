@@ -4,6 +4,7 @@ import {
   REASON_CODES,
   combosOf,
   filterRisk,
+  grantState,
   levelInfo,
   normalizeRisk,
   orderReasons,
@@ -103,5 +104,34 @@ describe('lecture de /apps/risk', () => {
     const copy = [...l].reverse();
     sortByScore(copy);
     expect(copy[0]?.package).toBe('d');
+  });
+});
+
+describe('capacités déclarées et accordées (§11.4)', () => {
+  const base = { package: 'p', score: 80, level: 'high' };
+  it('lit la liste parallèle `granted`, avec ou sans suffixe « :granted »', () => {
+    const a = normalizeRisk({ ...base, reasons: ['sms_send', 'sideloaded', 'accessibility_service'], granted: ['sms_send'] });
+    expect(a?.reasons).toEqual(['sms_send', 'sideloaded', 'accessibility_service']);
+    expect(a?.granted).toEqual(['sms_send']);
+    const b = normalizeRisk({ ...base, reasons: ['sms_send', 'sideloaded'], granted: ['sms_send:granted'] });
+    expect(b?.granted).toEqual(['sms_send']);
+    const c = normalizeRisk({ ...base, reasons: ['sms_send:granted', 'overlay'] });
+    expect(c?.reasons).toEqual(['sms_send', 'overlay']);
+    expect(c?.granted).toEqual(['sms_send']);
+  });
+  it('sans liste `granted` (agent plus ancien) : aucune distinction inventée', () => {
+    const a = normalizeRisk({ ...base, reasons: ['sms_send'] });
+    expect(a?.granted).toBeUndefined();
+    expect(grantState(a as never, 'sms_send')).toBe('unknown');
+    expect(normalizeRisk({ ...base, reasons: [], granted: [] })?.granted).toEqual([]);
+  });
+  it('distingue accordée, demandée seulement, et état (installateur, icône…) qui n’est pas une capacité', () => {
+    const r = { granted: ['sms_send'] };
+    expect(grantState(r, 'sms_send')).toBe('granted');
+    expect(grantState(r, 'accessibility_service')).toBe('declared');
+    expect(grantState(r, 'sideloaded')).toBe('unknown');
+    expect(grantState(r, 'combo_sms_fraud')).toBe('unknown');
+    expect(grantState(r, 'code_inconnu')).toBe('unknown');
+    expect(grantState({ granted: [] }, 'sms_send')).toBe('declared');
   });
 });

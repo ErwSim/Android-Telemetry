@@ -17,6 +17,7 @@ import (
 type detItem struct {
 	ID, TS, Type, Package, Label, Summary string
 	DeviceID                              string `json:"device_id"`
+	Muted, Recurring                      bool
 	Severity                              int
 	Evidence                              map[string]any
 	WindowFrom                            string `json:"window_from"`
@@ -95,7 +96,7 @@ func TestDetectionsEndToEnd(t *testing.T) {
 	// Screen off for the whole hour.
 	evs = append(evs, e.event(h.Add(-10*time.Minute), "device.screen", 0, map[string]any{"state": "off"}))
 	// Roles and inventory: the default SMS app and the system apps.
-	evs = append(evs, e.event(h.Add(-20*time.Minute), "app.role", 0, map[string]any{"role": "sms", "new": "com.samsung.android.messaging"}),
+	evs = append(evs, e.event(h.Add(-20*time.Minute), "app.special_access", 0, map[string]any{"default_apps": map[string]any{"sms": "com.samsung.android.messaging"}}),
 		e.event(h.Add(-19*time.Minute), "app.inventory", 0, map[string]any{"inventory_id": "inv1", "part": 1, "parts": 1, "apps": []map[string]any{
 			{"package": "com.samsung.android.messaging", "label": "Messages", "system": true},
 			{"package": "com.flashlight.pro", "label": "Lampe Pro", "system": false}}}))
@@ -127,7 +128,7 @@ func TestDetectionsEndToEnd(t *testing.T) {
 		}}))
 	e.ingestAll(evs)
 
-	if n := e.runDetections(); n != 7 {
+	if n := e.runDetections(); n != 8 { // the seven of §11.3 + detect.sms_permission (§11.4)
 		items, _ := e.detections(c, nil)
 		t.Fatalf("findings: %d %+v", n, items)
 	}
@@ -142,7 +143,7 @@ func TestDetectionsEndToEnd(t *testing.T) {
 			t.Errorf("%s: %+v", typ, got[typ])
 		}
 	}
-	if len(items) != 7 || next != "" || len(got["detect.new_app_risky"]) != 1 {
+	if len(items) != 8 || next != "" || len(got["detect.new_app_risky"]) != 1 || len(got["detect.sms_permission"]) != 1 {
 		t.Fatalf("detections %d %+v", len(items), got["detect.new_app_risky"])
 	}
 	f := got["detect.fanout"][0]
@@ -162,7 +163,7 @@ func TestDetectionsEndToEnd(t *testing.T) {
 
 	// Stored as events of the collector (source "server"), streamed, with the fields of contract §11.3.
 	evts := e.serverEvents(c, "detect.")
-	if len(evts) != 7 || evts[0]["source"] != "server" {
+	if len(evts) != 8 || evts[0]["source"] != "server" {
 		t.Fatalf("server events %d", len(evts))
 	}
 	for _, ev := range evts {
@@ -177,7 +178,7 @@ func TestDetectionsEndToEnd(t *testing.T) {
 			streamed++
 		}
 	}
-	if streamed != 7 {
+	if streamed != 8 {
 		t.Fatalf("streamed detections: %d", streamed)
 	}
 
@@ -200,7 +201,7 @@ func TestDetectionsEndToEnd(t *testing.T) {
 		list[0].ID != f.ID {
 		t.Fatalf("fanout not updated in place: %+v", list)
 	}
-	if n := len(e.serverEvents(c, "detect.")); n != 7 {
+	if n := len(e.serverEvents(c, "detect.")); n != 8 {
 		t.Fatalf("update exported: %d events", n)
 	}
 
@@ -235,7 +236,7 @@ func TestDetectionsEndToEnd(t *testing.T) {
 		}
 		cursor = nc
 	}
-	if len(all) != 8 {
+	if len(all) != 9 {
 		t.Fatalf("paged %d", len(all))
 	}
 	if list, _ := e.detections(c, url.Values{"package": {"com.cleaner.boost"}}); len(list) != 1 || list[0].Type != "detect.mail_ports" {

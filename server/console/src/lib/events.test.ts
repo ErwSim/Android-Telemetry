@@ -148,3 +148,13 @@ describe('événements de la v1.2 et du pistage lisibles dans le journal', () =>
     expect(describeEvent(ev('tracking.override', { domain: '<img src=x onerror=alert(1)>‮', action: 'block' }))).not.toContain('‮');
   });
 });
+
+describe('journal : sourdines et nouveaux types de détection', () => {
+  it('detect.muted / detect.unmuted et les types du §11.4 sont lisibles', () => {
+    expect(describeEvent(ev('detect.muted', { type: 'detect.dns_bypass', package: 'com.android.chrome', reason: 'voulu', user: 'admin' }))).toBe('Sourdine : Contournement du DNS du téléphone pour com.android.chrome · motif : voulu · par admin');
+    expect(describeEvent(ev('detect.unmuted', { type: 'detect.dns_bypass', package: 'p' }))).toBe('Fin de sourdine : Contournement du DNS du téléphone pour p');
+    expect(describeEvent(ev('detect.muted', {}))).toBe('Sourdine : détection pour ?');
+    expect(describeEvent(ev('detect.sms_permission', { package: 'com.x', evidence: {} }))).toContain('peut envoyer des SMS');
+    expect(describeEvent(ev('detect.default_app_changed', { package: 'com.x', evidence: { role: 'sms' } }))).toContain("application SMS par défaut");
+  });
+});

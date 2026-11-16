@@ -12,10 +12,11 @@ import { opsCollectorState } from '../components/apps/OpsView.tsx';
 import { installerText } from '../components/apps/RiskView.tsx';
 import { DetectionCard } from '../components/detections/DetectionCard.tsx';
 import { EventList } from '../components/EventList.tsx';
-import { ComboCallout, ReasonList, RiskBadge, ScoreBar } from '../components/risk/Risk.tsx';
+import { ComboCallout, GrantNote, ReasonList, RiskBadge, ScoreBar } from '../components/risk/Risk.tsx';
 import { Async, Badge, Card, Empty, ErrorBox, KV, Loading } from '../components/ui.tsx';
 import { isRecord, list } from '../lib/data.ts';
-import { detectionFromEvent, matchesDetection } from '../lib/detections.ts';
+import { applyMutes, detectionFromEvent, isMuteEvent, matchesDetection } from '../lib/detections.ts';
+import { useMuting } from '../components/detections/Mute.tsx';
 import { describeEvent, installerLabel, isSideloaded, permissionLabel } from '../lib/events.ts';
 import { fmtDate, fmtDateTime, fmtNumber } from '../lib/format.ts';
 import { groupByApp, opInfo } from '../lib/ops.ts';
@@ -24,7 +25,7 @@ import { involves, roleChanges, roleLabel, rolesHeldBy, roleWhy } from '../lib/r
 import { cleanText } from '../lib/text.ts';
 import { useNow } from '../lib/useNow.ts';
 import { useDevice } from '../state/device.tsx';
-import { isUnsupported, useAppOps, useAppRisk } from '../state/appData.ts';
+import { isUnsupported, useAppOps, useAppRisk, useMutes } from '../state/appData.ts';
 
 const DAY = 86_400_000;
 const HISTORY_TYPES = 'app.installed,app.updated,app.removed,app.permission_changed';
@@ -185,8 +186,9 @@ function RiskCard({ state, pkg }: { state: ReturnType<typeof useAppRisk>; pkg: s
               </div>
             </div>
             <p className="hint">Le score mesure ce que l'application pourrait faire, pas ce qu'elle fait : c'est un motif de regarder de plus près, pas une preuve.</p>
+            <GrantNote hasGranted={r.granted !== undefined} />
             <ComboCallout reasons={r.reasons} />
-            <ReasonList reasons={r.reasons.filter((c) => !combosOf(c ? [c] : []).length)} />
+            <ReasonList reasons={r.reasons.filter((c) => !combosOf(c ? [c] : []).length)} granted={r.granted} />
           </>
         );
       }}
@@ -249,13 +251,27 @@ function SheetDetections({ pkg, from, to, now }: { pkg: string; from: string; to
   const params = useMemo(() => (deviceId ? { device_id: deviceId, package: pkg, from, to } : null), [deviceId, pkg, from, to]);
   const paged = usePagedDetections(params, 50);
   const addLive = paged.addLive;
+  const reloadList = paged.reload;
+  const mutes = useMutes();
+  const reloadMutes = mutes.reload;
+  const muting = useMuting(deviceId, useCallback(() => {
+    reloadList();
+    reloadMutes();
+  }, [reloadList, reloadMutes]));
   const onEvent = useCallback(
     (ev: VigieEvent) => {
+      if (isMuteEvent(ev.type)) {
+        reloadList();
+        reloadMutes();
+        return;
+      }
       const d = detectionFromEvent(ev);
       if (d && matchesDetection(d, { pkg })) addLive(d);
     },
-    [addLive, pkg],
+    [addLive, pkg, reloadList, reloadMutes],
   );
+  const shown = useMemo(() => applyMutes(paged.detections, mutes.data ?? []), [paged.detections, mutes.data]);
+  const canMute = !isUnsupported(mutes.error);
   useEventStream(true, deviceId, onEvent);
   if (paged.error && paged.detections.length === 0) {
     return isUnsupported(paged.error) ? <Empty>Ce collecteur ne fournit pas encore les détections (contrat v1.2).</Empty> : <ErrorBox message={paged.error.message} onRetry={paged.reload} />;
@@ -265,8 +281,16 @@ function SheetDetections({ pkg, from, to, now }: { pkg: string; from: string; to
   return (
     <div className="det-compact">
       <ul className="det-list" aria-label="Détections de l'application">
-        {paged.detections.map((d, i) => (
-          <DetectionCard key={d.id} d={d} now={now} showAppLink={false} open={i === 0} />
+        {shown.map((d, i) => (
+          <DetectionCard
+            key={d.id}
+            d={d}
+            now={now}
+            showAppLink={false}
+            open={i === 0 && !d.muted}
+            onMute={canMute ? muting.askMute : undefined}
+            onUnmute={canMute ? (x) => void muting.unmute({ type: x.type, package: x.package ?? '' }) : undefined}
+          />
         ))}
       </ul>
       {paged.hasMore && (
@@ -276,6 +300,8 @@ function SheetDetections({ pkg, from, to, now }: { pkg: string; from: string; to
           </button>
         </div>
       )}
+      {muting.notice && <p className="hint">{muting.notice}</p>}
+      {muting.dialog}
     </div>
   );
 }

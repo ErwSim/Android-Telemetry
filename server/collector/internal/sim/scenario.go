@@ -25,6 +25,7 @@ const (
 	ScenarioExfil     = "exfiltration"
 	ScenarioDNSBypass = "contournement-dns"
 	ScenarioSpy       = "espion"
+	ScenarioSMSQuiet  = "sms-discret"
 	ScenarioAll       = "tout"
 )
 
@@ -38,6 +39,7 @@ var ScenarioInfo = []struct{ Name, Desc string }{
 	{ScenarioExfil, "exfiltration : envoi de plus de 3 Gio en une heure par une appli de galerie"},
 	{ScenarioDNSBypass, "contournement du DNS : appli qui interroge Cloudflare et Google en DoH/DoT"},
 	{ScenarioSpy, "logiciel espion : micro et caméra en arrière-plan, administrateur de l'appareil"},
+	{ScenarioSMSQuiet, "attaque vécue par le propriétaire : appli du Play Store sans icône, SEND_SMS obtenue 30 h après l'installation, envoi massif de SMS, aucun domaine de menace (à jouer aussi avec --app-ops=false)"},
 	{ScenarioAll, "tous les scénarios d'attaque à la fois"},
 }
 
@@ -52,7 +54,7 @@ func ParseScenarios(v string) ([]string, error) {
 		}
 		names := []string{s}
 		if s == ScenarioAll {
-			names = []string{ScenarioSMSFraud, ScenarioBanking, ScenarioProxy, ScenarioSpam, ScenarioExfil, ScenarioDNSBypass, ScenarioSpy}
+			names = []string{ScenarioSMSFraud, ScenarioBanking, ScenarioProxy, ScenarioSpam, ScenarioExfil, ScenarioDNSBypass, ScenarioSpy, ScenarioSMSQuiet}
 		}
 		for _, n := range names {
 			known := false
@@ -84,8 +86,10 @@ type attack struct {
 	uid       int
 	installer string
 	start     time.Time // installation (or start of the abuse)
-	spikeAt   time.Time // exfiltration: the hour of the spike
+	spikeAt   time.Time // exfiltration: the hour of the spike; sms-discret: the grant of SEND_SMS
 	started   bool
+	perms     []string // dangerous permissions granted (inventory)
+	granted   []string // capabilities granted (app.risk "granted")
 }
 
 // emitS is emit for the events drawn from srng (their ULID too).
@@ -142,8 +146,17 @@ func riskOf(a *app) map[string]any {
 	case score >= 30:
 		level = "medium"
 	}
+	// The score rates the declared capabilities (contract §11.4); "granted" lists those granted (in the
+	// simulated catalog, the declared dangerous permissions are granted).
+	var granted []string
+	for _, r := range reasons {
+		switch r {
+		case "sms_send", "sms_read", "calls", "background_location", "device_admin":
+			granted = append(granted, r)
+		}
+	}
 	return map[string]any{"package": a.pkg, "label": a.label, "version_code": a.code, "installer": a.installer, "from_store": fromStore,
-		"score": score, "level": level, "reasons": toAnyList(reasons)}
+		"score": score, "level": level, "reasons": toAnyList(reasons), "granted": toAnyList(granted)}
 }
 
 func toAnyList(v []string) []any {
@@ -377,12 +390,28 @@ func (g *Generator) planAttacks(names []string, start, end time.Time) {
 			a.pkg, a.label, a.installer = "com.fastvpn.browser", "Navigateur Rapide", "com.android.vending"
 		case ScenarioSpy:
 			a.pkg, a.label, a.installer = "com.android.battery.service", "Battery Service", "com.google.android.packageinstaller"
+		case ScenarioSMSQuiet:
+			a.pkg, a.label, a.installer = "com.coupons.promo.deals", "Promo Coupons", "com.android.vending"
+			grant := a.start.Add(30 * time.Hour)
+			switch {
+			case end.IsZero():
+				grant = a.start.Add(30 * time.Minute) // live: soon
+			case grant.After(end.Add(-6 * time.Hour)):
+				grant = end.Add(-6 * time.Hour)
+			}
+			if grant.Before(a.start.Add(25 * time.Hour)) {
+				grant = a.start.Add(25 * time.Hour) // beyond the 24 h of detect.new_app_risky when the history allows it
+				if !end.IsZero() && grant.After(end.Add(-time.Hour)) {
+					grant = a.start.Add(time.Hour)
+				}
+			}
+			a.spikeAt = grant
 		}
 		g.attacks = append(g.attacks, a)
 	}
 }
 
-// attackRisk is the app.risk of an attack application.
+// attackRisk is the app.risk of an attack application: the declared capabilities, and those granted.
 func attackRisk(a *attack) map[string]any {
 	var reasons []string
 	score := 0
@@ -401,6 +430,8 @@ func attackRisk(a *attack) map[string]any {
 		reasons, score = []string{"boot_receiver", "overlay"}, 25
 	case ScenarioDNSBypass:
 		reasons, score = []string{"vpn_service"}, 20
+	case ScenarioSMSQuiet:
+		reasons, score = []string{"no_launcher_icon", "sms_send", "boot_receiver", "combo_sms_fraud"}, 64
 	}
 	level := "low"
 	switch {
@@ -410,7 +441,8 @@ func attackRisk(a *attack) map[string]any {
 		level = "medium"
 	}
 	return map[string]any{"package": a.pkg, "label": a.label, "version_code": 7, "installer": a.installer,
-		"from_store": a.installer == "com.android.vending", "score": score, "level": level, "reasons": toAnyList(reasons)}
+		"from_store": a.installer == "com.android.vending", "score": score, "level": level, "reasons": toAnyList(reasons),
+		"granted": toAnyList(a.granted)}
 }
 
 // specialAccess is the app.special_access of the phone with extra entries (component names "pkg/class").
@@ -451,31 +483,73 @@ func (g *Generator) attackStart(a *attack) {
 		"log_id": g.srng.Intn(1 << 20), "fields": map[string]any{"package": a.pkg, "version_code": 7, "user_id": 0}})
 	g.riskFor(t, attackRisk(a))
 	perm := func(after time.Duration, p string) {
-		g.emitS(t.Add(after), "app.permission_changed", 0, map[string]any{"package": a.pkg, "permission": "android.permission." + p, "granted": true})
+		g.later(t.Add(after), func(at time.Time) {
+			g.emitS(at, "app.permission_changed", 0, map[string]any{"package": a.pkg, "permission": "android.permission." + p, "granted": true})
+			a.perms = append(a.perms, "android.permission."+p)
+		})
+	}
+	// The agent scores again when what is granted changes (app.risk with its "granted" list).
+	grantedAt := func(after time.Duration, codes ...string) {
+		g.later(t.Add(after), func(at time.Time) {
+			a.granted = append(a.granted, codes...)
+			g.riskFor(at, attackRisk(a))
+		})
 	}
 	switch a.name {
 	case ScenarioSMSFraud:
 		perm(3*time.Minute, "SEND_SMS")
 		perm(3*time.Minute+2*time.Second, "READ_CONTACTS")
+		grantedAt(4*time.Minute, "sms_send")
 		// A day later the owner turns the SMS guard on (contract §11.1): the attempts go on, refused.
 		g.later(t.Add(smsGuardAfter), func(at time.Time) {
 			g.emitS(at, "security.policy", 0, map[string]any{"action": "guard_enabled", "target": "sms", "profile": "guard:sms", "ok": true})
 			g.emitS(at.Add(200*time.Millisecond), "security.policy", 1, map[string]any{"action": "permission_denied", "target": a.pkg,
 				"permission": "android.permission.SEND_SMS", "profile": "guard:sms", "ok": true})
+			g.emitS(at.Add(300*time.Millisecond), "app.permission_changed", 0, map[string]any{"package": a.pkg,
+				"permission": "android.permission.SEND_SMS", "granted": false})
+			a.perms = nil
 		})
 	case ScenarioBanking:
 		perm(2*time.Minute, "RECEIVE_SMS")
 		g.emitS(t.Add(6*time.Minute), "app.special_access", 0, specialAccess(map[string][]string{
 			"accessibility_services": {a.pkg + "/.svc.AccessService"}, "notification_listeners": {a.pkg + "/.svc.NotifyService"},
 			"overlay_apps": {a.pkg}}))
+		grantedAt(7*time.Minute, "accessibility_service", "notification_listener", "overlay")
+		// The usual way of SMS trojans: being made the default SMS app (accessibility clicks the dialog).
+		g.emitS(t.Add(8*time.Minute), "app.role", 2, map[string]any{"role": "sms", "old": "com.samsung.android.messaging", "new": a.pkg})
 	case ScenarioSpy:
 		perm(2*time.Minute, "RECORD_AUDIO")
 		perm(2*time.Minute+time.Second, "CAMERA")
 		perm(2*time.Minute+2*time.Second, "ACCESS_BACKGROUND_LOCATION")
 		g.emitS(t.Add(5*time.Minute), "app.special_access", 0, specialAccess(map[string][]string{"device_admins": {a.pkg + "/.AdminReceiver"}}))
+		grantedAt(6*time.Minute, "background_location", "mic_camera_background", "device_admin")
 	case ScenarioDNSBypass:
 		g.emitS(t.Add(4*time.Minute), "app.special_access", 0, specialAccess(map[string][]string{"vpn_apps": {a.pkg}}))
+	case ScenarioSMSQuiet:
+		// SEND_SMS obtained long after the installation (here without the SMS guard).
+		after := a.spikeAt.Sub(t)
+		perm(after, "SEND_SMS")
+		grantedAt(after+time.Minute, "sms_send")
 	}
+}
+
+// attackInventory returns the entries of the attack applications for app.inventory.
+func (g *Generator) attackInventory(t time.Time) []any {
+	var out []any
+	for _, a := range g.attacks {
+		if !a.started || a.start.After(t) {
+			continue
+		}
+		perms := make([]any, len(a.perms))
+		for i, p := range a.perms {
+			perms[i] = p
+		}
+		out = append(out, map[string]any{"package": a.pkg, "label": a.label, "version_name": "1.0.3", "version_code": 7, "installer": a.installer,
+			"system": false, "enabled": true, "suspended": false, "hidden": false, "target_sdk": 34,
+			"first_install": a.start.UTC().Format(time.RFC3339), "last_update": a.start.UTC().Format(time.RFC3339),
+			"signer_sha256": sha256Hex("signer:" + a.pkg), "granted_dangerous": perms})
+	}
+	return out
 }
 
 func (g *Generator) randIP(prefixes ...string) string {
@@ -565,6 +639,18 @@ func (g *Generator) attackHour(a *attack, h time.Time) {
 			g.sconnect(at(), a.pkg, a.uid, ep.ip, ep.port)
 		}
 		g.addUsage(a.pkg, int64(5+g.srng.Intn(20))<<20, int64(1+g.srng.Intn(3))<<20)
+	case ScenarioSMSQuiet:
+		// A small hourly poll of its server (in no threat list), then, once SEND_SMS is granted, mass sending.
+		g.sdns(at(), a.pkg, a.uid, "api.promo-coupons-cdn.example", 443)
+		g.addUsage(a.pkg, int64(10+g.srng.Intn(30))<<10, int64(5+g.srng.Intn(20))<<10)
+		if !h.Add(time.Hour).Before(a.spikeAt) {
+			part := frac
+			if a.spikeAt.After(h) {
+				part = h.Add(time.Hour).Sub(a.spikeAt).Hours()
+			}
+			n := g.spoisson(85 * part)
+			g.op(a.pkg, "send_sms", n, n)
+		}
 	case ScenarioSpy:
 		n := g.spoisson(4 * frac) // short recordings, every 15 min or so
 		g.op(a.pkg, "record_audio", n, n)

@@ -111,6 +111,11 @@ export const TYPE_LABELS: Record<string, string> = {
   'detect.sms_abuse': 'Détection : SMS anormaux',
   'detect.sensor_background': 'Détection : micro ou caméra',
   'detect.new_app_risky': 'Détection : application à risque',
+  'detect.sms_permission': 'Détection : permission SMS',
+  'detect.default_app_changed': 'Détection : application par défaut changée',
+  'detect.flood': 'Détection : trop de détections',
+  'detect.muted': 'Détection mise en sourdine',
+  'detect.unmuted': 'Sourdine levée',
   'tracking.level_changed': 'Niveau de blocage modifié',
   'tracking.override': 'Règle de blocage modifiée',
 };
@@ -235,6 +240,12 @@ export function describeEvent(ev: VigieEvent): string {
         const rows = list<Record<string, unknown>>(d, 'apps');
         const total = rows.reduce((a, x) => a + (typeof x['count'] === 'number' ? x['count'] : 0), 0);
         return `${rows.length} usage${rows.length > 1 ? 's' : ''} d'opérations sensibles · ${fmtNumber(total)} appel${total > 1 ? 's' : ''}`;
+      }
+      case 'detect.muted':
+      case 'detect.unmuted': {
+        // §11.4 : événement serveur ; `type`, `package`, `reason`, `user` (champs non fixés : lus avec tolérance).
+        const what = str(d, 'type') ? detectionLabel(str(d, 'type') as string) : 'détection';
+        return `${ev.type === 'detect.muted' ? 'Sourdine' : 'Fin de sourdine'} : ${what} pour ${cleanText(str(d, 'package'), 255) || '?'}${str(d, 'reason') ? ` · motif : ${cleanText(str(d, 'reason'), 200)}` : ''}${str(d, 'user') ? ` · par ${cleanText(str(d, 'user'), 60)}` : ''}`;
       }
       case 'tracking.level_changed':
         return describeLevelChange(d);

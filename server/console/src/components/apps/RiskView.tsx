@@ -7,7 +7,7 @@ import { fmtDateTime, fmtNumber } from '../../lib/format.ts';
 import { appSheetPath, cleanText } from '../../lib/text.ts';
 import { AppName } from '../AppName.tsx';
 import { Badge, Card, Empty, Stat } from '../ui.tsx';
-import { ComboCallout, ReasonChips, ReasonList, RiskBadge, ScoreBar } from '../risk/Risk.tsx';
+import { ComboCallout, GrantNote, ReasonChips, ReasonList, RiskBadge, ScoreBar } from '../risk/Risk.tsx';
 import type { RiskLevel } from '../../api/types.ts';
 
 type Sort = 'score' | 'name';
@@ -58,6 +58,7 @@ export function RiskView({ risks, inventory, ts }: { risks: AppRisk[]; inventory
         mesure ce que l'application <em>pourrait</em> faire, pas ce qu'elle fait : un score élevé n'est pas une preuve de malveillance, c'est un motif de regarder de plus près. Les
         applications du système et l'agent Vigie sont notés mais plafonnés à « faible ».
       </p>
+      <GrantNote hasGranted={risks.some((r) => r.granted !== undefined)} />
       <Card className="inv-card">
         <div className="toolbar">
           <label className="filter grow">
@@ -123,7 +124,7 @@ export function RiskView({ risks, inventory, ts }: { risks: AppRisk[]; inventory
                             <RiskBadge risk={r} />
                           </td>
                           <td className="c-reasons">
-                            <ReasonChips reasons={r.reasons} />
+                            <ReasonChips reasons={r.reasons} granted={r.granted} />
                           </td>
                           <td className="hide-sm">
                             {installerText(r, app)} {sideloaded && <Badge tone="warn">hors boutique</Badge>}
@@ -133,7 +134,7 @@ export function RiskView({ risks, inventory, ts }: { risks: AppRisk[]; inventory
                           <tr>
                             <td colSpan={5} className="detail-cell">
                               <ComboCallout reasons={r.reasons} />
-                              <ReasonList reasons={r.reasons.filter((c) => combosOf([c]).length === 0)} />
+                              <ReasonList reasons={r.reasons.filter((c) => combosOf([c]).length === 0)} granted={r.granted} />
                               <p className="det-actions">
                                 <Link className="btn btn-sm btn-primary" to={appSheetPath(r.package)}>
                                   Fiche de l'application

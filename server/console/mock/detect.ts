@@ -18,7 +18,7 @@ export function detections(events: MockEvent[], u: URL): { detections: Record<st
   const to = parseTime(sp.get('to'), Date.now() + 1000);
   const types = (sp.get('type') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   const limit = Math.min(200, Math.max(1, Number(sp.get('limit') ?? 50) || 50));
-  const list = events.filter((e) => e.type.startsWith('detect.'));
+  const list = events.filter((e) => e.type.startsWith('detect.') && e.type !== 'detect.muted' && e.type !== 'detect.unmuted');
   let i = list.length - 1;
   const cur = sp.get('cursor');
   if (cur) {
@@ -47,6 +47,8 @@ export function detections(events: MockEvent[], u: URL): { detections: Record<st
       summary: d['summary'],
       evidence: d['evidence'] ?? {},
       ...(d['window_from'] !== undefined ? { window_from: d['window_from'], window_to: d['window_to'] } : {}),
+      ...(d['recurring'] === true ? { recurring: true } : {}),
+      ...(d['muted'] === true ? { muted: true } : {}),
     });
   }
   return next ? { detections: out, next_cursor: next } : { detections: out };

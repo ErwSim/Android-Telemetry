@@ -242,6 +242,15 @@ et Samsung choisis un par un, sans effet visible, plus les exceptions qui garant
 mises à jour) ; aucune liste publicitaire générale, pour dépanner une app récalcitrante sans
 renoncer à la protection contre les domaines malveillants.
 
+Chaque liste de `niveaux.json` porte une **catégorie** (`category`) : `threat` (menaces : hameçonnage,
+maliciels, serveurs de commande), `ads`, `tracking`, `mixed` (liste générale qui mêle publicité, pistage et
+quelques menaces), `custom`, `allowlist`. Seule `threat` change un comportement : un blocage dû à une liste
+`threat` alimente la détection `detect.threat_domain` du collecteur (§7.4) ; sans aucune liste `threat`, cette
+détection reste muette. Ici : HaGeZi TIF (30) est `threat` ; Multi PRO et PRO++ sont `mixed` ; Vigie base,
+Vigie strict et Samsung sont `tracking`. Le collecteur refuse de démarrer sur une catégorie inconnue ;
+`merge-config.py` la vérifie dès l'installation. Si vous ajoutez une liste de menaces au fichier, donnez-lui
+`"category": "threat"` (le nom ou l'adresse ne suffisent pas).
+
 Toutes les listes sont **présentes** dans AdGuard quel que soit le niveau ; un niveau n'est qu'un
 jeu de listes **activées** (une liste désactivée n'est ni téléchargée ni chargée en mémoire). Les
 listes HaGeZi (GPL-3.0) sont téléchargées par AdGuard depuis jsDelivr (chemins vérifiés dans le
@@ -270,13 +279,20 @@ l'oblige à écrire sa configuration à jour avant la fusion).
 
 | Géré par Vigie (réappliqué à chaque `install.sh`, depuis `.env` et le dépôt) | Décidé dans la console (conservé) | À vous (conservé) |
 |---|---|---|
-| comptes `admin` et `vigie-collecteur` et leurs mots de passe ; TLS/DoT et certificat ; écoute DNS ; amonts (Quad9, Mullvad) et DNSSEC ; clients autorisés (mode ClientID) et client « Telephone (Vigie) » ; journal des requêtes lu par Wazuh ; **présence**, adresse, nom et identifiant des listes de `niveaux.json` et de la liste 90 | niveau de blocage (listes activées) ; bloc `! vigie:begin … ! vigie:end` des règles personnalisées | autres règles personnalisées, listes ajoutées (autres adresses), listes d'autorisation, clients, services bloqués, réécritures DNS, limitation de débit, cache, statistiques, durée du journal |
+| comptes `admin` et `vigie-collecteur` et leurs mots de passe ; TLS/DoT et certificat ; écoute DNS ; amonts (Quad9, Mullvad) et DNSSEC ; clients autorisés (mode ClientID) et client « Telephone (Vigie) » ; journal des requêtes lu par Wazuh et le collecteur (dont `size_memory: 50`, ci-dessous) ; **présence**, adresse, nom et identifiant des listes de `niveaux.json` et de la liste 90 | niveau de blocage (listes activées) ; bloc `! vigie:begin … ! vigie:end` des règles personnalisées | autres règles personnalisées, listes ajoutées (autres adresses), listes d'autorisation, clients, services bloqués, réécritures DNS, limitation de débit, cache, statistiques, durée du journal |
 
 Vérifié (§11) : niveau changé dans la console et règle posée par la console conservés par
 `install.sh` rejoué ; `--profile` appliqué puis vu identique par la console. Pour repartir de zéro :
 `sudo ./install.sh --reset-adguard` (l'ancienne configuration est gardée dans
 `data/adguard/conf/AdGuardHome.yaml.avant-reset-*` ; niveau et bloc de la console conservés). Les
 règles versionnables à la main restent possibles dans `data/adguard/userfilters/regles-perso.txt`.
+
+**Journal des requêtes (`querylog.size_memory: 50`, v1.2)** : nombre d'entrées qu'AdGuard garde en mémoire
+avant de les écrire sur disque. À 1 (valeur de la v1 et de la v1.1), AdGuard perd lui-même des entrées sous
+requêtes simultanées (mesuré : 187 entrées écrites pour 240 réponses avec 8 clients) ; au-delà de 500 (une page
+de son API), le relevé du collecteur peut en sauter. 50 est réappliqué par chaque `install.sh`, **y compris sur
+une installation existante** (vérifié : 1 → 50 au rejeu). Conséquence : le journal arrive dans Wazuh par paquets
+de 50 requêtes (quelques secondes à quelques minutes de retard avec un téléphone).
 
 ### 6.3 Risque de résolveur ouvert
 
@@ -326,7 +342,9 @@ seule), `VIGIE_ADGUARD_POLL_S` (`.env`, défaut 60), `VIGIE_CMD_KEEPALIVE_S` (`.
 en mode ClientID (§6.3), `VIGIE_ADGUARD_CLIENTS` : `install.sh` et `enroll.sh` y écrivent
 `<device_id>=<ClientID>` pour chaque appareil actif, afin que la vue n'attribue au téléphone que les
 requêtes de son ClientID. Hors mode ClientID, l'adresse IP d'un téléphone change sans cesse : la
-variable reste vide et tout le journal d'AdGuard est attribué à l'appareil consulté.
+variable reste vide et tout le journal d'AdGuard est attribué à l'appareil consulté (avec plusieurs
+téléphones, un blocage « menace » de l'un peut donc être rattaché à une application d'un autre qui a
+demandé le même domaine le même jour). Les variables `VIGIE_DETECT_*` des détections sont au §7.4.
 
 **Limite constatée lors de l'essai (§11.1, à corriger dans le collecteur)** : AdGuard Home v0.107.80
 ne renvoie rien pour `GET /control/querylog?older_than=T` quand `T` tombe **entre** deux entrées du
@@ -354,7 +372,7 @@ très incomplète. Les blocages eux-mêmes, le niveau et les règles ne sont pas
 - `@timestamp`/`timestamp` = heure d'ingestion par Wazuh. L'heure réelle d'un événement de l'appareil
   est `data.vigie.ts` (un historique envoyé en différé arrive « d'un coup »).
 
-### 7.2 Règles Vigie (`wazuh/rules/`, identifiants 100100-100449)
+### 7.2 Règles Vigie (`wazuh/rules/`, identifiants 100100-100549)
 
 | Domaine | Détections (niveau) |
 |---|---|
@@ -371,13 +389,20 @@ très incomplète. Les blocages eux-mêmes, le niveau et les règles ne sont pas
 | Commandes à distance (émises par le collecteur, `vigie.source = "server"` exigé : un appareil ne peut pas les imiter) | effacement demandé (12), verrouillage demandé (10), retrait du message (5), localisation demandée (5), autre commande émise (3), rafale de 8 commandes en 10 min (8, déclenchée par une commande simple pour ne jamais masquer une alerte de niveau 10-12), commande sensible expirée sans résultat (6), autre expiration et annulation (3), résultat reçu par l'API `command.reported` (2 : marqué seulement) |
 | Commandes à distance (résultat dit par le téléphone, `command.result`) | effacement exécuté (12), canal des commandes sensibles verrouillé après 5 signatures invalides `locked_out` (12), signature invalide `bad_signature` : quelqu'un essaie de commander le téléphone sans le code (10), verrouillage exécuté (10), commande échouée (6), commande refusée pour un autre motif (5), commande simple exécutée (3), refus `replay` d'un renvoi (2) |
 | Notifications (`app.notification`, APK compagnon) | marquées sans alerte (2) ; le titre et le texte ne figurent jamais dans une description |
-| Repli | sévérité 3 / 2 signalée par l'agent pour un type sans règle dédiée (10 / 6) |
+| Détections du collecteur (v1.2, `detect.*`, `vigie.source = "server"` exigé) | voir §7.4 : de 3 (trace) à 12, et 13 quand plusieurs types de détection visent la même application en 24 h |
+| Profil de risque (`app.risk`) | marqué (2) ; risque élevé à l'installation, corrélé avec `app.installed` du même paquet dans l'heure (9), avec une raison `combo_*` (11) ; risque élevé hors installation (4) ; rien sur `low` |
+| Rôles (`app.role`) | nouvelle appli SMS par défaut (8), clavier (8), téléphone (7), assistant ou saisie automatique (7), autre rôle (3) |
+| Opérations (`app.ops.app`) | marquées (2) ; envoi de SMS refusé = tentative bloquée par une garde (4) ; autre accès refusé (3) |
+| Permissions SMS (`app.permission_changed`) | `SEND_SMS`, `READ_SMS`, `RECEIVE_SMS`, `RECEIVE_MMS` accordée (8 : défense en profondeur, indépendante du collecteur) ; `CALL_PHONE` dans les permissions sensibles (5) |
+| Gardes (`security.policy`, `profile = "guard:…"`) | garde **désactivée** (8), libération de quarantaine (5), activation, mise en quarantaine, permission rendue (3), permission refusée (2 : marqué) ; un échec reste alerté par 100187 (5) |
+| Vue « pistage » (`tracking.*`, émis par le collecteur) | blocage affaibli : niveau abaissé ou posé depuis un état inconnu (8), domaine **autorisé de force** (8), blocage forcé d'un domaine indispensable (6), blocage manuel retiré (5), autre changement (3) |
+| Repli | sévérité 3 / 2 signalée par l'agent pour un type sans règle dédiée (10 / 6) ; pour un type `detect.*` sans règle dédiée (ajouté au collecteur après ces règles) : 10 / 6, 3 sinon |
 
 Correspondances MITRE ATT&CK **Mobile** (T1629.003, T1638, T1461, T1453, T1517, T1626.001…) : la base
 MITRE embarquée dans Wazuh ne connaît que la matrice Entreprise (une balise `<mitre>` mobile est
 rejetée et disparaît de l'alerte) ; elles sont donc portées par les groupes `attack_mobile_<ID>`.
 
-**Tests** : `wazuh/tests/cases/*.log` (143 cas, un fichier par cas, la dernière ligne doit déclencher
+**Tests** : `wazuh/tests/cases/*.log` (209 cas, un fichier par cas, la dernière ligne doit déclencher
 la règle attendue) ; `./wazuh/tests/run-tests.sh` les rejoue avec `wazuh-logtest` dans le manager ;
 `wazuh/tests/generer-cas.py` les régénère.
 
@@ -388,10 +413,17 @@ d'alerte : vérifier la posture initiale dans la console. Un micro utilisé écr
 appel (source `voice_communication`, capteur de proximité) n'alerte pas. `wazuh-logtest` n'applique
 pas l'option `ignore` des règles (vérifiée dans le flux réel). Le résultat d'une commande arrive deux
 fois (`command.result` de l'appareil, `command.reported` du collecteur) : seul le premier alerte.
+Les règles de corrélation (`if_matched_group`) doivent suivre dans le fichier les règles du groupe
+qu'elles observent (sinon elles ne voient aucun événement passé : constaté). **Un seul fil d'analyse**
+(`analysisd.event_threads=1`, `rule_matching_threads=1`, posés par `vigie-init.sh`) : avec un fil par
+processeur, des événements arrivés dans la même milliseconde (le collecteur écrit ses détections par
+rafales) étaient évalués en parallèle et les corrélations 100489 et 100502/100503 les manquaient une fois
+sur deux dans l'essai ; avec un fil, 20 sur 20. Débit mesuré avec un fil : 121 000 événements analysés et
+indexés en 54 s.
 
-**Non couvert faute d'événement** : les changements de niveau de blocage et les règles posées par la
-vue « pistage » ne sont **pas exportés** par le collecteur (ils ne figurent que dans son journal de
-processus, `docker compose logs collector`) ; aucune règle Wazuh ne peut donc les signaler.
+Les changements de niveau de blocage et les règles posées par la vue « pistage » sont exportés depuis
+la v1.2 (`tracking.level_changed`, `tracking.override`, un événement par appareil non révoqué) et
+alertés quand ils affaiblissent le blocage (ci-dessus).
 
 ### 7.3 Rétention, carte, tableaux de bord
 
@@ -410,10 +442,74 @@ processus, `docker compose logs collector`) ; aucune règle Wazuh ne peut donc l
   politiques de rétention rattachées aux index du jour. Le contenu des notifications est donc dans
   `wazuh-archives-*` (90 jours) si l'option « contenu » est activée dans l'app.
 - Tableaux de bord importés : **« Vigie — sécurité du téléphone »** (alertes dans le temps, par règle,
-  par technique ATT&CK Mobile, liste, carte des positions) et **« Vigie — pistage et DNS »** (apps qui
-  contactent la télémétrie, domaines bloqués, événements par type), + recherches enregistrées.
+  par technique ATT&CK Mobile, liste, carte des positions), **« Vigie — pistage et DNS »** (apps qui
+  contactent la télémétrie, domaines bloqués, événements par type) et, depuis la v1.2, **« Vigie —
+  détections et applications »** (détections par type et application, applications à risque moyen ou
+  élevé, refus et actions des gardes), + recherches enregistrées (dont « détections du collecteur » et
+  « profil de risque des applications »). Import vérifié (API `_import`, objets relus, requêtes non
+  vides) ; l'affichage dans un navigateur n'a pas été regardé pour le troisième.
   Le fond de la carte est chargé par le navigateur depuis le service de tuiles d'OpenSearch (tiers) ;
   la console Vigie a sa propre carte.
+
+### 7.4 Détections du collecteur (v1.2) : règles, que faire quand elles sonnent
+
+Le collecteur calcule des détections comportementales sur les données reçues (contrat §11.3 et §11.4,
+`server/collector/README.md`) et les exporte comme événements `detect.*` avec `vigie.source = "server"`.
+Une détection par application, par type et par jour UTC (24 h après l'installation pour
+`new_app_risky`). Une **mise à jour** (`update: true`, réexportée seulement si un élément nouveau apparaît,
+une fois par heure au plus) donne une alerte de niveau 5, sans notification ; si elle fait passer à la
+sévérité 3 une détection émise sous 3 dans les 24 h : « détection aggravée » (100452, 12). Une détection
+`recurring: true` (déjà signalée dans les 30 jours, sévérité plafonnée à 1) n'est qu'une trace (100456, 3).
+Deux **types** différents pour la même application en 24 h : 100489, niveau 13, qui remplace l'alerte du
+second type et le nomme.
+
+| Détection | Règle (niveau) | Que faire |
+|---|---|---|
+| `threat_domain` : l'application a demandé un domaine bloqué par une liste `threat` | 100460 (12) ; navigateur ou moins de 3 requêtes : 100461 (10) | Domaine de commande d'un maliciel probable : identifier l'application, la désinstaller (ou la mettre en quarantaine), vérifier ses accès spéciaux. Navigateur : lien d'hameçonnage suivi, vérifier qu'aucun mot de passe n'a été saisi. Ne jamais autoriser le domaine dans la console. |
+| `sms_abuse` : envoi (ou tentative) de SMS par une autre appli que l'appli SMS, ou volume (exige `app_ops`) | 100462 (12) | Fraude au SMS : activer la garde SMS si ce n'est fait, désinstaller l'application, vérifier la facture chez l'opérateur, bloquer les SMS surtaxés chez l'opérateur. |
+| `sms_permission` (§11.4) : une appli qui n'est ni l'appli SMS ni du système détient `SEND_SMS` | 100475 (10) | Savoir pourquoi elle peut envoyer des SMS ; sinon retirer la permission ou désinstaller ; garde SMS. |
+| `default_app_changed` (§11.4) rôle `sms` | 100476 (12) ; autres rôles : 100477 (3, déjà alerté par `app.role`) | Si vous n'avez pas choisi cette appli SMS, remettre Messages par défaut et désinstaller l'application. |
+| `sensor_background` : micro ou caméra en arrière-plan au-delà du seuil (exige `app_ops`) | micro 100463 (10), caméra 100464 (10) | Logiciel espion probable : retirer micro et caméra, désinstaller ; s'il est administrateur de l'appareil, le retirer d'abord. |
+| `new_app_risky` : appli installée depuis moins de 24 h qui obtient une capacité sensible | sév. 3 : 100470 (12) ; 2 : 100471 (9) ; 1 (VPN, superposition) : 100472 (4) ; risque élevé sans capacité : 100473/100474 (3, déjà alerté par `app.risk` 100502/100503) | Vérifier que l'installation est voulue ; sinon désinstaller (la quarantaine aurait refusé ces permissions). |
+| `mail_ports` : appli ordinaire qui envoie du courriel | 100467 (8) ; volume de spam : 100468 (10) | Spam envoyé depuis le téléphone : désinstaller. Client de messagerie légitime absent de la liste : `VIGIE_DETECT_MAIL_CLIENTS`. |
+| `fanout` : centaines d'adresses en une heure | 100466 (8) | Relais / proxy résidentiel (votre connexion revendue) : désinstaller. Pair à pair ou test de débit : ignorer, ou relever `VIGIE_DETECT_FANOUT`. |
+| `dns_bypass` : résolveur DoH/DoT public utilisé | 100469 (7) | L'appli échappe au filtrage DNS. Navigateur avec « DNS sécurisé » : le désactiver, ou l'exempter (`VIGIE_DETECT_DNS_BYPASS_EXEMPT`, ou sourdine dans la console). |
+| `upload_spike` : envoi massif en une heure | 100465 (7) | Sauvegarde ou vidéo : rien. Sinon (galerie « coffre », appli inconnue) : exfiltration possible, désinstaller et changer les mots de passe exposés. |
+| `flood` (§11.4) : plus de 200 détections dans la journée | 100478 (12) | Données incohérentes ou appareil compromis : regarder la console, l'état de l'agent et la posture. |
+| `muted` / `unmuted` (§11.4) : sourdine posée / levée dans la console | 100479 (6) / 100480 (3) | Sourdine non voulue = quelqu'un a utilisé la console : changer le mot de passe console. |
+| type `detect.*` sans règle dédiée | 100454 (sév. 3 : 10), 100455 (sév. 2 : 6), 100450 (3) | Lire le résumé ; mettre à jour le dépôt. |
+
+**Sans le collecteur expérimental `app_ops` de l'agent, l'envoi de SMS lui-même n'est pas compté** :
+`sms_abuse` et `sensor_background` restent muettes (les SMS ne passent pas par le réseau IP). La protection
+contre la fraude au SMS repose alors sur la **garde SMS** de l'application (qui refuse `SEND_SMS` à tout
+sauf l'appli SMS), sur `detect.sms_permission` et `detect.default_app_changed`, et, indépendamment du
+collecteur, sur les alertes Wazuh de permission (100161 : `SEND_SMS`/`READ_SMS`/`RECEIVE_SMS` accordée,
+niveau 8) et de rôle (100511 : nouvelle appli SMS par défaut, 8 ; 100512 : téléphone, 7). Ces deux
+dernières ne sont pas notifiées au seuil par défaut (10) : abaissez `VIGIE_NOTIFY_LEVEL` à 8 pour les
+recevoir.
+
+Doubles alertes évitées ou assumées : `new_app_risky` sans capacité répète l'`app.risk` de l'installation
+(marquée seulement) ; `default_app_changed` hors `sms` répète `app.role` (marquée) ; `default_app_changed`
+`sms` (12) et `app.role` `sms` (8) coexistent volontairement (la seconde ne dépend pas du collecteur) ; une
+appli installée hors store et à risque élevé donne 100151 (8) **et** 100502/100503 (9/11) : deux faits ; un
+domaine de menaces donne l'alerte AdGuard 100402 (10, par requête, sans l'application) **et**
+`threat_domain` (une par jour, avec l'application).
+
+**Variables** (`.env`, créées vides par `install.sh` et jamais écrasées ; vide = défaut du collecteur ;
+après modification : `./install.sh`). Une valeur invalide empêche le collecteur de démarrer
+(`docker compose logs collector`).
+
+| Variable | Défaut du collecteur | Rôle |
+|---|---|---|
+| `VIGIE_DETECT_ENABLED` | `true` | `false` : aucune détection |
+| `VIGIE_DETECT_DISABLE` | vide | détections éteintes, ex. `fanout,mail_ports` |
+| `VIGIE_DETECT_INTERVAL_S` | `300` | intervalle entre deux passages (10 à 86400 s) |
+| `VIGIE_DETECT_UPLOAD_FLOOR_MB` / `_UPLOAD_FACTOR` / `_UPLOAD_LEARN_DAYS` | `1024` / `10` / `7` | `upload_spike` : plancher en Mio/h, k × médiane, jours d'apprentissage |
+| `VIGIE_DETECT_FANOUT` / `_FANOUT_SCREEN_OFF` | `300` / `100` | adresses distinctes par heure (écran allumé / éteint) |
+| `VIGIE_DETECT_MAIL_MIN` / `_MAIL_CLIENTS` | `1` / vide | connexions SMTP par jour ; clients de messagerie ajoutés |
+| `VIGIE_DETECT_DNS_BYPASS_MIN` / `_PORTS` / `_EXEMPT` | `1` / `443,853` / vide | résolveurs publics : connexions, ports suivis, applications exemptées |
+| `VIGIE_DETECT_SMS_OTHER_MIN` / `_SMS_DAILY_MAX` | `1` / `200` | SMS par jour (autre appli / toute appli) |
+| `VIGIE_DETECT_MIC_BG_MIN` / `_CAMERA_BG_MIN` | `10` / `3` | accès en arrière-plan par jour |
 
 ## 8. Exploitation
 
@@ -497,6 +593,13 @@ ou utilisez votre propre serveur ntfy avec jeton. Vérifié avec un récepteur l
 12 et silence de l'agent reçus (webhook et e-mail), alertes sous le seuil non envoyées. Mise en
 œuvre : intégration Wazuh `custom-vigie-notify` (`wazuh/notify/`), configurée au démarrage du manager.
 Les échéances des certificats d'appareils ne sont pas notifiées : `./enroll.sh --list` (§8.7).
+
+Détections (v1.2) : au seuil par défaut (10), sont notifiés les domaines de menaces contactés, la fraude au
+SMS, la permission SMS détenue par une autre appli, le changement d'appli SMS par défaut, le micro ou la
+caméra en arrière-plan, une appli récente qui obtient des capacités graves, le spam, le plafond de
+détections, les aggravations et les corrélations (13) ; pas les pics d'envoi, l'éventail d'adresses, le
+contournement DNS, les mises à jour de détection ni les traces. Le titre nomme l'application (son libellé
+et son paquet) et le fait ; aucun contenu de notification ni message de verrouillage.
 
 Commandes à distance (v1.1) : au seuil par défaut (10), sont notifiés le verrouillage et l'effacement
 demandés, le verrouillage et l'effacement exécutés, une signature invalide et le verrouillage du canal
@@ -641,6 +744,47 @@ listes HaGeZi récupérées depuis GitHub ; `nofile`/`memlock` plafonnés ; seui
 en valeurs absolues (disque de 252 Go presque plein en proportion). Non vérifié ici : `update.sh`
 (reconstruction depuis les registres d'images), expiration réelle d'une commande (1 h au moins),
 vrai téléphone et vrai agent Android.
+
+### 11.2 Version 1.2 (essai du 16/11/2026, mode TLS interne)
+
+Pile installée avec l'image du collecteur reconstruite depuis le code courant (`docker build` avec
+`mirror.gcr.io`), cinq appareils enrôlés par `enroll.sh`, simulateur en conteneur sur le réseau `vigie`
+**à travers Caddy en mTLS** : `sim --enroll s25-fraude.vigie --backfill 72h --scenario fraude-sms`, puis
+`--scenario tout` et `--scenario sain` (un appareil chacun ; puis `fraude-sms` et `tout` rejoués sur deux
+appareils neufs après le passage à un fil d'analyse). Prouvé :
+
+- **indexation** : 298 231 lignes exportées (dont trois fichiers après rotation) = 298 231 documents Vigie
+  dans `wazuh-archives-*`, aucun rejet (`docker compose logs wazuh.manager | grep 'Cannot index'` vide),
+  champs d'`evidence` de types variables compris ;
+- **détections** : les 8 types du §11.3 exportés et indexés, chacun avec la règle attendue (100460,
+  100462, 100465, 100466, 100468, 100470, 100472) ou, quand la même application avait déjà une détection
+  d'un autre type dans les 24 h, avec la corrélation 100489 (13) — toujours le cas pour
+  `sensor_background` et `dns_bypass`, précédées par `new_app_risky` de la même application : leurs
+  règles propres (100463, 100469) ne sont vérifiées que par `run-tests.sh` ; `app.risk` à l'installation : 100503 pour les trois applications `combo_*` ; envois
+  de SMS refusés après activation de la garde : 100522 ; `guard_enabled` : 100531 ; **scénario sain :
+  zéro détection**, zéro alerte `detect.*` ;
+- **`detect.threat_domain` avec le vrai AdGuard Home et le vrai `niveaux.json`** : la vraie liste HaGeZi
+  TIF (353 203 domaines, récupérée sur GitHub) servie par un faux `cdn.jsdelivr.net` à l'adresse exacte du
+  fichier, plus les 4 domaines de commande des scénarios ajoutés à la fin (le simulateur n'en demande pas
+  d'autres) ; requêtes DoT par `tools/dot-query.py` → `0.0.0.0`, relevé du collecteur, détections
+  `threat_domain` (sév. 3) pour les applications qui avaient demandé ces domaines. Un domaine réel de la
+  liste (`pl.0003201.site`) est bloqué de même ; il n'a pas fait de détection faute de `net.dns` simulé
+  pour lui ;
+- **vue « pistage »** : `PUT /tracking/level` permissif → 100541 (8) ; `PUT /tracking/override` allow →
+  100543 (8), block → 100542 (3) (un événement par appareil) ;
+- **notifications** (récepteur webhook et SMTP local) : alertes ≥ 10 reçues, dont les détections graves et
+  les corrélations ; aucune sous le seuil ; aucun titre ni texte de notification du téléphone dans les 155
+  corps reçus ;
+- **`install.sh` rejoué** : `.env` identique (`sha256sum -c`), niveau `permissif` et bloc `vigie:begin`
+  conservés, `size_memory` remis de 1 à 50, tableaux de bord importés ;
+- `run-tests.sh` : 209 cas sur 209, dont les détections du §11.4 sur des lignes construites d'après le
+  contrat (le collecteur ne les produisait pas encore).
+
+Constaté et corrigé pendant l'essai : corrélations manquées une fois sur deux avec plusieurs fils
+d'analyse (§7.2) ; règle de corrélation placée avant les règles de son groupe (jamais déclenchée).
+Aménagements de l'environnement d'essai (hors dépôt, `VIGIE_COMPOSE_EXTRA`) : faux CDN, `nofile`
+plafonné, seuils disque de l'indexeur en valeurs absolues. Non vérifié ici : vrai téléphone, collecteur
+`app_ops` réel, listes Multi PRO (non servies par le faux CDN), types du §11.4 émis par le vrai collecteur.
 
 ## 12. Fichiers
 

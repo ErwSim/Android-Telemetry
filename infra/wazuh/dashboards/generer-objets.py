@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Génère vigie-saved-objects.ndjson : objets sauvegardés « Vigie » du dashboard Wazuh
-(OpenSearch Dashboards) : 2 modèles d'index, 4 recherches, 7 visualisations, 2 tableaux de bord.
+(OpenSearch Dashboards) : 2 modèles d'index, 6 recherches, 10 visualisations, 3 tableaux de bord.
 Importés par install.sh (API _import, overwrite=true). Usage : python3 generer-objets.py > vigie-saved-objects.ndjson
 """
 import json
@@ -89,6 +89,22 @@ vis("vigie-vis-carte", "Vigie — positions (location.fix)", ARCH, "data.vigie.t
                           "useGeocentroid": True, "isFilteredByCollar": True}}],
     "Fond de carte chargé par le navigateur depuis le service de tuiles d'OpenSearch (tiers).")
 
+# v1.2 : détections du collecteur, profil de risque, gardes
+search("vigie-recherche-detections", "Vigie — détections du collecteur", ALERTS, "rule.groups:vigie_detect",
+       ["rule.level", "rule.description", "data.vigie.device_name", "data.vigie.type", "data.vigie.data.package"])
+search("vigie-recherche-risque", "Vigie — profil de risque des applications (app.risk)", ARCH,
+       "data.vigie.type:app.risk and not data.vigie.data.level:low",
+       ["data.vigie.data.label", "data.vigie.data.package", "data.vigie.data.level", "data.vigie.data.score",
+        "data.vigie.data.reasons", "data.vigie.device_name"])
+vis("vigie-vis-detections", "Vigie — détections par type et application", ALERTS, "rule.groups:vigie_detect",
+    "table", TABLE, [count(), terms("data.vigie.type", 20), terms("data.vigie.data.package", 10, "3")])
+vis("vigie-vis-risque", "Vigie — applications à risque moyen ou élevé", ARCH,
+    "data.vigie.type:app.risk and not data.vigie.data.level:low", "table", TABLE,
+    [count(), terms("data.vigie.data.package", 30), terms("data.vigie.data.level", 3, "3")])
+vis("vigie-vis-gardes", "Vigie — gardes : refus et actions", ARCH, "rule.groups:vigie_guard", "table", TABLE,
+    [count(), terms("rule.description", 30)],
+    "Envois de SMS refusés (app.ops), actions des gardes (security.policy, profile guard:…).")
+
 
 def dashboard(id_, title, panels, desc):
     pj, refs = [], []
@@ -117,6 +133,13 @@ dashboard("vigie-tableau-pistage", "Vigie — pistage et DNS", [
     ("vigie-vis-types", 0, 18, 24, 18, "visualization"),
     ("vigie-recherche-dns-bloques", 24, 18, 24, 18, "search")],
     "Qui contacte la télémétrie Google/Samsung, ce qu'AdGuard bloque, volume par type d'événement.")
+dashboard("vigie-tableau-detections", "Vigie — détections et applications", [
+    ("vigie-vis-detections", 0, 0, 24, 18, "visualization"),
+    ("vigie-vis-risque", 24, 0, 24, 18, "visualization"),
+    ("vigie-recherche-detections", 0, 18, 48, 16, "search"),
+    ("vigie-vis-gardes", 0, 34, 24, 16, "visualization"),
+    ("vigie-recherche-risque", 24, 34, 24, 16, "search")],
+    "Détections comportementales du collecteur (detect.*), profil de risque des applications, gardes.")
 
 for o in objs:
     print(json.dumps(o, ensure_ascii=False, separators=(",", ":")))

@@ -11,6 +11,13 @@ import {
   groupByPackage,
   headline,
   isRecent,
+  isMutable,
+  isMuteEvent,
+  applyMutes,
+  parseMutes,
+  monitoringScope,
+  active,
+  muteErrorMessage,
   matchesDetection,
   mergeDetections,
   normSeverity,
@@ -258,5 +265,109 @@ describe('opsBlindSpot', () => {
       expect(text).toContain('aucune détection');
     }
     expect(opsBlindSpot('unavailable')).toContain('DUMP');
+  });
+});
+
+describe('détections du §11.4 (sans app.ops)', () => {
+  it('sms_permission : une revue, avec renvoi vers la garde SMS', () => {
+    const d = det('detect.sms_permission', { permission: 'SEND_SMS' });
+    expect(observation(d)).toBe('Appli peut envoyer des SMS sans passer par votre messagerie ; est-ce voulu ?');
+    const i = typeInfo('detect.sms_permission');
+    expect(i.review).toBe(true);
+    expect(i.guard).toBe('sms');
+    expect(i.why).toContain('revue');
+    expect(i.mutable).not.toBe(false);
+  });
+  it('default_app_changed : phrase par rôle, ancienne application, preuve aplatie', () => {
+    const sms = det('detect.default_app_changed', { role: 'sms', old: 'com.samsung.android.messaging', new: 'com.exemple.app', risk: { score: 88, level: 'high', reasons: ['combo_sms_fraud'] } }, { severity: 3 });
+    expect(observation(sms)).toBe("Appli est devenue l'application SMS par défaut (à la place de com.samsung.android.messaging)");
+    expect(observation(det('detect.default_app_changed', { role: 'keyboard' }))).toBe('Appli est devenue le rôle « Clavier » par défaut');
+    expect(observation(det('detect.default_app_changed', {}, { summary: 'Rôle changé' }))).toBe('Rôle changé');
+    const items = evidenceItems(sms);
+    expect(items).toContainEqual({ label: 'Rôle', value: 'Application SMS' });
+    expect(items).toContainEqual({ label: 'Risque : score', value: '88' });
+    expect(items).toContainEqual({ label: 'Risque : raisons', value: 'Profil de fraude au SMS' });
+    expect(typeInfo('detect.default_app_changed').why).toContain('chevaux de Troie SMS');
+  });
+  it('flood : sans application, plafond lu', () => {
+    expect(observation(det('detect.flood', { count: 412, limit: 200 }, { package: undefined, label: undefined } as never))).toBe('Plus de 200 détections en une journée sur cet appareil (412 produites) : seule celle-ci est gardée');
+    expect(observation(det('detect.flood', {}))).toContain('Plus de 200');
+  });
+  it('types non masquables : sms_abuse, default_app_changed, flood ; sans application : rien à masquer', () => {
+    expect(isMutable({ type: 'detect.dns_bypass', package: 'p' })).toBe(true);
+    expect(isMutable({ type: 'detect.sms_permission', package: 'p' })).toBe(true);
+    expect(isMutable({ type: 'detect.sms_abuse', package: 'p' })).toBe(false);
+    expect(isMutable({ type: 'detect.default_app_changed', package: 'p' })).toBe(false);
+    expect(isMutable({ type: 'detect.flood', package: 'p' })).toBe(false);
+    expect(isMutable({ type: 'detect.fanout' })).toBe(false);
+    expect(isMutable({ type: 'detect.inconnu', package: 'p' })).toBe(true);
+  });
+  it('récurrence, sourdine et mise à jour lues sur la détection', () => {
+    const d = normalizeDetection({ id: 'a', ts: '2026-11-16T10:00:00Z', type: 'detect.dns_bypass', severity: 1, recurring: true, muted: true, updated_at: '2026-11-16T11:00:00Z' });
+    expect(d).toMatchObject({ recurring: true, muted: true, updated_at: '2026-11-16T11:00:00Z' });
+    expect(normalizeDetection({ id: 'a', ts: 't', type: 'detect.x', evidence: { recurring: true } })?.recurring).toBe(true);
+    expect(normalizeDetection({ id: 'a', ts: 't', type: 'detect.x' })?.muted).toBeUndefined();
+  });
+  it('compte hors sourdine : une détection en sourdine ne change ni le verdict ni l’application la plus préoccupante', () => {
+    const l = [{ ...det('detect.sms_permission', {}), muted: true, id: '1' }, det('detect.fanout', {}, { id: '2', severity: 1 })];
+    expect(countBySeverity(l)).toEqual({ critical: 0, warning: 0, notable: 1, info: 0, total: 1 });
+    expect(countBySeverity([{ ...det('detect.fanout', {}), muted: true }])).toMatchObject({ total: 0 });
+    expect(active(l)).toHaveLength(1);
+    expect(groupByPackage([{ ...det('detect.fanout', {}), muted: true }])).toEqual([]);
+    expect(headline(countBySeverity([{ ...det('detect.fanout', {}), muted: true }]))).toEqual({ tone: 'ok', text: 'Rien à signaler' });
+  });
+  it('sourdines : lecture tolérante, application aux détections déjà créées, événements du flux', () => {
+    const m = parseMutes({ mutes: [{ type: 'detect.dns_bypass', package: 'com.android.chrome', reason: 'voulu', created_at: '2026-11-16T10:00:00Z', created_by: 'admin' }, { type: 'x' }, 4, null] });
+    expect(m).toEqual([{ type: 'detect.dns_bypass', package: 'com.android.chrome', reason: 'voulu', created_at: '2026-11-16T10:00:00Z', created_by: 'admin' }]);
+    expect(parseMutes([{ type: 'a', package: 'b' }])).toHaveLength(1);
+    expect(parseMutes('oops')).toEqual([]);
+    expect(parseMutes(undefined)).toEqual([]);
+    const l = [det('detect.dns_bypass', {}, { id: '1', package: 'com.android.chrome' }), det('detect.dns_bypass', {}, { id: '2', package: 'autre' }), det('detect.fanout', {}, { id: '3', package: 'com.android.chrome' })];
+    expect(applyMutes(l, m).map((d) => !!d.muted)).toEqual([true, false, false]);
+    expect(applyMutes(l, [])).toBe(l);
+    expect(isMuteEvent('detect.muted')).toBe(true);
+    expect(isMuteEvent('detect.fanout')).toBe(false);
+    const ev: VigieEvent = { id: 'E', ts: '2026-11-16T10:00:00Z', type: 'detect.muted', sev: 0, data: { package: 'p' } };
+    expect(detectionFromEvent(ev)).toBeUndefined();
+  });
+  it('une mise à jour du flux (update + detection_id) remplace la détection existante au lieu d’en créer une autre', () => {
+    const base = det('detect.threat_domain', { domains: ['a.top'], domain_count: 1 }, { id: 'D1', ts: '2026-11-16T08:00:00Z' });
+    const ev: VigieEvent = { id: 'E9', ts: '2026-11-16T12:00:00Z', type: 'detect.threat_domain', sev: 3, device_id: 'dev', data: { update: true, detection_id: 'D1', package: 'com.exemple.app', evidence: { domains: ['a.top', 'b.top'], domain_count: 2 }, window_from: '2026-11-16T00:00:00Z', window_to: '2026-11-17T00:00:00Z' } };
+    const d = detectionFromEvent(ev) as Detection;
+    expect(d.id).toBe('D1');
+    expect(d.updated_at).toBe('2026-11-16T12:00:00Z');
+    const merged = mergeDetections([base], [d], { replace: true });
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.evidence).toEqual({ domains: ['a.top', 'b.top'], domain_count: 2 });
+    expect(merged[0]?.ts).toBe('2026-11-16T08:00:00Z');
+    expect(mergeDetections([base], [d])).toHaveLength(1);
+    expect(mergeDetections([base], [d])[0]?.evidence).toEqual(base.evidence);
+  });
+  it('messages d’erreur de la sourdine', () => {
+    expect(muteErrorMessage({ status: 400, code: 'not_mutable', message: 'type non masquable' })).toContain('ne peut pas être mise en sourdine');
+    expect(muteErrorMessage({ status: 404, code: 'not_found', message: 'x' })).toContain('§11.4');
+    expect(muteErrorMessage({ status: 0, code: 'network', message: 'Serveur injoignable' })).toBe('Serveur injoignable');
+  });
+});
+
+describe('ce qui est surveillé et ce qui ne l’est pas (§11.4)', () => {
+  it('sans app_ops : dit que les envois ne sont pas vus, ce qui est surveillé quand même, et que la garde SMS est la vraie protection', () => {
+    for (const state of ['disabled', 'unavailable', undefined, 'autre']) {
+      const sc = monitoringScope(state);
+      expect(sc.blind).toContain('envois de SMS eux-mêmes');
+      expect(sc.blind).toContain("aucune détection d’envoi");
+      expect(sc.watched).toContain("permission d'envoyer des SMS");
+      expect(sc.watched).toContain("changement d'application SMS");
+      expect(sc.guard).toContain('garde SMS');
+      expect(sc.ops).toBeNull();
+    }
+    expect(monitoringScope('unavailable').blind).toContain('DUMP');
+  });
+  it('avec app_ops en marche : plus d’angle mort annoncé, mais « en marche » ne prouve pas que des données arrivent', () => {
+    const sc = monitoringScope('running');
+    expect(sc.blind).toBeNull();
+    expect(sc.ops).toContain('ne prouve pas que des données arrivent');
+    expect(sc.guard).toContain('garde SMS');
+    expect(sc.watched).toContain('Surveillé dans tous les cas');
   });
 });

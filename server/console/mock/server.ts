@@ -52,6 +52,10 @@ const gen = generate(NOW);
 const events: MockEvent[] = gen.events;
 ALL_APPS.push(...applyScenario(events, SCENARIO, NOW, DEVICE_MAIN.device_id, gen.silent));
 const byId = new Map(events.map((e) => [e.id, e]));
+/** Sourdines de détections (contrat §11.4) ; en `mixed`, le propriétaire a déjà masqué le DNS sécurisé de Chrome. */
+const mutes: { device_id: string; type: string; package: string; label?: string; reason?: string; created_at: string; created_by: string }[] =
+  SCENARIO === 'mixed' ? [{ device_id: DEVICE_MAIN.device_id, type: 'detect.dns_bypass', package: 'com.android.chrome', label: 'Chrome', reason: 'Chrome utilise le DNS sécurisé, voulu', created_at: new Date(NOW - 20 * 3_600_000).toISOString(), created_by: 'admin' }] : [];
+const NOT_MUTABLE = new Set(['detect.sms_abuse', 'detect.default_app_changed', 'detect.flood']);
 /** `app.ops` : « normal » (selon le scénario), « empty » (collecteur actif, rien d'utilisé) ou « 404 » (route absente). */
 let opsMode: 'normal' | 'empty' | '404' = 'normal';
 const sessions = new Map<string, string>();
@@ -523,6 +527,32 @@ const server = http.createServer((req, res) => {
       const labels = new Map(ALL_APPS.map((a) => [a.package, a.label]));
       const r = det.ops(opsMode === 'empty' ? [] : deviceEvents(u.searchParams.get('device_id')), u, labels);
       return sendJson(res, 200, r);
+    }
+    if (route === '/detections/mutes' && method === 'GET') return sendJson(res, 200, { mutes: mutes.filter((m) => !u.searchParams.get('device_id') || m.device_id === u.searchParams.get('device_id')) });
+    if (route === '/detections/mute' && (method === 'POST' || method === 'DELETE')) {
+      let b: { device_id?: unknown; type?: unknown; package?: unknown; reason?: unknown } = {};
+      try {
+        b = JSON.parse((await readBody(req)) || '{}') as typeof b;
+      } catch {
+        return err(res, 400, 'bad_request', 'JSON invalide');
+      }
+      if (typeof b.device_id !== 'string' || typeof b.type !== 'string' || typeof b.package !== 'string' || !b.type.startsWith('detect.') || !b.package) return err(res, 400, 'bad_request', 'device_id, type et package sont requis');
+      if (NOT_MUTABLE.has(b.type)) return err(res, 400, 'not_mutable', `« ${b.type} » ne peut pas être mis en sourdine`);
+      if (typeof b.reason === 'string' && Array.from(b.reason).length > 200) return err(res, 400, 'bad_request', 'motif : 200 caractères au plus');
+      const i = mutes.findIndex((m) => m.device_id === b.device_id && m.type === b.type && m.package === b.package);
+      if (method === 'POST') {
+        const label = ALL_APPS.find((a) => a.package === b.package)?.label;
+        const m = { device_id: b.device_id, type: b.type, package: b.package, ...(label ? { label } : {}), ...(typeof b.reason === 'string' && b.reason.trim() ? { reason: b.reason.trim() } : {}), created_at: new Date().toISOString(), created_by: user };
+        if (i >= 0) mutes[i] = m;
+        else mutes.push(m);
+        emitAgentEvent('detect.muted', 0, { type: b.type, package: b.package, ...(m.reason ? { reason: m.reason } : {}), user });
+      } else if (i >= 0) {
+        mutes.splice(i, 1);
+        emitAgentEvent('detect.unmuted', 0, { type: b.type, package: b.package, user });
+      }
+      res.writeHead(204);
+      res.end();
+      return;
     }
     if (route === '/detections') return sendJson(res, 200, det.detections(deviceEvents(u.searchParams.get('device_id')), u));
     if (route === '/posture') return sendJson(res, 200, postureHistory(u.searchParams.get('device_id')));

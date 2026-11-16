@@ -1,5 +1,5 @@
 import type { AppRisk } from '../../api/types.ts';
-import { combosOf, levelInfo, orderReasons, reasonInfo } from '../../lib/risk.ts';
+import { combosOf, grantState, levelInfo, orderReasons, reasonInfo } from '../../lib/risk.ts';
 import { cleanText } from '../../lib/text.ts';
 import { Badge } from '../ui.tsx';
 
@@ -27,18 +27,24 @@ export function ScoreBar({ risk }: { risk: Pick<AppRisk, 'level' | 'score'> }) {
 }
 
 /** Puces compactes : les combinaisons d'abord (en rouge), puis les premières raisons. */
-export function ReasonChips({ reasons, max = 3 }: { reasons: readonly string[]; max?: number }) {
+export function ReasonChips({ reasons, granted, max = 3 }: { reasons: readonly string[]; granted?: readonly string[] | undefined; max?: number }) {
   const ordered = orderReasons(reasons);
   const shown = ordered.slice(0, max);
   const rest = ordered.length - shown.length;
   if (ordered.length === 0) return <span className="muted">aucune</span>;
   return (
     <span className="reason-chips">
-      {shown.map((r) => (
-        <Badge key={r.code} tone={r.combo ? 'bad' : r.tone === 'warn' ? 'warn' : 'neutral'} title={r.explain}>
-          {cleanText(r.label, 80)}
-        </Badge>
-      ))}
+      {shown.map((r) => {
+        const g = grantState({ granted: granted as string[] | undefined }, r.code);
+        return (
+          <span key={r.code} className={g === 'declared' ? 'badge-declared' : undefined}>
+            <Badge tone={r.combo ? 'bad' : r.tone === 'warn' ? 'warn' : 'neutral'} title={`${r.explain}${g === 'declared' ? ' (demandée, pas accordée)' : g === 'granted' ? ' (accordée)' : ''}`}>
+              {cleanText(r.label, 80)}
+              {g === 'declared' ? ' · demandée' : ''}
+            </Badge>
+          </span>
+        );
+      })}
       {rest > 0 && <Badge title={ordered.slice(max).map((r) => r.label).join(', ')}>+{rest}</Badge>}
     </span>
   );
@@ -63,7 +69,7 @@ export function ComboCallout({ reasons }: { reasons: readonly string[] }) {
 }
 
 /** Toutes les raisons avec leur explication, et pourquoi elles peuvent être normales. */
-export function ReasonList({ reasons, innocent = true }: { reasons: readonly string[]; innocent?: boolean }) {
+export function ReasonList({ reasons, granted, innocent = true }: { reasons: readonly string[]; granted?: readonly string[] | undefined; innocent?: boolean }) {
   const list = orderReasons(reasons);
   if (list.length === 0) return <p className="muted">Aucune raison de suspicion relevée.</p>;
   return (
@@ -74,6 +80,8 @@ export function ReasonList({ reasons, innocent = true }: { reasons: readonly str
             {cleanText(r.label, 100)}
             {r.combo && <Badge tone="bad">combinaison</Badge>}
             {!r.known && <Badge>code inconnu</Badge>}
+            {grantState({ granted: granted as string[] | undefined }, r.code) === 'granted' && <Badge tone="warn" title="Le système a accordé cette capacité à l'application">Accordée</Badge>}
+            {grantState({ granted: granted as string[] | undefined }, r.code) === 'declared' && <Badge title="L'application la demande (déclarée dans son paquet) mais ne l'a pas obtenue : par exemple refusée par une garde ou la quarantaine de l'application Vigie">Demandée, pas accordée</Badge>}
             {r.known && <span className="reason-code">{r.code}</span>}
           </span>
           <p>{r.explain}</p>
@@ -81,5 +89,22 @@ export function ReasonList({ reasons, innocent = true }: { reasons: readonly str
         </li>
       ))}
     </ul>
+  );
+}
+
+/** Explication de la différence entre capacité déclarée et accordée (contrat §11.4), à placer sous un profil de risque. */
+export function GrantNote({ hasGranted }: { hasGranted: boolean }) {
+  return (
+    <p className="hint" data-testid="grant-note">
+      Le score porte sur ce que l'application <strong>demande</strong> (capacités déclarées dans son paquet), pas seulement sur ce qu'elle a obtenu : il reste élevé quand une garde de
+      l'application Vigie ou la quarantaine empêche l'octroi.{' '}
+      {hasGranted ? (
+        <>
+          Chaque capacité est marquée <strong>accordée</strong> (le système l'a donnée) ou <strong>demandée, pas accordée</strong> (trait pointillé dans les listes).
+        </>
+      ) : (
+        <>Ce téléphone ne dit pas quelles capacités ont été accordées : seule l'intention est connue.</>
+      )}
+    </p>
   );
 }

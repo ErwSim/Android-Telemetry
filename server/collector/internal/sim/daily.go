@@ -169,26 +169,28 @@ func (g *Generator) daily(t time.Time, updates bool) {
 	// The identifier has its own random source so that adding it did not change
 	// the rest of a seeded simulation.
 	const perPart = 11
-	parts := (len(apps) + perPart - 1) / perPart
 	inventoryID := NewULID(t, rand.New(rand.NewSource(g.seed^t.UnixNano())))
-	for p := range parts {
-		var list []any
-		for _, a := range apps[p*perPart : min(len(apps), (p+1)*perPart)] {
-			first := time.Date(2026, 3, 2, 10, 0, 0, 0, time.UTC).Add(time.Duration(hash64(a.pkg)%(150*24)) * time.Hour)
-			if a.system {
-				first = time.Date(2026, 3, 1, 9, 12, 0, 0, time.UTC)
-			}
-			dang := make([]any, len(a.dangerous))
-			for i, d := range a.dangerous {
-				dang[i] = d
-			}
-			list = append(list, map[string]any{
-				"package": a.pkg, "label": a.label, "version_name": a.version, "version_code": a.code, "installer": a.installer,
-				"system": a.system, "enabled": true, "suspended": false, "hidden": false, "target_sdk": a.target,
-				"first_install": first.Format(time.RFC3339), "last_update": t.Add(-time.Duration(hash64(a.pkg+"u")%(40*24)) * time.Hour).Format(time.RFC3339),
-				"signer_sha256": sha256Hex("signer:" + a.pkg), "granted_dangerous": dang,
-			})
+	var entries []any
+	for _, a := range apps {
+		first := time.Date(2026, 3, 2, 10, 0, 0, 0, time.UTC).Add(time.Duration(hash64(a.pkg)%(150*24)) * time.Hour)
+		if a.system {
+			first = time.Date(2026, 3, 1, 9, 12, 0, 0, time.UTC)
 		}
+		dang := make([]any, len(a.dangerous))
+		for i, d := range a.dangerous {
+			dang[i] = d
+		}
+		entries = append(entries, map[string]any{
+			"package": a.pkg, "label": a.label, "version_name": a.version, "version_code": a.code, "installer": a.installer,
+			"system": a.system, "enabled": true, "suspended": false, "hidden": false, "target_sdk": a.target,
+			"first_install": first.Format(time.RFC3339), "last_update": t.Add(-time.Duration(hash64(a.pkg+"u")%(40*24)) * time.Hour).Format(time.RFC3339),
+			"signer_sha256": sha256Hex("signer:" + a.pkg), "granted_dangerous": dang,
+		})
+	}
+	entries = append(entries, g.attackInventory(t)...) // applications installed by the attack scenarios
+	parts := (len(entries) + perPart - 1) / perPart
+	for p := range parts {
+		list := entries[p*perPart : min(len(entries), (p+1)*perPart)]
 		g.emit(t.Add(time.Duration(1000+p*20)*time.Millisecond), "app.inventory", 0, map[string]any{"inventory_id": inventoryID, "part": p + 1, "parts": parts, "apps": list})
 	}
 	g.emit(t.Add(1500*time.Millisecond), "app.special_access", 0, map[string]any{

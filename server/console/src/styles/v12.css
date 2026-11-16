@@ -506,3 +506,26 @@ a.btn {
     box-shadow: none;
   }
 }
+
+/* Capacité demandée mais pas accordée (§11.4) : trait pointillé. */
+.badge-declared .badge {
+  border: 1px dashed var(--text-muted);
+  background: transparent;
+}
+.det.is-muted {
+  opacity: 0.72;
+  border-left-style: dashed;
+}
+.det-review {
+  margin: 0 0 6px;
+}
+.verdict-blind {
+  margin: 6px 0 0;
+  font-weight: 600;
+}
+.verdict-scope {
+  margin: 6px 0 0;
+}
+.mutes-card {
+  margin-bottom: 14px;
+}

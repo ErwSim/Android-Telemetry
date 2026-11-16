@@ -156,7 +156,7 @@ function addAppEverywhere(c: Ctx, app: MockApp, installAt: number): void {
   }
 }
 
-function riskEvent(c: Ctx, t: number, app: MockApp, override?: { score: number; reasons: string[] }): void {
+function riskEvent(c: Ctx, t: number, app: MockApp, override?: { score: number; reasons: string[]; granted?: string[] }): void {
   const p = profileOf(app);
   const score = override?.score ?? p.score;
   const reasons = override?.reasons ?? p.reasons;
@@ -170,6 +170,7 @@ function riskEvent(c: Ctx, t: number, app: MockApp, override?: { score: number; 
     score,
     level,
     reasons,
+    granted: override?.granted ?? p.granted,
   });
 }
 
@@ -236,7 +237,7 @@ export function applyScenario(events: MockEvent[], scenario: Scenario, now: numb
   if (scenario === 'mixed') {
     const fast = ALL_APPS.find((a) => a.package === 'com.fastcleaner.pro');
     if (fast) {
-      riskEvent(c, fastInstall + 10_000, fast, { score: 61, reasons: ['sideloaded', 'unknown_installer', 'boot_receiver', 'notification_listener'] });
+      riskEvent(c, fastInstall + 10_000, fast, { score: 61, reasons: ['sideloaded', 'unknown_installer', 'boot_receiver', 'notification_listener'], granted: ['boot_receiver'] });
       riskEvent(c, fastInstall + 40_000, fast); // après l'octroi des permissions SMS et micro
     }
   }
@@ -292,10 +293,22 @@ export function applyScenario(events: MockEvent[], scenario: Scenario, now: numb
       const t = Math.min(now - 10 * MIN, (k + 1) * DAY - 2 * HOUR);
       detDay(t, 'detect.sms_abuse', 3, W, { reason: 'not_default_sms_app', sent: v.sent, background: v.bg, read_contacts: 3, default_sms_app: SMS_APPS }, `${WALLPAPERS.label}, qui n'est pas l'application SMS par défaut, a envoyé ${v.sent} SMS dans la journée (dont ${v.bg} en arrière-plan)`);
     }
+    // §11.4 : permission d'envoi de SMS détenue par une application qui n'est pas la messagerie (revue), sans app.ops.
+    det(installWall + 3 * MIN, 'detect.sms_permission', 2, W, { permission: 'SEND_SMS', installer: WALLPAPERS.installer, from_store: false, initial: false }, `${WALLPAPERS.label} détient la permission d'envoyer des SMS sans être l'application SMS par défaut`, 3 * MIN);
     det(now - 31 * HOUR, 'detect.upload_spike', 2, W, { tx_bytes: 38 * MIB, threshold_bytes: 8 * MIB, median_bytes: Math.round(0.2 * MIB), history_hours: 31, learning: false }, `${WALLPAPERS.label} a envoyé 38 Mio en une heure (seuil 8 Mio ; médiane horaire sur 14 jours : 0,2 Mio)`);
   }
 
   if (scenario === 'mixed') {
+    // Revue d'une application légitime qui détient SEND_SMS sans être la messagerie par défaut (inventaire initial).
+    det(t0 + 4 * HOUR + 8 * MIN, 'detect.sms_permission', 2, { package: 'com.google.android.apps.messaging', label: 'Messages Google' }, { permission: 'SEND_SMS', installer: 'com.android.vending', from_store: true, initial: true }, "Messages Google détient la permission d'envoyer des SMS sans être l'application SMS par défaut", 8 * MIN);
+    // Une application se fait désigner application SMS par défaut (voie classique des chevaux de Troie SMS), puis l'utilisateur rétablit.
+    const roleAt = todayStart - 4 * DAY + 9 * HOUR + 30 * MIN;
+    mk(c, roleAt, 'app.role', 3, { role: 'sms', old: 'com.samsung.android.messaging', new: 'com.fastcleaner.pro' });
+    mk(c, roleAt + 15 * MIN, 'app.role', 2, { role: 'sms', old: 'com.fastcleaner.pro', new: 'com.samsung.android.messaging' });
+    det(roleAt + 2 * MIN, 'detect.default_app_changed', 3, FAST_APP, { role: 'sms', old: 'com.samsung.android.messaging', new: 'com.fastcleaner.pro', risk: { score: 96, level: 'high', reasons: ['combo_banking_trojan', 'accessibility_service', 'sms_read'] } }, 'Fast Cleaner Pro est devenue l\'application SMS par défaut', 2 * MIN);
+    det(t0 + 2 * HOUR + 2 * MIN, 'detect.default_app_changed', 2, { package: 'com.google.android.googlequicksearchbox', label: 'Google' }, { role: 'assistant', old: 'com.samsung.android.bixby.agent', new: 'com.google.android.googlequicksearchbox', risk: { score: 14, level: 'low', reasons: [] } }, "Google est devenue l'assistant par défaut", 2 * MIN);
+    // Plafond atteint : une seule détection `flood`, sans application.
+    det(now - 1 * DAY - 3 * HOUR, 'detect.flood', 3, {}, { count: 412, limit: 200 }, "Plus de 200 détections en une journée sur cet appareil : seule celle-ci est gardée", HOUR);
     ['ads.unknown-cdn.biz', 'track.sdkmetrics.cc'].forEach((dom, i) => {
       detDay(todayStart - 5 * DAY + 12 * HOUR + i * MIN, 'detect.threat_domain', 2, FAST_APP, { domain: dom, requests: 5 + i, blocked: true, reason: LIST }, `Fast Cleaner Pro a demandé ${dom}, bloqué par une liste de menaces`);
     });
@@ -303,7 +316,14 @@ export function applyScenario(events: MockEvent[], scenario: Scenario, now: numb
     detDay(todayStart - 4 * DAY + 3 * HOUR + 2 * MIN, 'detect.sensor_background', 2, FAST_APP, { op: 'record_audio', background_count: 2, count: 2 }, 'Fast Cleaner Pro a utilisé le micro 2 fois en arrière-plan dans la journée (seuil 1)');
     detDay(now - 2 * DAY - 5 * HOUR, 'detect.sensor_background', 2, SYNC, { op: 'record_audio', background_count: 14, count: 14 }, 'Sync Helper a utilisé le micro 14 fois en arrière-plan dans la journée (seuil 3)');
     detDay(now - 3 * DAY, 'detect.mail_ports', 2, SYNC, { connections: 42, addresses: 1, ports: [587], sample: ['203.0.113.55:587'] }, "Sync Helper, qui n'est pas un client de messagerie connu, s'est connectée 42 fois au port d'envoi de courriel 587 de 1 serveur(s)");
-    detDay(now - 20 * HOUR, 'detect.dns_bypass', 2, { package: 'com.android.chrome', label: 'Chrome' }, { connections: 12, resolvers: ['8.8.8.8:443'], providers: ['Google DNS'] }, "Chrome s'adresse directement à un résolveur DNS public (Google DNS, 8.8.8.8:443)");
+    // Chrome : récurrent (déjà signalé dans les 30 jours, gravité plafonnée à 1) ; mis en sourdine par le propriétaire (voir server.ts).
+    const chromeEv = detDay(now - 20 * HOUR, 'detect.dns_bypass', 1, { package: 'com.android.chrome', label: 'Chrome' }, { connections: 12, resolvers: ['8.8.8.8:443'], providers: ['Google DNS'] }, "Chrome s'adresse directement à un résolveur DNS public (Google DNS, 8.8.8.8:443)");
+    if (chromeEv) {
+      chromeEv.data['recurring'] = true;
+      chromeEv.data['muted'] = true;
+    }
+    const sync2 = det(now - 5 * HOUR, 'detect.dns_bypass', 1, SYNC, { connections: 9, resolvers: ['1.1.1.1:443'], providers: ['Cloudflare DNS'] }, 'Sync Helper s\'adresse directement à un résolveur DNS public (Cloudflare DNS)');
+    if (sync2) sync2.data['recurring'] = true;
     det(now - 6 * HOUR, 'detect.dns_bypass', 2, SYNC, { unresolved_ips: 83, connections: 140 }, "Sync Helper s'est connectée à 83 adresses jamais résolues par le DNS du téléphone");
     // Capacité obtenue peu après l'installation (détection `new_app_risky`, déclencheur « capability »).
     det(installSync + 12 * MIN, 'detect.new_app_risky', 2, SYNC, { trigger: 'capability', capability: 'permission:CALL_PHONE', installed_at: new Date(installSync).toISOString(), minutes_after_install: 10, installer: 'com.android.shell', level: 'high', score: 79 }, 'Sync Helper, installée il y a 10 min, a obtenu : appels téléphoniques', 2 * MIN);

@@ -7,6 +7,8 @@ export interface RiskProfile {
   score: number;
   level: Level;
   reasons: string[];
+  /** capacités accordées parmi les raisons (contrat §11.4) : le reste est déclaré mais non accordé */
+  granted: string[];
   from_store: boolean;
   installer?: string;
 }
@@ -35,15 +37,19 @@ const WEIGHT: Record<string, number> = {
 };
 
 /** Profils choisis à la main pour les applications qui racontent une histoire. */
-const EXPLICIT: Record<string, { score: number; reasons: string[] }> = {
+const EXPLICIT: Record<string, { score: number; reasons: string[]; granted?: string[] }> = {
   'com.fastcleaner.pro': {
     score: 96,
     reasons: ['combo_banking_trojan', 'accessibility_service', 'overlay', 'notification_listener', 'sms_read', 'install_packages', 'sideloaded', 'unknown_installer', 'boot_receiver', 'mic_camera_background'],
+    // Le micro et la caméra en arrière-plan sont demandés mais pas accordés (refus de la garde) : le score reste élevé.
+    granted: ['accessibility_service', 'overlay', 'notification_listener', 'sms_read', 'install_packages', 'boot_receiver'],
   },
-  'com.wallpapers.superhd': { score: 88, reasons: ['combo_sms_fraud', 'sms_send', 'boot_receiver', 'sideloaded', 'unknown_installer'] },
+  'com.wallpapers.superhd': { score: 88, reasons: ['combo_sms_fraud', 'sms_send', 'boot_receiver', 'sideloaded', 'unknown_installer'], granted: ['sms_send', 'boot_receiver'] },
   'com.sync.helper.svc': {
     score: 79,
     reasons: ['combo_stalkerware', 'no_launcher_icon', 'background_location', 'mic_camera_background', 'boot_receiver', 'sideloaded', 'old_target_sdk'],
+    // Quarantaine : rien n'est accordé de ce qui touche à la position, au micro ou à la caméra.
+    granted: ['boot_receiver'],
   },
   'org.fdroid.fdroid': { score: 41, reasons: ['sideloaded', 'install_packages', 'boot_receiver'] },
   'com.google.android.apps.messaging': { score: 38, reasons: ['sms_send', 'sms_read', 'boot_receiver'] },
@@ -80,5 +86,5 @@ export function profileOf(a: MockApp): RiskProfile {
   if (capped) score = Math.min(score, 25);
   const level = capped ? 'low' : levelOf(score);
   const fromStore = a.system ? true : a.installer === 'com.android.vending' || a.installer === 'com.sec.android.app.samsungapps';
-  return { score, level, reasons, from_store: fromStore, ...(a.installer ? { installer: a.installer } : {}) };
+  return { score, level, reasons, granted: e?.granted ?? reasons, from_store: fromStore, ...(a.installer ? { installer: a.installer } : {}) };
 }
