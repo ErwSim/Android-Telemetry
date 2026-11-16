@@ -125,11 +125,11 @@ describe('actions proposées pour un domaine', () => {
   it('domaine autorisé : bloquer ; avec règle : remettre par défaut', () => {
     expect(availableActions('allowed', undefined)).toEqual(['block']);
     expect(availableActions('allowed', 'block')).toEqual(['default']);
-    expect(availableActions('allowed', 'allow')).toEqual(['default']);
+    expect(availableActions('allowed', 'allow')).toEqual(['block', 'default']);
   });
   it('domaine bloqué : autoriser', () => {
     expect(availableActions('blocked', undefined)).toEqual(['allow']);
-    expect(availableActions('blocked', 'block')).toEqual(['default']);
+    expect(availableActions('blocked', 'block')).toEqual(['allow', 'default']);
     expect(availableActions('blocked', 'allow')).toEqual(['default']);
   });
   it('domaine mixte ou sans statut : les deux choix', () => {

@@ -85,7 +85,8 @@ export function init(h: Hooks, now: number): void {
 
 export function channel(): { connected: boolean; mode: string; last_contact: string } {
   if (agent.channel === 'offline') return { connected: false, mode: 'stream', last_contact: new Date(lastContact).toISOString() };
-  return { connected: true, mode: agent.channel, last_contact: new Date(agent.channel === 'stream' ? Date.now() - 800 : lastContact).toISOString() };
+  // Comme le vrai collecteur : en interrogation il n'y a pas de connexion ouverte, `connected` reste faux.
+  return { connected: agent.channel === 'stream', mode: agent.channel, last_contact: new Date(agent.channel === 'stream' ? Date.now() - 800 : lastContact).toISOString() };
 }
 
 // -------------------------------------------------------------------------------------- API collecteur

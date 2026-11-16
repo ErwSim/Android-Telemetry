@@ -58,6 +58,13 @@ maintenant » (carte et trace en direct), pistage (filtres, Bloquer/Autoriser/Re
 commande ne quitte pas la page** (aucune requête, aucun journal console, aucun corps reçu par le serveur factice, aucun
 stockage, cookie ou champ ne le contient, ni en clair ni encodé). Captures dans `OUT` (défaut `verify-out/`). `TILES=real` laisse passer les vrais appels aux tuiles OSM (sinon une tuile synthétique est servie).
 
+### Contre le vrai collecteur
+
+`scripts/verify-real.cjs` rejoue dans Chromium les parcours commandes (simple, mauvais code puis bon code, annulation, position
+reçue), pistage, notifications et carte contre un collecteur réel (`REAL_URL`, `REAL_PASSWORD`, `REAL_CODE`), avec les mêmes
+contrôles (console, CSP, tiers, fuite du code). Prérequis : collecteur lancé avec `VIGIE_CONSOLE_DIR=$PWD/dist`, un appareil
+enrôlé et alimenté par `sim`, et un agent qui interroge `/api/v1/commands` avec le même code de commande.
+
 ## Déploiement
 
 `dist/` est servi à la racine du même hôte que l'API (chemins absolus `/assets/…`, API en `/api/console/…`).

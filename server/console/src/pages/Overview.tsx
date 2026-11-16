@@ -187,7 +187,7 @@ export default function Overview() {
 
 function CommandsSummary({ device, now }: { device: Device; now: Date }) {
   const ch = device.command_channel;
-  const st = channelState(ch);
+  const st = channelState(ch, now);
   return (
     <>
       <div className="stats">

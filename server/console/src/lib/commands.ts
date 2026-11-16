@@ -290,12 +290,21 @@ export interface ChannelState {
   hint: string;
 }
 
-export function channelState(ch: CommandChannel | undefined): ChannelState {
+/** Au-delà de ce délai sans contact, un agent en interrogation (toutes les 1 à 15 min) est considéré hors ligne. */
+export const POLL_STALE_MS = 20 * 60_000;
+
+/**
+ * État du canal. En mode `poll`, `connected` ne dit rien (le collecteur réel le laisse à faux : il n'y a pas de
+ * connexion ouverte) : on juge sur la fraîcheur de `last_contact`.
+ */
+export function channelState(ch: CommandChannel | undefined, now: Date = new Date()): ChannelState {
   if (!ch) {
     return { key: 'unknown', label: 'État inconnu', tone: 'neutral', hint: "Le collecteur ne renseigne pas l'état du canal de commandes." };
   }
   if (ch.mode === 'poll') {
-    return ch.connected
+    const t = Date.parse(ch.last_contact ?? '');
+    const fresh = Number.isFinite(t) && now.getTime() - t < POLL_STALE_MS;
+    return ch.connected || fresh
       ? { key: 'polling', label: 'Interrogation périodique', tone: 'ok', hint: "Le téléphone vient chercher les commandes toutes les 1 à 15 minutes : une commande peut attendre jusqu'au prochain passage." }
       : { key: 'offline', label: 'Hors ligne', tone: 'bad', hint: "Le téléphone n'a pas interrogé le serveur récemment (interrogation périodique, toutes les 1 à 15 minutes). Les commandes restent en attente jusqu'à son retour ou leur expiration." };
   }

@@ -156,8 +156,12 @@ describe('états, motifs de refus et canal', () => {
 
   it('canal : connecté, interrogation, hors ligne, inconnu', () => {
     expect(channelState({ connected: true, mode: 'stream' }).key).toBe('connected');
-    expect(channelState({ connected: true, mode: 'poll' }).key).toBe('polling');
-    expect(channelState({ connected: false, mode: 'poll' }).key).toBe('offline');
+    const now = new Date('2026-11-16T12:00:00.000Z');
+    expect(channelState({ connected: true, mode: 'poll' }, now).key).toBe('polling');
+    // Collecteur réel : en interrogation `connected` reste faux, la fraîcheur du dernier contact décide.
+    expect(channelState({ connected: false, mode: 'poll', last_contact: '2026-11-16T11:55:00.000Z' }, now).key).toBe('polling');
+    expect(channelState({ connected: false, mode: 'poll', last_contact: '2026-11-16T11:00:00.000Z' }, now).key).toBe('offline');
+    expect(channelState({ connected: false, mode: 'poll' }, now).key).toBe('offline');
     expect(channelState({ connected: false, mode: 'stream' }).key).toBe('offline');
     expect(channelState({ connected: false, mode: 'unknown' }).key).toBe('offline');
     expect(channelState(undefined).key).toBe('unknown');

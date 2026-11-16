@@ -72,7 +72,7 @@ export default function Commands() {
   }, [device?.last_location, liveLoc]);
 
   if (!device || !deviceId) return null;
-  const channel = channelState(device.command_channel);
+  const channel = channelState(device.command_channel, now);
   const disabled = sending || !!device.revoked;
   const cmds = list.commands ?? [];
   const badSigs = badSignatureCount(cmds, now);
@@ -261,12 +261,12 @@ export default function Commands() {
 
 function ChannelPanel({ device, now, streamOpen }: { device: Device; now: Date; streamOpen: boolean }) {
   const ch = device.command_channel;
-  const st = channelState(ch);
+  const st = channelState(ch, now);
   const mode = ch?.mode === 'stream' ? 'connexion permanente' : ch?.mode === 'poll' ? 'interrogation périodique' : 'mode inconnu';
   return (
     <>
       <div className="stats">
-        <Stat label="État" value={st.label} tone={st.tone === 'neutral' ? undefined : st.tone} sub={st.key === 'unknown' ? undefined : mode} />
+        <Stat label="État" value={st.label} tone={st.tone === 'neutral' ? undefined : st.tone} sub={st.key === 'unknown' ? undefined : st.key === 'polling' ? 'toutes les 1 à 15 min' : mode} />
         <Stat
           label="Dernier contact"
           value={ch?.last_contact ? fmtRelative(ch.last_contact, now) : '—'}
