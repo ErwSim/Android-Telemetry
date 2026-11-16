@@ -135,6 +135,12 @@ Note : `app.notification` n'est **pas** produit par l'APK principal en v1 (un se
 - Événements relevés après coup (`app.foreground`, `net.dns`, `net.connect`, `security.log`) : `ts` est
   l'heure **d'origine** de l'événement fournie par le système, pas l'heure du relevé (il n'y a pas de champ
   `event_ts`).
+- Pour un événement à heure d'origine, `elapsed_ms` est estimé pour cet instant, et vaut 0 si l'événement
+  précède le démarrage en cours de l'appareil.
+- Types fixés : `net.cell.mcc` et `mnc` sont des chaînes, `ci` un entier ; `sensor.microphone.source` une
+  chaîne ; `security.posture.always_on_vpn` un booléen ; `vendor_id`/`product_id` USB des entiers.
+- L'agent compte 21 collecteurs (18 dans `:collectors`, 3 dans `:policy`), tous présents dans
+  `agent.heartbeat.collectors`.
 - Agrégation : `net.dns`, `net.connect` et `security.log` peuvent porter `count` (entier ≥ 1, défaut 1 :
   nombre d'occurrences identiques regroupées sur la fenêtre) et `last_event_ts` (heure de la dernière
   occurrence) ; `ts` est alors l'heure de la première. Les statistiques du collecteur (`/stats/top`) pondèrent
