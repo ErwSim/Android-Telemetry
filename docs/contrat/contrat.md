@@ -623,7 +623,7 @@ Précisions (issues du développement) :
 |---|---|---|
 | `app.risk` | à l'installation, à la mise à jour, et quotidien si le score ou les raisons changent | `package`, `label`, `version_code`, `installer`, `from_store` (bool), `score` (0 à 100), `level` (`low`/`medium`/`high`), `reasons` (liste de codes) |
 | `app.role` | au changement (le premier relevé sert de référence, sans événement) | `role` (`sms`/`dialer`/`browser`/`home`/`keyboard`, et `assistant`/`autofill` quand ils sont lisibles), `old`, `new` (paquets ; absent = inconnu). Sévérité 2 pour `sms`/`dialer`/`assistant`/`keyboard`/`autofill`, 1 sinon |
-| `app.ops` (expérimental, éteint par défaut, exige `DUMP` accordé par ADB) | horaire, seulement pour les opérations utilisées | `from`, `to`, `apps` : liste `{package, op, count, background_count, rejected_count, last_ts}` (`rejected_count` : accès refusés par le système, par exemple par une garde ; les compteurs sont des bornes basses) avec `op` ∈ `send_sms`/`read_sms`/`receive_sms`/`call_phone`/`read_contacts`/`read_call_log`/`record_audio`/`camera`/`fine_location`/`get_accounts` |
+| `app.ops` (expérimental, éteint par défaut, exige `DUMP` accordé par ADB) | horaire, seulement pour les opérations utilisées | `from`, `to`, `apps` : liste `{package, op, count, background_count, rejected_count, last_ts}` (`rejected_count` : accès refusés par le système au niveau de l'opération ; un envoi bloqué par une **garde** est refusé plus tôt, au contrôle de la permission, et n'y apparaît probablement pas ; les compteurs sont des bornes basses) avec `op` ∈ `send_sms`/`read_sms`/`receive_sms`/`call_phone`/`read_contacts`/`read_call_log`/`record_audio`/`camera`/`fine_location`/`get_accounts` |
 
 Codes de `reasons` (liste fermée, chaque code documenté dans l'app) : `sideloaded`, `unknown_installer`,
 `no_launcher_icon`, `sms_send`, `sms_read`, `calls`, `accessibility_service`, `notification_listener`,
@@ -680,3 +680,39 @@ Précisions du §11.3 (issues du développement) :
 - Le fichier de niveaux porte un champ `category` par liste (`threat`, `ads`, `tracking`, `mixed`, `custom`,
   `allowlist`) ; `detect.threat_domain` ne se fie qu'aux listes `threat`.
 - Scénarios du simulateur : `sim --scenario sain|fraude-sms|cheval-de-troie|proxy|spam|exfiltration|contournement-dns|espion|tout`.
+
+### 11.4 Corrections issues de la revue indépendante de la v1.2
+
+Constat de la revue : **sans `app.ops`** (expérimental, jamais vu fonctionner, probablement indisponible sur
+Android 16), un envoi massif de SMS par une application discrète ne déclenchait aucune détection — les SMS ne
+passent pas par le réseau IP. D'où les règles suivantes.
+
+- **Détections sans `app.ops`** (collecteur, d'après `app.inventory`, `app.permission_changed`, `app.role`) :
+  - `detect.sms_permission` (sévérité 2) : une application qui n'est ni l'appli SMS par défaut ni une
+    application du système **détient** `SEND_SMS`. Une détection par application à la première observation
+    (inventaire initial compris), puis seulement si la permission est retirée et réaccordée.
+  - `detect.default_app_changed` (sévérité 3 pour `sms`, 2 pour `dialer`, `keyboard`, `assistant`) : l'appli
+    par défaut d'un de ces rôles a changé (c'est la voie classique des chevaux de Troie SMS : se faire désigner
+    appli SMS par défaut). `evidence` : `role`, `old`, `new`, profil de risque de la nouvelle application.
+  Avec ou sans `app.ops`, la **garde SMS** reste la vraie protection : la console et les guides le disent, et la
+  console affiche « non surveillé » pour l'envoi de SMS tant que le collecteur `app_ops` n'est pas en marche.
+- **`app.risk` porte sur les capacités déclarées** (permissions demandées, composants déclarés), comme le dit
+  le §11.2, et non sur les permissions accordées : le profil doit être utile au moment de l'installation et dans
+  l'écran de quarantaine, avant tout octroi, et rester élevé quand une garde empêche l'octroi. Une raison peut
+  porter le suffixe `:granted` dans une liste parallèle `granted` (codes des capacités effectivement accordées)
+  pour distinguer l'intention de l'état.
+- **Gardes `sms`, `calls`, `quarantine`** : seuls sont épargnés les applications du système et le détenteur du
+  rôle **correspondant** (appli SMS pour `sms`, composeur pour `calls`) ; un clavier ou un écran d'accueil
+  choisi par l'utilisateur n'est **pas** épargné. La liste d'une garde ne suit que son propre rôle ; quand le
+  rôle change, l'agent accorde au nouveau détenteur les permissions du rôle en levant le refus, et le signale.
+- **Mise en sourdine** : `POST /api/console/detections/mute` `{ "device_id", "type", "package", "reason" }` →
+  `204` ; `DELETE` avec les mêmes champs pour lever ; `GET /api/console/detections/mutes`. Une détection
+  couverte est toujours calculée et stockée (`muted: true`) mais n'est ni exportée vers Wazuh ni notifiée, et la
+  console la replie. Types non masquables : `detect.sms_abuse`, `detect.default_app_changed`. Chaque mise en
+  sourdine est un événement serveur `detect.muted` / `detect.unmuted`.
+- **Récurrence** : pour `detect.dns_bypass`, `detect.mail_ports` et `detect.upload_spike`, une détection dont le
+  couple (type, application) a déjà été signalé dans les 30 jours porte `recurring: true` et sa sévérité est
+  plafonnée à 1.
+- **Plafond** : au plus 200 détections par appareil et par jour ; au-delà, une seule `detect.flood` (sévérité 3 :
+  l'appareil envoie des données incohérentes ou est compromis). Un `app.inventory` ne peut pas faire passer pour
+  « système » une application dont `installer` ou l'historique disent le contraire sans que cela soit signalé.
