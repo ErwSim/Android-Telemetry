@@ -94,8 +94,10 @@ sudo ./install.sh --domain vigie.exemple.fr --email vous@exemple.fr --tls acme
 
 - `--tls acme` : certificats Let's Encrypt (VPS public). `--tls internal` (AC interne de Caddy, pour des essais en
   réseau local) existe mais impose d'installer l'AC de Caddy sur chaque client : `infra/README.md` §3.
-- `--profile strict` règle le filtrage DNS en strict dès l'installation. **Ne le faites pas maintenant** : le profil
-  DNS par défaut (`equilibre`) est celui qui garde le téléphone utilisable ; voir le guide 05 pour changer plus tard.
+- `--profile permissif|equilibre|strict` applique un **niveau de blocage DNS** (le même que celui de la page Pistage de la
+  console). **Ne passez pas en strict maintenant** : le niveau par défaut (`equilibre`) est celui qui garde le téléphone
+  utilisable ; le niveau « en service » est ensuite l'état réel des listes d'AdGuard, que la console change et que `install.sh`
+  conserve (guide 05, §2.2).
 - Sans options, `install.sh` pose les questions. L'option `--help` liste tout.
 
 Ce que fait le script (résumé ; détail dans `infra/README.md` §3) : vérifie Docker, la mémoire et le disque ; règle
@@ -123,7 +125,9 @@ sudo cat secrets/identifiants.txt
 ```
 
 Ils servent à : la console Vigie (`admin`), la première barrière des interfaces d'administration (Caddy,
-compte `admin`), le dashboard Wazuh (`admin`) et AdGuard Home (`admin`). **Copiez ce fichier dans votre gestionnaire
+compte `admin`), le dashboard Wazuh (`admin`) et AdGuard Home (`admin`) ; un second compte AdGuard, `vigie-collecteur`, est
+utilisé par le collecteur pour lire le journal des requêtes et changer niveaux et règles de la page Pistage (**AdGuard n'a
+qu'un type de compte : c'est un administrateur complet**, traitez son mot de passe comme les autres). **Copiez ce fichier dans votre gestionnaire
 de mots de passe**, il n'est pas versionné et n'existe qu'ici (et dans vos sauvegardes, section 7).
 
 Si le script s'arrête en erreur : il affiche la ligne en cause ; regardez aussi `sudo docker compose ps` et
@@ -166,8 +170,11 @@ Test-NetConnection <IP du VPS> -Port 9200
 | AdGuard Home | `https://adguard.vigie.exemple.fr` | deux connexions de même : Caddy, puis AdGuard (`admin`) |
 
 - Console Vigie : sans appareil enrôlé, elle affiche « Cet appareil n'a encore jamais envoyé de données » ou une liste
-  d'appareils vide : c'est normal. Les pages sont décrites dans le [guide 05](05-exploitation.md).
-- Wazuh : deux tableaux de bord sont déjà importés, « Vigie — sécurité du téléphone » et « Vigie — pistage et DNS »
+  d'appareils vide : c'est normal. Les pages (Vue d'ensemble, Détections, Carte, Événements, Réseau, Pistage, Applications,
+  Sécurité, Commandes, Alertes) sont décrites dans le [guide 05](05-exploitation.md). La page **Pistage** se sert d'AdGuard
+  Home : elle n'est complète que si AdGuard est joignable (`docker compose ps`).
+- Wazuh : trois tableaux de bord sont déjà importés, « Vigie — sécurité du téléphone », « Vigie — pistage et DNS » et
+  « Vigie — détections et applications »
   (dans le menu du dashboard, rubrique des tableaux de bord ; l'intitulé exact peut varier selon la version).
   Ils seront vides tant qu'aucun appareil n'envoie.
 - AdGuard Home : à chaque `install.sh`, la configuration **gérée par Vigie** (compte `admin`, TLS et DoT, amonts Quad9 et
@@ -228,6 +235,11 @@ laquelle le fichier a des droits 600 et ne doit jamais circuler par un canal non
 
 Le certificat de l'appareil est valable **2 ans** : `--list` en affiche l'échéance ; le renouvellement garde le même
 identifiant d'appareil et le même historique (guide 05 §8).
+
+Les **notifications d'alerte** (webhook compatible ntfy et/ou e-mail) sont désactivées tant que vous ne renseignez pas
+`VIGIE_NOTIFY_URL` ou `VIGIE_NOTIFY_SMTP_HOST` dans `infra/.env` : voir le [guide 05, §3](05-exploitation.md) ; sans elles, rien ne
+vous prévient quand le téléphone cesse d'émettre ou qu'une alerte grave se déclenche. Le **canal de commandes à distance** n'exige
+aucune configuration du serveur : il se met en service sur le téléphone ([guide 03, §15](03-telephone.md)).
 
 ## 9. Vérifier l'installation
 
@@ -291,7 +303,8 @@ Doit échouer à la poignée de main TLS (erreur curl, pas de code HTTP) : sans 
 ./wazuh/tests/run-tests.sh
 ```
 
-Doit se terminer avec 0 échec (code de sortie 0). C'est la preuve que les règles sont chargées dans le manager.
+Doit se terminer avec 0 échec (code de sortie 0) : 209 cas dans l'état actuel du dépôt (règles de la v1, des commandes à
+distance, des détections, des gardes et du pistage). C'est la preuve que les règles sont chargées dans le manager.
 
 **Port 853 depuis un réseau mobile** : certains réseaux filtrent le DNS sur TLS. Le test décisif se fait avec le
 téléphone, au [guide 03](03-telephone.md) (palier 1, « DNS privé seul »).

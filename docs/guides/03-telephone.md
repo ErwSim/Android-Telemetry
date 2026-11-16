@@ -7,7 +7,8 @@ ouvert dans un autre onglet.
 
 Prérequis : le serveur tourne et répond ([guide 01](01-serveur.md)) ; vous avez un APK **release signé** et un
 PC avec `adb` ([guide 02](02-compiler-apk.md)). Durée : une demi-journée pour les sections 1 à 12 ; la mise en service de
-la politique (section 14) s'étale sur plusieurs jours, volontairement.
+la politique (section 14), des commandes à distance (15), des gardes (16), du compagnon de notifications (17) et des modes de
+localisation (18) s'étale sur plusieurs semaines, volontairement.
 
 > **Statut de vérification : lisez ceci.** Rien dans ce guide n'a jamais été exécuté sur un téléphone, et les scripts
 > PowerShell n'ont même pas été lancés une fois. Les commandes ont été relues contre les scripts du dépôt, les
@@ -28,10 +29,17 @@ section renvoient à ce guide.
 | 3 | **DNS privé seul** (§14, palier 1) : « Tout décocher », seul le DNS coché, **verrou éteint**, **repli actif** | une semaine |
 | 4 | **Deux ou trois paquets à faible risque** (§14, palier 2), puis « Tout rétablir » et **comparaison** | 1 à 2 jours |
 | 5 | **Profil équilibré**, par lots (§14, palier 3) | une semaine |
+| 6 | **Canal de commandes à distance** (§15) : sonner, localiser, verrouiller avec message ; **jamais l'effacement** à ce stade | 2 à 3 jours |
+| 7 | **Gardes de capacités, une à une** (§16), de la moins risquée à la plus risquée, avec « Tout rétablir » entre deux | une à deux semaines |
+| 8 | **Compagnon de notifications** (§17), facultatif, contenu éteint d'abord | quelques jours |
+| 9 | **Modes de localisation** (§18), facultatif | à votre rythme |
 
 **À ne pas activer tant que ce n'est pas vu fonctionner** sur votre téléphone : le **profil strict** ; le **VPN permanent**
 avec « bloquer sans VPN » ; le **verrou du DNS** (« Verrouiller le réglage ») ; l'**interdiction du mode sans échec** (élément du
-profil strict) ; la **désactivation du repli DNS** (Réglages › Device Owner).
+profil strict) ; la **désactivation du repli DNS** (Réglages › Device Owner) ; l'**effacement à distance** (tant que vous ne
+l'avez pas essayé sur un appareil sacrifiable ou entièrement sauvegardé) ; les options « aussi la lecture des SMS » et « aussi le
+journal d'appels » des gardes ; le **contenu des notifications** du compagnon ; les modes de localisation « GPS + réseau » et
+« fusionné » (ils envoient des informations à Google).
 
 ### Avertissements à garder en tête pendant tout le guide
 
@@ -50,6 +58,10 @@ profil strict) ; la **désactivation du repli DNS** (Réglages › Device Owner)
 8. **Comptez 15 minutes sans Internet avant le repli du DNS** si le serveur tombe (délai réglable de 5 à 240 minutes).
 9. **Si le serveur est sur un réseau privé** (adresse en 192.168.x, 10.x…), Android 17 exige la permission
    `ACCESS_LOCAL_NETWORK` : `grant-adb-permissions` l'accorde (avec un VPS public, elle ne sert pas).
+10. **Le code de commande** (§15) : cinq mots tirés au hasard, réservé à cet usage, noté ailleurs que sur le téléphone. Il ne
+    vaut que par son entropie ; le changer sur le téléphone rend caduques toutes les commandes déjà signées.
+11. **Le compagnon de notifications** (§17) doit être signé par la **même clé** que l'agent ; un compagnon signé autrement
+    est refusé à l'installation.
 
 ## 0. Ce qui change sur votre téléphone
 
@@ -556,6 +568,164 @@ Google Play, Google Services Framework, Play Store (notifications push, applicat
 Samsung Wallet / Pay / Pass, NFC (paiement sans contact), Find My Mobile (antivol), Entretien de l'appareil (fait
 disparaître la liste « jamais en veille »), eSIM, transfert de fichiers USB. Le profil strict laisse la sauvegarde Android
 coupée.
+
+## 15. Mettre en service le canal de commandes à distance
+
+À faire **après** la phase 5, jamais avant : le canal ajoute une connexion permanente au serveur (consommation à mesurer) et
+des commandes dont l'une est irréversible. Le principe : le serveur ne peut transmettre qu'une liste fermée de commandes
+(sonner, vibrer, arrêter la sonnerie, localiser, verrouiller avec un message, retirer ce message, effacer), jamais un réglage
+ni une politique. Le canal est **coupé par défaut** ; chaque commande reçue s'affiche en notification et dans l'historique.
+
+**Prérequis** : téléphone enrôlé ; Device Owner pour verrouiller, retirer le message et effacer (sonner, vibrer et localiser n'en
+ont pas besoin).
+
+1. Vigie › **Réglages › Commandes à distance** (ou la carte « Commandes à distance » de l'accueil). Allumez « Recevoir les
+   commandes à distance ». Mode **Connexion permanente** (par défaut : commande reçue en quelques secondes ; chaque message de
+   maintien du serveur, toutes les 2 minutes, réveille le modem) ou **Interrogation périodique** (1 à 15 minutes). La
+   consommation n'a jamais été mesurée : après 24 heures, comparez la part de Vigie dans Paramètres › Batterie, d'abord en
+   Wi-Fi puis en réseau mobile ; si elle est forte, passez en interrogation.
+2. **Code de commande** (carte « Code de commande ») : 12 caractères au moins, saisi deux fois ; l'application refuse un code de
+   moins de 6 caractères différents, ou fait de chiffres seulement en dessous de 20 chiffres. **Prenez cinq mots tirés au
+   hasard** (par exemple avec des dés), **réservés à cet usage**, et notez-les dans votre gestionnaire de mots de passe : il
+   vous sera demandé dans la console à chaque commande sensible. Saisissez-le à l'identique partout (évitez les caractères
+   accentués composés). Le téléphone n'en garde qu'une clé dérivée, chiffrée par une clé du Keystore, après un calcul de quelques
+   secondes (« Calcul de la clé… ») ; le serveur ne le reçoit jamais.
+3. Dans la console, page **Commandes** : la carte « Canal de commandes » doit indiquer le téléphone connecté (mode permanent) ou
+   un dernier contact récent (interrogation).
+4. **Essais, dans l'ordre** (téléphone à portée de main) :
+   - **Sonner** (carte « Actions simples ») : le téléphone sonne à plein volume même en silencieux ou en vibreur, une
+     notification « Vigie fait sonner ce téléphone » apparaît avec un bouton **Arrêter** ; l'historique de la console passe à
+     « exécutée ». Si « Ne pas déranger » coupe les alarmes, le son reste muet et le résultat le dit
+     (`dnd_alarms_muted`) : la vibration et la notification restent. Essayez en mode silencieux, vibreur et « Ne pas déranger ».
+   - **Localiser maintenant** : une position précise arrive sous une minute au plus (GPS ; en intérieur, il peut n'y en avoir
+     aucune : résultat « échouée », `no_fix`, essayez dehors) et s'affiche sur la carte de la page. Elle respecte le collecteur
+     de localisation : s'il est coupé ou sans permission, la commande échoue (`location_unavailable`).
+   - **Verrouiller avec message** (carte « Actions sensibles ») : confirmation, puis le code de commande ; le téléphone se
+     verrouille et affiche le message sur l'écran de verrouillage. Sans écran de verrouillage sécurisé, seul l'écran s'éteint.
+     Déverrouillez normalement, puis **Effacer le message** (commande, ou bouton de l'écran de Vigie). Si le résultat est
+     `failed` avec `lock_refused` (cas d'une mise à jour depuis une version antérieure), les politiques d'administration n'ont
+     pas été rechargées : notez-le (guide 06).
+   - Un code faux est refusé par le **téléphone** (`bad_signature`, alerte Wazuh de niveau 10) ; **cinq refus en une heure
+     bloquent les commandes sensibles pendant une heure** (`locked_out`, niveau 12). Ne provoquez pas ce cas plus d'une fois.
+5. Les validités par défaut : 1 heure pour une commande simple, 7 jours pour verrouiller ou retirer le message (30 au plus),
+   **15 minutes pour effacer** (24 heures au plus).
+
+**L'effacement à distance : ne l'activez pas maintenant.** « Autoriser l'effacement à distance » est éteint par défaut et ne
+s'allume qu'avec un code défini et après avoir tapé « EFFACER ». Une commande signée avec votre code remet alors le téléphone à
+zéro, **sans autre confirmation**, définitivement (la protection contre la réinitialisation, c'est-à-dire le compte Google
+exigé au redémarrage, et les eSIM sont conservées). Son activation exige trois choses que vous n'avez pas encore :
+l'avoir **essayé sur un appareil sacrifiable ou entièrement sauvegardé** (jamais exécuté sur un téléphone), la certitude que
+votre code est fort, et la conviction que le verrouillage ne suffit pas. Dans la plupart des cas de perte, **verrouiller avec un
+message suffit** (guide 04, « Si le téléphone est perdu »).
+
+**Ce que la signature garantit, et ses limites** (contrat §8) : aucune commande sensible ne s'exécute sans une signature valide
+pour le code défini sur le téléphone. Mais le serveur détient le contenu signé et peut chercher votre code hors ligne (d'où
+les cinq mots) ; la page de la console où vous le tapez est servie par le serveur (un serveur compromis peut la modifier et le
+lire à la saisie suivante) ; une commande signée reste exécutable jusqu'à son expiration, quoi qu'affiche la console (« annulée »
+ou « expirée » n'engage que le serveur). **Seul le changement du code sur le téléphone** rend caduque une commande déjà signée :
+c'est le geste à faire si vous doutez du serveur (guide 04).
+
+## 16. Mettre en service les gardes de capacités, une par une
+
+Les gardes verrouillent les capacités dont un logiciel malveillant a besoin (guide 08 pour le cas des SMS). Écran **Politique ›
+Gardes**. Elles sont **toutes éteintes par défaut**, s'activent **une par une** par « Aperçu et activation » (l'aperçu dit quelle
+application perd quoi), et se défont par « Aperçu et désactivation », « Tout rétablir », le retrait du Device Owner et
+l'issue de secours ADB.
+
+**Avant** : `rescue-revert` à vide réussi (§12), phase 5 stabilisée. **Méthode pour chaque garde** : activer, faire les
+contrôles ci-dessous, puis **« Tout rétablir »** et vérifier que l'état d'avant revient (Paramètres › Applications › l'appli ›
+Autorisations ; claviers ; accessibilité). « Tout rétablir » défait *tout* ce que Vigie a appliqué (DNS et paquets compris) et
+éteint d'abord toutes les gardes : réappliquez ensuite ce que vous gardez, par « Aperçu » puis « Appliquer » pour la politique
+et « Aperçu et activation » pour les gardes (la sélection est mémorisée). Quand vous avez vu cela fonctionner deux fois, vous
+pouvez espacer les « Tout rétablir » (suggestion de ce guide).
+
+L'ordre conseillé par l'application elle-même est : **Quarantaine, Claviers, Accessibilité, Appels, SMS, puis seulement les
+options « aussi… »**, du moins au plus risqué.
+
+| # | Garde | Contrôles après activation | Ce qui peut casser |
+|---|---|---|---|
+| 1 | **Quarantaine** (aucun effet immédiat) | Installez une petite application de test (APK ou boutique) : notification « Nouvelle application en quarantaine » ; Paramètres › Applications › l'appli › Autorisations : SMS, contacts, micro… grisés « contrôlé par l'administrateur ». « **Libérer** » (Gardes › Applications en quarantaine) : l'appli redemande. Mettez-la à jour : pas de nouvelle quarantaine. Console › Sécurité › Politique appliquée : `quarantined` et `released`. | une application toute neuve ne peut pas utiliser micro, caméra, contacts, SMS, appels, position en arrière-plan avant d'être libérée ; **l'appairage d'une montre, d'écouteurs, d'une voiture ou d'une serrure dont l'appli vient d'être installée échoue sans message** (Bluetooth et appareils à proximité) |
+| 2 | **Claviers** (liste vide) | L'aperçu doit nommer comme « gardé » le clavier tiers éventuellement activé. Saisie normale, **y compris le code PIN après un redémarrage** (clavier Samsung). Paramètres › Gestion globale › Clavier : un clavier non approuvé n'est pas activable. | activer un nouveau clavier (Gboard, SwiftKey…) sans l'avoir ajouté à la liste ; aucun risque de rester sans clavier (un clavier déjà activé continue, celui du système reste proposé) ; la garde n'est appliquée que dans l'écran des Paramètres de One UI (**à vérifier**) |
+| 3 | **Accessibilité** (liste vide) | Les services déjà activés sont gardés (Android l'exige) ; TalkBack et le Voice Assistant Samsung restent activables ; un service tiers non activé ne l'est plus (« désactivé par l'administrateur »). | nouveau gestionnaire de mots de passe, Tasker, MacroDroid, bloqueur ou lanceur qui utilise l'accessibilité, s'il n'est pas dans la liste |
+| 4 | **Appels** (sans option) | L'aperçu est **rarement vide** (`CALL_PHONE` est demandée par messageries, banques, cartes, montre, voiture ; chaque application qui l'avait est arrêtée au refus). Appelez depuis le composeur et depuis le carnet d'adresses Samsung. Appel d'urgence : ne composez pas réellement, vérifiez seulement que le composeur s'ouvre. | appel direct depuis une appli tierce (domotique, montre, voiture, taxi) ; ouvrir le composeur avec un numéro prérempli reste possible ; le groupe « Téléphone » des applications refusées est gelé |
+| 5 | **SMS** (sans option) | L'aperçu liste les applications tierces qui demandent `SEND_SMS`. Envoyez un SMS depuis Samsung Messages ; le SOS d'urgence reste intact (application du système). Changez d'appli SMS par défaut et vérifiez, en 10 à 20 secondes, la notification « Appli par défaut changée » et que la liste suit ; revenez ensuite à l'application d'origine. | messagerie vocale visuelle de l'opérateur, application de montre ou de voiture qui répond par SMS, vérification de numéro : à mettre dans la liste |
+| 6 | **Options** « aussi… » (lecture des SMS ; décrocher et journal d'appels) | Avec une garde SMS ou Appels active : **changez d'appli SMS par défaut** pour une application que la garde refusait, vérifiez la notification dans les 10 à 20 secondes et que l'application envoie et reçoit sans rien redemander, puis revenez à l'application d'origine. | la saisie automatique des codes reçus par SMS cesse dans les applications tierces |
+
+Après la dernière : `rescue-revert` **avec une garde active** (il doit les défaire), puis seulement en tout dernier
+`remove-device-owner` (guide 04). Les **listes** d'une garde (applications autorisées, services approuvés) se modifient dans
+l'écran ; la modification n'entre en vigueur qu'à « Aperçu et réapplication ». Les raisons des limites des gardes (application du
+système, appli par défaut, service d'accessibilité déjà actif, fenêtre de quelques secondes à 15 minutes, groupes de permissions
+gelés, autres utilisateurs) sont dans `android/README.md`, « Ce que les gardes ne peuvent pas empêcher ».
+
+**Applications par défaut et profil de risque** : les collecteurs `app_risk` et `app_role` sont actifs par défaut (rien à
+faire) ; ils alimentent la console (Applications › Risque, Sécurité › Rôles par défaut) et les détections. Le comptage
+expérimental `app_ops` est **éteint par défaut** : ne l'activez que pour le vérifier (guide 08, §5).
+
+## 17. Installer le compagnon de notifications (facultatif)
+
+L'agent dit quelles applications affichent des notifications ; **lire** leur titre et leur texte demande un second APK,
+**Vigie Notifications** (`io.github.erwsim.vigie.notifier`), séparé pour ne pas exposer l'APK Device Owner à Play Protect. Il
+n'a pas la permission `INTERNET`, n'a aucune permission sensible, ne garde rien (ni historique, ni fichier) et remet les
+notifications à l'agent par un canal local protégé par une permission de niveau signature. **Rien n'a jamais été essayé sur un
+téléphone** ; la première inconnue est la réaction de Play Protect à son installation.
+
+1. **Construire** avec la **même clé** que l'agent (guide 02, §5) : `notifier/build/outputs/apk/release/notifier-release.apk`.
+2. **Installer** (depuis `android/`) :
+
+   ```bash
+   ./scripts/install-notifier.sh notifier/build/outputs/apk/release/notifier-release.apk
+   ```
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-notifier.ps1 -Apk notifier\build\outputs\apk\release\notifier-release.apk
+   ```
+
+   Attendu : « Vigie Notifications installé », puis « Même clé de signature que l'agent Vigie ». Échecs : `INSTALL_FAILED_DUPLICATE_PERMISSION`
+   (autre clé : installez les deux APK issus de la même construction), alerte Play Protect (« appli nuisible bloquée » : notez le
+   texte exact, l'agent n'est pas concerné et continue sans le compagnon), Auto Blocker (guide 03 §1.2).
+3. **Accorder l'accès aux notifications** :
+
+   ```bash
+   ./scripts/notifier-access.sh
+   ```
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\notifier-access.ps1
+   ```
+
+   Le script utilise `cmd notification allow_listener` (non vérifié sur One UI 8/9) puis contrôle
+   `enabled_notification_listeners`. S'il échoue : Paramètres › Notifications › … › « Accès aux notifications » › Vigie
+   Notifications (le chemin varie) ; si l'interrupteur est grisé (« Paramètre restreint ») : Paramètres › Applications › Vigie
+   Notifications › ⋮ › « Autoriser les paramètres restreints », puis accorder l'accès.
+4. Ouvrez **Vigie Notifications** : accès accordé, service d'écoute connecté, agent présent (même clé), collecte active. Dans
+   Vigie › Collecteurs › **Notifications**, le collecteur passe d'« indisponible » à « actif » (au plus tard au passage de
+   maintenance de 15 minutes). Console › Applications › **Notifications** : les événements arrivent, **sans titre ni texte**.
+5. **Régler** : dans Vigie, « Contenu des notifications » est **éteint par défaut** (ne l'allumez qu'après quelques jours) et
+   « Masquer les codes numériques » est allumé ; dans le compagnon, les deux listes (applications exclues du contenu :
+   banques, paiement, authentificateurs, gestionnaires de mots de passe, SMS et téléphone ; applications ignorées : rien
+   ne part), **à compléter avec vos propres applications sensibles** : ce sont des noms de paquets exacts, la liste est donc
+   forcément incomplète. Avec le contenu allumé, le titre et le texte (512 caractères au plus) partent chez **votre** serveur et
+   sont conservés 90 jours dans les archives Wazuh ; le masquage remplace toute suite de 4 à 8 chiffres par `••••` mais masque
+   aussi des années ou des codes postaux, et laisse passer des codes de 3 ou de 9 chiffres ou alphanumériques.
+6. **Retirer** : couper le collecteur « Notifications » dans Vigie ; `./scripts/notifier-access.sh --revoke` (PowerShell : `notifier-access.ps1 -Revoke`) ; ou
+   `./scripts/uninstall-notifier.sh` (PowerShell : même forme, `uninstall-notifier.ps1`).
+
+À surveiller : le service d'écoute peut être arrêté par la gestion de batterie Samsung (ajoutez Vigie Notifications à
+« Applications jamais en veille »).
+
+## 18. Choisir le mode de localisation (facultatif)
+
+Vigie › Collecteurs › **Localisation** › « Mode de localisation » :
+
+| Mode | Ce qui part chez Google | Effet |
+|---|---|---|
+| **GPS seul** (défaut) | rien de la part de Vigie (l'assistance GNSS XTRA/SUPL est réglée par le système) | souvent aucune position en intérieur |
+| **GPS + réseau** | réseaux Wi-Fi et antennes alentour (fournisseur réseau des Services Google Play, actif si « Précision de la localisation Google » est activée) | position approximative en intérieur en quelques secondes |
+| **Fusionné** | idem (fournisseur fusionné des Services Google Play) | position rapide, souvent précise en intérieur |
+
+`location.fix.provider` dit le fournisseur réel de chaque position. Si un fournisseur est absent, Vigie se replie sur le GPS seul.
+Ces modes améliorent aussi `locate` (§15) en intérieur, au prix de ce qu'ils transmettent à Google : c'est votre choix.
+Jamais essayés sur un téléphone.
 
 Une fois la politique en place, la suite est dans le [guide 05](05-exploitation.md) (exploitation) ; en cas de problème,
 [guide 04](04-retour-arriere.md) ; et les vérifications à faire cette première semaine sont dans le

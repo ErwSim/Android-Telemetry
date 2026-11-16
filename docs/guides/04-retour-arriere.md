@@ -35,6 +35,13 @@ Windows, chaque script `.ps1` se lance par `powershell -NoProfile -ExecutionPoli
 | Impossible d'installer ou de mettre à jour un APK | « Rétablir » la restriction « Interdire les sources inconnues » ; à défaut, niveau 3 | |
 | L'application Vigie ne s'ouvre plus, plante, ou affiche « Vigie n'a pas pu démarrer » | niveau 3 (issue de secours ; elle reste joignable dans ce cas) | niveau 4 puis 5 |
 | Le téléphone chauffe ou se vide | niveau 1 (couper des collecteurs) | niveau 2 |
+| **Une application n'obtient plus une permission** (SMS, appels, contacts, micro, caméra ; Paramètres affiche « contrôlé par l'administrateur ») | cas D ci-dessous (garde ou quarantaine) | niveau 2, puis 3 |
+| **Un clavier ou un service d'accessibilité ne s'active pas** (« désactivé par l'administrateur ») | cas D : l'ajouter à la liste de la garde, ou « Aperçu et désactivation » | niveau 2, puis 3 |
+| **L'appairage d'une montre, d'écouteurs, d'une voiture ou d'une serrure échoue sans message** | cas D : l'application est en quarantaine, « Libérer » | niveau 2 |
+| Les codes reçus par SMS ne se remplissent plus tout seuls ; un appel direct depuis une appli ne passe plus | cas D : option « aussi la lecture » de la garde SMS, garde Appels | niveau 2 |
+| **Une application est devenue l'appli SMS par défaut sans que vous l'ayez choisi** | cas E ci-dessous | |
+| **Le téléphone a sonné ou s'est verrouillé sans que vous l'ayez demandé** ; commande à distance inconnue | cas F ci-dessous | |
+| **Téléphone perdu ou volé** | cas G ci-dessous | |
 | Je veux tout arrêter d'un coup | niveau 4 (retirer le Device Owner) | |
 | Rien ne marche et le téléphone est inutilisable | niveaux 3, 4, 5 dans l'ordre | niveau 6 (dernier recours) |
 
@@ -85,6 +92,77 @@ filtrent le port des notifications Google, 5228), ou la batterie de l'applicatio
    bloqué ? Par défaut ils sont autorisés par des exceptions (guide 05 pour en ajouter).
 3. « Rétablir » le dernier élément appliqué ; puis « Tout rétablir » (niveau 2) pour trancher.
 
+## Cas D — Une garde ou la quarantaine bloque quelque chose
+
+Les gardes (Politique › Gardes) refusent des permissions ou des activations ; la quarantaine refuse un jeu de permissions aux
+applications installées après son activation. Dans l'ordre :
+
+1. **Quarantaine** : Politique › Gardes › « Applications en quarantaine (N) » › **Libérer** l'application : elle retrouve l'état
+   d'avant (« à demander » : elle redemandera les permissions). C'est la cause habituelle d'un appairage de montre ou
+   d'écouteurs qui échoue sans message (Bluetooth et appareils à proximité refusés) ou d'une visio sans micro.
+2. **Une liste** : ajoutez l'application à la liste de la garde (SMS ou Appels : « applis autorisées » ; Accessibilité ou
+   Claviers : « services » ou « claviers approuvés »), puis **« Aperçu et réapplication »** : la modification n'entre en vigueur
+   qu'à ce moment.
+3. **Désactiver la garde** : « **Aperçu et désactivation** » sous la garde : les permissions refusées sont rendues dans leur état
+   d'avant. Les listes d'accessibilité et de claviers sont levées.
+4. **« Tout rétablir »** (niveau 2) : éteint **d'abord toutes les gardes**, puis défait le reste. L'**issue de secours ADB**
+   (niveau 3) fait de même, avec `--sweep` si l'état de Vigie est douteux (il rend aussi toute permission des gardes refusée sans
+   enregistrement). **Le retrait du Device Owner** (niveau 4) les défait avec le reste ; si vous cédez le rôle sans
+   « Tout rétablir » (niveau 5), Android lève lui-même les listes et le verrouillage des permissions (affirmation tirée du code
+   AOSP, **à vérifier**), mais les permissions refusées restent non accordées : les applications les redemanderont.
+
+Les gardes SMS et Appels gèlent aussi le groupe de permissions de l'application refusée dans les Paramètres : c'est normal,
+cela cesse à la désactivation.
+
+## Cas E — Une application est devenue l'appli SMS par défaut sans que vous l'ayez choisi
+
+C'est la voie classique des chevaux de Troie SMS : Vigie ne la bloque pas, il vous prévient (notification prioritaire
+« Attention : appli par défaut changée », alerte Wazuh, détection `default_app_changed`).
+
+1. Paramètres › Applications › Applications par défaut (chemin habituel) : remettez votre application SMS (Messages).
+2. Dans Vigie › Politique › Gardes : retirez l'intruse de la liste de la garde SMS (Vigie l'y avait ajoutée), puis
+   « Aperçu et réapplication ».
+3. Désinstallez-la (si elle est administrateur de l'appareil ou service d'accessibilité, retirez d'abord ce droit dans les
+   Paramètres). Contrôlez la facture de l'opérateur (guide 08).
+
+## Cas F — Une commande à distance que vous n'avez pas émise, ou un serveur suspect
+
+Le serveur ne peut transmettre que des commandes d'une liste fermée, et les commandes sensibles (verrouiller, effacer)
+exigent une signature qu'il ne peut pas produire sans votre code de commande. **Mais** cette garantie a des limites (guide 03,
+§15) : un serveur compromis peut faire sonner ou localiser le téléphone, et lire votre code à la prochaine saisie dans la console.
+Une commande signée **reste exécutable jusqu'à son expiration**, quoi qu'en dise la console.
+
+Si vous doutez du serveur, ou si une commande inconnue apparaît (notification « Commande à distance » sur le téléphone, historique de
+Vigie › Réglages › Commandes à distance, alerte Wazuh de niveau 10 ou 12) :
+
+1. **Changez le code de commande sur le téléphone** : Réglages › Commandes à distance › « Changer le code » (cinq nouveaux mots
+   tirés au hasard). C'est **le seul geste qui rend caduques toutes les commandes déjà signées**, y compris celles que le serveur
+   détiendrait encore. Ne tapez jamais l'ancien ni le nouveau code dans une console douteuse.
+2. **Coupez le canal** : « Recevoir les commandes à distance » éteint (le téléphone ne contacte plus le serveur pour les commandes), et
+   **éteignez « Autoriser l'effacement à distance »**.
+3. Révoquez l'appareil et reprenez la main sur le serveur : `sudo ./enroll.sh --revoke <nom>`, changez les mots de passe
+   (`sudo ./install.sh --rotate-passwords`, guide 05), puis réenrôlez quand le serveur est sain.
+4. Cinq signatures invalides en une heure bloquent les commandes sensibles pendant une heure (`locked_out`) : c'est une
+   protection, pas une panne.
+
+## Cas G — Le téléphone est perdu ou volé
+
+Vigie ne remplace ni un antivol ni votre opérateur. Dans l'ordre :
+
+1. **Sonner** (console › Commandes › « Actions simples ») si vous le cherchez à proximité ; **Localiser maintenant** : la position
+   précise arrive si le téléphone a du réseau, le canal de commandes est activé et le collecteur de localisation actif. En
+   « GPS seul », une position intérieure peut manquer. Le canal et ces commandes n'ont **jamais été essayés sur un téléphone**.
+2. **Verrouiller avec un message** (« Actions sensibles », il faut le code de commande) : un numéro où vous joindre. Valable 7 jours :
+   la commande attend que le téléphone se reconnecte. **Cela suffit dans la plupart des cas de perte.**
+3. **L'effacement à distance n'est à envisager que si** : vous l'aviez **autorisé à l'avance** dans l'application (il est interdit par
+   défaut), vous l'aviez **essayé sur un appareil sacrifiable**, votre téléphone est **sauvegardé**, vous ne le reverrez pas, et
+   vous faites confiance à votre serveur et à votre code. Une commande d'effacement n'est valable que 15 minutes par défaut :
+   le téléphone doit se reconnecter dans ce délai (sinon, réémettez). L'effacement est **irréversible** ; la protection contre la
+   réinitialisation (compte Google) et les eSIM sont conservées.
+4. **Quoi qu'il arrive** : verrouillage et effacement par vos comptes Google ou Samsung, appelez votre **opérateur** pour bloquer la
+   ligne, changez les mots de passe de vos comptes, puis `sudo ./enroll.sh --revoke <nom>` pour fermer l'ingestion (la console garde
+   l'historique, dernières positions comprises).
+
 ## Niveau 0 — Je veux juste que ça arrête d'envoyer
 
 Dans Vigie › Accueil : interrupteur **« Collecte active »**. Rien ne part, rien n'est collecté. Les politiques déjà
@@ -93,7 +171,11 @@ appliquées restent en place (niveau 2 pour les défaire).
 ## Niveau 1 — Interrupteurs dans l'application
 
 - **Onglet Collecteurs** : chaque collecteur a son interrupteur ; coupez celui qui chauffe ou gêne. Couper « Journal réseau »
-  ou « Journal de sécurité » coupe aussi la journalisation du système.
+  ou « Journal de sécurité » coupe aussi la journalisation du système. Couper « Notifications » : le compagnon ne transmet plus rien.
+- **Réglages › Commandes à distance** : « Recevoir les commandes à distance » coupe le canal ; « Autoriser l'effacement à
+  distance » le retire ; « Supprimer le code » aussi (et remet l'effacement à « interdit »).
+- **Compagnon de notifications** : `./scripts/notifier-access.sh --revoke` retire son accès ; `./scripts/uninstall-notifier.sh`
+  le désinstalle (l'agent continue sans lui).
 - **Réglages › Enrôlement › Désenrôler** : efface la clé, le certificat, le jeton **et les événements encore en attente
   d'envoi** ; la collecte continue localement. À éviter si vous voulez conserver ce qui n'est pas encore parti (utilisez
   d'abord « Envoyer maintenant »).
@@ -104,7 +186,9 @@ Dans Vigie › Réglages › Device Owner › Politique :
 
 - **Rétablir** sous chaque élément appliqué (application, permission, restriction, DNS, réglage) : remet exactement
   l'état d'avant.
-- **Tout rétablir** (bas de l'écran, confirmation) : défait tout ce que Vigie a appliqué, du plus récent au plus ancien. Un
+- **Gardes** (Politique › Gardes) : « Aperçu et désactivation » défait une garde ; « Libérer » défait une mise en quarantaine.
+- **Tout rétablir** (bas de l'écran, confirmation) : défait tout ce que Vigie a appliqué (gardes et quarantaine comprises, qu'il
+  éteint d'abord), du plus récent au plus ancien. Un
   élément qui résiste reste listé avec son erreur : réessayez. Les journaux réseau et de sécurité restent actifs ;
   Vigie reste Device Owner.
 

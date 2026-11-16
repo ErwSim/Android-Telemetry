@@ -188,10 +188,11 @@ Paramètres facultatifs (`-P…` sur la ligne de commande) :
 Pièges :
 
 - **Sans keystore**, `assembleRelease` réussit mais produit `app-release-unsigned.apk`, qui n'est **pas installable**.
-  Le script `install-apk` cherche `app-release.apk` puis, à défaut, l'APK *debug* (il demande alors confirmation avant de
-  l'installer) : donnez toujours son chemin explicitement au guide 03 et lisez le fichier annoncé (« Installation de … »).
-- Vérifications facultatives avant d'installer : `./gradlew lint test` (lint Android et tests JVM ; compter plusieurs
-  minutes).
+  Le script `install-apk` le détecte (« L'APK release n'est pas signé ») et refuse ; sans argument il cherche sinon
+  `app-release.apk` puis l'APK *debug* (confirmation demandée avant de l'installer). Donnez toujours son chemin
+  explicitement au guide 03 et lisez le fichier annoncé (« Installation de … »).
+- Vérifications facultatives avant d'installer : `./gradlew lint test` (lint Android et tests JVM, 392 au dernier décompte de
+  `android/README.md` ; compter plusieurs minutes).
 
 Erreurs fréquentes du build :
 
@@ -229,6 +230,43 @@ Résultat attendu (observé sur l'APK construit pour ce guide) :
 Une fois installé, le téléphone confirme : `adb shell dumpsys package io.github.erwsim.vigie | grep -E "versionName|TEST_ONLY"`
 (sous PowerShell : `adb shell dumpsys package io.github.erwsim.vigie | Select-String 'versionName|TEST_ONLY'`).
 
+### 6.1 Le second APK : le compagnon de notifications (facultatif)
+
+Lire le titre et le texte des notifications demande un **second APK**, **Vigie Notifications**
+(`io.github.erwsim.vigie.notifier`, module `:notifier`), séparé de l'agent pour ne pas exposer l'APK Device Owner à Play Protect
+(guide 03, §17). **Il doit être signé par la même clé que l'agent** : le même `keystore.properties` (ou les mêmes variables
+`VIGIE_*`), donc **le même keystore à conserver** ; un compagnon signé autrement est refusé à l'installation
+(`INSTALL_FAILED_DUPLICATE_PERMISSION`, les deux APK déclarant la permission du canal local) et ne pourrait de toute façon rien
+remettre à l'agent. Même construction, même variante : release avec release, débogage avec débogage.
+
+```bash
+./gradlew :notifier:assembleRelease          # notifier/build/outputs/apk/release/notifier-release.apk
+```
+
+```powershell
+.\gradlew.bat :notifier:assembleRelease
+```
+
+Les paramètres `-Pvigie.testOnly`, `-Pvigie.versionCode` et `-Pvigie.versionName` s'appliquent aussi. Vérification (mêmes outils
+qu'ci-dessus) : le **« certificate SHA-256 digest » doit être identique** à celui de l'agent ; `aapt2 dump badging` doit montrer
+`package: name='io.github.erwsim.vigie.notifier'` et, parmi les permissions, **seulement**
+`io.github.erwsim.vigie.permission.NOTIFICATION_RELAY` (aucune permission `INTERNET`). Constat sur les APK construits pour ce guide :
+mêmes empreintes de signature pour l'agent et le compagnon, `testOnly='-1'` pour les deux, et le compagnon ne déclare que la
+permission du canal.
+
+```bash
+"$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs notifier/build/outputs/apk/release/notifier-release.apk | grep "SHA-256 digest"
+"$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging notifier/build/outputs/apk/release/notifier-release.apk | grep -E "^package|uses-permission"
+```
+
+```powershell
+& "$env:ANDROID_HOME\build-tools\36.0.0\apksigner.bat" verify --print-certs notifier\build\outputs\apk\release\notifier-release.apk | Select-String 'SHA-256 digest'
+& "$env:ANDROID_HOME\build-tools\36.0.0\aapt2.exe" dump badging notifier\build\outputs\apk\release\notifier-release.apk | Select-String 'package:|uses-permission'
+```
+
+Sans keystore, `:notifier:assembleRelease` produit un `notifier-release-unsigned.apk` non installable (`install-notifier` refuse
+alors et le dit). L'installation se fait avec `install-notifier` (guide 03, §17), jamais avec un autre moyen.
+
 ## 7. L'option `testOnly`
 
 `-Pvigie.testOnly=true` (**par défaut**) pose `android:testOnly="true"` dans le manifeste. Conséquences :
@@ -263,5 +301,6 @@ Reconstruisez avec **la même clé** (le même `keystore.properties`) et un `ver
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-apk.ps1
 ```
 
-Les données (tampon, enrôlement, réglages) sont conservées. Le détail et les contrôles à faire au premier essai :
+Les données (tampon, enrôlement, réglages) sont conservées. Le compagnon se met à jour de la même façon, avec la même clé
+(`:notifier:assembleRelease` puis `install-notifier`). Le détail et les contrôles à faire au premier essai :
 [guide 05](05-exploitation.md) et [guide 06](06-verifications-sur-appareil.md).
