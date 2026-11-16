@@ -478,6 +478,22 @@ Chaque création, annulation et résultat est journalisé par le collecteur et e
   `VIGIE_ADGUARD_USER`, `VIGIE_ADGUARD_PASSWORD`, `VIGIE_ADGUARD_LEVELS_FILE`, `VIGIE_ADGUARD_POLL_S` (60),
   `VIGIE_ADGUARD_CLIENTS` (optionnel, `device_id=client,…`).
 
+### Précisions (ajoutées après le développement de l'agent Android)
+
+- Le canal de commandes est **coupé par défaut** dans l'app : le propriétaire l'active dans l'écran
+  « Commandes à distance », y définit le code de commande, et autorise l'effacement à part (saisie de
+  « EFFACER »).
+- Le délai de lecture du flux côté agent est de 300 s : `VIGIE_CMD_KEEPALIVE_S` doit rester ≤ 240.
+- Refus décidés par l'agent là où le texte ne disait rien : validité de plus de 30 jours ou `issued_at` à plus
+  de 5 min dans le futur → `expired` ; `sig` présent sur une commande simple → `malformed` ; `type` illisible →
+  `command.result.type = "unknown"`. `clear_lock_message` exécuté et tout `failed` ont la sévérité 1.
+- `ring` : sonnerie sur le flux « alarme » ; si « Ne pas déranger » coupe les alarmes, le son reste muet et le
+  résultat porte `detail = "dnd_alarms_muted"` (une app, même Device Owner, ne peut plus lever ce mode).
+- `wipe` : `DevicePolicyManager.wipeDevice(0)` ; la protection contre la réinitialisation (compte Google
+  requis au redémarrage) et les eSIM sont conservées.
+- Le code de commande n'est normalisé en Unicode ni dans l'app ni dans la console : le saisir à l'identique
+  (éviter les caractères accentués composés).
+
 ## 9. Vue « pistage » : ce qui est bloqué, ce qui passe
 
 Le collecteur lit le journal des requêtes d'AdGuard Home par son API (`VIGIE_ADGUARD_URL`,
