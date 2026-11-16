@@ -65,8 +65,8 @@ interface OutboxDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun setCounter(counter: CounterEntity)
 
-    @Query("SELECT * FROM outbox WHERE sev >= :minSev ORDER BY seq LIMIT :limit")
-    suspend fun oldest(limit: Int, minSev: Int): List<OutboxEntity>
+    @Query("SELECT * FROM outbox WHERE sev >= :minSev AND seq <= :maxSeq ORDER BY seq LIMIT :limit")
+    suspend fun oldest(limit: Int, minSev: Int, maxSeq: Long): List<OutboxEntity>
 
     @Query("SELECT * FROM outbox ORDER BY seq DESC LIMIT :limit")
     suspend fun newest(limit: Int): List<OutboxEntity>

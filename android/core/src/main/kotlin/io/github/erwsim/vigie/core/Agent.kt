@@ -27,6 +27,7 @@ import io.github.erwsim.vigie.core.event.EventTypes
 import io.github.erwsim.vigie.core.event.Rfc3339
 import io.github.erwsim.vigie.core.event.Severity
 import io.github.erwsim.vigie.core.integrity.IntegrityMonitor
+import io.github.erwsim.vigie.core.outbox.AgeHorizon
 import io.github.erwsim.vigie.core.outbox.Outbox
 import io.github.erwsim.vigie.core.outbox.OutboxDatabase
 import io.github.erwsim.vigie.core.settings.AgentSettings
@@ -34,6 +35,7 @@ import io.github.erwsim.vigie.core.settings.CoreSettings
 import io.github.erwsim.vigie.core.sink.FlushListener
 import io.github.erwsim.vigie.core.sink.OutboxEventSink
 import io.github.erwsim.vigie.core.sink.emit
+import io.github.erwsim.vigie.core.upload.DroppedEvent
 import io.github.erwsim.vigie.core.upload.NetState
 import io.github.erwsim.vigie.core.upload.UploadLimits
 import io.github.erwsim.vigie.core.upload.UploadOutcome
@@ -78,7 +80,7 @@ class Agent private constructor(
     )
 
     val database: OutboxDatabase = Room.databaseBuilder(context, OutboxDatabase::class.java, OutboxDatabase.NAME).build()
-    val outbox = Outbox(database)
+    val outbox = Outbox(database, ageHorizon = AgeHorizon(prefs(PREFS_AGE), clock, boot.bootId))
     val sink = OutboxEventSink(outbox, clock, boot.bootId, scope)
     val capabilities = Capabilities(context)
     val uploadStatus = UploadStatusStore(prefs(PREFS_UPLOAD))
@@ -89,7 +91,10 @@ class Agent private constructor(
         agentVersion = agentVersion,
         sink = { sink },
     )
-    val uploader = Uploader(outbox, enrollment::target, uploadStatus, clock, ::netState, ::uploadLimits)
+    val uploader = Uploader(
+        outbox, enrollment::target, uploadStatus, clock, ::netState, ::uploadLimits,
+        onDropped = ::reportDroppedEvent,
+    )
     val uploadScheduler = UploadScheduler(context)
     val integrity = IntegrityMonitor(context, prefs(PREFS_INTEGRITY), capabilities, sink, clock)
     val host = CollectorHost(
@@ -159,6 +164,14 @@ class Agent private constructor(
             put("dropped", report.dropped)
             put("oldest_ts", Rfc3339.format(report.oldestTsMs))
             put("newest_ts", Rfc3339.format(report.newestTsMs))
+        }
+    }
+
+    /** Traces an event the uploader deleted because the server refuses it alone (metadata only, never content). */
+    private fun reportDroppedEvent(dropped: DroppedEvent) {
+        sink.emit(EventTypes.AGENT_COLLECTOR_ERROR, Severity.NOTABLE) {
+            put("collector", "upload")
+            put("error", "event_dropped ${dropped.reason} type=${dropped.type} id=${dropped.id}")
         }
     }
 
@@ -276,6 +289,7 @@ class Agent private constructor(
         private const val PREFS_UPLOAD = "vigie_upload"
         private const val PREFS_ENROLLMENT = "vigie_enrollment"
         private const val PREFS_INTEGRITY = "vigie_integrity"
+        private const val PREFS_AGE = "vigie_age_horizon"
         private const val BULK_REQUEST_INTERVAL_MS = 5 * 60_000L
 
         // Holds only the application context (never an Activity): not a leak.

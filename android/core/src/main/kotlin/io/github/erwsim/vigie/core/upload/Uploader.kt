@@ -44,6 +44,9 @@ sealed class UploadOutcome {
     data class WaitingUnmetered(val sent: Int) : UploadOutcome()
 }
 
+/** An event deleted from the buffer because the server refuses it even alone (metadata only, no content). */
+data class DroppedEvent(val seq: Long, val id: String, val type: String, val reason: String)
+
 /** Persisted upload status (shown on the home screen, used by the heartbeat). */
 data class UploadStatus(
     val lastSuccessMs: Long = 0,
@@ -95,6 +98,8 @@ class UploadStatusStore(private val prefs: SharedPreferences) {
  * - rows are deleted only after a 200 whose `accepted + duplicates + rejected` equals the batch size;
  * - 401/403: everything is kept, long backoff; 413: the batch is halved (a single event refused as
  *   too large is dropped and counted in `dropped_total`, otherwise it would block the queue forever);
+ * - 400 (batch envelope unreadable, deterministic: a poisoned event would block the queue until the age
+ *   purge): bisection, see [runLocked]. 5xx is never treated like 400: transient, backoff, nothing split;
  * - 429/5xx/network: exponential backoff with jitter, `Retry-After` honoured;
  * - "large volumes on Wi-Fi only": on a metered network with more than the threshold buffered,
  *   only `sev >= 2` events are sent, the rest waits for an unmetered network.
@@ -108,6 +113,10 @@ class Uploader(
     private val limits: () -> UploadLimits,
     private val random: Random = Random.Default,
     private val maxBatchesPerRun: Int = 40,
+    /** Called for every event deleted because the server refuses it alone (at most [MAX_DROP_REPORTS_PER_RUN] per run). */
+    private val onDropped: (DroppedEvent) -> Unit = {},
+    /** Cap on 400/413 answers in one run (see [MAX_REFUSALS_PER_RUN]); a parameter so tests can lower it. */
+    private val maxRefusalsPerRun: Int = MAX_REFUSALS_PER_RUN,
 ) {
     private val mutex = Mutex()
 
@@ -146,6 +155,23 @@ class Uploader(
         var sent = 0
         var batches = 0
         var batchSize = status.batchSize.coerceIn(1, MAX_BATCH_EVENTS)
+
+        // Poisoned batch (400) bisection, all in this run and in memory: the only durable state is the
+        // buffer itself (rows are deleted only after a 200 or when a single event is refused alone), so a
+        // crash at any point just restarts the bisection of what is still buffered, with no loss.
+        // - `suspects`: nested ranges, as the `seq` of their last event, of batches the server refused. While
+        //   there is one, batches are bounded by the innermost, so the halves of a refused batch are sent
+        //   separately and not mixed with the events that follow it. Depth <= log2(500).
+        // - `bisectLimit`: size of the next batch after a 400 (half of the refused one).
+        // Cost: about 2 * log2(batch) requests per faulty event (one refused, one accepted sibling per level).
+        // - `envelopeOk`: the server accepted this device's envelope in this run (any 200, or the probe below).
+        //   Without it a 400 may come from the envelope or the server, not from an event: nothing is deleted.
+        val suspects = ArrayDeque<Long>()
+        var bisectLimit: Int? = null
+        var envelopeOk = false
+        var refusals = 0
+        var droppedReports = 0
+
         while (batches < maxBatchesPerRun) {
             val lim = limits()
             val net = network()
@@ -153,8 +179,14 @@ class Uploader(
             val restricted = lim.wifiOnlyLarge && net.metered && totals.bytes > lim.largeThresholdBytes
             val minSev = if (restricted) Severity.WARNING else Severity.INFO
 
-            var rows = outbox.batch(batchSize, minSev)
+            var rows = outbox.batch(bisectLimit ?: batchSize, minSev, suspects.lastOrNull() ?: Long.MAX_VALUE)
             if (rows.isEmpty()) {
+                if (suspects.isNotEmpty()) {
+                    // Nothing left in the refused range (restricted by severity, or deleted meanwhile).
+                    suspects.clear()
+                    bisectLimit = null
+                    continue
+                }
                 if (rerunRequested) {
                     rerunRequested = false
                     continue
@@ -172,21 +204,14 @@ class Uploader(
                 payload = UploadPayload.build(tgt, rows, clock.nowMillis())
             }
             if (!payload.fits()) {
-                dropOversized(rows, "event_too_large_local")
+                dropRows(rows, "event_too_large_local", droppedReports++)
                 continue
             }
 
             statusStore.update { it.copy(lastAttemptMs = clock.nowMillis()) }
-            val response = try {
-                post(client, tgt, payload)
-            } catch (e: IOException) {
-                return fail(RetryCause.NETWORK, "network: ${e.message ?: e.javaClass.simpleName}", null, sent)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // Not an I/O error (Keystore/provider failure while signing the TLS handshake, invalid
-                // header…): same treatment, never an uncaught exception that would leave no trace.
-                return fail(RetryCause.NETWORK, "network: ${describe(e)}", null, sent)
+            val response = when (val a = attempt(client, tgt, payload, sent)) {
+                is Attempt.Failed -> return a.outcome
+                is Attempt.Response -> a.result
             }
 
             when (response.code) {
@@ -201,10 +226,13 @@ class Uploader(
                         return fail(RetryCause.PROTOCOL, "ack_mismatch $total/${rows.size}", null, sent)
                     }
                     outbox.remove(rows)
+                    envelopeOk = true
                     sent += rows.size
                     batches++
                     val grown = if (rows.size == batchSize) min(MAX_BATCH_EVENTS, batchSize * 2) else batchSize
                     batchSize = grown
+                    bisectLimit = null
+                    popExhaustedRanges(suspects, rows.last().seq)
                     statusStore.update {
                         it.copy(
                             lastSuccessMs = clock.nowMillis(),
@@ -217,27 +245,117 @@ class Uploader(
                         )
                     }
                 }
-                401, 403 -> return fail(RetryCause.AUTH, "http_${response.code}", response.retryAfterMs, sent)
+                400 -> {
+                    if (++refusals > maxRefusalsPerRun) {
+                        return fail(RetryCause.PROTOCOL, "http_400", null, sent)
+                    }
+                    if (!envelopeOk) {
+                        // First 400 of the run: is it the envelope or an event? A batch with no event carries
+                        // the same envelope (device_id, agent_version, sent_at); the contract allows 0..500.
+                        when (val probe = probeEnvelope(client, tgt, sent)) {
+                            null -> envelopeOk = true
+                            else -> return probe
+                        }
+                    }
+                    if (rows.size > 1) {
+                        if (suspects.lastOrNull() != rows.last().seq) suspects.addLast(rows.last().seq)
+                        bisectLimit = (rows.size + 1) / 2
+                        statusStore.update { it.copy(lastError = "http_400") }
+                    } else {
+                        dropRows(rows, "http_400", droppedReports++)
+                        bisectLimit = null
+                        popExhaustedRanges(suspects, rows.last().seq)
+                    }
+                }
                 413 -> {
+                    if (++refusals > maxRefusalsPerRun) {
+                        return fail(RetryCause.PROTOCOL, "http_413", null, sent)
+                    }
                     if (rows.size > 1) {
                         batchSize = maxOf(1, rows.size / 2)
                         statusStore.update { it.copy(batchSize = batchSize, lastError = "http_413") }
                     } else {
-                        dropOversized(rows, "http_413")
+                        dropRows(rows, "http_413", droppedReports++)
                     }
                 }
-                429 -> return fail(RetryCause.RATE_LIMITED, "http_429", response.retryAfterMs, sent)
-                in 500..599 -> return fail(RetryCause.SERVER, "http_${response.code}", response.retryAfterMs, sent)
-                else -> return fail(RetryCause.PROTOCOL, "http_${response.code}", response.retryAfterMs, sent)
+                else -> return failFor(response, sent)
             }
         }
         return UploadOutcome.Sent(sent, moreLeft = outbox.totals.value.count > 0)
     }
 
-    private suspend fun dropOversized(rows: List<OutboxEntity>, reason: String) {
-        outbox.remove(rows)
-        outbox.addDropped(rows.size.toLong())
+    /** Forgets the suspect ranges whose last event has just been sent or deleted. */
+    private fun popExhaustedRanges(suspects: ArrayDeque<Long>, lastSeq: Long) {
+        while (suspects.isNotEmpty() && lastSeq >= suspects.last()) suspects.removeLast()
+    }
+
+    private sealed class Attempt {
+        class Response(val result: HttpResult) : Attempt()
+        class Failed(val outcome: UploadOutcome) : Attempt()
+    }
+
+    private fun attempt(client: OkHttpClient, tgt: IngestTarget, payload: UploadPayload.Built, sent: Int): Attempt = try {
+        Attempt.Response(post(client, tgt, payload))
+    } catch (e: IOException) {
+        Attempt.Failed(fail(RetryCause.NETWORK, "network: ${e.message ?: e.javaClass.simpleName}", null, sent))
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        // Not an I/O error (Keystore/provider failure while signing the TLS handshake, invalid
+        // header…): same treatment, never an uncaught exception that would leave no trace.
+        Attempt.Failed(fail(RetryCause.NETWORK, "network: ${describe(e)}", null, sent))
+    }
+
+    /** Outcome for the answers that always end the run (401/403, 429, 5xx, anything unexpected). */
+    private fun failFor(response: HttpResult, sent: Int): UploadOutcome = when (response.code) {
+        401, 403 -> fail(RetryCause.AUTH, "http_${response.code}", response.retryAfterMs, sent)
+        429 -> fail(RetryCause.RATE_LIMITED, "http_429", response.retryAfterMs, sent)
+        in 500..599 -> fail(RetryCause.SERVER, "http_${response.code}", response.retryAfterMs, sent)
+        else -> fail(RetryCause.PROTOCOL, "http_${response.code}", response.retryAfterMs, sent)
+    }
+
+    /**
+     * Sends a batch without events. Returns null when the server accepts it (the envelope is fine, so a 400
+     * on events comes from the events), otherwise the outcome that ends the run: a 400 here means the
+     * envelope or the server is at fault, and deleting events would lose healthy data.
+     */
+    private fun probeEnvelope(client: OkHttpClient, tgt: IngestTarget, sent: Int): UploadOutcome? {
+        val payload = UploadPayload.build(tgt, emptyList(), clock.nowMillis())
+        val response = when (val a = attempt(client, tgt, payload, sent)) {
+            is Attempt.Failed -> return a.outcome
+            is Attempt.Response -> a.result
+        }
+        if (response.code != 200) {
+            return if (response.code == 400) {
+                fail(RetryCause.PROTOCOL, "http_400_envelope", null, sent)
+            } else {
+                failFor(response, sent)
+            }
+        }
+        val ack = try {
+            VigieJson.decodeFromString(IngestResponse.serializer(), response.body)
+        } catch (e: Exception) {
+            return fail(RetryCause.PROTOCOL, "bad_response", null, sent)
+        }
+        val total = ack.accepted + ack.duplicates + ack.rejected.size
+        return if (total == 0) null else fail(RetryCause.PROTOCOL, "ack_mismatch $total/0", null, sent)
+    }
+
+    /** Deletes events that cannot be sent (rows and `dropped_total` in one transaction) and traces them. */
+    private suspend fun dropRows(rows: List<OutboxEntity>, reason: String, reportsSoFar: Int) {
+        outbox.drop(rows)
         statusStore.update { it.copy(lastError = reason) }
+        if (reportsSoFar < MAX_DROP_REPORTS_PER_RUN) {
+            rows.forEach {
+                try {
+                    onDropped(DroppedEvent(it.seq, it.id, it.type, reason))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // Tracing must never keep the queue blocked.
+                }
+            }
+        }
     }
 
     private fun describe(e: Exception) = "${e.javaClass.simpleName}: ${e.message.orEmpty()}".take(200)
@@ -287,6 +405,14 @@ class Uploader(
         const val MAX_COMPRESSED_BYTES = 1024 * 1024
         const val MAX_RAW_BYTES = 8 * 1024 * 1024
         const val MAX_RETRY_AFTER_MS = 24 * 3_600_000L
+
+        /**
+         * 400/413 answers tolerated in one run. Bisecting one faulty event of a 500-event batch costs about
+         * 10 refusals, so a run handles a few; beyond that it ends with a normal PROTOCOL backoff and the
+         * next cycle continues (no request storm, the bisection loses nothing by being cut).
+         */
+        const val MAX_REFUSALS_PER_RUN = 60
+        const val MAX_DROP_REPORTS_PER_RUN = 5
         private val JSON = "application/json".toMediaType()
 
         /** `Retry-After` as delay-seconds or HTTP-date; null if absent or unparsable. */

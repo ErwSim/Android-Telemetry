@@ -48,6 +48,8 @@ data class PurgeReport(
 class Outbox(
     private val db: OutboxDatabase,
     private val json: Json = VigieJson,
+    /** Reference time for the age purge; null = the wall clock as given (tests). See [AgeHorizon]. */
+    private val ageHorizon: AgeHorizon? = null,
 ) {
     private val dao = db.outboxDao()
     private val mutex = Mutex()
@@ -103,8 +105,12 @@ class Outbox(
         }
     }
 
-    /** Oldest events first, optionally restricted to `sev >= minSev`. */
-    suspend fun batch(limit: Int, minSev: Int = 0): List<OutboxEntity> = dao.oldest(limit, minSev)
+    /**
+     * Oldest events first, optionally restricted to `sev >= minSev` and to `seq <= maxSeq` (the uploader
+     * uses the bound to keep re-sending only the range of a batch the server refused).
+     */
+    suspend fun batch(limit: Int, minSev: Int = 0, maxSeq: Long = Long.MAX_VALUE): List<OutboxEntity> =
+        dao.oldest(limit, minSev, maxSeq)
 
     suspend fun countMinSev(minSev: Int): Long = dao.countMinSev(minSev)
 
@@ -135,6 +141,8 @@ class Outbox(
     /**
      * Applies the age cap, then the size cap. The size cap removes the oldest events of the
      * lowest severity first, down to 90 % of [maxBytes] (hysteresis to avoid purging on every write).
+     * [nowMs] is the wall clock: the age cap does not use it as is but through [AgeHorizon] (when
+     * configured), so that a wall clock that jumped forward cannot purge the whole buffer at once.
      * Returns null when nothing was dropped.
      */
     suspend fun enforceLimits(maxBytes: Long, maxAgeMs: Long, nowMs: Long): PurgeReport? = mutex.withLock {
@@ -142,8 +150,9 @@ class Outbox(
         var bytes = 0L
         var oldest = Long.MAX_VALUE
         var newest = Long.MIN_VALUE
+        val ageReferenceMs = ageHorizon?.reference(nowMs) ?: nowMs
         tx {
-            val cutoff = nowMs - maxAgeMs
+            val cutoff = ageReferenceMs - maxAgeMs
             val aged = dao.olderThan(cutoff)
             if (aged.count > 0) {
                 dao.deleteOlderThan(cutoff)
@@ -195,6 +204,32 @@ class Outbox(
                 val total = dao.counter(COUNTER_DROPPED) ?: 0L
                 dao.setCounter(CounterEntity(COUNTER_DROPPED, total + n))
             }
+        }
+    }
+
+    /**
+     * Deletes events the server will never take (a single event refused alone) and counts them in
+     * `dropped_total`, in ONE transaction: after a crash the counter and the rows agree.
+     */
+    suspend fun drop(rows: List<OutboxEntity>) {
+        if (rows.isEmpty()) return
+        mutex.withLock {
+            ensureInit()
+            var removedCount = 0L
+            var removedBytes = 0L
+            tx {
+                rows.chunked(CHUNK).forEach { chunk ->
+                    val seqs = chunk.map { it.seq }
+                    removedBytes += dao.sizeOf(seqs)
+                    removedCount += dao.deleteSeqs(seqs)
+                }
+                val total = dao.counter(COUNTER_DROPPED) ?: 0L
+                dao.setCounter(CounterEntity(COUNTER_DROPPED, total + removedCount))
+            }
+            _totals.value = OutboxTotals(
+                (_totals.value.count - removedCount).coerceAtLeast(0),
+                (_totals.value.bytes - removedBytes).coerceAtLeast(0),
+            )
         }
     }
 
