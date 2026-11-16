@@ -20,8 +20,8 @@
 #   --rotate-passwords    régénère tous les mots de passe (indexeur, API, AdGuard, Caddy, console…)
 #   --reset-console-password  repose le mot de passe console « admin » de .env (sinon : seulement
 #                         à la création du compte ; un changement par set-password est conservé)
-#   --reset-adguard       régénère TOUTE la configuration AdGuard (sinon : seuls les réglages
-#                         gérés par Vigie sont réappliqués, ceux de l'interface sont conservés)
+#   --reset-adguard       régénère la configuration AdGuard (sinon : seuls les réglages gérés
+#                         par Vigie sont réappliqués) ; niveau et règles de la console conservés
 #   --renew-wazuh-certs   renouvelle les certificats internes de Wazuh (même AC)
 #   --renew-wazuh-ca      renouvelle l'AC interne de Wazuh et tous ses certificats
 #   --build               reconstruit l'image du collecteur (sinon : seulement si absente)
@@ -61,7 +61,7 @@ while (($#)); do
     --reset-adguard) RESET_ADGUARD=1; shift ;;
     --renew-wazuh-certs) RENEW_CERTS=--renew; shift ;;
     --renew-wazuh-ca) RENEW_CERTS=--renew-ca; shift ;;
-    -h | --help) sed -n '2,35p' "$0"; exit 0 ;;
+    -h | --help) sed -n '2,31p' "$0"; exit 0 ;;
     *) die "option inconnue : $1 (voir --help)" ;;
   esac
 done

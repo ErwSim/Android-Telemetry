@@ -7,13 +7,15 @@ tunnel **WireGuard** optionnel. L'installation tient en trois commandes ; tout c
 généré sur le serveur et n'est jamais versionné.
 
 ```
-Internet ──► 80/443 Caddy ─┬─ console.D  ─► collecteur:8080 (console + /api/console)
-                           ├─ ingest.D   ─► collecteur:8080 (/api/v1, certificat client OBLIGATOIRE)
+Internet ──► 80/443 Caddy ─┬─ console.D  ─► collecteur:8080 (console + /api/console, dont commandes et pistage)
+                           ├─ ingest.D   ─► collecteur:8080 (/api/v1, certificat client OBLIGATOIRE ;
+                           │                 dont le flux de commandes SSE /api/v1/commands/stream)
                            ├─ siem.D     ─► wazuh.dashboard:5601   ┐ liste d'IP + mot de passe Caddy,
                            ├─ adguard.D  ─► adguardhome:3000       ┘ puis compte propre au service
                            └─ dns.D      (certificat seulement)
          ──► 853 AdGuard Home (DoT, certificat de dns.D fourni par Caddy, rechargé à chaud)
 collecteur ──events.ndjson──► wazuh.manager ◄──querylog.json── AdGuard Home
+collecteur ──API :3000 (réseau interne, compte vigie-collecteur)──► AdGuard Home (vue « pistage », niveaux)
 wazuh.manager ──Filebeat──► wazuh.indexer (wazuh-alerts-*, wazuh-archives-*) ◄── wazuh.dashboard
 ```
 
@@ -62,7 +64,8 @@ Sans option, `install.sh` pose les questions. Il :
 
 1. vérifie Docker, Compose, la RAM, le disque, `vm.max_map_count` ;
 2. écrit `infra/.env` (droits 600) avec **tous les secrets générés** (mots de passe de l'indexeur, de
-   l'API Wazuh, d'AdGuard, du compte d'administration Caddy, de la console) ; les valeurs existantes
+   l'API Wazuh, d'AdGuard et du compte AdGuard du collecteur, du compte d'administration Caddy, de la
+   console) ; les valeurs existantes
    sont conservées d'une exécution à l'autre ;
 3. génère la PKI interne de Wazuh (`secrets/wazuh-certs/`, openssl, sans téléchargement) ;
 4. génère les configurations (`data/`) : comptes de l'indexeur hachés (bcrypt) — les comptes de
@@ -84,9 +87,11 @@ Sans option, `install.sh` pose les questions. Il :
 Il est **rejouable** : on le relance après toute modification de `.env` ou une mise à jour du dépôt
 (vérifié : deux exécutions successives laissent `.env` identique octet pour octet et la pile saine).
 Il ne défait pas ce que vous avez réglé dans les interfaces : mot de passe de la console changé
-avec `set-password`, réglages d'AdGuard (§6.2), utilisateurs créés dans le dashboard Wazuh.
+avec `set-password`, niveau de blocage DNS et règles posées depuis la console (§6.2), réglages
+d'AdGuard, utilisateurs créés dans le dashboard Wazuh.
 
-Options utiles : `--profile strict` (filtrage DNS strict), `--clientid` (§6.3), `--admin-allow
+Options utiles : `--profile permissif|equilibre|strict` (applique un niveau de blocage DNS, §6.2),
+`--clientid` (§6.3), `--admin-allow
 "203.0.113.0/24 2001:db8::/32"` (§5), `--rotate-passwords` (§8.3), `--reset-console-password`
 (§8.3), `--reset-adguard` (§6.2), `--renew-wazuh-certs` / `--renew-wazuh-ca` (§8.6), `--build`,
 `--no-start`.
@@ -161,6 +166,40 @@ l'interface du quotidien. L'ingestion exige un certificat client émis par le co
 jeton de l'appareil ; Caddy n'y expose que `/api/v1/*`, supprime tout en-tête `X-Vigie-*` entrant et
 pose `X-Vigie-Client-Cert-Sha256`, que le collecteur n'accepte que de l'adresse fixe de Caddy.
 
+### 5.1 Commandes à distance (v1.1) : ce qui transite
+
+Depuis la v1.1 (principe n° 2 révisé de `docs/ARCHITECTURE.md`, contrat §8), la console peut envoyer au
+téléphone des commandes d'une **liste fermée** : sonner, vibrer, arrêter la sonnerie, localiser
+(simples) ; verrouiller avec un message, retirer ce message, effacer (sensibles).
+
+- **Chemin** : navigateur → `console.D` (`/api/console/commands*`, session console) → collecteur →
+  `ingest.D` → agent, par le flux `GET /api/v1/commands/stream` (Server-Sent Events) que l'agent
+  ouvre lui-même avec son certificat client et son jeton (ou par interrogation `GET /api/v1/commands`).
+  Le résultat revient par `POST /api/v1/commands/{id}/result` et un événement `command.result`. Rien
+  n'est ouvert vers le téléphone : c'est lui qui se connecte. Les routes `/api/console/*` ne passent
+  que par `console.D` ; `ingest.D` n'expose que `/api/v1/*` (404 sinon).
+- **Ce que le serveur peut faire** : relayer une commande de la liste, telle que le navigateur l'a
+  construite (le collecteur la transmet à l'octet près), au plus 20 par heure et 10 en attente par
+  appareil. Un serveur compromis peut au pire faire sonner, vibrer ou localiser le téléphone.
+- **Ce qu'il ne peut pas faire** : signer une commande sensible. La signature (HMAC-SHA256) est
+  calculée dans le navigateur avec une clé dérivée d'un **code de commande** saisi à chaque fois,
+  jamais envoyé au serveur ni stocké par lui ; l'agent la vérifie et refuse (`bad_signature`), puis
+  se ferme aux commandes sensibles pendant une heure après 5 échecs (`locked_out`). L'effacement est
+  en plus désactivé par défaut dans l'app. Aucune commande ne peut modifier un réglage, la politique
+  ou l'enrôlement ; le canal se coupe dans l'app.
+- **Ce qui est journalisé** : chaque émission, annulation, expiration et résultat est un événement
+  (`command.issued`, `.cancelled`, `.expired`, `.reported` produits par le collecteur avec
+  `vigie.source = "server"`, `command.result` produit par l'appareil), exporté vers Wazuh (§7.2). Le
+  **message de verrouillage n'est jamais exporté** (seulement `message_set`) ni journalisé : il reste
+  dans la base du collecteur pour la console.
+- **Caddy et le flux SSE** : réponse transmise sans tampon (`flush_interval -1`), aucun délai de
+  Caddy ne coupe une réponse en cours (`read_body`/`read_header` ne visent que la lecture de la
+  requête, `idle` les connexions inactives entre deux requêtes) ; le collecteur envoie un maintien
+  toutes les 120 s (`VIGIE_CMD_KEEPALIVE_S`). Le journal d'accès de Caddy compte **une ligne par
+  connexion** (écrite à sa fermeture), pas une par message ; l'en-tête `Authorization` (jeton) y est
+  masqué. Les limites de taille de corps (9 Mo sur `ingest.D`, 1 Mo sur `console.D`) sont inchangées.
+  Vérifié (§11) : flux ouvert plus de 5 min à travers Caddy en HTTP/1.1 et HTTP/2 sans coupure.
+
 ## 6. DNS privé filtrant (AdGuard Home)
 
 ### 6.1 Résolveur, amont, DNSSEC
@@ -175,40 +214,69 @@ pose `X-Vigie-Client-Cert-Sha256`, que le collecteur n'accepte que de l'adresse 
   SERVFAIL et le bit AD est transmis au téléphone.
 - DNS en clair (53) : actif seulement sur le réseau Docker interne (WireGuard), jamais publié.
 
-### 6.2 Listes de blocage et profils
+### 6.2 Listes de blocage et niveaux
 
-| ID | Liste | Équilibré | Strict |
-|---|---|---|---|
-| 1 | `adguard/vigie-base.txt` (versionné) : exceptions indispensables + télémétrie Google/Samsung commentée ligne à ligne | ✓ | ✓ |
-| 2 | `adguard/vigie-strict.txt` (versionné) : Firebase Remote Config, Galaxy Store, push et cloud Samsung… | | ✓ |
-| 10 | HaGeZi **Multi PRO** (publicité, pistage, télémétrie ; faux positifs rares) | ✓ | |
-| 10 | HaGeZi **Multi PRO++** (plus agressive) | | ✓ |
-| 20 | HaGeZi **Native Tracker Samsung** | ✓ | ✓ |
-| 30 | HaGeZi **Threat Intelligence Feeds (medium)** : maliciels, hameçonnage, C2 | ✓ | ✓ |
-| 90 | `data/adguard/userfilters/regles-perso.txt` (vos règles, non versionnées, sauvegardées) | ✓ | ✓ |
+Trois **niveaux de blocage** ; la correspondance niveau → listes est **un seul fichier versionné**,
+[`adguard/niveaux.json`](adguard/niveaux.json), lu à la fois par `install.sh` (qui construit les
+listes d'AdGuard) et par le collecteur (`VIGIE_ADGUARD_LEVELS_FILE`, vue « pistage » de la console).
 
-Profil **équilibré** (défaut, décision du propriétaire) : Play Services, Play Store, notifications
-push FCM et apps bancaires (Play Integrity) restent fonctionnels grâce aux exceptions `@@…$important`
-de `vigie-base.txt` (test de connectivité, `mtalk*.google.com`, FCM, installations Firebase, Play,
-comptes Google, mises à jour Google et Samsung FOTA) ; Firebase Analytics, Crashlytics, journaux
-Firebase, télémétrie Play Services, régies Google et Samsung, diagnostic Samsung sont bloqués.
-Profil **strict** : `sudo ./install.sh --profile strict` (retour : `--profile equilibre`).
+| ID | Liste | Permissif | Équilibré | Strict |
+|---|---|---|---|---|
+| 1 | `adguard/vigie-base.txt` (versionné) : exceptions indispensables + télémétrie Google/Samsung commentée ligne à ligne | ✓ | ✓ | ✓ |
+| 2 | `adguard/vigie-strict.txt` (versionné) : Firebase Remote Config, Galaxy Store, push et cloud Samsung… | | | ✓ |
+| 10 | HaGeZi **Multi PRO** (publicité, pistage, télémétrie ; faux positifs rares) | | ✓ | |
+| 11 | HaGeZi **Multi PRO++** (plus agressive) | | | ✓ |
+| 20 | HaGeZi **Native Tracker Samsung** | | ✓ | ✓ |
+| 30 | HaGeZi **Threat Intelligence Feeds (medium)** : maliciels, hameçonnage, C2 | ✓ | ✓ | ✓ |
+| 90 | `data/adguard/userfilters/regles-perso.txt` (vos règles, non versionnées, sauvegardées) — hors niveaux, toujours active | ✓ | ✓ | ✓ |
 
-Les listes HaGeZi (GPL-3.0) sont téléchargées par AdGuard depuis jsDelivr et rafraîchies toutes les
-12 h.
+**Équilibré** (défaut à la première installation, décision du propriétaire) : Play Services, Play
+Store, notifications push FCM et apps bancaires (Play Integrity) restent fonctionnels grâce aux
+exceptions `@@…$important` de `vigie-base.txt` (test de connectivité, `mtalk*.google.com`, FCM,
+installations Firebase, Play, comptes Google, mises à jour Google et Samsung FOTA) ; Firebase
+Analytics, Crashlytics, journaux Firebase, télémétrie Play Services, régies Google et Samsung,
+diagnostic Samsung sont bloqués. **Strict** : PRO++ au lieu de PRO, plus `vigie-strict.txt`.
+**Permissif** : le minimum jugé utile — le flux de menaces (protection, pas confort : il ne casse
+rien d'ordinaire) et `vigie-base.txt` (une vingtaine de domaines de télémétrie et de régie Google
+et Samsung choisis un par un, sans effet visible, plus les exceptions qui garantissent push, Play et
+mises à jour) ; aucune liste publicitaire générale, pour dépanner une app récalcitrante sans
+renoncer à la protection contre les domaines malveillants.
+
+Toutes les listes sont **présentes** dans AdGuard quel que soit le niveau ; un niveau n'est qu'un
+jeu de listes **activées** (une liste désactivée n'est ni téléchargée ni chargée en mémoire). Les
+listes HaGeZi (GPL-3.0) sont téléchargées par AdGuard depuis jsDelivr (chemins vérifiés dans le
+dépôt `hagezi/dns-blocklists`) et rafraîchies toutes les 12 h.
+
+**Changer de niveau** : dans la console (vue « Pistage »), ou `sudo ./install.sh --profile strict`
+(`permissif`, `equilibre`). Les deux font la même chose : activer exactement les listes du niveau.
+
+**Source de vérité du niveau : l'état des listes dans la configuration d'AdGuard Home**, et rien
+d'autre. La console le change par l'API d'AdGuard (qui l'écrit aussitôt dans `AdGuardHome.yaml`) ;
+`install.sh` (et donc `update.sh`) le **conserve** ; seul `--profile` le change, ponctuellement — il
+n'est mémorisé nulle part ailleurs (`VIGIE_DNS_PROFILE` de la v1 n'est plus utilisé : lu une fois
+pour la migration, puis retiré de `.env`). Le niveau courant est celui dont les listes activées sont
+exactement celles du fichier (`install.sh` l'affiche ; « personnalisé » si vous avez activé ou
+désactivé une liste à la main dans AdGuard). Une liste ajoutée au fichier par une mise à jour du dépôt
+prend l'état du niveau en service.
+
+**Règles posées par la console** (`PUT /tracking/override`) : le collecteur les écrit dans un bloc
+`! vigie:begin … ! vigie:end` des « règles de filtrage personnalisées » d'AdGuard (`||domaine^$important`
+ou `@@||domaine^$important`). `install.sh` ne touche jamais aux règles personnalisées, et
+`--reset-adguard` recopie ce bloc dans la configuration régénérée (ainsi que le niveau).
 
 **Qui décide de quoi** (`adguard/merge-config.py`) : à chaque `install.sh`, la configuration gérée
-par Vigie est **fusionnée** dans celle en service (AdGuard est arrêté quelques secondes).
+par Vigie est **fusionnée** dans celle en service (AdGuard est arrêté quelques secondes, ce qui
+l'oblige à écrire sa configuration à jour avant la fusion).
 
-| Géré par Vigie (réappliqué à chaque `install.sh`, depuis `.env` et le dépôt) | À vous (conservé) |
-|---|---|
-| compte `admin` et son mot de passe ; TLS/DoT et certificat ; écoute DNS ; amonts (Quad9, Mullvad) et DNSSEC ; clients autorisés (mode ClientID) et client « Telephone (Vigie) » ; journal des requêtes lu par Wazuh ; listes Vigie et HaGeZi du profil (identifiants 1, 2, 10, 20, 30, 90) | règles personnalisées de l'interface (« Règles de filtrage personnalisées »), listes ajoutées, listes d'autorisation, clients, services bloqués, réécritures DNS, limitation de débit, cache, statistiques, durée du journal ; et l'état activé/désactivé d'une liste Vigie tant que son adresse ne change pas |
+| Géré par Vigie (réappliqué à chaque `install.sh`, depuis `.env` et le dépôt) | Décidé dans la console (conservé) | À vous (conservé) |
+|---|---|---|
+| comptes `admin` et `vigie-collecteur` et leurs mots de passe ; TLS/DoT et certificat ; écoute DNS ; amonts (Quad9, Mullvad) et DNSSEC ; clients autorisés (mode ClientID) et client « Telephone (Vigie) » ; journal des requêtes lu par Wazuh ; **présence**, adresse, nom et identifiant des listes de `niveaux.json` et de la liste 90 | niveau de blocage (listes activées) ; bloc `! vigie:begin … ! vigie:end` des règles personnalisées | autres règles personnalisées, listes ajoutées (autres adresses), listes d'autorisation, clients, services bloqués, réécritures DNS, limitation de débit, cache, statistiques, durée du journal |
 
-Vérifié : règle personnalisée, client, réécriture, limitation de débit et liste HaGeZi désactivée
-dans l'interface survivent à `install.sh` et au passage `--profile strict` (qui remplace bien les
-listes du profil). Pour repartir de zéro : `sudo ./install.sh --reset-adguard` (l'ancienne
-configuration est gardée dans `data/adguard/conf/AdGuardHome.yaml.avant-reset-*`). Les règles
-versionnables à la main restent possibles dans `data/adguard/userfilters/regles-perso.txt`.
+Vérifié (§11) : niveau changé dans la console et règle posée par la console conservés par
+`install.sh` rejoué ; `--profile` appliqué puis vu identique par la console. Pour repartir de zéro :
+`sudo ./install.sh --reset-adguard` (l'ancienne configuration est gardée dans
+`data/adguard/conf/AdGuardHome.yaml.avant-reset-*` ; niveau et bloc de la console conservés). Les
+règles versionnables à la main restent possibles dans `data/adguard/userfilters/regles-perso.txt`.
 
 ### 6.3 Risque de résolveur ouvert
 
@@ -239,6 +307,35 @@ Le mode ClientID a été vérifié en mode TLS interne (§11) ; l'obtention rée
 ne peut pas être testée sans domaine et jeton réels. Le sous-réseau Docker n'est volontairement pas
 autorisé : sa passerelle est l'adresse vue pour toute connexion relayée par `docker-proxy` (IPv6
 sans ip6tables), ce qui rouvrirait le résolveur.
+
+### 6.4 Vue « pistage » : accès du collecteur à AdGuard Home
+
+Le collecteur lit le journal des requêtes d'AdGuard et change niveaux et règles par l'**API
+d'AdGuard sur le réseau Docker interne** (`VIGIE_ADGUARD_URL=http://adguardhome:3000`) ; rien de plus
+n'est publié (le port 3000 ne l'est pas, `adguard.D` garde ses deux barrières). Il utilise un compte
+dédié, **`vigie-collecteur`**, dont le mot de passe est généré par `install.sh`
+(`ADGUARD_COLLECTOR_PASSWORD` dans `.env`, haché bcrypt dans `AdGuardHome.yaml`, transmis au
+collecteur par variable d'environnement, jamais journalisé). **AdGuard Home n'a qu'un type de
+compte : ce compte est administrateur complet d'AdGuard.** Le secret est donc traité comme celui
+d'`admin` (`.env` en 600, sauvegardes chiffrées, `--rotate-passwords`) ; un compte distinct permet de
+le changer sans toucher à celui que vous utilisez, et de voir qu'il ne sert qu'au collecteur.
+
+Variables du collecteur posées par `docker-compose.yml` : `VIGIE_ADGUARD_URL`, `VIGIE_ADGUARD_USER`,
+`VIGIE_ADGUARD_PASSWORD`, `VIGIE_ADGUARD_LEVELS_FILE` (= `adguard/niveaux.json`, monté en lecture
+seule), `VIGIE_ADGUARD_POLL_S` (`.env`, défaut 60), `VIGIE_CMD_KEEPALIVE_S` (`.env`, défaut 120) et,
+en mode ClientID (§6.3), `VIGIE_ADGUARD_CLIENTS` : `install.sh` et `enroll.sh` y écrivent
+`<device_id>=<ClientID>` pour chaque appareil actif, afin que la vue n'attribue au téléphone que les
+requêtes de son ClientID. Hors mode ClientID, l'adresse IP d'un téléphone change sans cesse : la
+variable reste vide et tout le journal d'AdGuard est attribué à l'appareil consulté.
+
+**Limite constatée lors de l'essai (§11.1, à corriger dans le collecteur)** : AdGuard Home v0.107.80
+ne renvoie rien pour `GET /control/querylog?older_than=T` quand `T` tombe **entre** deux entrées du
+journal sur disque (il ne trouve que l'horodatage exact d'une entrée, ou un instant postérieur à la
+dernière), et ignore alors aussi l'entrée la plus récente encore en mémoire. Le collecteur interroge
+avec `older_than` = maintenant − 60 s : dès que le téléphone a fait des requêtes dans la dernière
+minute, le relevé revient vide et la plage est considérée comme lue. Dans l'essai, 4 requêtes sur 5
+ont été comptées ; avec un téléphone réel (requêtes continues), la vue « pistage » risque de rester
+très incomplète. Les blocages eux-mêmes, le niveau et les règles ne sont pas affectés.
 
 ## 7. Wazuh
 
@@ -271,13 +368,16 @@ sans ip6tables), ce qui rouvrirait le résolveur.
 | Réseau | chiffrement cellulaire nul (12), rétrogradation 2G / IMSI-catcher (10), traceur BLE qui suit (10), position simulée (9), Wi-Fi ouvert (4), réseau sans DNS privé (5), changement d'heure ≥ 1 h (5), USB avec ADB (5) |
 | Pistage | requête DNS d'une app vers la télémétrie Google/Samsung (2 : sans alerte, marquée pour les tableaux) |
 | AdGuard | domaine du flux de menaces demandé (10), répété (12), rafale de blocages (5) |
+| Commandes à distance (émises par le collecteur, `vigie.source = "server"` exigé : un appareil ne peut pas les imiter) | effacement demandé (12), verrouillage demandé (10), retrait du message (5), localisation demandée (5), autre commande émise (3), rafale de 8 commandes en 10 min (8, déclenchée par une commande simple pour ne jamais masquer une alerte de niveau 10-12), commande sensible expirée sans résultat (6), autre expiration et annulation (3), résultat reçu par l'API `command.reported` (2 : marqué seulement) |
+| Commandes à distance (résultat dit par le téléphone, `command.result`) | effacement exécuté (12), canal des commandes sensibles verrouillé après 5 signatures invalides `locked_out` (12), signature invalide `bad_signature` : quelqu'un essaie de commander le téléphone sans le code (10), verrouillage exécuté (10), commande échouée (6), commande refusée pour un autre motif (5), commande simple exécutée (3), refus `replay` d'un renvoi (2) |
+| Notifications (`app.notification`, APK compagnon) | marquées sans alerte (2) ; le titre et le texte ne figurent jamais dans une description |
 | Repli | sévérité 3 / 2 signalée par l'agent pour un type sans règle dédiée (10 / 6) |
 
 Correspondances MITRE ATT&CK **Mobile** (T1629.003, T1638, T1461, T1453, T1517, T1626.001…) : la base
 MITRE embarquée dans Wazuh ne connaît que la matrice Entreprise (une balise `<mitre>` mobile est
 rejetée et disparaît de l'alerte) ; elles sont donc portées par les groupes `attack_mobile_<ID>`.
 
-**Tests** : `wazuh/tests/cases/*.log` (121 cas, un fichier par cas, la dernière ligne doit déclencher
+**Tests** : `wazuh/tests/cases/*.log` (143 cas, un fichier par cas, la dernière ligne doit déclencher
 la règle attendue) ; `./wazuh/tests/run-tests.sh` les rejoue avec `wazuh-logtest` dans le manager ;
 `wazuh/tests/generer-cas.py` les régénère.
 
@@ -286,7 +386,12 @@ règles filles sont essayées par niveau décroissant), d'où les événements `
 (un par champ) ; un défaut **déjà présent à l'enrôlement** ne produit pas de changement, donc pas
 d'alerte : vérifier la posture initiale dans la console. Un micro utilisé écran éteint pendant un
 appel (source `voice_communication`, capteur de proximité) n'alerte pas. `wazuh-logtest` n'applique
-pas l'option `ignore` des règles (vérifiée dans le flux réel).
+pas l'option `ignore` des règles (vérifiée dans le flux réel). Le résultat d'une commande arrive deux
+fois (`command.result` de l'appareil, `command.reported` du collecteur) : seul le premier alerte.
+
+**Non couvert faute d'événement** : les changements de niveau de blocage et les règles posées par la
+vue « pistage » ne sont **pas exportés** par le collecteur (ils ne figurent que dans son journal de
+processus, `docker compose logs collector`) ; aucune règle Wazuh ne peut donc les signaler.
 
 ### 7.3 Rétention, carte, tableaux de bord
 
@@ -296,7 +401,14 @@ pas l'option `ignore` des règles (vérifiée dans le flux réel).
   `data.vigie.data.location` en **geo_point** (carte) ; feuilles de `data.vigie.data.*` en `keyword`
   (un même nom de champ porte des types différents selon l'événement : sans cela l'indexeur rejetait
   des documents) ; champs numériques connus typés pour les graphiques. Un modèle ne s'applique qu'aux
-  index créés après lui (index quotidiens : effet le lendemain d'une modification).
+  index créés après lui (index quotidiens : effet le lendemain d'une modification). Les champs
+  libres de la v1.1 — `title` et `text` d'`app.notification` (512 caractères chacun, n'importe quel
+  contenu), `params.*` et `message_set` des commandes, `vigie.source` — sont indexés en `keyword`
+  (au-delà de 1024 caractères une valeur reste dans le document sans être indexée : jamais de rejet) ;
+  le message de verrouillage n'est pas exporté. Vérifié (§11) : notification de 512 caractères avec
+  guillemets, barres obliques inverses, sauts de ligne et émojis indexée, export = archives à l'unité,
+  politiques de rétention rattachées aux index du jour. Le contenu des notifications est donc dans
+  `wazuh-archives-*` (90 jours) si l'option « contenu » est activée dans l'app.
 - Tableaux de bord importés : **« Vigie — sécurité du téléphone »** (alertes dans le temps, par règle,
   par technique ATT&CK Mobile, liste, carte des positions) et **« Vigie — pistage et DNS »** (apps qui
   contactent la télémétrie, domaines bloqués, événements par type), + recherches enregistrées.
@@ -337,7 +449,8 @@ sudo ./install.sh --rotate-passwords
 
 régénère tous les mots de passe de `.env` et les applique partout : comptes de l'indexeur (par
 l'API de sécurité, compte par compte : les utilisateurs créés dans le dashboard sont conservés),
-Filebeat, dashboard, API Wazuh, collecteur, AdGuard, Caddy, et le compte console `admin` (vérifié :
+Filebeat, dashboard, API Wazuh, collecteur, AdGuard (`admin` et `vigie-collecteur` : vérifié, ancien
+mot de passe refusé par AdGuard, collecteur reconnecté avec le nouveau), Caddy, et le compte console `admin` (vérifié :
 ancien mot de passe refusé, nouveau accepté, utilisateur ajouté dans le dashboard toujours valide).
 
 Règle par compte :
@@ -347,7 +460,7 @@ Règle par compte :
 | Console Vigie `admin` | la base du collecteur | `docker compose exec collector vigie-collector user set-password admin` : conservé par `install.sh` ; `--reset-console-password` repose celui de `.env` |
 | Indexeur `admin`, `kibanaserver`, `vigie_reader` ; API `wazuh-wui` | `.env` | modifier `.env` puis `./install.sh` (pas dans le dashboard : Filebeat, le dashboard et le collecteur utilisent ces comptes ; une modification faite ailleurs est remise à la valeur de `.env`) |
 | Autres utilisateurs du dashboard Wazuh | le dashboard | dans le dashboard (jamais touchés par `install.sh`) |
-| AdGuard `admin`, accès Caddy `admin`, WireGuard | `.env` | modifier `.env` puis `./install.sh` |
+| AdGuard `admin`, AdGuard `vigie-collecteur` (compte du collecteur, administrateur comme tout compte AdGuard), accès Caddy `admin`, WireGuard | `.env` | modifier `.env` puis `./install.sh` |
 
 ### 8.4 Dépannage
 
@@ -385,6 +498,13 @@ ou utilisez votre propre serveur ntfy avec jeton. Vérifié avec un récepteur l
 œuvre : intégration Wazuh `custom-vigie-notify` (`wazuh/notify/`), configurée au démarrage du manager.
 Les échéances des certificats d'appareils ne sont pas notifiées : `./enroll.sh --list` (§8.7).
 
+Commandes à distance (v1.1) : au seuil par défaut (10), sont notifiés le verrouillage et l'effacement
+demandés, le verrouillage et l'effacement exécutés, une signature invalide et le verrouillage du canal
+après 5 signatures invalides. La notification ne contient jamais le **message de verrouillage** (le
+collecteur ne l'exporte pas) ni le **contenu d'une notification** du téléphone (`app.notification`
+est de niveau 2 et sa description ne reprend ni titre ni texte). Vérifié avec un récepteur local
+(§11).
+
 ### 8.6 Certificats internes Wazuh
 
 La PKI interne (indexeur, manager, dashboard, admin) est valable 5 ans (AC : 10 ans). L'échéance est
@@ -420,7 +540,7 @@ d'appareils durent 2 ans.
 | wazuh.indexer | 3 Go (tas Java `WAZUH_INDEXER_HEAP=2g`) | 2,4 Go |
 | wazuh.manager | 1,5 Go | 0,3 Go |
 | wazuh.dashboard | 1 Go (tas Node 640 Mo) | 0,2-0,5 Go |
-| adguardhome | 768 Mo (listes HaGeZi chargées : ≈ 300 Mo attendus) | 15 Mo sans listes |
+| adguardhome | 768 Mo | 110 Mo avec les vraies listes chargées (niveau strict : PRO++, Samsung, menaces ≈ 620 000 règles ; équilibré : 107 Mo) |
 | collector | 512 Mo | < 50 Mo |
 | caddy | 256 Mo | 15 Mo |
 
@@ -478,6 +598,50 @@ DNS-01 et image Caddy à module DNS, téléchargement des listes HaGeZi et réso
 d'Internet dans les conteneurs), WireGuard, `ulimits` d'origine (l'hôte d'essai plafonne `nofile` à
 20 000 : surcharge de test uniquement), consommation mémoire avec les listes chargées.
 
+### 11.1 Version 1.1 (essai du 16/11/2026, mode TLS interne)
+
+Pile installée avec l'image du collecteur reconstruite depuis le code courant, trois appareils
+enrôlés, simulateur du collecteur en agent de commandes **à travers Caddy en mTLS**
+(`sim --enroll s25.vigie --follow --command-code 'correct horse battery staple'`, conteneur sur le
+réseau `vigie`). Prouvé :
+
+- **flux SSE** : `curl -N` sur `https://ingest.D/api/v1/commands/stream` (certificat et jeton d'un
+  appareil) ouvert 7 min en HTTP/1.1 et en HTTP/2, maintiens reçus toutes les 120 s, aucune coupure
+  par Caddy ; une commande émise pendant ce temps arrive dans la seconde (pas de tampon) ; une seule
+  ligne de journal d'accès par connexion, jeton masqué ; le simulateur se reconnecte seul après une
+  recréation du collecteur ;
+- **commandes** : `ring` émise par `POST /api/console/commands` → exécutée, résultat revenu
+  (`executed`) ; `lock` signée avec le code du vecteur de test du contrat (§8, clé dérivée pour
+  l'identifiant de l'appareil) → exécutée ; `lock` signée avec un autre code → `bad_signature` ; 5
+  signatures invalides → `locked_out` ; annulation d'une commande en attente ; alertes Wazuh
+  correspondantes (100230-100245) dans `wazuh-alerts-*`, webhook reçu pour les niveaux ≥ 10, sans
+  message de verrouillage ni contenu de notification ; message de verrouillage absent de
+  `events.ndjson`, des archives et des alertes ;
+- **routage** : `/api/console/*` → 404 sur `ingest.D` ; `/api/v1/*` → 404 sur `console.D` ; refus
+  TLS sans certificat client ou avec une autre AC ; certificat d'un appareil + jeton d'un autre →
+  401 ; en-tête `X-Vigie-Client-Cert-Sha256` forgé ignoré ; corps de 2 Mo → 413 sur `console.D` ;
+- **AdGuard réel** : listes HaGeZi réelles téléchargées par AdGuard (depuis un faux CDN de test,
+  voir ci-dessous) ; requêtes DoT (`tools/dot-query.py`) vers des domaines de `vigie-base.txt`
+  bloquées et visibles dans la vue « pistage » avec leur motif ; `PUT /tracking/override` →
+  domaine bloqué par une requête DoT (avant : non bloqué ; après : `0.0.0.0`), domaine
+  indispensable refusé (`409 essential_domain`) ; `PUT /tracking/level` strict puis permissif →
+  listes 2/11/20 et 10 activées ou désactivées dans AdGuard (PRO++ téléchargée à l'activation) ;
+- **source de vérité** : `install.sh` rejoué → niveau `permissif` et bloc `vigie:begin` conservés, `.env`
+  identique octet pour octet ; `install.sh --profile strict` → la console lit `strict` (au relevé
+  suivant, ≤ 60 s) ; `--reset-adguard` → configuration régénérée, niveau et bloc conservés ;
+  `--rotate-passwords` → compte `vigie-collecteur` changé, ancien mot de passe refusé, vue
+  « pistage » joignable ;
+- **indexation** : 435 lignes exportées = 435 documents dans `wazuh-archives-*` (dont 25 événements
+  serveur), aucun rejet ; `run-tests.sh` : 143 cas sur 143.
+
+Aménagements propres à l'environnement d'essai (fichier Compose supplémentaire hors dépôt, par
+`VIGIE_COMPOSE_EXTRA`) : faux CDN `cdn.jsdelivr.net` (alias réseau, AC d'essai ajoutée au magasin
+d'AdGuard, amont `[/jsdelivr.net/]127.0.0.11` posé par l'API le temps de l'essai) servant les vraies
+listes HaGeZi récupérées depuis GitHub ; `nofile`/`memlock` plafonnés ; seuils disque de l'indexeur
+en valeurs absolues (disque de 252 Go presque plein en proportion). Non vérifié ici : `update.sh`
+(reconstruction depuis les registres d'images), expiration réelle d'une commande (1 h au moins),
+vrai téléphone et vrai agent Android.
+
 ## 12. Fichiers
 
 ```
@@ -486,7 +650,9 @@ infra/
 ├── docker-compose.yml
 ├── lib/common.sh                    fonctions communes
 ├── caddy/                           Caddyfile, modes TLS, sites DNS, Dockerfile.dns (DNS-01)
-├── adguard/                         gabarit AdGuardHome.yaml, règles Vigie (base, strict)
+├── adguard/                         gabarit AdGuardHome.yaml, règles Vigie (base, strict),
+│                                    niveaux.json (niveaux de blocage, lu aussi par le collecteur),
+│                                    merge-config.py (fusion de la configuration en service)
 ├── wazuh/
 │   ├── gen-certs.sh                 PKI interne Wazuh (openssl)
 │   ├── indexer/  dashboard/          configurations (gabarits *.tmpl rendus dans data/)

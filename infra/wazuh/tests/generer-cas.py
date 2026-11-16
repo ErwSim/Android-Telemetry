@@ -185,7 +185,7 @@ cases = [
  ("100233", "commande-emise-effacement", "Effacement à distance demandé", [issued("wipe", {}, 2)]),
  ("100234", "commande-emise-retrait-message", "Retrait du message de verrouillage demandé", [issued("clear_lock_message", {}, 1)]),
  ("100100", "commande-emise-imitee", "command.issued envoyé par un appareil (sans source serveur) : aucune alerte", [ev("command.issued", {"command_id": CMD, "type": "wipe", "signed": True, "created_by": "admin"}, 2)]),
- ("100235", "commandes-rafale", "8 commandes en 10 min vers le même appareil", [issued("ring", {"duration_s": 5}) for _ in range(7)] + [issued("lock", {}, 1, message_set=False)]),
+ ("100235", "commandes-rafale", "8 commandes en 10 min vers le même appareil", [issued("lock", {}, 1, message_set=False)] + [issued("ring", {"duration_s": 5}) for _ in range(7)]),
  ("100236", "commande-annulee", "Commande annulée", [ev("command.cancelled", {"command_id": CMD, "type": "ring", "signed": False, "cancelled_by": "admin"}, source="server")]),
  ("100237", "commande-expiree", "Commande simple expirée", [ev("command.expired", {"command_id": CMD, "type": "ring", "signed": False, "delivered": False}, 1, source="server")]),
  ("100238", "commande-sensible-expiree", "Verrouillage expiré sans résultat", [ev("command.expired", {"command_id": CMD, "type": "lock", "signed": True, "delivered": True}, 1, source="server")]),
@@ -200,6 +200,7 @@ cases = [
  ("100247", "commande-echec", "Commande échouée", [result("lock", "failed", "not_device_owner", 1)]),
  ("100270", "notification-avec-contenu", "Notification avec titre et texte (jamais dans la description)", [ev("app.notification", {"package": "org.thoughtcrime.securesms", "event": "posted", "category": "msg", "channel": "messages", "ongoing": False, "importance": "high", "title": "Alice <script>\"'", "text": "Ton code est 123456 — « secret » \\ ligne\nsuivante", "redacted": True})]),
  ("100270", "notification-retiree", "Notification retirée (sans contenu)", [ev("app.notification", {"package": "com.whatsapp", "event": "removed", "category": "msg", "channel": "c", "ongoing": False, "importance": "default"})]),
+ ("100233", "commandes-rafale-effacement", "Rafale terminée par un effacement : l'alerte d'effacement n'est pas masquée", [issued("ring", {"duration_s": 5}) for _ in range(7)] + [issued("wipe", {}, 2)]),
 ]
 for i, (rid, slug, desc, lines) in enumerate(cases, 1):
     with open(os.path.join(out, "%03d-%s.log" % (i, slug)), "w") as f:
