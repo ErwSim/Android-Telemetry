@@ -153,7 +153,7 @@ class PolicyEngineTest {
     @Test
     fun `apply then undo everything restores the exact initial state`() {
         val initial = gw.snapshot()
-        val report = engine().apply(PolicySelection(Profile.STRICT))
+        val report = engine().apply(PolicySelection(Profile.STRICT, mapOf("dns_lock" to true)))
         assertTrue(report.failed.toString(), report.allOk)
         assertTrue("com.samsung.android.rubin.app" in gw.hidden)
         assertTrue("com.samsung.android.app.tips" in gw.suspended)
@@ -255,6 +255,47 @@ class PolicyEngineTest {
         assertNull(engine().dnsRecord())
         val dns = events.map { it.second }.single { it.str("action") == "private_dns_set" }
         assertTrue(dns.str("error")!!.contains("HOST_NOT_SERVING"))
+    }
+
+    @Test
+    fun `the private DNS lock is off unless asked for`() {
+        val e = engine()
+        assertFalse(PolicySelection().privateDnsLock)
+        e.apply(PolicySelection(Profile.BALANCED))
+        assertEquals(Dpm.DNS_MODE_HOSTNAME, gw.dnsMode)
+        assertFalse("first try without the lock", "disallow_config_private_dns" in gw.restrictions)
+        // Asked for afterwards: the DNS is re-applied with the lock; asked off again: unlocked.
+        e.apply(PolicySelection(Profile.BALANCED, mapOf("dns_lock" to true)))
+        assertTrue("disallow_config_private_dns" in gw.restrictions)
+        e.apply(PolicySelection(Profile.BALANCED))
+        assertFalse("disallow_config_private_dns" in gw.restrictions)
+        assertEquals(Dpm.DNS_MODE_HOSTNAME, gw.dnsMode)
+    }
+
+    @Test
+    fun `nothing selected applies nothing, then one thing only`() {
+        val e = engine()
+        val catalog = e.catalog
+        val none = PolicySelection(Profile.STRICT).withNothingSelected(catalog)
+        assertTrue(e.preview(none).none { it.op == ChangeOp.APPLY })
+        val before = gw.snapshot()
+        assertTrue(e.apply(none).allOk)
+        assertEquals(before, gw.snapshot())
+        // Only the private DNS, without its lock.
+        val dnsOnly = none.copy(overrides = none.overrides + ("dns" to true))
+        assertEquals(listOf("dns"), e.preview(dnsOnly).filter { it.op == ChangeOp.APPLY }.map { it.id })
+        e.apply(dnsOnly)
+        assertEquals(Dpm.DNS_MODE_HOSTNAME, gw.dnsMode)
+        assertEquals(before.hidden, gw.snapshot().hidden)
+        assertEquals(before.restrictions, gw.snapshot().restrictions)
+        // One section switched off, the others untouched.
+        val noPackages = PolicySelection(Profile.BALANCED).withItems(catalog.packages, false)
+        val plan = e.preview(noPackages)
+        assertTrue(plan.none { it.id.startsWith("pkg:") && it.op == ChangeOp.APPLY })
+        assertTrue(plan.any { it.id == "restr:no_cellular_2g" && it.op == ChangeOp.APPLY })
+        // Applying "nothing" undoes what was applied.
+        e.apply(none)
+        assertEquals(before, gw.snapshot())
     }
 
     @Test

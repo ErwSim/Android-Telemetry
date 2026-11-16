@@ -17,6 +17,10 @@
     <string name="policy_profile_strict_desc">Ajoute la dé-googlisation et la dé-samsungisation poussées. Peut casser : compte Samsung, Galaxy Store, Samsung Cloud, notifications Samsung, Appli Google et l\'Assistant, mode sans échec, ajout de certificats. Les éléments les plus risqués (Services Google Play, Play Store, antivol, paiement, NFC) restent décochés : à cocher un par un en connaissance de cause.</string>
     <string name="policy_preview">Aperçu des changements</string>
     <string name="policy_reset_selection">Valeurs par défaut du profil</string>
+    <string name="policy_select_nothing">Tout décocher</string>
+    <string name="policy_select_nothing_desc">« Tout décocher » éteint tous les interrupteurs (applications, permissions, restrictions, réglages, DNS privé, sauvegarde) : cochez ensuite seulement ce que vous voulez essayer, par exemple le DNS privé seul, puis « Aperçu ». Rien ne change sur le téléphone avant « Appliquer » ; ce qui est déjà appliqué et n\'est plus coché sera rétabli.</string>
+    <string name="policy_section_none">Tout décocher ici</string>
+    <string name="policy_section_defaults">Cocher les choix par défaut</string>
 
     <string name="policy_dns_title">DNS privé imposé</string>
     <string name="policy_dns_desc">Impose le DNS sur TLS vers votre serveur (AdGuard Home) pour tout le téléphone : blocage des traqueurs et journal DNS côté serveur. Avant d\'imposer quoi que ce soit, Vigie vérifie que l\'hôte répond en DNS sur TLS, sinon le téléphone perdrait Internet. Si l\'hôte devient durablement injoignable, Vigie peut repasser en mode automatique (réglable dans Réglages › Device Owner).</string>
@@ -25,7 +29,7 @@
     <string name="policy_dns_current">Mode actuel</string>
     <string name="policy_dns_enable">Imposer ce DNS</string>
     <string name="policy_dns_lock">Verrouiller le réglage</string>
-    <string name="policy_dns_lock_desc">Empêche de changer le DNS privé dans les Paramètres (restriction disallow_config_private_dns).</string>
+    <string name="policy_dns_lock_desc">Empêche de changer le DNS privé dans les Paramètres (restriction disallow_config_private_dns). Éteint par défaut : imposez d\'abord le DNS sans verrou, vérifiez qu\'Internet fonctionne quelques jours, puis verrouillez. Avec le verrou, si le serveur DNS ne répond plus, seuls Vigie (repli automatique, « Rétablir ») et l\'issue de secours ADB peuvent changer le DNS.</string>
     <string name="policy_dns_fallback_active">En repli : le serveur était injoignable, le DNS est en mode automatique.</string>
 
     <string name="policy_packages_title">Applications désactivées</string>

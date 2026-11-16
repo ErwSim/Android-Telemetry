@@ -159,7 +159,7 @@ class PolicyEngineRescueTest {
     @Test
     fun `with an unreadable state, undo everything still restores what the catalog can have changed`() {
         val initial = gw.snapshot()
-        engine().apply(PolicySelection(Profile.BALANCED, mapOf("backup" to false)))
+        engine().apply(PolicySelection(Profile.BALANCED, mapOf("backup" to false, "dns_lock" to true)))
         assertTrue("com.samsung.android.rubin.app" in gw.hidden)
         assertEquals(Dpm.DNS_MODE_HOSTNAME, gw.dnsMode)
         assertTrue(RestrictionGuard.DNS_LOCK in gw.restrictions)

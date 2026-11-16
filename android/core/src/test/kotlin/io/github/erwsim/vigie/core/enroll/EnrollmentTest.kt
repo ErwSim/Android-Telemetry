@@ -78,6 +78,59 @@ class EnrollmentTest {
     }
 
     @Test
+    fun aNewFileForTheSameServerKeepsTheBufferAndOnlyANewServerClearsIt() {
+        val credentials = MemoryCredentials()
+        val manager = EnrollmentManager(EnrollmentStore(MemoryPrefs(), ReversingBox()), credentials, FakeClock(), "1.0.0", { null })
+        var cleared = 0
+        val first = manager.parse(file())
+        assertEquals(EnrollmentChange.FIRST, manager.changeFor(first))
+        assertEquals(EnrollmentChange.FIRST, manager.import(first) { cleared++ })
+
+        // Renewal (the client certificate lasts two years): same server, same device, new key and token.
+        val renewedCert = HeldCertificate.Builder().commonName("dev_8f3a").ecdsa256().signedBy(clientCa).build()
+        val renewal = manager.parse(file(token = "tok-456", certPem = renewedCert.certificatePem(), keyPem = renewedCert.privateKeyPkcs8Pem()))
+        assertEquals(EnrollmentChange.RENEWAL, manager.changeFor(renewal))
+        assertEquals(EnrollmentChange.RENEWAL, manager.import(renewal) { cleared++ })
+        assertEquals("pending events are kept", 0, cleared)
+        assertEquals("tok-456", manager.target()!!.second.token)
+        assertEquals(renewedCert.keyPair.private, credentials.key)
+
+        // Same server, another device id (device re-created on the server): kept too, sent under the new id.
+        val otherCert = HeldCertificate.Builder().commonName("dev_other").ecdsa256().signedBy(clientCa).build()
+        val newIdentity = manager.parse(file(deviceId = "dev_other", certPem = otherCert.certificatePem(), keyPem = otherCert.privateKeyPkcs8Pem()))
+        assertEquals(EnrollmentChange.NEW_IDENTITY, manager.import(newIdentity) { cleared++ })
+        assertEquals(0, cleared)
+        assertEquals("dev_other", manager.target()!!.second.deviceId)
+
+        // Another server: what was collected for the first one never goes to the second.
+        val elsewhere = manager.parse(file(url = "https://ingest.autre.example", deviceId = "dev_other", certPem = otherCert.certificatePem(), keyPem = otherCert.privateKeyPkcs8Pem()))
+        assertEquals(EnrollmentChange.NEW_SERVER, manager.changeFor(elsewhere))
+        assertEquals(EnrollmentChange.NEW_SERVER, manager.import(elsewhere) { cleared++ })
+        assertEquals(1, cleared)
+    }
+
+    @Test
+    fun aFailedKeyImportChangesNothingAndKeepsTheBuffer() {
+        val failing = object : ClientCredentialStore {
+            override fun import(privateKey: PrivateKey, chain: List<X509Certificate>) = throw java.security.KeyStoreException("keystore unavailable")
+            override fun keyManager() = null
+            override fun chain() = emptyList<X509Certificate>()
+            override fun delete() = Unit
+        }
+        val prefs = MemoryPrefs()
+        EnrollmentManager(EnrollmentStore(prefs, ReversingBox()), MemoryCredentials(), FakeClock(), "1.0.0", { null }).let { it.import(it.parse(file())) }
+        val manager = EnrollmentManager(EnrollmentStore(prefs, ReversingBox()), failing, FakeClock(), "1.0.0", { null })
+        var cleared = 0
+        try {
+            manager.import(manager.parse(file(url = "https://ingest.autre.example"))) { cleared++ }
+            fail("expected the import to fail")
+        } catch (_: java.security.KeyStoreException) {
+        }
+        assertEquals(0, cleared)
+        assertEquals("https://ingest.exemple.fr/", manager.state.value?.ingestUrl)
+    }
+
+    @Test
     fun aTokenOrDeviceIdThatCannotBeSentIsRefusedAtImport() {
         // The token goes into an HTTP header, the device id into every batch: a value OkHttp would
         // refuse to send must be rejected when the file is read, not at every upload.

@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.erwsim.vigie.R
 import io.github.erwsim.vigie.core.Agent
+import io.github.erwsim.vigie.core.enroll.EnrollmentChange
 import io.github.erwsim.vigie.core.enroll.EnrollmentError
 import io.github.erwsim.vigie.core.enroll.EnrollmentException
 import io.github.erwsim.vigie.core.enroll.EnrollmentParser
@@ -105,6 +107,19 @@ fun EnrollmentScreen(agent: Agent, modifier: Modifier) {
                     stringResource(if (candidate.serverCa.isEmpty()) R.string.enroll_ca_system else R.string.enroll_ca_pinned),
                 )
                 candidate.privateDnsHost?.let { StatusLine(stringResource(R.string.enroll_dns), it) }
+                // Re-enrollment: say what happens to the events waiting in the buffer.
+                when (remember(candidate, current) { agent.enrollment.changeFor(candidate) }) {
+                    EnrollmentChange.FIRST -> Unit
+                    EnrollmentChange.RENEWAL -> Text(stringResource(R.string.enroll_change_renewal, totals.count), style = MaterialTheme.typography.bodySmall)
+                    EnrollmentChange.NEW_IDENTITY -> Text(
+                        stringResource(R.string.enroll_change_identity, current?.deviceId.orEmpty(), candidate.deviceId, totals.count),
+                        color = toneColor(Tone.WARN), style = MaterialTheme.typography.bodySmall,
+                    )
+                    EnrollmentChange.NEW_SERVER -> Text(
+                        stringResource(R.string.enroll_change_server, current?.ingestUrl.orEmpty(), candidate.ingestUrl, totals.count),
+                        color = toneColor(Tone.ERROR), style = MaterialTheme.typography.bodySmall,
+                    )
+                }
                 candidate.warnings.forEach {
                     Text(stringResource(R.string.enroll_warning, it), color = toneColor(Tone.WARN), style = MaterialTheme.typography.bodySmall)
                 }
@@ -113,7 +128,8 @@ fun EnrollmentScreen(agent: Agent, modifier: Modifier) {
                         busy = true
                         scope.launch {
                             try {
-                                withContext(Dispatchers.IO) { agent.enrollment.import(candidate) }
+                                // Also the re-enrollment path: the buffer is kept unless the server changes.
+                                withContext(Dispatchers.IO) { agent.enroll(candidate) }
                                 parsed = null
                                 val deleted = sourceUri?.let { deleteSource(context, it) } == true
                                 sourceUri = null
@@ -121,7 +137,6 @@ fun EnrollmentScreen(agent: Agent, modifier: Modifier) {
                                 message = resources.getString(
                                     if (deleted) R.string.enroll_done_deleted else R.string.enroll_done_not_deleted,
                                 ) + "\n" + ping
-                                agent.requestUpload(force = true)
                             } catch (e: Exception) {
                                 message = resources.getString(R.string.enroll_import_error, e.toString())
                             } finally {
@@ -155,6 +170,9 @@ fun EnrollmentScreen(agent: Agent, modifier: Modifier) {
                     Button(enabled = !busy, onClick = ::ping) { Text(stringResource(R.string.action_test_connection)) }
                     OutlinedButton(enabled = !busy, onClick = { confirmUnenroll = true }) { Text(stringResource(R.string.action_unenroll)) }
                 }
+                HorizontalDivider()
+                Text(stringResource(R.string.enroll_reenroll_desc), style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(enabled = !busy, onClick = { picker.launch(arrayOf("*/*")) }) { Text(stringResource(R.string.action_reenroll)) }
             }
 
             else -> SectionCard(stringResource(R.string.enroll_new_title)) {

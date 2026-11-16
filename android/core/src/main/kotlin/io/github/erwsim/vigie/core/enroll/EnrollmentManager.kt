@@ -15,6 +15,21 @@ import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 
+/** What a `.vigie` import changes, and what happens to the events waiting in the buffer. */
+enum class EnrollmentChange {
+    /** Not enrolled yet. */
+    FIRST,
+
+    /** Same server, same device id (new certificate, key or token): the buffer is kept. */
+    RENEWAL,
+
+    /** Same server, other device id: the buffer is kept and sent under the new id. */
+    NEW_IDENTITY,
+
+    /** Other ingest address: the buffer collected for the previous server is deleted. */
+    NEW_SERVER,
+}
+
 /**
  * Enrollment lifecycle: parse a `.vigie` file, import its key into the Keystore and seal the
  * token, build the mTLS client, test it, and unenroll.
@@ -42,14 +57,31 @@ class EnrollmentManager(
         bytes.fill(0)
     }
 
+    /** What importing [parsed] would change, compared with the current enrollment. */
+    fun changeFor(parsed: ParsedEnrollment): EnrollmentChange {
+        val current = _state.value ?: return EnrollmentChange.FIRST
+        return when {
+            current.ingestUrl != parsed.ingestUrl -> EnrollmentChange.NEW_SERVER
+            current.deviceId != parsed.deviceId -> EnrollmentChange.NEW_IDENTITY
+            else -> EnrollmentChange.RENEWAL
+        }
+    }
+
     /**
      * Imports the key (non-exportable) and stores the sealed token. After this call the parsed
      * object should be dropped: the PEM key is not kept anywhere by the agent.
+     *
+     * Also the way to renew an enrollment (the client certificate lasts two years) without
+     * unenrolling: the buffered events are kept, see [EnrollmentChange]. [clearPending] is called
+     * only for another server ([EnrollmentChange.NEW_SERVER]), once the new key is in place and
+     * before the new address is used: what was collected for a server is never sent to another.
      */
     @Synchronized
-    fun import(parsed: ParsedEnrollment) {
+    fun import(parsed: ParsedEnrollment, clearPending: () -> Unit = {}): EnrollmentChange {
         val previous = _state.value
+        val change = changeFor(parsed)
         credentials.import(parsed.privateKey, parsed.clientChain)
+        if (change == EnrollmentChange.NEW_SERVER) clearPending()
         val enrollment = Enrollment(
             ingestUrl = parsed.ingestUrl,
             deviceId = parsed.deviceId,
@@ -67,6 +99,7 @@ class EnrollmentManager(
             put("old", previous?.deviceId ?: "none")
             put("new", enrollment.deviceId)
         }
+        return change
     }
 
     /** HTTP client and target for uploads, or null when not enrolled. */

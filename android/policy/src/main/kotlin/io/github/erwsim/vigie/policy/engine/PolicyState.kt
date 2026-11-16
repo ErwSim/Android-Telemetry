@@ -88,10 +88,28 @@ data class PolicySelection(
     fun isSelected(item: CatalogItem): Boolean = profile.includes(item.profile) && (overrides[item.id] ?: item.default)
 
     val privateDns: Boolean get() = overrides[ID_DNS] ?: true
-    val privateDnsLock: Boolean get() = overrides[ID_DNS_LOCK] ?: true
+
+    /**
+     * Off unless asked for: the lock (`disallow_config_private_dns`) removes the owner's own way out
+     * through the Settings if the DNS host stops answering. First impose the DNS without it, watch
+     * it work, then lock.
+     */
+    val privateDnsLock: Boolean get() = overrides[ID_DNS_LOCK] ?: false
 
     /** Backup re-enabling is part of the balanced profile only (keeps Google features working). */
     val restoreBackup: Boolean get() = profile == Profile.BALANCED && (overrides[ID_BACKUP] ?: true)
+
+    /** Same profile with every item of [items] switched on or off (one section of the screen). */
+    fun withItems(items: List<CatalogItem>, selected: Boolean): PolicySelection =
+        copy(overrides = overrides + items.associate { it.id to selected })
+
+    /**
+     * Nothing selected at all: every catalog item, the private DNS, its lock and the backup switched
+     * off. Starting point to apply one thing only (e.g. just the private DNS). Applying it as is
+     * undoes whatever was applied.
+     */
+    fun withNothingSelected(catalog: PolicyCatalog): PolicySelection =
+        copy(overrides = catalog.items.associate { it.id to false } + mapOf(ID_DNS to false, ID_DNS_LOCK to false, ID_BACKUP to false))
 
     companion object {
         const val ID_DNS = "dns"

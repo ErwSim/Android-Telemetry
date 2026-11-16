@@ -6,6 +6,7 @@ import androidx.annotation.StringRes
 import io.github.erwsim.vigie.policy.R
 import io.github.erwsim.vigie.policy.engine.AndroidDevicePolicyGateway
 import io.github.erwsim.vigie.policy.engine.AppliedRecord
+import io.github.erwsim.vigie.policy.engine.CatalogItem
 import io.github.erwsim.vigie.policy.engine.Dpm
 import io.github.erwsim.vigie.policy.engine.EngineReport
 import io.github.erwsim.vigie.policy.engine.JournalEntry
@@ -107,6 +108,12 @@ class PolicyController(
     fun setProfile(profile: Profile) = updateSelection { it.copy(profile = profile) }
 
     fun setSelected(id: String, selected: Boolean) = updateSelection { it.copy(overrides = it.overrides + (id to selected)) }
+
+    /** Switches a whole section (packages, permissions, restrictions…) on or off. */
+    fun setSection(items: List<CatalogItem>, selected: Boolean) = updateSelection { it.withItems(items, selected) }
+
+    /** Nothing selected: every item, the private DNS, its lock and the backup switched off. */
+    fun selectNothing() = updateSelection { it.withNothingSelected(catalog) }
 
     /** Back to the catalog defaults of the current profile. */
     fun resetSelection() = updateSelection { it.copy(overrides = emptyMap()) }

@@ -76,7 +76,11 @@ git). On peut aussi fournir `VIGIE_KEYSTORE_FILE`, `VIGIE_KEYSTORE_PASSWORD`, `V
 ## Installer et activer
 
 Tous les scripts sont dans `android/scripts/`, en double : `*.sh` (Linux/macOS) et `*.ps1` (Windows
-PowerShell). Ils exigent `adb` (Android SDK Platform-Tools) dans le `PATH` et un téléphone en débogage USB.
+PowerShell). Les `.ps1` ne sont pas signés : Windows les refuse avec sa politique d'exécution par défaut.
+Lancez-les ainsi, sans rien changer à la configuration de la machine (la dérogation ne vaut que pour ce
+processus) : `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-apk.ps1 [options]`.
+Un chemin de fichier passé à un script (`install-apk`, `push-enrollment`) est relatif au dossier d'où vous
+le lancez. Ils exigent `adb` (Android SDK Platform-Tools) dans le `PATH` et un téléphone en débogage USB.
 Avec plusieurs appareils connectés : `export ANDROID_SERIAL=…` / `$env:ANDROID_SERIAL = '…'`.
 
 1. **Préparer le téléphone** : Options de développement › Débogage USB ; désactiver temporairement le
@@ -106,8 +110,10 @@ Avec plusieurs appareils connectés : `export ANDROID_SERIAL=…` / `$env:ANDROI
 
 ## Enrôler
 
-1. Sur le serveur : `vigie-collector enroll --name s25 --out s25.vigie`.
-2. Copier par câble : `./scripts/push-enrollment.sh s25.vigie` (→ `Téléchargements`).
+1. Sur le serveur : `sudo ./enroll.sh s25` depuis `infra/` (installation Docker Compose, produit
+   `./s25.vigie`) ; avec le collecteur lancé seul : `vigie-collector enroll --name s25 --out s25.vigie`.
+2. Copier par câble : `./scripts/push-enrollment.sh chemin/vers/s25.vigie` (→ `Téléchargements` ; le chemin
+   est relatif au dossier d'où vous lancez le script).
 3. Dans l'app : Réglages › Enrôlement › « Importer un fichier .vigie », vérifier le résumé, « Enrôler ».
    La clé privée est importée dans l'Android Keystore (non exportable) puis oubliée ; le jeton est chiffré
    par une clé AES du Keystore ; un test `GET /api/v1/ping` est lancé ; l'app tente de supprimer le fichier.
@@ -117,6 +123,23 @@ Si `server_ca_pem` est présent, seule cette AC est acceptée pour le serveur. S
 (jamais celles ajoutées par l'utilisateur). Les redirections HTTP sont refusées. Avant l'enrôlement, les
 événements restent sur le téléphone (dans la limite du tampon). « Désenrôler » efface clé, jeton et
 événements en attente ; la collecte locale continue.
+
+**Renouveler sans désenrôler** (le certificat client expire au bout de 2 ans ; l'écran Enrôlement affiche
+la date et la signale 30 jours avant) : produire un nouveau fichier `.vigie` sur le serveur, puis
+Enrôlement › « Importer un nouveau fichier .vigie ». Avant de valider, l'écran dit ce que deviennent les
+événements en attente :
+
+| Nouveau fichier | Tampon |
+|---|---|
+| même adresse d'ingestion, même `device_id` (renouvellement) | conservé |
+| même adresse, autre `device_id` | conservé, envoyé sous le nouvel identifiant (`agent.config_changed` `enrollment.device_id` le signale) |
+| autre adresse d'ingestion | **effacé** : rien de ce qui a été collecté pour un serveur n'est envoyé à un autre |
+
+Aujourd'hui `enroll` crée toujours un **nouvel** appareil (nouvel identifiant) : un renouvellement tombe donc
+dans le deuxième cas, et l'historique côté serveur est réparti sur deux identifiants (révoquer l'ancien
+ensuite : `sudo ./enroll.sh --revoke dev_…`). Une commande de renouvellement à identifiant constant
+manque au collecteur. Le jeton (512 caractères ASCII visibles au plus) et l'identifiant sont validés à
+l'import.
 
 ## Mettre à jour
 
@@ -252,6 +275,12 @@ confirmé après relecture de l'effet : il survit aux mises à jour de l'app et 
 remet exactement l'état d'avant. Un échec (exception, refus Samsung, effet non constaté) donne `ok=false` avec
 l'erreur et n'empêche pas les autres éléments. Aucune politique ne vient du serveur.
 
+**N'appliquer qu'une partie** : « Tout décocher » (carte Profil) éteint tous les interrupteurs, DNS privé,
+verrou et sauvegarde compris ; cocher ensuite seulement ce qu'on veut essayer (par exemple le DNS privé
+seul), « Aperçu », « Appliquer ». Chaque section (applications, permissions, restrictions) a aussi « Tout
+décocher ici » et « Cocher les choix par défaut ». Ce qui est déjà appliqué et n'est plus coché est rétabli
+à l'application suivante (l'aperçu le montre).
+
 ### Journaux et posture (collecteurs, onglet Collecteurs)
 
 | Collecteur (id) | Émet | Remarques |
@@ -318,6 +347,8 @@ Méthode : **masquer** (`setApplicationHidden`, services arrêtés) pour les age
 2. `setGlobalPrivateDnsModeSpecifiedHost` (hors fil principal) ; codes `HOST_NOT_SERVING` /
    `FAILURE_SETTING` rapportés ; relecture du mode.
 3. Verrou optionnel `disallow_config_private_dns`.
+   Le verrou est **éteint par défaut** : imposer d'abord le DNS sans verrou, vérifier quelques jours
+   qu'Internet fonctionne partout (Wi-Fi, mobile, portails captifs), puis verrouiller.
 4. **Repli** (Réglages › Device Owner) : si le réseau n'est plus validé **et** que le contrôle DoT de l'hôte
    (par ses dernières adresses connues) échoue sans interruption pendant 15 min (5 à 240), le DNS repasse en
    mode automatique pour garder Internet ; `security.policy` sév. 2 (alerte Wazuh). Dès que l'hôte répond de
@@ -424,9 +455,10 @@ auto-attribution des permissions, `setUserControlDisabledPackages`, retrait du D
 fausse alerte, démarrage au boot et survie du service 24 h, import réel dans l'Android Keystore et handshake
 TLS avec une clé Keystore (Conscrypt), réception des diffusions, journaux réseau et sécurité réels, GPS et
 capteur de mouvement significatif, consommation batterie, rendu de l'interface, désactivation de la CT par
-`network_security_config`, politique (profils, DNS privé, repli), issue de secours ADB. Scripts ADB relus,
-non exécutés ; les scripts PowerShell n'ont été ni exécutés ni analysés (pas de PowerShell dans
-l'environnement). Robolectric n'a pas pu être utilisé (ses jars Android sont servis par un miroir
+`network_security_config`, politique (profils, DNS privé, repli), issue de secours ADB. Les scripts bash de
+secours, d'installation et de copie ont été exécutés contre un `adb` factice (jamais contre un téléphone) ;
+les scripts PowerShell ont été relus ligne à ligne contre les `.sh` mais ni exécutés ni analysés par
+PowerShell (absent de l'environnement). Robolectric n'a pas pu être utilisé (ses jars Android sont servis par un miroir
 inaccessible depuis l'environnement de développement) : les classes Android sont remplacées par des stubs
 dans les tests ; les types produits uniquement depuis un rappel Android (écran, batterie, localisation…) sont
 vérifiés par relecture, pas par test.

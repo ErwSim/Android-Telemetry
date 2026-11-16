@@ -102,18 +102,21 @@ fun PolicyScreen(agent: Agent, resumeTick: Int, modifier: Modifier) {
         item { ProfileCard(state, controller) }
         item { DnsCard(state, controller) }
         item {
-            ItemsCard(stringResource(R.string.policy_packages_title), stringResource(R.string.policy_packages_desc)) {
-                catalog.packages.filter(::visible).forEach { CatalogRow(it, state, controller) }
+            val items = catalog.packages.filter(::visible)
+            ItemsCard(stringResource(R.string.policy_packages_title), stringResource(R.string.policy_packages_desc), state, controller, items) {
+                items.forEach { CatalogRow(it, state, controller) }
             }
         }
         item {
-            ItemsCard(stringResource(R.string.policy_permissions_title), stringResource(R.string.policy_permissions_desc)) {
-                catalog.permissions.filter(::visible).forEach { CatalogRow(it, state, controller) }
+            val items = catalog.permissions.filter(::visible)
+            ItemsCard(stringResource(R.string.policy_permissions_title), stringResource(R.string.policy_permissions_desc), state, controller, items) {
+                items.forEach { CatalogRow(it, state, controller) }
             }
         }
         item {
-            ItemsCard(stringResource(R.string.policy_restrictions_title), stringResource(R.string.policy_restrictions_never)) {
-                catalog.restrictions.filter(::visible).forEach { CatalogRow(it, state, controller) }
+            val items = catalog.restrictions.filter(::visible)
+            ItemsCard(stringResource(R.string.policy_restrictions_title), stringResource(R.string.policy_restrictions_never), state, controller, items) {
+                items.forEach { CatalogRow(it, state, controller) }
             }
         }
         item { SettingsCard(state, controller) }
@@ -208,6 +211,9 @@ private fun ProfileCard(state: PolicyUiState, controller: PolicyController) {
             Button(enabled = !state.busy, onClick = controller::requestPreview) { Text(stringResource(R.string.policy_preview)) }
             TextButton(enabled = !state.busy, onClick = controller::resetSelection) { Text(stringResource(R.string.policy_reset_selection)) }
         }
+        // To apply one thing only (e.g. just the private DNS): switch everything off, then pick.
+        TextButton(enabled = !state.busy, onClick = controller::selectNothing) { Text(stringResource(R.string.policy_select_nothing)) }
+        Text(stringResource(R.string.policy_select_nothing_desc), style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -237,9 +243,28 @@ private fun DnsCard(state: PolicyUiState, controller: PolicyController) {
 }
 
 @Composable
-private fun ItemsCard(title: String, description: String, content: @Composable () -> Unit) {
+private fun ItemsCard(
+    title: String,
+    description: String,
+    state: PolicyUiState,
+    controller: PolicyController,
+    items: List<CatalogItem>,
+    content: @Composable () -> Unit,
+) {
     SectionCard(title) {
         Text(description, style = MaterialTheme.typography.bodySmall)
+        // Only the items of the current profile can be switched (the others are shown because applied).
+        val switchable = items.filter { state.selection.profile.includes(it.profile) }
+        if (switchable.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(enabled = !state.busy, onClick = { controller.setSection(switchable, false) }) {
+                    Text(stringResource(R.string.policy_section_none))
+                }
+                TextButton(enabled = !state.busy, onClick = { controller.setSection(switchable.filter { it.default }, true) }) {
+                    Text(stringResource(R.string.policy_section_defaults))
+                }
+            }
+        }
         content()
     }
 }

@@ -16,7 +16,9 @@ import io.github.erwsim.vigie.core.collector.CollectorHost
 import io.github.erwsim.vigie.core.collector.CollectorRunState
 import io.github.erwsim.vigie.core.enroll.AndroidKeystoreCredentials
 import io.github.erwsim.vigie.core.enroll.AndroidKeystoreSecretBox
+import io.github.erwsim.vigie.core.enroll.EnrollmentChange
 import io.github.erwsim.vigie.core.enroll.EnrollmentManager
+import io.github.erwsim.vigie.core.enroll.ParsedEnrollment
 import io.github.erwsim.vigie.core.enroll.EnrollmentStore
 import io.github.erwsim.vigie.core.event.AgentClock
 import io.github.erwsim.vigie.core.event.BootIdentity
@@ -47,6 +49,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
  * Process-wide wiring of the agent (no DI framework). Created once in `Application.onCreate`
@@ -211,6 +214,23 @@ class Agent private constructor(
         } catch (_: Exception) {
             // Already unregistered.
         }
+    }
+
+    /**
+     * Enrolls, or re-enrolls without unenrolling (renewed certificate, new token…). The buffered
+     * events are kept unless the file points to another server ([EnrollmentChange.NEW_SERVER]).
+     * The upload backoff left by the expired credentials is forgotten and an upload is requested.
+     * Blocking (Keystore, database): call from a background thread.
+     */
+    fun enroll(parsed: ParsedEnrollment): EnrollmentChange {
+        val change = enrollment.import(parsed) {
+            uploadScheduler.cancelAll()
+            runBlocking { outbox.clear() }
+        }
+        uploadStatus.update { it.copy(lastError = null, consecutiveFailures = 0, nextAttemptAtMs = 0) }
+        uploadScheduler.ensurePeriodic(settings[CoreSettings.UPLOAD_INTERVAL_MIN])
+        requestUpload(force = true)
+        return change
     }
 
     /** Forgets the enrollment and deletes the events waiting for that server. */
