@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/endpoints.ts';
 import { ApiError } from '../api/client.ts';
@@ -44,6 +44,9 @@ export default function Commands() {
   const [cancelling, setCancelling] = useState<string | undefined>();
   // « Localiser maintenant » : instant de la demande, puis position reçue depuis.
   const [locateSince, setLocateSince] = useState<number | undefined>();
+  const [fixArrived, setFixArrived] = useState(false);
+  // Arrivée détectée sur le flux SSE après la demande (pas de comparaison d'horloges téléphone / navigateur).
+  const waitingFix = useRef(false);
   const [liveLoc, setLiveLoc] = useState<(LastLocation & { provider?: string }) | undefined>();
 
   const reloadList = list.reload;
@@ -56,6 +59,10 @@ export default function Commands() {
         if (lat === undefined || lon === undefined) return;
         const acc = num(ev.data, 'acc_m');
         const provider = str(ev.data, 'provider');
+        if (waitingFix.current) {
+          waitingFix.current = false;
+          setFixArrived(true);
+        }
         setLiveLoc({ ts: ev.ts, lat, lon, ...(acc !== undefined ? { acc_m: acc } : {}), ...(provider ? { provider } : {}) });
         reloadDevices();
       }
@@ -76,7 +83,6 @@ export default function Commands() {
   const disabled = sending || !!device.revoked;
   const cmds = list.commands ?? [];
   const badSigs = badSignatureCount(cmds, now);
-  const fixArrived = locateSince !== undefined && loc && Date.parse(loc.ts) >= locateSince - 5000;
 
   const fail = (e: unknown) => {
     const msg = e instanceof ApiError ? (e.status === 429 ? `Limite atteinte : ${e.message}` : e.message) : String(e);
@@ -89,7 +95,11 @@ export default function Commands() {
     try {
       const c = prepareCommand(deviceId, type, params, defaultValidityMs(type));
       await api.createCommand({ device_id: deviceId, payload: c.payload });
-      if (type === 'locate') setLocateSince(Date.now());
+      if (type === 'locate') {
+        waitingFix.current = true;
+        setFixArrived(false);
+        setLocateSince(Date.now());
+      }
       setNotice({
         tone: 'ok',
         text: `« ${commandLabel(type)} » envoyée au serveur. ${channel.key === 'connected' ? 'Le téléphone la reçoit dans un instant.' : "Elle attend que le téléphone se connecte (voir l'état du canal)."}`,
@@ -156,7 +166,7 @@ export default function Commands() {
               </Link>
             }
           >
-            <PositionPanel loc={loc} locateSince={locateSince} fixArrived={!!fixArrived} />
+            <PositionPanel loc={loc} locateSince={locateSince} fixArrived={fixArrived} />
           </Card>
           <Card title="Actions sensibles (signées)">
             {!canSign() && (
