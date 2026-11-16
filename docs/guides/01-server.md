@@ -173,13 +173,13 @@ Test-NetConnection <VPS IP> -Port 9200
   are described in [guide 05](05-operations.md). The **Tracking** page relies on AdGuard Home: it is complete only
   if AdGuard is reachable (`docker compose ps`).
 - Wazuh: three dashboards are already imported, "Watchpost — phone security", "Watchpost — tracking and DNS" and
-  "Watchpost — detections and apps" (in the dashboard menu, dashboards section; the exact label may vary with the
+  "Watchpost — detections and applications" (in the dashboard menu, dashboards section; the exact label may vary with the
   version). They stay empty until a device sends data.
 - AdGuard Home: at every `install.sh`, the configuration **managed by Watchpost** (`admin` account, TLS and DoT,
   Quad9 and Mullvad upstreams, DNSSEC, the profile's lists, the log read by Wazuh) is applied again, and the rest is
   **kept**: custom rules from the interface, added lists, allowlists, clients, DNS rewrites, log duration. AdGuard is
   stopped for a few seconds during the merge: the phone's DNS is briefly unavailable (see `infra/README.md` §6.2 for
-  the full rule). You can also put rules in `infra/data/adguard/userfilters/custom-rules.txt` (guide 05).
+  the full rule). You can also put rules in `infra/data/adguard/userfilters/personal-rules.txt` (guide 05).
 - If the console rejects your password several times in a row, it rate-limits attempts (10 failures per address and
   per account, then one per minute).
 - **Changing the console password**: the source of truth is the collector's database.

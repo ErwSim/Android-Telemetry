@@ -237,7 +237,7 @@ phone's DNS is then unavailable for a short moment.
 
   ```bash
   cd ~/watchpost/infra
-  echo '@@||domain.example^$important' | sudo tee -a data/adguard/userfilters/custom-rules.txt
+  echo '@@||domain.example^$important' | sudo tee -a data/adguard/userfilters/personal-rules.txt
   sudo ./install.sh --yes
   python3 tools/dot-query.py dns.watchpost.example.org domain.example     # must answer a real address
   ```

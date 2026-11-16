@@ -117,7 +117,7 @@ the time of the first one. Only an integer from 1 to 1,000,000 is taken into acc
 | `app.foreground` | `package`, `class`, `event` (`resumed`/`paused`) |
 | `app.permission_changed` | `package`, `permission`, `granted` |
 | `app.special_access` (on change + daily) | `accessibility_services`, `notification_listeners`, `device_admins`, `overlay_apps`, `unknown_sources_apps`, `usage_access_apps`, `vpn_apps`, `default_apps` (object) |
-| `app.notification` | see §10 (produced by the companion APK) |
+| `app.notification` | see §10. Produced by the companion APK `:notifier` (separate and optional), never by a service of the Device Owner APK |
 | `app.risk`, `app.role`, `app.ops` | see §11.2 |
 
 ### sensor.*
@@ -640,7 +640,7 @@ Events: `security.policy` with `action` ∈ `permission_denied`/`permission_rest
 
 | Type | When | `data` |
 |---|---|---|
-| `app.risk` | at installation, at update, and daily if the score or the reasons change | `package`, `label`, `version_code`, `installer`, `from_store` (bool), `score` (0 to 100), `level` (`low`/`medium`/`high`), `reasons` (list of codes), `granted` (parallel list of the codes of capabilities actually granted) |
+| `app.risk` | at installation, at update, and daily if the score or the reasons change | `package`, `label`, `version_code`, `installer`, `from_store` (bool), `score` (0 to 100), `level` (`low`/`medium`/`high`), `reasons` (list of codes), `granted` (the subset of `reasons` whose capability is actually granted: intent versus state) |
 | `app.role` | on change (the first reading serves as a reference, without an event) | `role` (`sms`/`dialer`/`browser`/`home`/`keyboard`, and `assistant`/`autofill` when readable), `old`, `new` (packages; absent = unknown). Severity 2 for `sms`/`dialer`/`assistant`/`keyboard`/`autofill`, 1 otherwise |
 | `app.ops` (experimental, off by default, requires `DUMP` granted over ADB) | hourly, only for operations that were used | `from`, `to`, `apps`: list of `{package, op, count, background_count, rejected_count, last_ts}` with `op` ∈ `send_sms`/`read_sms`/`receive_sms`/`call_phone`/`read_contacts`/`read_call_log`/`record_audio`/`camera`/`fine_location`/`get_accounts` |
 
@@ -662,8 +662,8 @@ or notifications), `combo_sms_fraud` (SMS sending + start at boot without being 
 
 **The score measures declared capabilities, not acts.** `app.risk` is based on declared capabilities (requested
 permissions, declared components) and not on granted permissions: the profile must be useful at installation time
-and in the quarantine screen, before any grant, and must remain high when a guard prevents the grant. A reason
-may carry the suffix `:granted` in the parallel `granted` list, to tell intent from state. A declared capability is
+and in the quarantine screen, before any grant, and must remain high when a guard prevents the grant. The
+`granted` list tells intent from state. A declared capability is
 worth its points, plus a bonus if it is granted; any application installed from outside a store is at least
 `medium`. The event's `level` field is authoritative: the collector and the console do not recompute the level.
 It follows that legitimate parental control, antivirus, automation and caller-identification applications come

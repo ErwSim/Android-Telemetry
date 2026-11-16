@@ -325,7 +325,7 @@ The first five boxes come from guide 01 (section 9).
   query before/after), the complete blocked/allowed count with a real phone (the collector's reading of AdGuard's log
   was fixed after a trial where it skipped some; `server/collector/README.md`, "Reading"), the consistency of the
   level displayed.
-- [ ] **V92. Wazuh dashboard "Watchpost — detections and apps"**: display in a browser (never looked at) and
+- [ ] **V92. Wazuh dashboard "Watchpost — detections and applications"**: display in a browser (never looked at) and
   correlation rules (13) with real detections.
 - [ ] **V93. `update.sh` on a real server** (rebuild from the image registries, never tried).
 
