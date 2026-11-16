@@ -18,6 +18,9 @@ enum class ItemKind {
     @SerialName("private_dns") PRIVATE_DNS,
     @SerialName("backup") BACKUP,
     @SerialName("vpn") VPN,
+
+    /** A capability guard switched on (contract §11.1); its per-package denials are PERMISSION records. */
+    @SerialName("guard") GUARD,
 }
 
 @Serializable
@@ -70,6 +73,21 @@ data class AppliedRecord(
     @SerialName("prev_vpn_lockdown") val prevVpnLockdown: Boolean? = null,
     @SerialName("vpn_lockdown") val vpnLockdown: Boolean? = null,
     @SerialName("last_error") val lastError: String? = null,
+    // ---- Capability guards (contract §11.1), see CapabilityGuards.
+    /** Guard record: the extended option (SMS reading, call log…) is on. */
+    @SerialName("guard_extended") val guardExtended: Boolean? = null,
+    /** Guard record: the exception list in force (snapshot of the setting when it was applied). */
+    @SerialName("guard_allowed") val guardAllowed: List<String>? = null,
+    /** Quarantine guard record: released package → its first install time (an update keeps it released). */
+    val released: Map<String, Long> = emptyMap(),
+    /** Accessibility / input methods guard: the permitted list before Vigie (meaningful when [prevListSet]). */
+    @SerialName("prev_list") val prevList: List<String>? = null,
+    /** False: there was no permitted list before Vigie (`null`, everything allowed). */
+    @SerialName("prev_list_set") val prevListSet: Boolean = false,
+    /** Accessibility / input methods guard: the permitted list Vigie set. */
+    @SerialName("applied_list") val appliedList: List<String>? = null,
+    /** Quarantine record: first install time of the package when it was quarantined. */
+    @SerialName("first_install_ms") val firstInstallMs: Long? = null,
 )
 
 @Serializable
@@ -128,6 +146,8 @@ data class JournalEntry(
     val profile: String? = null,
     val ok: Boolean,
     val error: String? = null,
+    /** Runtime permission concerned (guards: `target` is then the package). */
+    val permission: String? = null,
 )
 
 /**

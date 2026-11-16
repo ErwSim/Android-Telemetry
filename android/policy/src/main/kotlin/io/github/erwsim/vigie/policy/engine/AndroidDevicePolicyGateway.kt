@@ -1,15 +1,18 @@
 package io.github.erwsim.vigie.policy.engine
 
 import android.Manifest
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.UserManager
 import android.provider.Settings
 import android.provider.Telephony
 import android.telecom.TelecomManager
+import android.view.accessibility.AccessibilityManager
 import android.view.inputmethod.InputMethodManager
 import androidx.core.net.toUri
 import io.github.erwsim.vigie.policy.VigieAdminReceiver
@@ -162,6 +165,80 @@ class AndroidDevicePolicyGateway(private val context: Context) : DevicePolicyGat
 
     @Suppress("DEPRECATION") // Deprecated but the only self-service way out; works on Android 16/17 (research §2.3).
     override fun clearDeviceOwner() = dpm.clearDeviceOwnerApp(context.packageName)
+
+    // ---------------------------------------------------------------- capability guards
+
+    override fun installedApps(): List<AppInfo> =
+        pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())).map(::toAppInfo)
+
+    override fun appInfo(pkg: String): AppInfo? = try {
+        toAppInfo(pm.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())))
+    } catch (_: PackageManager.NameNotFoundException) {
+        null
+    }
+
+    private fun toAppInfo(info: android.content.pm.PackageInfo) = AppInfo(
+        pkg = info.packageName,
+        system = (info.applicationInfo?.flags ?: 0) and ApplicationInfo.FLAG_SYSTEM != 0,
+        requested = info.requestedPermissions?.toSet().orEmpty(),
+        firstInstallMs = info.firstInstallTime,
+    )
+
+    private fun isSystem(pkg: String): Boolean = try {
+        pm.getApplicationInfo(pkg, PackageManager.ApplicationInfoFlags.of(0)).flags and ApplicationInfo.FLAG_SYSTEM != 0
+    } catch (_: PackageManager.NameNotFoundException) {
+        false
+    }
+
+    override fun roles(): DeviceRoles {
+        fun <T> read(block: () -> T?): T? = try {
+            block()
+        } catch (_: Exception) {
+            null
+        }
+        val telecom = read { context.getSystemService(TelecomManager::class.java) }
+        return DeviceRoles(
+            sms = read { Telephony.Sms.getDefaultSmsPackage(context) },
+            dialer = read { telecom?.defaultDialerPackage },
+            systemDialer = read { telecom?.systemDialerPackage },
+            // "package/.Service" of the keyboard in use.
+            ime = read { Settings.Secure.getString(context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)?.substringBefore('/')?.ifEmpty { null } },
+            home = read {
+                pm.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY)
+                    ?.activityInfo?.packageName?.takeIf { it != "android" } // "android" = the chooser: no default yet
+            },
+        )
+    }
+
+    override fun accessibilityServices(): List<ServiceApp> {
+        val am = context.getSystemService(AccessibilityManager::class.java) ?: return emptyList()
+        val enabled = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+            .mapNotNull { it.resolveInfo?.serviceInfo?.packageName }.toSet()
+        val installed = am.installedAccessibilityServiceList.mapNotNull { it.resolveInfo?.serviceInfo?.packageName }.toSet()
+        return (installed + enabled).sorted().map { ServiceApp(it, isSystem(it), it in enabled) }
+    }
+
+    override fun inputMethods(): List<ServiceApp> {
+        val imm = context.getSystemService(InputMethodManager::class.java) ?: return emptyList()
+        val enabled = imm.enabledInputMethodList.map { it.packageName }.toSet()
+        val installed = imm.inputMethodList.map { it.packageName }.toSet()
+        return (installed + enabled).sorted().map { ServiceApp(it, isSystem(it), it in enabled) }
+    }
+
+    override fun permittedAccessibilityServices(): List<String>? = dpm.getPermittedAccessibilityServices(admin)
+
+    override fun setPermittedAccessibilityServices(packages: List<String>?): Boolean = dpm.setPermittedAccessibilityServices(admin, packages)
+
+    override fun permittedInputMethods(): List<String>? = dpm.getPermittedInputMethods(admin)
+
+    override fun setPermittedInputMethods(packages: List<String>?): Boolean = dpm.setPermittedInputMethods(admin, packages)
+
+    /** Display name of an installed package (falls back on the package name). */
+    fun label(pkg: String): String = try {
+        pm.getApplicationLabel(pm.getApplicationInfo(pkg, PackageManager.ApplicationInfoFlags.of(0))).toString()
+    } catch (_: Exception) {
+        pkg
+    }
 
     /** Installed apps that declare a `VpnService` (candidates for the always-on VPN). */
     fun vpnApps(): List<String> = try {

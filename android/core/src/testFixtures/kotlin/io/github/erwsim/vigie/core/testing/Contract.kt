@@ -57,6 +57,20 @@ object Contract {
         "guard_enabled", "guard_disabled", "quarantined", "released",
     )
 
+    /** `app.risk.reasons` (contract §11.2): the closed list of reason codes. */
+    val RISK_REASONS = setOf(
+        "sideloaded", "unknown_installer", "no_launcher_icon", "sms_send", "sms_read", "calls", "accessibility_service",
+        "notification_listener", "device_admin", "overlay", "install_packages", "vpn_service", "boot_receiver",
+        "background_location", "mic_camera_background", "old_target_sdk", "debuggable", "combo_banking_trojan",
+        "combo_sms_fraud", "combo_stalkerware",
+    )
+
+    /** `app.ops.apps[].op` (contract §11.2). */
+    val OPS = setOf(
+        "send_sms", "read_sms", "receive_sms", "call_phone", "read_contacts", "read_call_log", "record_audio", "camera",
+        "fine_location", "get_accounts",
+    )
+
     private val appChange = mapOf("package" to S, "version_name" to S, "version_code" to I, "installer" to S, "signer_sha256" to SHA)
     private val aggregation = arrayOf("count" to I, "last_event_ts" to T)
 
@@ -153,6 +167,19 @@ object Contract {
         "app.notification" to mapOf(
             "package" to S, "event" to oneOf("posted", "removed"), "category" to S, "channel" to S, "ongoing" to B,
             "importance" to oneOf("none", "min", "low", "default", "high", "max"), "title" to S, "text" to S, "redacted" to B,
+        ),
+        // app.risk / app.role / app.ops (contract §11.2). `role` stays an open string ("sms", "dialer", … and, for
+        // the agent, "keyboard" and "autofill": see the report on the gaps of §11.2).
+        "app.risk" to mapOf(
+            "package" to S, "label" to S, "version_code" to I, "installer" to S, "from_store" to B, "score" to I,
+            "level" to oneOf("low", "medium", "high"), "reasons" to Field(Kind.STRINGS, RISK_REASONS),
+        ),
+        "app.role" to mapOf("role" to S, "old" to S, "new" to S),
+        "app.ops" to mapOf(
+            "from" to T, "to" to T,
+            "apps" to objs(
+                "package" to S, "op" to Field(Kind.STRING, OPS), "count" to I, "background_count" to I, "last_ts" to T,
+            ),
         ),
         // sensor.*
         "sensor.camera" to mapOf("camera_id" to S, "in_use" to B, "package" to S, "screen_on" to B, "locked" to B),
@@ -283,6 +310,9 @@ object Contract {
             }
             Kind.STRINGS -> {
                 assertTrue("$path must be an array of strings: $value", value is JsonArray && value.all { it is JsonPrimitive && it.isString })
+                field.values?.let { allowed ->
+                    (value as JsonArray).forEach { assertTrue("$path item '${(it as JsonPrimitive).content}' is not one of $allowed", it.content in allowed) }
+                }
             }
             Kind.OBJECT -> {
                 assertTrue("$path must be an object: $value", value is JsonObject)

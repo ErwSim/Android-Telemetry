@@ -1,7 +1,10 @@
 package io.github.erwsim.vigie.policy
 
+import io.github.erwsim.vigie.policy.engine.AppInfo
 import io.github.erwsim.vigie.policy.engine.DevicePolicyGateway
+import io.github.erwsim.vigie.policy.engine.DeviceRoles
 import io.github.erwsim.vigie.policy.engine.Dpm
+import io.github.erwsim.vigie.policy.engine.ServiceApp
 
 /**
  * In-memory device for the engine tests. [snapshot] captures everything the engine can change, to
@@ -41,20 +44,45 @@ class FakeGateway : DevicePolicyGateway {
     val failPermission = HashSet<String>()
     val failRestriction = HashSet<String>()
 
+    // Capability guards.
+    val system = HashSet<String>()
+    val firstInstall = HashMap<String, Long>()
+    var roles = DeviceRoles()
+    val accessibility = HashMap<String, ServiceApp>()
+    val imes = HashMap<String, ServiceApp>()
+    var permittedAccessibility: List<String>? = null
+    var permittedImes: List<String>? = null
+
+    /** Like Android: the list must contain every enabled non-system service, else false and nothing changes. */
+    var enforceEnabledInList = true
+
     data class Snapshot(
         val hidden: Set<String>, val suspended: Set<String>, val granted: Set<Pair<String, String>>,
         val grantState: Map<Pair<String, String>, Int>, val restrictions: Set<String>, val dnsMode: Int,
         val dnsHost: String?, val settings: Map<String, String?>, val backup: Boolean, val vpn: String?, val vpnLockdown: Boolean,
+        val permittedAccessibility: List<String>?, val permittedImes: List<String>?,
     )
 
     fun snapshot() = Snapshot(
         hidden.toSet(), suspended.toSet(), granted.toSet(), grantState.filterValues { it != Dpm.GRANT_DEFAULT }, restrictions.toSet(),
-        dnsMode, dnsHost, settings.toMap(), backup, vpn, vpnLockdown,
+        dnsMode, dnsHost, settings.toMap(), backup, vpn, vpnLockdown, permittedAccessibility, permittedImes,
     )
 
     fun install(pkg: String, vararg permissions: String) {
         installed += pkg
         requested.getOrPut(pkg) { HashSet() } += permissions
+        firstInstall.putIfAbsent(pkg, clockMs)
+    }
+
+    /** Time given to `firstInstallTime` of the next installs. */
+    var clockMs = 1_000L
+
+    fun uninstall(pkg: String) {
+        installed -= pkg
+        requested.remove(pkg)
+        firstInstall.remove(pkg)
+        granted.removeAll { it.first == pkg }
+        grantState.keys.removeAll { it.first == pkg }
     }
 
     override fun isDeviceOwner() = owner
@@ -84,7 +112,8 @@ class FakeGateway : DevicePolicyGateway {
 
     override fun setPermissionGrantState(pkg: String, permission: String, state: Int): Boolean {
         calls += "perm $pkg $permission $state"
-        if (permission in failPermission) return false
+        if (permission in failPermission || "$pkg/$permission" in failPermission) return false
+        if (pkg !in installed) return false
         grantState[pkg to permission] = state
         when (state) {
             Dpm.GRANT_DENIED -> granted -= pkg to permission
@@ -176,5 +205,34 @@ class FakeGateway : DevicePolicyGateway {
     override fun clearDeviceOwner() {
         calls += "clear owner"
         owner = false
+    }
+
+    override fun installedApps(): List<AppInfo> = installed.sorted().mapNotNull(::appInfo)
+
+    override fun appInfo(pkg: String): AppInfo? =
+        if (pkg in installed) AppInfo(pkg, pkg in system, requested[pkg].orEmpty().toSet(), firstInstall[pkg] ?: 0) else null
+
+    override fun roles() = roles
+
+    override fun accessibilityServices() = accessibility.values.sortedBy { it.pkg }
+
+    override fun inputMethods() = imes.values.sortedBy { it.pkg }
+
+    override fun permittedAccessibilityServices() = permittedAccessibility
+
+    override fun setPermittedAccessibilityServices(packages: List<String>?): Boolean {
+        calls += "permitted accessibility $packages"
+        if (packages != null && enforceEnabledInList && accessibility.values.any { it.enabled && !it.system && it.pkg !in packages }) return false
+        permittedAccessibility = packages?.toList()
+        return true
+    }
+
+    override fun permittedInputMethods() = permittedImes
+
+    override fun setPermittedInputMethods(packages: List<String>?): Boolean {
+        calls += "permitted imes $packages"
+        if (packages != null && enforceEnabledInList && imes.values.any { it.enabled && !it.system && it.pkg !in packages }) return false
+        permittedImes = packages?.toList()
+        return true
     }
 }
