@@ -494,6 +494,35 @@ Chaque création, annulation et résultat est journalisé par le collecteur et e
 - Le code de commande n'est normalisé en Unicode ni dans l'app ni dans la console : le saisir à l'identique
   (éviter les caractères accentués composés).
 
+### Précisions (ajoutées après la revue de sécurité de la v1.1)
+
+- **Ce que la signature garantit, et ses limites.** Aucune commande sensible ne s'exécute sans une signature
+  valide pour le code défini sur le téléphone. Mais (1) le serveur détient `payload` et `sig` des commandes
+  émises et peut donc chercher le code hors ligne : la garantie ne vaut qu'avec un code à forte entropie
+  (au moins cinq mots tirés au hasard, réservé à cet usage) ; (2) la page où le code est saisi est servie par
+  le serveur : un serveur compromis peut le lire à la prochaine saisie ; (3) une commande signée reste
+  exécutable jusqu'à `expires_at` — l'annulation et l'état « expirée » dans la console n'engagent que le
+  serveur ; seul le changement du code sur le téléphone rend caduque une commande déjà signée.
+- **Code de commande** : 12 caractères au moins **et** refusé s'il est trop faible (moins de 6 caractères
+  différents, ou uniquement des chiffres en dessous de 20). L'app et la console recommandent cinq mots aléatoires.
+- **Validité de `wipe`** : 15 min par défaut, 24 h au plus (au lieu de 7 et 30 jours) ; imposée par la console,
+  par le collecteur (`400` au-delà) et par l'agent (`expired` au-delà). `lock` et `clear_lock_message` gardent
+  7 jours par défaut et 30 au plus.
+- Une commande sensible refusée par l'agent pour `disabled` ou `no_code_configured` est **consommée** : son
+  `id` entre dans la mémoire anti-rejeu signée et elle ne s'exécutera jamais, même si le réglage change ensuite.
+  La mémoire anti-rejeu des commandes signées est distincte de celle des commandes simples.
+- `issued_at` : la console l'aligne sur l'heure du serveur (en-tête `Date`) ; le collecteur tolère ±10 min,
+  l'agent refuse au-delà de +5 min dans le futur.
+- Un résultat reçu après expiration ou annulation **met à jour** l'état de la commande (le téléphone fait foi) ;
+  la console affiche « Expirée sans réponse : a pu être exécutée » tant qu'aucun résultat n'est arrivé pour une
+  commande remise.
+- Le collecteur efface `sig` de sa base dès qu'une commande atteint un état final.
+- `message` : U+2028 et U+2029 sont refusés comme les caractères de contrôle.
+- `tracking.level_changed` et `tracking.override` portent aussi `user` (compte console), et `changes` /
+  `previous` selon le cas ; un événement par appareil non révoqué ; sévérité 2 quand le blocage est affaibli.
+- AdGuard : `querylog.size_memory` doit valoir environ 50 (à 1, AdGuard perd lui-même des entrées sous
+  requêtes simultanées ; au-delà de 500, le relevé du collecteur peut en sauter).
+
 ## 9. Vue « pistage » : ce qui est bloqué, ce qui passe
 
 Le collecteur lit le journal des requêtes d'AdGuard Home par son API (`VIGIE_ADGUARD_URL`,
