@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Vigie Notifications: reads the notifications shown on this phone and hands them to the Vigie agent
+    on the same phone. No INTERNET permission, no sensitive permission: the only permission requested
+    is the signature-level one of the local channel (granted only if the APK is signed by the
+    agent's key).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Same declaration as in the agent (same key): whichever is installed first defines it. -->
+    <permission
+        android:name="io.github.erwsim.vigie.permission.NOTIFICATION_RELAY"
+        android:description="@string/permission_desc"
+        android:label="@string/permission_label"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="io.github.erwsim.vigie.permission.NOTIFICATION_RELAY" />
+
+    <!-- Package visibility (Android 11+): the agent and its provider only. -->
+    <queries>
+        <package android:name="io.github.erwsim.vigie" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:testOnly="${testOnly}"
+        android:theme="@style/Theme.VigieNotifier"
+        tools:ignore="UnusedAttribute">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Bound by the system only (BIND_NOTIFICATION_LISTENER_SERVICE) once the owner grants access. -->
+        <service
+            android:name=".NotifierListenerService"
+            android:exported="true"
+            android:label="@string/listener_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- "Settings changed" from the agent: the sender must hold the signature permission. -->
+        <receiver
+            android:name=".ConfigChangedReceiver"
+            android:exported="true"
+            android:permission="io.github.erwsim.vigie.permission.NOTIFICATION_RELAY">
+            <intent-filter>
+                <action android:name="io.github.erwsim.vigie.notifier.action.CONFIG_CHANGED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

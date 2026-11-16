@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?android:attr/colorBackground">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/app_name"
+            android:textAppearance="?android:attr/textAppearanceLarge" />
+
+        <TextView
+            style="@style/Body"
+            android:text="@string/intro" />
+
+        <!-- State -->
+        <TextView
+            style="@style/Header"
+            android:text="@string/header_state" />
+
+        <TextView
+            android:id="@+id/state_access"
+            style="@style/Body" />
+
+        <TextView
+            android:id="@+id/state_listener"
+            style="@style/Body" />
+
+        <TextView
+            android:id="@+id/state_agent"
+            style="@style/Body" />
+
+        <TextView
+            android:id="@+id/state_collect"
+            style="@style/Body" />
+
+        <TextView
+            android:id="@+id/state_content"
+            style="@style/Body" />
+
+        <TextView
+            android:id="@+id/state_last"
+            style="@style/Body" />
+
+        <TextView
+            android:id="@+id/state_counters"
+            style="@style/Body" />
+
+        <Button
+            android:id="@+id/button_refresh"
+            style="@style/Action"
+            android:text="@string/button_refresh" />
+
+        <Button
+            android:id="@+id/button_access"
+            style="@style/Action"
+            android:text="@string/button_access" />
+
+        <!-- What is sent -->
+        <TextView
+            style="@style/Header"
+            android:text="@string/header_what" />
+
+        <TextView
+            style="@style/Body"
+            android:text="@string/what" />
+
+        <!-- Lists -->
+        <TextView
+            style="@style/Header"
+            android:text="@string/header_lists" />
+
+        <TextView
+            style="@style/Body"
+            android:text="@string/lists_explain" />
+
+        <TextView
+            style="@style/Body"
+            android:labelFor="@+id/edit_excluded"
+            android:text="@string/label_excluded" />
+
+        <EditText
+            android:id="@+id/edit_excluded"
+            style="@style/ListField"
+            android:autofillHints=""
+            android:hint="@string/hint_packages" />
+
+        <TextView
+            style="@style/Body"
+            android:labelFor="@+id/edit_ignored"
+            android:text="@string/label_ignored" />
+
+        <EditText
+            android:id="@+id/edit_ignored"
+            style="@style/ListField"
+            android:autofillHints=""
+            android:hint="@string/hint_packages" />
+
+        <Button
+            android:id="@+id/button_save"
+            style="@style/Action"
+            android:text="@string/button_save" />
+
+        <Button
+            android:id="@+id/button_reset"
+            style="@style/Action"
+            android:text="@string/button_reset" />
+
+        <TextView
+            android:id="@+id/lists_result"
+            style="@style/Body" />
+
+        <!-- Removal -->
+        <TextView
+            style="@style/Header"
+            android:text="@string/header_remove" />
+
+        <TextView
+            style="@style/Body"
+            android:text="@string/remove" />
+
+        <Button
+            android:id="@+id/button_app_info"
+            style="@style/Action"
+            android:text="@string/button_app_info" />
+    </LinearLayout>
+</ScrollView>

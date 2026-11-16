@@ -17,6 +17,7 @@ import io.github.erwsim.vigie.collectors.network.NetworkUsageCollector
 import io.github.erwsim.vigie.collectors.network.NfcCollector
 import io.github.erwsim.vigie.collectors.network.WifiCollector
 import io.github.erwsim.vigie.collectors.network.WifiScanCollector
+import io.github.erwsim.vigie.collectors.notifications.NotificationsCollector
 import io.github.erwsim.vigie.collectors.sensors.CameraCollector
 import io.github.erwsim.vigie.collectors.sensors.MicrophoneCollector
 import io.github.erwsim.vigie.core.collector.Collector
@@ -45,6 +46,7 @@ object CollectorsModule {
         AppsCollector(),
         SpecialAccessCollector(),
         ForegroundAppCollector(),
+        NotificationsCollector(),
         CameraCollector(),
         MicrophoneCollector(),
     )

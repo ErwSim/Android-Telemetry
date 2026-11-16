@@ -24,6 +24,8 @@ android {
 
 dependencies {
     implementation(project(":core"))
+    // Channel with the notification companion APK (pure code, no dependency): see notifications/.
+    implementation(project(":notifier:protocol"))
 
     testImplementation(testFixtures(project(":core")))
     testImplementation(libs.junit)

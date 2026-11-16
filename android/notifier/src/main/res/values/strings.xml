@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="fr">
+    <string name="app_name">Vigie Notifications</string>
+    <string name="listener_label">Vigie Notifications (relais vers l\'agent Vigie)</string>
+    <string name="permission_label">Relais local des notifications Vigie</string>
+    <string name="permission_desc">Canal entre Vigie et son compagnon de notifications, réservé aux apps signées par la même clé.</string>
+
+    <string name="intro">Module optionnel de Vigie. Il lit les notifications affichées sur ce téléphone et les remet à l\'agent Vigie installé sur ce même téléphone, qui les envoie à votre serveur avec ses autres événements. Ce module n\'a pas accès à Internet, ne conserve rien et ne transmet qu\'à l\'agent Vigie signé par la même clé. Il est séparé de l\'agent pour que l\'agent (administrateur de l\'appareil) n\'ait jamais lui-même accès aux notifications.</string>
+
+    <string name="header_state">État</string>
+    <string name="state_access_on">Accès aux notifications : accordé</string>
+    <string name="state_access_off">Accès aux notifications : NON accordé (bouton ci-dessous, ou scripts/notifier-access.sh)</string>
+    <string name="state_listener_on">Service d\'écoute : connecté</string>
+    <string name="state_listener_off">Service d\'écoute : déconnecté</string>
+    <string name="state_agent_unknown">Agent Vigie : vérification…</string>
+    <string name="state_agent_absent">Agent Vigie : non installé. Rien n\'est transmis (les notifications ne sont pas conservées en attendant).</string>
+    <string name="state_agent_other_key">Agent Vigie : installé mais signé par une autre clé. Aucun échange possible : installez les deux APK issus de la même construction.</string>
+    <string name="state_agent_ok">Agent Vigie : présent, même clé de signature</string>
+    <string name="state_agent_denied">Agent Vigie : accès refusé par Android (permission du canal non accordée : clés de signature différentes, ou compagnon installé avant une ancienne version de l\'agent ; réinstallez le compagnon).</string>
+    <string name="state_agent_starting">Agent Vigie : en cours de démarrage, réessayez dans un instant.</string>
+    <string name="state_agent_incompatible">Agent Vigie : version incompatible avec ce compagnon. Installez les deux APK issus de la même construction.</string>
+    <string name="state_agent_unreachable">Agent Vigie : injoignable (arrêté, en cours de mise à jour ?). Rien n\'est transmis pendant ce temps.</string>
+    <string name="state_collect_on">Collecte par l\'agent : active (collecteur « Notifications » activé)</string>
+    <string name="state_collect_off">Collecte par l\'agent : désactivée (agent arrêté ou collecteur « Notifications » désactivé dans Vigie). Rien n\'est transmis.</string>
+    <string name="state_collect_unknown">Collecte par l\'agent : inconnue (agent injoignable)</string>
+    <string name="state_content_on">Contenu (titre et texte) : ACTIVÉ dans Vigie. Masquage des codes : %1$s. %2$d apps exclues du contenu, %3$d apps ignorées.</string>
+    <string name="state_content_off">Contenu (titre et texte) : désactivé dans Vigie. Seuls l\'app, la catégorie, le canal et l\'importance sont transmis. %1$d apps ignorées.</string>
+    <string name="state_content_unknown">Contenu (titre et texte) : réglages de l\'agent non lus. Tant qu\'ils ne le sont pas, rien n\'est transmis.</string>
+    <string name="state_redact_on">activé</string>
+    <string name="state_redact_off">DÉSACTIVÉ</string>
+    <string name="state_last_none">Dernière notification relayée : aucune depuis le démarrage du module.</string>
+    <string name="state_last">Dernière notification relayée : %1$s (%2$s)</string>
+    <string name="state_counters">Depuis le démarrage du module : %1$d relayées, %2$d non reprises (mises à jour, notifications permanentes, apps ignorées, limite de débit), %3$d non remises (agent absent, arrêté ou refus), %4$d perdues (file pleine).</string>
+
+    <string name="button_refresh">Actualiser</string>
+    <string name="button_access">Réglage d\'accès aux notifications</string>
+
+    <string name="header_what">Ce qui est transmis</string>
+    <string name="what">Pour chaque notification affichée ou retirée : nom de paquet de l\'app, catégorie, canal, importance, notification permanente ou non. Le titre et le texte (512 caractères au plus) seulement si vous activez « Contenu des notifications » dans Vigie (onglet Collecteurs › Notifications) ; désactivé, ils ne quittent jamais ce module. Les suites de 4 à 8 chiffres (codes de validation) sont remplacées par •••• avant l\'envoi, sauf si vous désactivez le masquage ; cela masque aussi des années, montants ronds ou codes postaux, et ne voit pas les codes alphanumériques. Ne sont pas transmises : les notifications de Vigie et de ce module, les mises à jour répétées d\'une même notification, les mises à jour des notifications permanentes (musique, téléchargement, minuteur, appel, navigation), les résumés de groupe, et au-delà de 20 événements par app et par 10 minutes.</string>
+
+    <string name="header_lists">Listes d\'apps (enregistrées dans Vigie)</string>
+    <string name="lists_explain">Une app par ligne, désignée par son nom de paquet (exemple : com.exemple.banque ; visible dans Paramètres › Applications › l\'app, ou dans la liste des apps de Vigie). Ces listes ne reconnaissent une app que par son nom exact : la liste par défaut (banques et paiement courants, authentificateurs, gestionnaires de mots de passe, SMS, téléphone) est forcément incomplète, ajoutez-y vos propres apps sensibles. Chaque modification est enregistrée dans Vigie et signalée au serveur (agent.config_changed).</string>
+    <string name="label_excluded">Apps exclues du contenu (seul le nom de l\'app est transmis, jamais le titre ni le texte) :</string>
+    <string name="label_ignored">Apps totalement ignorées (rien n\'est transmis) :</string>
+    <string name="hint_packages">com.exemple.app</string>
+    <string name="button_save">Enregistrer dans Vigie</string>
+    <string name="button_reset">Rétablir les listes par défaut</string>
+    <string name="lists_saved">Enregistré dans Vigie : %1$d apps exclues du contenu, %2$d apps ignorées.</string>
+    <string name="lists_rejected">Entrées refusées (nom de paquet invalide ou liste pleine) : %1$s</string>
+    <string name="lists_failed">Échec : l\'agent Vigie n\'a pas pu enregistrer les listes (voir l\'état ci-dessus).</string>
+    <string name="lists_working">Enregistrement…</string>
+
+    <string name="header_remove">Retirer l\'accès, désinstaller</string>
+    <string name="remove">Retirer l\'accès : bouton « Réglage d\'accès aux notifications » ci-dessus, puis désactiver Vigie Notifications (dans les Paramètres, cherchez « Accès aux notifications » : le chemin varie selon la version de One UI), ou par ADB : scripts/notifier-access.sh --revoke. Le module cesse aussitôt de lire les notifications. Pour tout arrêter côté agent, désactivez plutôt le collecteur « Notifications » dans Vigie. Désinstaller : bouton ci-dessous (Désinstaller), ou scripts/uninstall-notifier.sh. L\'agent Vigie continue de fonctionner sans ce module (son collecteur « Notifications » passe « indisponible »).</string>
+    <string name="button_app_info">Informations sur l\'app (désinstaller)</string>
+</resources>

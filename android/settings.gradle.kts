@@ -23,3 +23,4 @@ dependencyResolutionManagement {
 rootProject.name = "vigie-agent"
 
 include(":core", ":collectors", ":policy", ":app")
+include(":notifier", ":notifier:protocol")

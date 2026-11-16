@@ -73,4 +73,16 @@
 
     <string name="collector_usb_title">USB</string>
     <string name="collector_usb_desc">Câble USB branché ou débranché, configuration et fonctions actives (transfert de fichiers, partage de connexion, MIDI, débogage ADB…), appareils et accessoires USB branchés sur le téléphone (fabricant, produit). Diffusions du système, aucun coût.</string>
+
+    <string name="collector_notifications_title">Notifications</string>
+    <string name="collector_notifications_desc">Quelles apps affichent des notifications : app, catégorie, canal, importance, notification permanente ou non, affichage et retrait. Lues par le compagnon séparé et optionnel « Vigie Notifications » (cet APK ne lit jamais les notifications). Titre et texte seulement si « Contenu des notifications » est activé, avec masquage des codes de 4 à 8 chiffres ; les apps bancaires, d\'authentification, gestionnaires de mots de passe, SMS et téléphone connus en sont exclues (liste par nom de paquet, donc incomplète, réglable dans le compagnon). Mises à jour répétées et notifications permanentes non reprises ; au plus 20 événements par app et par 10 minutes, souvent quelques dizaines par jour.</string>
+    <string name="setting_notifications_content">Contenu des notifications</string>
+    <string name="setting_notifications_content_summary">Transmettre aussi le titre et le texte (512 caractères au plus). Ce sont les messages de tiers : désactivé par défaut. Désactivé, ils ne quittent jamais le compagnon.</string>
+    <string name="setting_notifications_redact">Masquer les codes numériques</string>
+    <string name="setting_notifications_redact_summary">Remplace par •••• toute suite de 4 à 8 chiffres (codes de validation reçus par SMS ou par app). Masque aussi des années, montants ronds ou codes postaux ; ne voit pas les codes alphanumériques.</string>
+    <string name="collector_notifications_reason_not_installed">Le compagnon « Vigie Notifications » n\'est pas installé (APK séparé et optionnel : scripts/install-notifier.sh, voir le README).</string>
+    <string name="collector_notifications_reason_other_key">Le compagnon « Vigie Notifications » n\'est pas signé par la même clé que Vigie : installez celui de la même construction (même keystore).</string>
+    <string name="collector_notifications_reason_no_access">Le compagnon « Vigie Notifications » n\'a pas l\'accès aux notifications : scripts/notifier-access.sh, ou ouvrez le compagnon et suivez ses indications.</string>
+    <string name="notifications_permission_label">Relais local des notifications Vigie</string>
+    <string name="notifications_permission_desc">Canal entre Vigie et son compagnon de notifications, réservé aux apps signées par la même clé.</string>
 </resources>
