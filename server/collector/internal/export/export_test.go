@@ -361,3 +361,23 @@ func TestExporterInitCreatesFile(t *testing.T) {
 		t.Fatalf("Init failed on a missing directory: %v", err)
 	}
 }
+
+func TestLineSourceAndNotification(t *testing.T) {
+	ev := stored("command.issued", 1, `{"command_id":"01JCQ8Z3K4M5N6P7Q8R9S0T1V2","type":"lock","signed":true,"params":{}}`)
+	ev.Source = "server"
+	line := string(Lines(ev, "s25")[0])
+	if !strings.Contains(line, `"source":"server"`) || !strings.HasPrefix(line, `{"vigie":{`) {
+		t.Fatalf("server event line %s", line)
+	}
+	dev := string(Lines(stored("command.result", 0, `{"command_id":"x","status":"executed"}`), "s25")[0])
+	if strings.Contains(dev, `"source"`) {
+		t.Fatalf("device event carries a source: %s", dev)
+	}
+	// app.notification with content (contract §10): scalar fields exported as they are.
+	n := string(Lines(stored("app.notification", 0, `{"package":"com.whatsapp","event":"posted","category":"msg","channel":"messages","ongoing":false,"importance":4,"title":"Alice","text":"Ton code : ••••••","redacted":true}`), "s25")[0])
+	for _, want := range []string{`"title":"Alice"`, `"text":"Ton code : ••••••"`, `"redacted":true`, `"importance":4`, `"type":"app.notification"`, `"domain":"app"`} {
+		if !strings.Contains(n, want) {
+			t.Fatalf("notification line lacks %s: %s", want, n)
+		}
+	}
+}
