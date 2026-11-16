@@ -1,4 +1,4 @@
-/* Vigie console — thème clair/sombre par variables ; aucun style en ligne (CSP style-src 'self'). */
+/* Watchpost console — light/dark theme through variables; no inline style (CSP style-src 'self'). */
 
 :root {
   color-scheme: light;
@@ -434,7 +434,7 @@ code,
   color: var(--bad);
 }
 
-/* ---------- États ---------- */
+/* ---------- States ---------- */
 .state {
   display: flex;
   align-items: center;
@@ -480,7 +480,7 @@ code,
   }
 }
 
-/* ---------- Boutons, formulaires ---------- */
+/* ---------- Buttons, forms ---------- */
 .btn {
   appearance: none;
   display: inline-flex;
@@ -737,7 +737,7 @@ input[aria-invalid='true'] {
 .sw-9 { background: var(--series-9); }
 .sw-10 { background: var(--series-10); }
 
-/* ---------- Tableaux ---------- */
+/* ---------- Tables ---------- */
 .table-wrap {
   overflow-x: auto;
   max-width: 100%;
@@ -824,7 +824,7 @@ table.tbl {
   color: var(--text-muted);
 }
 
-/* ---------- Barres, légendes, listes ---------- */
+/* ---------- Bars, legends, lists ---------- */
 .rank {
   list-style: none;
   margin: 0;
@@ -1018,7 +1018,7 @@ table.tbl {
   color: var(--text-muted);
 }
 
-/* ---------- Carte ---------- */
+/* ---------- Map ---------- */
 .map-wrap {
   position: relative;
 }
@@ -1103,7 +1103,7 @@ table.tbl {
   color: #333;
 }
 
-/* ---------- Graphiques ---------- */
+/* ---------- Charts ---------- */
 .chart {
   position: relative;
 }
@@ -1140,7 +1140,7 @@ table.tbl {
   box-sizing: border-box;
 }
 
-/* ---------- Connexion ---------- */
+/* ---------- Login ---------- */
 .login-page {
   min-height: 100vh;
   display: grid;
@@ -1164,7 +1164,7 @@ table.tbl {
   font-size: 1rem;
 }
 
-/* ---------- Divers ---------- */
+/* ---------- Miscellaneous ---------- */
 .two-col {
   display: grid;
   gap: 14px;
@@ -1206,7 +1206,7 @@ table.tbl {
   color: var(--text-muted);
 }
 
-/* ---------- Adaptation ---------- */
+/* ---------- Responsive ---------- */
 @media (max-width: 1100px) {
   .span-8,
   .span-7,
@@ -1377,7 +1377,7 @@ table.tbl {
   }
 }
 
-/* Téléphone : les lignes d'événements deviennent des fiches (heure + sévérité, type, détail). */
+/* Phone: event rows become cards (time + severity, type, detail). */
 @media (max-width: 860px) {
   .tbl-stack thead {
     display: none;
@@ -1439,7 +1439,7 @@ table.tbl {
   overflow-wrap: anywhere;
 }
 
-/* ---------- Boîtes de dialogue ---------- */
+/* ---------- Dialogs ---------- */
 .dlg {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -1562,7 +1562,7 @@ textarea {
   color: var(--ok);
 }
 
-/* ---------- Commandes à distance ---------- */
+/* ---------- Remote commands ---------- */
 .cmd-list {
   display: grid;
   gap: 2px;
@@ -1644,7 +1644,7 @@ textarea {
   }
 }
 
-/* ---------- Fournisseurs de position ---------- */
+/* ---------- Location providers ---------- */
 .prov-dot {
   display: inline-block;
   width: 12px;
@@ -1678,7 +1678,7 @@ textarea {
   margin: 6px 0 0;
 }
 
-/* ---------- Pistage ---------- */
+/* ---------- Tracking ---------- */
 .honest {
   margin-bottom: 14px;
 }
@@ -1874,7 +1874,7 @@ textarea {
   .trk-filters {
     padding: 10px 10px 0;
   }
-  /* Domaines : chaque ligne devient une fiche. */
+  /* Domains: each row becomes a card. */
   .trk-dom thead {
     display: none;
   }
@@ -1915,7 +1915,7 @@ textarea {
     justify-content: flex-start;
   }
   .trk-dom td.c-q::after {
-    content: ' req.';
+    content: ' queries';
     color: var(--text-muted);
     font-size: 0.8rem;
   }

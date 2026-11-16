@@ -38,7 +38,7 @@ export default function Tracking() {
   const ctl = usePeriod((['24h', '7d', '30d'] as const).find((k) => k === sp.get('period')) ?? '24h');
   const range = periodRange(ctl.period);
   const labelOf = useAppLabels();
-  // Liens depuis les détections et les fiches d'applications : `?q=<domaine>` ou `?app=<paquet>`, `&period=7d`.
+  // Links from detections and application detail pages: `?q=<domain>` or `?app=<package>`, `&period=7d`.
   const [tab, setTab] = useState<Tab>(sp.get('app') ? 'apps' : 'domains');
   const [publisher, setPublisher] = useState<string | undefined>();
   const [status, setStatus] = useState<StatusFilter>('all');
@@ -53,9 +53,9 @@ export default function Tracking() {
   );
 
   const degraded = summary.data ? !summary.data.adguard : false;
-  // Des décomptes bloqué/autorisé existent (même si AdGuard est momentanément injoignable : les agrégats stockés restent servis).
+  // Blocked/allowed counts exist (even if AdGuard is momentarily unreachable: the stored aggregates are still served).
   const showStatus = summary.data ? hasStatusData(totalsOf(summary.data.totals, summary.data.publishers)) : true;
-  // Sans décompte de statut, le filtre bloqué / autorisé est ignoré.
+  // Without status counts, the blocked / allowed filter is ignored.
   const effStatus = showStatus ? status : 'all';
   const haveSummary = !!summary.data;
   const domParams = useMemo(
@@ -87,27 +87,27 @@ export default function Tracking() {
   return (
     <>
       <div className="page-head">
-        <h1>Pistage</h1>
-        <span className="muted">Ce qui est bloqué et ce qui passe vers Google, Samsung et les autres</span>
+        <h1>Tracking</h1>
+        <span className="muted">What is blocked and what goes through to Google, Samsung and the others</span>
       </div>
 
       <div className="callout callout-info honest" role="note">
         <p>
-          <strong>Ce que cette page montre, et ce qu'elle ne montre pas.</strong> Vigie voit <em>à qui</em> le téléphone parle (les noms de domaine demandés),{' '}
-          <em>combien de fois</em> et <em>depuis quelle application</em>. Il ne voit <strong>pas le contenu</strong> des échanges : il est chiffré (TLS). « Autorisé »
-          veut dire que la requête n'a pas été bloquée, pas qu'on sait ce qui a été envoyé ; « bloqué » veut dire que le nom n'a pas été résolu, donc que rien n'est
-          parti vers ce domaine. Une application peut aussi contourner le DNS du téléphone.
+          <strong>What this page shows, and what it does not show.</strong> Watchpost sees <em>who</em> the phone talks to (the domain names requested),{' '}
+          <em>how many times</em> and <em>from which application</em>. It does <strong>not see the content</strong> of the exchanges: it is encrypted (TLS). "Allowed"
+          means that the query was not blocked, not that we know what was sent; "blocked" means that the name was not resolved, so nothing
+          went to that domain. An application can also bypass the phone's DNS.
         </p>
       </div>
 
       {degraded && (
         <div className="state state-warn" role="alert">
           <div>
-            <strong>Mode dégradé : AdGuard Home n'est pas joignable ou pas configuré sur ce collecteur.</strong>{' '}
+            <strong>Degraded mode: AdGuard Home is not reachable or not configured on this collector.</strong>{' '}
             {showStatus
-              ? "Les décomptes bloqué / autorisé affichés sont ceux enregistrés avant la panne ; les requêtes récentes n'y figurent pas."
-              : "La vue est construite à partir des seules requêtes DNS relevées par l'agent du téléphone (Device Owner) : on voit qui demande quoi, mais pas si la requête a été bloquée."}{' '}
-            Les boutons Bloquer, Autoriser et le choix du niveau de blocage sont désactivés tant qu'AdGuard Home n'est pas rétabli.
+              ? 'The blocked / allowed counts displayed are those recorded before the outage; recent queries are not included.'
+              : 'The view is built only from the DNS queries recorded by the phone agent (Device Owner): we see who asks for what, but not whether the query was blocked.'}{' '}
+            The Block and Allow buttons and the blocking level choice are disabled until AdGuard Home is restored.
           </div>
         </div>
       )}
@@ -115,42 +115,42 @@ export default function Tracking() {
       <div className="toolbar">
         <PeriodPicker ctl={ctl} />
         <button type="button" className="btn" onClick={() => { ctl.refresh(); summary.reload(); domains.reload(); apps.reload(); }}>
-          Actualiser
+          Refresh
         </button>
         <span className="hint">
-          Le détail du trafic (volumes, destinations, chronologie) est sur la page <Link to="/reseau">Réseau</Link>.
+          Traffic details (volumes, destinations, timeline) are on the <Link to="/network">Network</Link> page.
         </span>
       </div>
 
       {summary.error?.status === 404 ? (
-        <Empty>Ce collecteur ne propose pas encore la vue « pistage » (contrat §9). Mettez-le à jour pour l'utiliser.</Empty>
+        <Empty>This collector does not offer the "tracking" view yet (contract §9). Update it to use it.</Empty>
       ) : (
         <>
           <div className="grid grid-start">
-            <Card title="Synthèse par éditeur" className="span-12">
-              <Async state={summary} isEmpty={(s) => s.publishers.length === 0} empty="Aucune requête DNS sur cette période (l'agent doit être Device Owner, ou AdGuard Home doit journaliser).">
+            <Card title="Summary by publisher" className="span-12">
+              <Async state={summary} isEmpty={(s) => s.publishers.length === 0} empty="No DNS queries for this period (the agent must be Device Owner, or AdGuard Home must log).">
                 {(s) => {
                   const totals = totalsOf(s.totals, s.publishers);
                   const pct = blockedPct(totals);
                   return (
                     <>
                       <div className="stats trk-stats">
-                        <Stat label="Requêtes DNS" value={fmtNumber(totals.queries)} />
-                        {showStatus && <Stat label="Bloquées" value={fmtNumber(totals.blocked)} sub={pct === undefined ? undefined : fmtPct(pct, 1)} tone="ok" />}
-                        {showStatus && <Stat label="Autorisées" value={fmtNumber(totals.allowed)} sub={pct === undefined ? undefined : fmtPct(100 - pct, 1)} />}
+                        <Stat label="DNS queries" value={fmtNumber(totals.queries)} />
+                        {showStatus && <Stat label="Blocked" value={fmtNumber(totals.blocked)} sub={pct === undefined ? undefined : fmtPct(pct, 1)} tone="ok" />}
+                        {showStatus && <Stat label="Allowed" value={fmtNumber(totals.allowed)} sub={pct === undefined ? undefined : fmtPct(100 - pct, 1)} />}
                       </div>
                       <PublisherTable publishers={s.publishers} totals={totals} showStatus={showStatus} selected={publisher} onSelect={setPublisher} />
                       <p className="hint">
-                        Cliquez un éditeur pour filtrer la liste des domaines et des applications. Les octets par éditeur sont des <strong>estimations</strong> : le volume de chaque
-                        application est réparti entre éditeurs au prorata de ses requêtes DNS.
+                        Click a publisher to filter the list of domains and applications. Bytes per publisher are <strong>estimates</strong>: each application's
+                        volume is split between publishers in proportion to its DNS queries.
                       </p>
                     </>
                   );
                 }}
               </Async>
             </Card>
-            <Card title="Niveau de blocage" className="span-12">
-              <Async state={summary}>{(s) => <LevelCard summary={s} onChanged={() => { setNotice({ tone: 'ok', text: 'Niveau de blocage changé : il s\'applique aux prochaines requêtes.' }); summary.reload(); domains.reload(); }} />}</Async>
+            <Card title="Blocking level" className="span-12">
+              <Async state={summary}>{(s) => <LevelCard summary={s} onChanged={() => { setNotice({ tone: 'ok', text: 'Blocking level changed: it applies to the next queries.' }); summary.reload(); domains.reload(); }} />}</Async>
             </Card>
           </div>
 
@@ -161,20 +161,20 @@ export default function Tracking() {
           )}
 
           <Tabs
-            label="Vues du pistage"
+            label="Tracking views"
             value={tab}
             onChange={setTab}
             tabs={[
-              { key: 'domains', label: 'Domaines' },
+              { key: 'domains', label: 'Domains' },
               { key: 'apps', label: 'Applications' },
             ]}
           />
 
           {publisher && (
             <p className="hint">
-              Filtre : <strong>{publisherNames.get(publisher) ?? publisher}</strong>{' '}
+              Filter: <strong>{publisherNames.get(publisher) ?? publisher}</strong>{' '}
               <button type="button" className="linkish" onClick={() => setPublisher(undefined)}>
-                retirer le filtre
+                remove the filter
               </button>
             </p>
           )}
@@ -183,9 +183,9 @@ export default function Tracking() {
             <Card className="events-card">
               <div className="toolbar trk-filters">
                 <label className="filter">
-                  Éditeur
+                  Publisher
                   <select value={publisher ?? ''} onChange={(e) => setPublisher(e.target.value || undefined)}>
-                    <option value="">Tous</option>
+                    <option value="">All</option>
                     {(summary.data?.publishers ?? []).map((p) => (
                       <option key={p.key} value={p.key}>
                         {p.name}
@@ -194,13 +194,13 @@ export default function Tracking() {
                   </select>
                 </label>
                 <div className="filter">
-                  <span id="trk-status">Statut</span>
+                  <span id="trk-status">Status</span>
                   <div className="seg" role="group" aria-labelledby="trk-status">
                     {(
                       [
-                        ['all', 'Tous'],
-                        ['blocked', 'Bloqués'],
-                        ['allowed', 'Autorisés'],
+                        ['all', 'All'],
+                        ['blocked', 'Blocked'],
+                        ['allowed', 'Allowed'],
                       ] as [StatusFilter, string][]
                     ).map(([k, label]) => (
                       <button
@@ -209,7 +209,7 @@ export default function Tracking() {
                         className={`seg-btn${effStatus === k ? ' is-active' : ''}`}
                         aria-pressed={effStatus === k}
                         disabled={!showStatus && k !== 'all'}
-                        title={!showStatus && k !== 'all' ? "Indisponible : aucun décompte bloqué / autorisé" : undefined}
+                        title={!showStatus && k !== 'all' ? 'Unavailable: no blocked / allowed count' : undefined}
                         onClick={() => setStatus(k)}
                       >
                         {label}
@@ -218,8 +218,8 @@ export default function Tracking() {
                   </div>
                 </div>
                 <label className="filter grow">
-                  Recherche d'un domaine
-                  <input type="search" value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="ex. doubleclick, samsungdm…" spellCheck={false} />
+                  Domain search
+                  <input type="search" value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="e.g. doubleclick, samsungdm…" spellCheck={false} />
                 </label>
               </div>
               <div className="flush">
@@ -230,7 +230,7 @@ export default function Tracking() {
 
           {tab === 'apps' && (
             <Card>
-              <Async state={apps} isEmpty={(d) => d.apps.length === 0} empty="Aucune application n'a émis de requête DNS sur cette période.">
+              <Async state={apps} isEmpty={(d) => d.apps.length === 0} empty="No application made a DNS query during this period.">
                 {(d) => <AppsView apps={d.apps} showStatus={showStatus} openPkg={openApp} onOpen={setOpenApp} onShowDomain={showDomain} />}
               </Async>
             </Card>

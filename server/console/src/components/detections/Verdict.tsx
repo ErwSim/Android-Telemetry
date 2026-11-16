@@ -43,7 +43,7 @@ export function Verdict({
         <p className="verdict-sub">
           {c.total === 0 ? (
             <>
-              No detection over {periodLabel}. <span className="hint">This is not a guarantee: Watchpost sees who the phone talks to and what applications do, not the content of the exchanges.</span>
+              No detection for {periodLabel}. <span className="hint">This is not a guarantee: Watchpost sees who the phone talks to and what applications do, not the content of the exchanges.</span>
             </>
           ) : (
             <>
@@ -52,7 +52,7 @@ export function Verdict({
                   Most worrying application: <strong>{cleanText(top.label, 80) || cleanText(top.package, 120)}</strong> ({top.count} detection{top.count > 1 ? 's' : ''}).{' '}
                 </>
               ) : null}
-              <span className="hint">Over {periodLabel}.</span>
+              <span className="hint">For {periodLabel}.</span>
             </>
           )}
         </p>

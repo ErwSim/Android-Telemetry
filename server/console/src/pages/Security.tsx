@@ -26,7 +26,7 @@ export default function Security() {
   return (
     <>
       <div className="page-head">
-        <h1>Sécurité</h1>
+        <h1>Security</h1>
       </div>
       <Tabs
         label="Sections"
@@ -34,44 +34,44 @@ export default function Security() {
         onChange={setTab}
         tabs={[
           { key: 'posture', label: 'Posture' },
-          { key: 'roles', label: 'Rôles par défaut' },
-          { key: 'log', label: 'Journal système' },
-          { key: 'sensors', label: 'Caméra et micro' },
-          { key: 'keyguard', label: 'Déverrouillages' },
-          { key: 'certs', label: "Certificats d'AC" },
-          { key: 'radio', label: 'Cellulaire et BLE' },
-          { key: 'policy', label: 'Politique appliquée' },
+          { key: 'roles', label: 'Default roles' },
+          { key: 'log', label: 'System log' },
+          { key: 'sensors', label: 'Camera and microphone' },
+          { key: 'keyguard', label: 'Unlocks' },
+          { key: 'certs', label: 'CA certificates' },
+          { key: 'radio', label: 'Cellular and BLE' },
+          { key: 'policy', label: 'Policy applied' },
         ]}
       />
       {tab === 'posture' && <PostureTab />}
       {tab === 'roles' && <RolesTab />}
       {tab === 'log' && (
-        <EventSection title="Journal de sécurité système (security.log)" types="security.log" searchable hint="Journal natif Android (Device Owner) : authentification, installation d'APK, injection de clés, etc." />
+        <EventSection title="System security log (security.log)" types="security.log" searchable hint="Native Android log (Device Owner): authentication, APK installation, key injection, etc." />
       )}
       {tab === 'sensors' && <SensorsTab />}
       {tab === 'keyguard' && (
-        <EventSection title="Déverrouillages" types="security.keyguard" q="unlock_failed" qLabel="échecs seulement" hint="Seules les tentatives de déverrouillage échouées sont listées." defaultPeriod="7d" />
+        <EventSection title="Unlocks" types="security.keyguard" q="unlock_failed" qLabel="failures only" hint="Only failed unlock attempts are listed." defaultPeriod="7d" />
       )}
       {tab === 'certs' && <CertsTab />}
       {tab === 'radio' && (
         <EventSection
-          title="Réseau cellulaire et traceurs Bluetooth"
+          title="Cellular network and Bluetooth trackers"
           types="net.cell_security,net.ble_tracker"
-          hint="Rétrogradation 2G, chiffrement nul, divulgation d'identifiant, balises AirTag / SmartTag / Tile détectées dans la durée."
+          hint="2G downgrade, null encryption, identifier disclosure, AirTag / SmartTag / Tile beacons detected over time."
           defaultPeriod="7d"
         />
       )}
       {tab === 'policy' && (
-        <EventSection title="Actions de politique appliquées (security.policy)" types="security.policy" hint="Chaque action effectuée localement par l'agent (DNS privé, paquets désactivés, permissions refusées…)." defaultPeriod="30d" />
+        <EventSection title="Policy actions applied (security.policy)" types="security.policy" hint="Each action performed locally by the agent (private DNS, disabled packages, denied permissions...)." defaultPeriod="30d" />
       )}
     </>
   );
 }
 
 /**
- * Rôles par défaut (SMS, téléphone, navigateur, assistant, accueil, filtrage d'appels) : qui les tient et
- * l'historique des changements (`app.role`). Un logiciel malveillant cherche souvent à devenir l'application SMS
- * ou le filtre d'appels : un changement que vous n'avez pas fait mérite d'être regardé.
+ * Default roles (SMS, phone, browser, assistant, home, call screening): who holds them and
+ * the change history (`app.role`). Malware often tries to become the SMS app
+ * or the call screening app: a change that you did not make deserves a look.
  */
 function RolesTab() {
   const labelOf = useAppLabels();
@@ -84,7 +84,7 @@ function RolesTab() {
   const defaults = special.events[0]?.data['default_apps'];
   const current = isRecord(defaults) ? Object.entries(defaults).filter(([, v]) => typeof v === 'string' && v !== '') : [];
   const pkgName = (p: string | undefined) => {
-    if (!p) return <span className="muted">aucune</span>;
+    if (!p) return <span className="muted">none</span>;
     const l = labelOf(p);
     return (
       <Link className="role-pkg" to={appSheetPath(p)}>
@@ -98,25 +98,25 @@ function RolesTab() {
         <PeriodPicker ctl={ctl} />
       </div>
       <div className="grid grid-start">
-        <Card title="Rôles actuels" className="span-5">
+        <Card title="Current roles" className="span-5">
           {special.loading && !special.events[0] ? (
-            <Empty>Chargement…</Empty>
+            <Empty>Loading…</Empty>
           ) : current.length === 0 ? (
-            <Empty>Aucun relevé des applications par défaut sur cette période.</Empty>
+            <Empty>No reading of the default applications for this period.</Empty>
           ) : (
             <ul className="role-list">
               {current.map(([role, p]) => (
                 <li key={role}>
-                  <strong>{roleLabel(role)}</strong> : {pkgName(p as string)}
+                  <strong>{roleLabel(role)}</strong>: {pkgName(p as string)}
                   {roleWhy(role) && <p className="hint">{roleWhy(role)}</p>}
                 </li>
               ))}
             </ul>
           )}
         </Card>
-        <Card title="Historique des changements" className="span-7">
+        <Card title="Change history" className="span-7">
           {changes.length === 0 && !paged.loading ? (
-            <Empty>Aucun changement de rôle par défaut sur cette période.</Empty>
+            <Empty>No default role change for this period.</Empty>
           ) : (
             <div className="flush">
               <div className="table-wrap">
@@ -124,8 +124,8 @@ function RolesTab() {
                   <thead>
                     <tr>
                       <th scope="col">Date</th>
-                      <th scope="col">Rôle</th>
-                      <th scope="col">Changement</th>
+                      <th scope="col">Role</th>
+                      <th scope="col">Change</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -144,7 +144,7 @@ function RolesTab() {
             </div>
           )}
           <p className="hint">
-            Un changement que vous n'avez pas fait vous-même (surtout l'application SMS ou le filtrage d'appels) est à vérifier dans la fiche de la nouvelle application.
+            A change that you did not make yourself (especially the SMS app or call screening) should be checked on the new application's detail page.
           </p>
         </Card>
       </div>
@@ -156,7 +156,7 @@ function PostureTab() {
   const { deviceId } = useDevice();
   const state = useApi(deviceId ? `posture:${deviceId}` : null, (s) => api.posture(deviceId, s));
   return (
-    <Async state={state} isEmpty={(d) => Object.keys(d.current ?? {}).length === 0} empty="Aucune posture de sécurité reçue pour cet appareil.">
+    <Async state={state} isEmpty={(d) => Object.keys(d.current ?? {}).length === 0} empty="No security posture received for this device.">
       {(d) => <PostureView current={d.current} ts={d.ts} changes={d.changes ?? []} />}
     </Async>
   );
@@ -168,7 +168,7 @@ function PostureView({ current, ts, changes }: { current: Posture; ts: string | 
   const certs = current.user_ca_certs ?? [];
   return (
     <div className="grid">
-      <Card title="Posture courante" className="span-7" actions={<>{ts && <span className="hint">au {fmtDateTime(ts)}</span>}<StatusPill status={status} /></>}>
+      <Card title="Current posture" className="span-7" actions={<>{ts && <span className="hint">as of {fmtDateTime(ts)}</span>}<StatusPill status={status} /></>}>
         <ul className="findings">
           {findings.map((f) => (
             <li key={f.id}>
@@ -183,7 +183,7 @@ function PostureView({ current, ts, changes }: { current: Posture; ts: string | 
         </ul>
         {certs.length > 0 && (
           <>
-            <h3 className="section-title">Empreintes des AC utilisateur</h3>
+            <h3 className="section-title">Fingerprints of the user CAs</h3>
             <ul className="findings">
               {certs.map((c) => (
                 <li key={c}>
@@ -194,9 +194,9 @@ function PostureView({ current, ts, changes }: { current: Posture; ts: string | 
           </>
         )}
       </Card>
-      <Card title="Historique des changements" className="span-5">
+      <Card title="Change history" className="span-5">
         {changes.length === 0 ? (
-          <Empty>Aucun changement de posture enregistré.</Empty>
+          <Empty>No posture change recorded.</Empty>
         ) : (
           <div className="flush">
             <div className="table-wrap">
@@ -204,8 +204,8 @@ function PostureView({ current, ts, changes }: { current: Posture; ts: string | 
                 <thead>
                   <tr>
                     <th scope="col">Date</th>
-                    <th scope="col">Réglage</th>
-                    <th scope="col">Changement</th>
+                    <th scope="col">Setting</th>
+                    <th scope="col">Change</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -228,10 +228,10 @@ function PostureView({ current, ts, changes }: { current: Posture; ts: string | 
   );
 }
 
-/** Valeur d'un changement de posture ; les listes d'empreintes sont abrégées. */
+/** Value of a posture change; fingerprint lists are abbreviated. */
 function fmtChangeValue(v: unknown): string {
   if (Array.isArray(v)) {
-    if (v.length === 0) return 'aucun';
+    if (v.length === 0) return 'none';
     return v.map((x) => (typeof x === 'string' && x.length > 20 ? `${x.slice(0, 12)}…` : fmtValue(x))).join(', ');
   }
   return fmtValue(v);
@@ -244,8 +244,8 @@ function SensorsTab() {
   const range = periodRange(ctl.period);
   const paged = usePagedEvents(deviceId ? { device_id: deviceId, type: 'sensor.', ...range } : null, 200);
   const usage = useMemo(() => {
-    const cam = paged.events.filter((e) => e.type === 'sensor.camera' && bool(e.data, 'in_use')).map((e) => str(e.data, 'package') ?? 'inconnu');
-    const mic = paged.events.filter((e) => e.type === 'sensor.microphone' && bool(e.data, 'recording')).map((e) => str(e.data, 'package') ?? 'inconnu');
+    const cam = paged.events.filter((e) => e.type === 'sensor.camera' && bool(e.data, 'in_use')).map((e) => str(e.data, 'package') ?? 'unknown');
+    const mic = paged.events.filter((e) => e.type === 'sensor.microphone' && bool(e.data, 'recording')).map((e) => str(e.data, 'package') ?? 'unknown');
     return { cam: countKeys(cam, 6), mic: countKeys(mic, 6) };
   }, [paged.events]);
   return (
@@ -254,16 +254,16 @@ function SensorsTab() {
         <PeriodPicker ctl={ctl} />
       </div>
       <div className="grid">
-        <Card title="Utilisations de la caméra" className="span-6">
+        <Card title="Camera uses" className="span-6">
           <Usage items={usage.cam} labelOf={labelOf} />
         </Card>
-        <Card title="Utilisations du microphone" className="span-6">
+        <Card title="Microphone uses" className="span-6">
           <Usage items={usage.mic} labelOf={labelOf} />
         </Card>
       </div>
-      <Card title="Détail (sensor.*)">
+      <Card title="Detail (sensor.*)">
         <div className="flush">
-          <EventList paged={paged} empty="Aucune utilisation de la caméra ou du microphone sur cette période." />
+          <EventList paged={paged} empty="No camera or microphone use for this period." />
         </div>
       </Card>
     </>
@@ -271,7 +271,7 @@ function SensorsTab() {
 }
 
 function Usage({ items, labelOf }: { items: { key: string; count: number }[]; labelOf: (p: string | undefined) => string | undefined }) {
-  if (items.length === 0) return <p className="muted">Aucun accès parmi les événements chargés.</p>;
+  if (items.length === 0) return <p className="muted">No access among the loaded events.</p>;
   return (
     <ul className="findings">
       {items.map((i) => (
@@ -290,16 +290,16 @@ function CertsTab() {
   const certs = device?.last_posture?.user_ca_certs ?? [];
   return (
     <>
-      <Card title="Certificats d'AC installés par l'utilisateur (posture courante)" className="certs-now">
+      <Card title="CA certificates installed by the user (current posture)" className="certs-now">
         {device?.last_posture === undefined ? (
-          <Empty>Posture inconnue.</Empty>
+          <Empty>Posture unknown.</Empty>
         ) : certs.length === 0 ? (
-          <p>Aucun certificat d'AC utilisateur : bon état.</p>
+          <p>No user CA certificate: good state.</p>
         ) : (
           <ul className="findings">
             {certs.map((c) => (
               <li key={c}>
-                <Badge tone="bad">AC utilisateur</Badge>
+                <Badge tone="bad">User CA</Badge>
                 <span className="f-label mono break">{c}</span>
               </li>
             ))}
@@ -307,7 +307,7 @@ function CertsTab() {
         )}
       </Card>
       <div className="spacer" />
-      <EventSection title="Ajouts et retraits (security.ca_cert)" types="security.ca_cert" hint="Une AC ajoutée peut permettre d'intercepter le trafic chiffré." defaultPeriod="30d" />
+      <EventSection title="Additions and removals (security.ca_cert)" types="security.ca_cert" hint="An added CA can allow encrypted traffic to be intercepted." defaultPeriod="30d" />
     </>
   );
 }
@@ -341,8 +341,8 @@ function EventSection({
         <PeriodPicker ctl={ctl} />
         {searchable && (
           <label className="filter grow">
-            Recherche
-            <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="tag, champ, valeur…" />
+            Search
+            <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="tag, field, value…" />
           </label>
         )}
         {qLabel && <Badge>{qLabel}</Badge>}
@@ -350,7 +350,7 @@ function EventSection({
       <Card title={title}>
         {hint && <p className="hint">{hint}</p>}
         <div className="flush">
-          <EventList paged={paged} empty="Rien à signaler sur cette période." />
+          <EventList paged={paged} empty="Nothing to report for this period." />
         </div>
       </Card>
     </>

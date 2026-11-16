@@ -17,7 +17,7 @@ import { useDevice } from '../state/device.tsx';
 const MapView = lazy(() => import('../components/MapView.tsx'));
 const TimelineChart = lazy(() => import('../components/TimelineChart.tsx'));
 
-const STALE_MS = 35 * 60_000; // deux pulsations manquées (15 min chacune) + marge
+const STALE_MS = 35 * 60_000; // two missed heartbeats (15 min each) + margin
 
 export default function Overview() {
   const { device } = useDevice();
@@ -40,7 +40,7 @@ export default function Overview() {
   return (
     <>
       <div className="page-head">
-        <h1>Vue d'ensemble</h1>
+        <h1>Overview</h1>
         <span className="muted">
           {device.name} · <span className="mono">{device.device_id}</span>
         </span>
@@ -49,15 +49,15 @@ export default function Overview() {
       <DetectionsOverview deviceId={device.device_id} now={now} />
 
       <div className="grid">
-        <Card title="État de l'appareil" className="span-7">
+        <Card title="Device state" className="span-7">
           <DeviceState device={device} now={now} />
         </Card>
         <Card
-          title="Dernière position"
+          title="Last location"
           className="span-5"
           actions={
-            <Link to="/carte" className="btn btn-sm">
-              Ouvrir la carte
+            <Link to="/map" className="btn btn-sm">
+              Open the map
             </Link>
           }
         >
@@ -67,21 +67,21 @@ export default function Overview() {
 
       <div className="grid">
         <Card
-          title="Posture de sécurité"
+          title="Security posture"
           className="span-5"
           actions={
-            <Link to="/securite" className="btn btn-sm">
-              Détails
+            <Link to="/security" className="btn btn-sm">
+              Details
             </Link>
           }
         >
           <PostureSummary device={device} />
         </Card>
-        <Card title="Activité des dernières 24 h" className="span-7">
-          <Async state={timeline} isEmpty={(t) => t.series.length === 0 || t.buckets.length === 0} empty="Aucun événement reçu sur les dernières 24 h.">
+        <Card title="Activity of the last 24 h" className="span-7">
+          <Async state={timeline} isEmpty={(t) => t.series.length === 0 || t.buckets.length === 0} empty="No event received in the last 24 h.">
             {(t) => (
               <Suspense fallback={<Loading />}>
-                <TimelineChart data={t} bucket="hour" ariaLabel="Événements par heure et par domaine" />
+                <TimelineChart data={t} bucket="hour" ariaLabel="Events per hour and per domain" />
               </Suspense>
             )}
           </Async>
@@ -90,43 +90,43 @@ export default function Overview() {
 
       <div className="grid">
         <Card
-          title="Commandes à distance"
+          title="Remote commands"
           className="span-5"
           actions={
-            <Link to="/commandes" className="btn btn-sm">
-              Commandes
+            <Link to="/commands" className="btn btn-sm">
+              Commands
             </Link>
           }
         >
           <CommandsSummary device={device} now={now} />
         </Card>
         <Card
-          title="Pistage des dernières 24 h"
+          title="Tracking, last 24 h"
           className="span-7"
           actions={
-            <Link to="/pistage" className="btn btn-sm">
-              Détails
+            <Link to="/tracking" className="btn btn-sm">
+              Details
             </Link>
           }
         >
           {tracking.error ? (
-            <Empty>Vue pistage indisponible sur ce collecteur.</Empty>
+            <Empty>Tracking view unavailable on this collector.</Empty>
           ) : (
-            <Async state={tracking} isEmpty={(t) => t.publishers.length === 0} empty="Aucune requête DNS sur les dernières 24 h.">
+            <Async state={tracking} isEmpty={(t) => t.publishers.length === 0} empty="No DNS queries in the last 24 h.">
               {(t) => {
                 const totals = totalsOf(t.totals, t.publishers);
                 const pct = blockedPct(totals);
                 return (
                   <>
                     <div className="stats">
-                      <Stat label="Requêtes DNS" value={fmtNumber(totals.queries)} />
+                      <Stat label="DNS queries" value={fmtNumber(totals.queries)} />
                       {hasStatusData(totals) ? (
-                        <Stat label="Bloquées" value={fmtNumber(totals.blocked)} sub={pct === undefined ? undefined : fmtPct(pct, 1)} tone="ok" />
+                        <Stat label="Blocked" value={fmtNumber(totals.blocked)} sub={pct === undefined ? undefined : fmtPct(pct, 1)} tone="ok" />
                       ) : (
-                        <Stat label="Blocage" value="Inconnu" sub={t.adguard ? 'aucun décompte' : 'AdGuard Home injoignable'} tone="warn" />
+                        <Stat label="Blocking" value="Unknown" sub={t.adguard ? 'no count' : 'AdGuard Home unreachable'} tone="warn" />
                       )}
                     </div>
-                    <p className="hint">Vigie voit à qui le téléphone parle, pas le contenu des échanges (chiffré).</p>
+                    <p className="hint">Watchpost sees who the phone talks to, not the content of the exchanges (encrypted).</p>
                   </>
                 );
               }}
@@ -137,24 +137,24 @@ export default function Overview() {
 
       <div className="grid">
         <Card
-          title="Derniers événements (sévérité ≥ 2, 7 jours)"
+          title="Latest events (severity ≥ 2, 7 days)"
           className="span-7"
           actions={
-            <Link to="/evenements?sev_min=2" className="btn btn-sm">
-              Tout voir
+            <Link to="/events?sev_min=2" className="btn btn-sm">
+              See all
             </Link>
           }
         >
           <div className="flush">
-            <EventList paged={sevEvents} compact empty="Aucun événement de sévérité 2 ou plus sur 7 jours." />
+            <EventList paged={sevEvents} compact empty="No event of severity 2 or more in 7 days." />
           </div>
         </Card>
         <Card
-          title="Dernières alertes Wazuh"
+          title="Latest Wazuh alerts"
           className="span-5"
           actions={
-            <Link to="/alertes" className="btn btn-sm">
-              Toutes
+            <Link to="/alerts" className="btn btn-sm">
+              All
             </Link>
           }
         >
@@ -162,19 +162,19 @@ export default function Overview() {
             {(a) =>
               !a.wazuh ? (
                 <Empty>
-                  Wazuh n'est pas configuré sur ce collecteur : aucune alerte disponible.
+                  Wazuh is not configured on this collector: no alerts available.
                 </Empty>
               ) : a.alerts.length === 0 ? (
-                <Empty>Aucune alerte sur 7 jours.</Empty>
+                <Empty>No alerts in 7 days.</Empty>
               ) : (
                 <ul className="findings">
                   {a.alerts.map((al, i) => (
                     <li key={`${al.ts}-${al.rule_id ?? ''}-${i}`}>
                       <LevelBadge level={al.level} />
-                      <span className="f-label">{al.description ?? al.rule_id ?? 'Alerte'}</span>
+                      <span className="f-label">{al.description ?? al.rule_id ?? 'Alert'}</span>
                       <span className="f-val">
                         {fmtDateTime(al.ts)}
-                        {al.rule_id ? ` · règle ${al.rule_id}` : ''}
+                        {al.rule_id ? ` · rule ${al.rule_id}` : ''}
                       </span>
                     </li>
                   ))}
@@ -194,10 +194,10 @@ function CommandsSummary({ device, now }: { device: Device; now: Date }) {
   return (
     <>
       <div className="stats">
-        <Stat label="Canal" value={st.label} tone={st.tone === 'neutral' ? undefined : st.tone} />
-        <Stat label="Dernier contact" value={ch?.last_contact ? fmtRelative(ch.last_contact, now) : '—'} sub={ch?.last_contact ? fmtDateTime(ch.last_contact) : undefined} />
+        <Stat label="Channel" value={st.label} tone={st.tone === 'neutral' ? undefined : st.tone} />
+        <Stat label="Last contact" value={ch?.last_contact ? fmtRelative(ch.last_contact, now) : '—'} sub={ch?.last_contact ? fmtDateTime(ch.last_contact) : undefined} />
       </div>
-      <p className="hint">{st.hint} Sonner, faire vibrer, localiser, verrouiller ou effacer : page Commandes.</p>
+      <p className="hint">{st.hint} Ring, vibrate, locate, lock or erase: Commands page.</p>
     </>
   );
 }
@@ -213,64 +213,64 @@ function DeviceState({ device, now }: { device: Device; now: Date }) {
     <>
       {device.revoked && (
         <div className="state state-error" role="alert">
-          Cet appareil est révoqué : ses envois sont refusés.
+          This device is revoked: its uploads are refused.
         </div>
       )}
       {!device.revoked && stale && (
         <div className="state state-warn" role="alert">
           {seen ? (
             <>
-              Aucun contact depuis <strong>{fmtDuration(age)}</strong> (dernier : {fmtDateTime(device.last_seen)}). Le téléphone est
-              peut-être éteint, hors ligne ou l'agent est arrêté.
+              No contact for <strong>{fmtDuration(age)}</strong> (last: {fmtDateTime(device.last_seen)}). The phone may be
+              off, offline or the agent stopped.
             </>
           ) : (
-            <>Cet appareil n'a encore jamais envoyé de données.</>
+            <>This device has never sent any data yet.</>
           )}
         </div>
       )}
       <div className="stats">
         <Stat
-          label="Dernier contact"
+          label="Last contact"
           value={seen ? fmtRelative(device.last_seen, now) : '—'}
           sub={seen ? fmtDateTime(device.last_seen) : undefined}
           tone={stale ? 'bad' : 'ok'}
         />
         <Stat
-          label="Batterie"
+          label="Battery"
           value={hb?.battery_pct !== undefined ? fmtPct(hb.battery_pct) : '—'}
-          sub={hb?.charging === undefined ? undefined : hb.charging ? 'en charge' : 'sur batterie'}
+          sub={hb?.charging === undefined ? undefined : hb.charging ? 'charging' : 'on battery'}
           tone={hb?.battery_pct !== undefined && hb.battery_pct < 15 && !hb.charging ? 'warn' : undefined}
         />
         <Stat
-          label="Tampon en attente"
-          value={hb?.queue_depth !== undefined ? `${fmtNumber(hb.queue_depth)} évt` : '—'}
+          label="Pending buffer"
+          value={hb?.queue_depth !== undefined ? `${fmtNumber(hb.queue_depth)} evt` : '—'}
           sub={hb?.queue_bytes !== undefined ? fmtBytes(hb.queue_bytes) : undefined}
           tone={hb?.queue_depth !== undefined && hb.queue_depth > 500 ? 'warn' : undefined}
         />
         <Stat
           label="Device Owner"
-          value={hb?.device_owner === undefined ? '—' : hb.device_owner ? 'Actif' : 'Inactif'}
-          sub={hb?.device_owner === false ? 'mode dégradé' : undefined}
+          value={hb?.device_owner === undefined ? '—' : hb.device_owner ? 'Active' : 'Inactive'}
+          sub={hb?.device_owner === false ? 'degraded mode' : undefined}
           tone={hb?.device_owner === undefined ? undefined : hb.device_owner ? 'ok' : 'warn'}
         />
-        <Stat label="Agent" value={device.agent_version ? `v${device.agent_version}` : '—'} sub={hb?.uptime_ms !== undefined ? `actif depuis ${fmtDuration(hb.uptime_ms)}` : undefined} />
+        <Stat label="Agent" value={device.agent_version ? `v${device.agent_version}` : '—'} sub={hb?.uptime_ms !== undefined ? `up for ${fmtDuration(hb.uptime_ms)}` : undefined} />
         <Stat
-          label="Événements perdus"
+          label="Lost events"
           value={hb?.dropped_total !== undefined ? fmtNumber(hb.dropped_total) : '—'}
-          sub={hb?.last_upload_ts ? `dernier envoi ${fmtRelative(hb?.last_upload_ts, now)}` : undefined}
+          sub={hb?.last_upload_ts ? `last upload ${fmtRelative(hb?.last_upload_ts, now)}` : undefined}
           tone={hb?.dropped_total ? 'warn' : undefined}
         />
       </div>
-      <h3 className="section-title">Collecteurs</h3>
+      <h3 className="section-title">Collectors</h3>
       {collectors.length === 0 ? (
-        <p className="muted">État des collecteurs inconnu (aucune pulsation reçue).</p>
+        <p className="muted">Collector state unknown (no heartbeat received).</p>
       ) : (
         <>
           <p className="muted">
-            {collectors.length - bad.length} en marche sur {collectors.length}
-            {bad.length > 0 ? ` — ${bad.length} à surveiller` : ''}.
+            {collectors.length - bad.length} running out of {collectors.length}
+            {bad.length > 0 ? ` — ${bad.length} to watch` : ''}.
           </p>
-          <ul className="chip-list" aria-label="État des collecteurs">
+          <ul className="chip-list" aria-label="Collector state">
             {collectors.map(([id, st]) => (
               <li key={id}>
                 <Badge tone={st === 'running' ? 'ok' : st === 'unavailable' ? 'bad' : 'neutral'} title={collectorStateLabel(st)}>
@@ -286,7 +286,7 @@ function DeviceState({ device, now }: { device: Device; now: Date }) {
 }
 
 function collectorStateLabel(s: string): string {
-  return s === 'running' ? 'en marche' : s === 'disabled' ? 'désactivé' : s === 'unavailable' ? 'indisponible' : s;
+  return s === 'running' ? 'running' : s === 'disabled' ? 'disabled' : s === 'unavailable' ? 'unavailable' : s;
 }
 
 function LastPosition({ device }: { device: Device }) {
@@ -295,17 +295,17 @@ function LastPosition({ device }: { device: Device }) {
     () => (loc ? [{ lat: loc.lat, lon: loc.lon, t: new Date(loc.ts).getTime(), ...(loc.acc_m !== undefined ? { acc: loc.acc_m } : {}) }] : []),
     [loc],
   );
-  if (!loc) return <Empty>Aucune position reçue pour cet appareil.</Empty>;
+  if (!loc) return <Empty>No location received for this device.</Empty>;
   return (
     <>
       <div className="map-sm">
-        <Suspense fallback={<Loading label="Chargement de la carte…" />}>
-          <MapView points={points} selected={0} interactive={false} ariaLabel="Dernière position connue de l'appareil" />
+        <Suspense fallback={<Loading label="Loading the map…" />}>
+          <MapView points={points} selected={0} interactive={false} ariaLabel="Last known location of the device" />
         </Suspense>
       </div>
       <p className="hint overview-pos">
         {fmtDateTime(loc.ts)} ({fmtRelative(loc.ts)})
-        {loc.acc_m !== undefined ? ` · précision ±${fmtNumber(loc.acc_m)} m` : ''} · {fmtNumber(loc.lat, 5)}, {fmtNumber(loc.lon, 5)}
+        {loc.acc_m !== undefined ? ` · accuracy ±${fmtNumber(loc.acc_m)} m` : ''} · {fmtNumber(loc.lat, 5)}, {fmtNumber(loc.lon, 5)}
       </p>
     </>
   );
@@ -313,7 +313,7 @@ function LastPosition({ device }: { device: Device }) {
 
 function PostureSummary({ device }: { device: Device }) {
   const findings = useMemo(() => evaluatePosture(device.last_posture), [device.last_posture]);
-  if (findings.length === 0) return <Empty>Aucune posture reçue pour cet appareil.</Empty>;
+  if (findings.length === 0) return <Empty>No posture received for this device.</Empty>;
   const status = overallStatus(findings);
   const points = attentionPoints(findings);
   const ok = findings.filter((f) => f.status === 'ok').length;
@@ -322,13 +322,13 @@ function PostureSummary({ device }: { device: Device }) {
       <p>
         <StatusPill status={status} />{' '}
         <span className="muted">
-          {ok} contrôle{ok > 1 ? 's' : ''} conforme{ok > 1 ? 's' : ''} sur {findings.length}
+          {ok} of {findings.length} check{findings.length > 1 ? 's' : ''} compliant
         </span>
       </p>
       {points.length === 0 ? (
-        <p>Aucun point d'attention.</p>
+        <p>No point of attention.</p>
       ) : (
-        <ul className="findings" aria-label="Points d'attention">
+        <ul className="findings" aria-label="Points of attention">
           {points.map((f) => (
             <li key={f.id}>
               <StatusPill status={f.status} />

@@ -57,8 +57,8 @@ export default function MapPage() {
     api.timeline({ device_id: deviceId, ...range, bucket, by: 'domain' }, s),
   );
 
-  // Suivi en direct : les `location.fix` reçus par le flux s'ajoutent à la trace (par exemple après « Localiser
-  // maintenant »). Désactivé pour une période personnalisée, qui ne se termine pas « maintenant ».
+  // Live follow: the `location.fix` events received by the stream are added to the track (for example after "Locate
+  // now"). Disabled for a custom period, which does not end "now".
   const [follow, setFollow] = useState(true);
   const liveKey = `${deviceId ?? ''}|${range.from}|${range.to}`;
   const [extra, setExtra] = useState<{ key: string; pts: LocationPoint[] }>({ key: liveKey, pts: [] });
@@ -98,12 +98,12 @@ export default function MapPage() {
   return (
     <>
       <div className="page-head">
-        <h1>Carte</h1>
+        <h1>Map</h1>
       </div>
       <div className="toolbar">
         <PeriodPicker ctl={ctl} keys={['today', '24h', '7d', 'custom']} />
         <label className="filter">
-          Trou si aucune position pendant
+          Gap if no location for
           <select value={thr} onChange={(e) => setThr(Number(e.target.value))}>
             {THRESHOLDS.map((t) => (
               <option key={t.v} value={t.v}>
@@ -113,22 +113,22 @@ export default function MapPage() {
           </select>
         </label>
         <button type="button" className="btn" onClick={() => { ctl.refresh(); loc.reload(); act.reload(); }}>
-          Actualiser
+          Refresh
         </button>
         <label className="check">
           <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} disabled={ctl.key === 'custom'} />
           <span className={`live-dot${streamOn && stream === 'open' ? '' : ' is-off'}`} aria-hidden="true" />
-          Suivi en direct
+          Follow live
           <span className="hint" role="status" data-testid="live-status">
-            {streamOn ? (stream === 'open' ? (lastLive ? ` · dernière position reçue à ${fmtTime(lastLive.ts)}` : ' · connecté') : stream === 'error' ? ' · connexion perdue, nouvelle tentative…' : ' · connexion…') : ''}
+            {streamOn ? (stream === 'open' ? (lastLive ? ` · last location received at ${fmtTime(lastLive.ts)}` : ' · connected') : stream === 'error' ? ' · connection lost, retrying…' : ' · connecting…') : ''}
           </span>
         </label>
       </div>
       <Async
         state={{ ...loc, data: merged }}
         isEmpty={(d) => d.points.filter((p) => isValidLatLon(p.lat, p.lon)).length === 0}
-        empty="Aucune position enregistrée sur cette période."
-        loadingLabel="Chargement de la trace…"
+        empty="No location recorded for this period."
+        loadingLabel="Loading the track…"
       >
         {(d) => <TrackView track={prepare(d.points)} thresholdMin={thr} activity={activity} truncated={d.points.length >= 2000} />}
       </Async>
@@ -177,7 +177,7 @@ function TrackView({
     return pathLength(track.pts, (i) => gapEnds.has(i));
   }, [track, gaps]);
 
-  // Lecture du trajet (la lecture s'arrête d'elle-même sur le dernier point).
+  // Track playback (playback stops by itself on the last point).
   const isPlaying = playing && selected < n - 1;
   useEffect(() => {
     if (!isPlaying) return;
@@ -201,7 +201,7 @@ function TrackView({
   return (
     <div className="grid grid-start">
       <Card
-        title={`Trace · ${fmtNumber(n)} position${n > 1 ? 's' : ''}`}
+        title={`Track · ${fmtNumber(n)} location${n > 1 ? 's' : ''}`}
         className="span-8"
         actions={
           <span className="hint">
@@ -210,7 +210,7 @@ function TrackView({
         }
       >
         <div className="map-lg">
-          <Suspense fallback={<Loading label="Chargement de la carte…" />}>
+          <Suspense fallback={<Loading label="Loading the map…" />}>
             <MapView
               points={mapPoints}
               segments={segments}
@@ -220,23 +220,23 @@ function TrackView({
                 setPlaying(false);
                 select(i);
               }}
-              ariaLabel="Carte de la trace des positions"
+              ariaLabel="Map of the location track"
             />
           </Suspense>
         </div>
         <p className="hint map-legend">
-          <span className="legend-line" aria-hidden="true" /> trajet · <span className="legend-dash" aria-hidden="true" /> trou de données (aucune position)
-          · contour orange : précision supérieure à 100 m. Cliquez un point pour le sélectionner.
-          {truncated ? ' Trace sous-échantillonnée par le serveur (2 000 points maximum).' : ''}
+          <span className="legend-line" aria-hidden="true" /> track · <span className="legend-dash" aria-hidden="true" /> data gap (no location)
+          · orange outline: accuracy worse than 100 m. Click a point to select it.
+          {truncated ? ' Track downsampled by the server (2,000 points maximum).' : ''}
         </p>
         <ProviderLegend />
         <p className="hint">
-          Le fournisseur de chaque position est celui qui l'a calculée : <em>GPS</em> (satellites seuls), <em>Réseau</em> et <em>Fusionné</em> passent par les Services
-          Google Play.
+          The provider of each location is the one that computed it: <em>GPS</em> (satellites only), <em>Network</em> and <em>Fused</em> go through Google Play
+          Services.
         </p>
         <div className="replay">
           <div className="replay-btns">
-            <button type="button" className="btn btn-icon" aria-label="Point précédent" onClick={() => { setPlaying(false); select(Math.max(0, selected - 1)); }}>
+            <button type="button" className="btn btn-icon" aria-label="Previous point" onClick={() => { setPlaying(false); select(Math.max(0, selected - 1)); }}>
               ‹
             </button>
             <button
@@ -253,13 +253,13 @@ function TrackView({
               }}
               disabled={n < 2}
             >
-              {isPlaying ? 'Pause' : 'Rejouer'}
+              {isPlaying ? 'Pause' : 'Replay'}
             </button>
-            <button type="button" className="btn btn-icon" aria-label="Point suivant" onClick={() => { setPlaying(false); select(Math.min(n - 1, selected + 1)); }}>
+            <button type="button" className="btn btn-icon" aria-label="Next point" onClick={() => { setPlaying(false); select(Math.min(n - 1, selected + 1)); }}>
               ›
             </button>
             <label className="sr-only" htmlFor="replay-speed">
-              Vitesse de lecture
+              Playback speed
             </label>
             <select id="replay-speed" value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
               <option value={1}>×1</option>
@@ -277,7 +277,7 @@ function TrackView({
               setPlaying(false);
               select(Number(e.target.value));
             }}
-            aria-label="Curseur temporel"
+            aria-label="Time slider"
             aria-valuetext={cur ? fmtDateTime(cur.ts) : undefined}
             disabled={n < 2}
           />
@@ -293,25 +293,25 @@ function TrackView({
       </Card>
 
       <div className="span-4 stack">
-        <Card title="Point sélectionné">
+        <Card title="Selected point">
           {cur ? (
             <KV
               items={[
-                { k: 'Heure', v: fmtDateTime(cur.ts) },
-                { k: 'Coordonnées', v: `${fmtNumber(cur.lat, 5)}, ${fmtNumber(cur.lon, 5)}` },
+                { k: 'Time', v: fmtDateTime(cur.ts) },
+                { k: 'Coordinates', v: `${fmtNumber(cur.lat, 5)}, ${fmtNumber(cur.lon, 5)}` },
                 {
-                  k: 'Précision',
+                  k: 'Accuracy',
                   v: cur.acc_m !== undefined ? (
                     <>
-                      ±{fmtNumber(cur.acc_m)} m {cur.acc_m > 100 && <Badge tone="warn">faible</Badge>}
+                      ±{fmtNumber(cur.acc_m)} m {cur.acc_m > 100 && <Badge tone="warn">low</Badge>}
                     </>
                   ) : (
-                    'inconnue'
+                    'unknown'
                   ),
                 },
-                { k: 'Vitesse', v: fmtSpeedKmh(cur.speed_mps) },
+                { k: 'Speed', v: fmtSpeedKmh(cur.speed_mps) },
                 {
-                  k: 'Fournisseur',
+                  k: 'Provider',
                   v: cur.provider ? (
                     <>
                       <ProviderDot provider={cur.provider} />
@@ -332,26 +332,26 @@ function TrackView({
               ]}
             />
           ) : (
-            <Empty>Aucun point.</Empty>
+            <Empty>No point.</Empty>
           )}
         </Card>
-        <Card title="Résumé">
+        <Card title="Summary">
           <KV
             items={[
-              { k: 'Distance parcourue', v: fmtDistance(distance) },
-              { k: 'Durée couverte', v: first && last ? fmtDuration(last.t - first.t) : '—' },
-              { k: 'Vitesse maximale', v: fmtSpeedKmh(vmax) },
+              { k: 'Distance travelled', v: fmtDistance(distance) },
+              { k: 'Duration covered', v: first && last ? fmtDuration(last.t - first.t) : '—' },
+              { k: 'Maximum speed', v: fmtSpeedKmh(vmax) },
               {
-                k: 'Fournisseurs',
+                k: 'Providers',
                 v: providerCounts.map((c) => `${c.label} ${fmtNumber(c.count)}`).join(' · ') || '—',
               },
-              { k: 'Trous de données', v: `${gaps.length}${silent ? ` (dont ${fmtDuration(silent)} sans aucun événement)` : ''}` },
+              { k: 'Data gaps', v: `${gaps.length}${silent ? ` (of which ${fmtDuration(silent)} without any event)` : ''}` },
             ]}
           />
         </Card>
-        <Card title={`Trous de données (> ${fmtDuration(threshold)})`}>
+        <Card title={`Data gaps (> ${fmtDuration(threshold)})`}>
           {gapInfo.length === 0 ? (
-            <p className="muted">Aucun trou : la trace est continue sur la période.</p>
+            <p className="muted">No gap: the track is continuous over the period.</p>
           ) : (
             <ul className="gap-list">
               {gapInfo.map((g) => (

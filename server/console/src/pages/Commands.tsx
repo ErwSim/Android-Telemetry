@@ -47,10 +47,10 @@ export default function Commands() {
   const [sending, setSending] = useState(false);
   const [dialog, setDialog] = useState<SensitiveKind | undefined>();
   const [cancelling, setCancelling] = useState<string | undefined>();
-  // « Localiser maintenant » : instant de la demande, puis position reçue depuis.
+  // "Locate now": instant of the request, then location received since.
   const [locateSince, setLocateSince] = useState<number | undefined>();
   const [fixArrived, setFixArrived] = useState(false);
-  // Arrivée détectée sur le flux SSE après la demande (pas de comparaison d'horloges téléphone / navigateur).
+  // Arrival detected on the SSE stream after the request (no comparison of phone / browser clocks).
   const waitingFix = useRef(false);
   const [liveLoc, setLiveLoc] = useState<(LastLocation & { provider?: string }) | undefined>();
 
@@ -76,7 +76,7 @@ export default function Commands() {
   );
   const stream = useEventStream(!!deviceId, deviceId, onEvent);
 
-  // La position affichée : la plus récente entre celle de l'appareil et celle reçue en direct.
+  // The location displayed: the most recent between the device's and the one received live.
   const loc = useMemo(() => {
     const base = device?.last_location;
     if (liveLoc && (!base || Date.parse(liveLoc.ts) >= Date.parse(base.ts))) return liveLoc;
@@ -91,7 +91,7 @@ export default function Commands() {
 
   const fail = (e: unknown) => {
     const msg = e instanceof ApiError ? commandErrorMessage(e) : String(e);
-    setNotice({ tone: 'bad', text: `La commande n'a pas été envoyée. ${msg}` });
+    setNotice({ tone: 'bad', text: `The command was not sent. ${msg}` });
   };
 
   const sendSimple = async (type: Extract<CommandType, 'ring' | 'vibrate' | 'stop_ring' | 'locate'>, params: CommandParams) => {
@@ -107,7 +107,7 @@ export default function Commands() {
       }
       setNotice({
         tone: 'ok',
-        text: `« ${commandLabel(type)} » envoyée au serveur. ${channel.key === 'connected' ? 'Le téléphone la reçoit dans un instant.' : "Elle attend que le téléphone se connecte (voir l'état du canal)."}`,
+        text: `"${commandLabel(type)}" sent to the server. ${channel.key === 'connected' ? 'The phone receives it in a moment.' : 'It waits for the phone to connect (see the channel state).'}`,
       });
       list.reload();
     } catch (e) {
@@ -126,11 +126,11 @@ export default function Commands() {
       setNotice({
         tone: signed ? 'warn' : 'ok',
         text: signed
-          ? `Commande annulée côté serveur : il ne la remettra plus. ${SIGNED_CAVEAT}`
-          : 'Commande annulée : elle ne sera jamais exécutée.',
+          ? `Command cancelled on the server side: it will no longer deliver it. ${SIGNED_CAVEAT}`
+          : 'Command cancelled: it will never be executed.',
       });
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) setNotice({ tone: 'warn', text: "Trop tard : la commande n'est plus « En attente » (le téléphone l'a déjà reçue)." });
+      if (e instanceof ApiError && e.status === 409) setNotice({ tone: 'warn', text: 'Too late: the command is no longer "Pending" (the phone already received it).' });
       else fail(e);
     } finally {
       setCancelling(undefined);
@@ -141,7 +141,7 @@ export default function Commands() {
   return (
     <>
       <div className="page-head">
-        <h1>Commandes à distance</h1>
+        <h1>Remote commands</h1>
         <span className="muted">
           {device.name} · <span className="mono">{device.device_id}</span>
         </span>
@@ -155,7 +155,7 @@ export default function Commands() {
 
       {device.revoked && (
         <div className="state state-error" role="alert">
-          Cet appareil est révoqué : aucune commande ne peut lui être envoyée.
+          This device is revoked: no command can be sent to it.
         </div>
       )}
 
@@ -167,51 +167,51 @@ export default function Commands() {
 
       <div className="grid grid-start">
         <div className="span-7 stack">
-          <Card title="Canal de commandes">
+          <Card title="Command channel">
             <ChannelPanel device={device} now={now} streamOpen={stream === 'open'} />
           </Card>
-          <Card title="Actions simples">
-            <p className="hint">Sans code : le serveur peut les relayer seul. Valables 1 heure.</p>
+          <Card title="Simple actions">
+            <p className="hint">No passphrase: the server can relay them on its own. Valid for 1 hour.</p>
             <SimpleActions disabled={disabled} onSend={(t, p) => void sendSimple(t, p)} />
           </Card>
         </div>
         <div className="span-5 stack">
           <Card
-            title="Dernière position"
+            title="Last location"
             actions={
-              <Link to="/carte" className="btn btn-sm">
-                Ouvrir la carte
+              <Link to="/map" className="btn btn-sm">
+                Open the map
               </Link>
             }
           >
             <PositionPanel loc={loc} locateSince={locateSince} fixArrived={fixArrived} />
           </Card>
-          <Card title="Actions sensibles (signées)">
+          <Card title="Sensitive actions (signed)">
             {!canSign() && (
               <div className="state state-error" role="alert">
-                WebCrypto est indisponible dans ce contexte : ouvrez la console en HTTPS (ou sur localhost) pour signer.
+                WebCrypto is unavailable in this context: open the console over HTTPS (or on localhost) to sign.
               </div>
             )}
             <div className="cmd-list">
               <div className="cmd-row">
                 <div className="cmd-info">
-                  <strong>Verrouiller avec message</strong>
-                  <span className="hint">Verrouille l'écran et affiche un message de votre choix.</span>
+                  <strong>Lock with message</strong>
+                  <span className="hint">Locks the screen and shows a message of your choice.</span>
                 </div>
                 <div className="cmd-ctl">
                   <button type="button" className="btn btn-primary" disabled={disabled} onClick={() => setDialog('lock')}>
-                    Verrouiller…
+                    Lock…
                   </button>
                 </div>
               </div>
               <div className="cmd-row">
                 <div className="cmd-info">
-                  <strong>Effacer le message</strong>
-                  <span className="hint">Retire le message de l'écran de verrouillage.</span>
+                  <strong>Clear the message</strong>
+                  <span className="hint">Removes the message from the lock screen.</span>
                 </div>
                 <div className="cmd-ctl">
                   <button type="button" className="btn" disabled={disabled} onClick={() => setDialog('clear_lock_message')}>
-                    Effacer le message…
+                    Clear the message…
                   </button>
                 </div>
               </div>
@@ -222,18 +222,18 @@ export default function Commands() {
       </div>
 
       <div className="grid">
-        <Card title="Zone dangereuse" className="span-12 card-danger">
+        <Card title="Danger zone" className="span-12 card-danger">
           <div className="cmd-row">
             <div className="cmd-info">
-              <strong>Effacer le téléphone</strong>
+              <strong>Erase the phone</strong>
               <span className="hint">
-                Réinitialisation d'usine, irréversible. Exige que l'effacement soit autorisé dans l'application du téléphone ; confirmation en trois
-                étapes (explication, nom de l'appareil, code). La commande n'est valable que 15 minutes par défaut (24 heures au plus).
+                Factory reset, irreversible. Requires the erase to be allowed in the phone app; confirmation in three
+                steps (explanation, device name, passphrase). The command is only valid for 15 minutes by default (24 hours at most).
               </span>
             </div>
             <div className="cmd-ctl">
               <button type="button" className="btn btn-danger" disabled={disabled} onClick={() => setDialog('wipe')}>
-                Effacer le téléphone…
+                Erase the phone…
               </button>
             </div>
           </div>
@@ -241,28 +241,28 @@ export default function Commands() {
       </div>
 
       <div className="grid">
-        <Card title="Historique des commandes" className="span-12" actions={<span className="hint">Mis à jour en direct</span>}>
+        <Card title="Command history" className="span-12" actions={<span className="hint">Updated live</span>}>
           {badSigs > 0 && (
             <div className="callout callout-warn history-warn" role="alert">
               <strong>
-                {badSigs} commande{badSigs > 1 ? 's' : ''} refusée{badSigs > 1 ? 's' : ''} pour signature invalide dans la dernière heure.
+                {badSigs} command{badSigs > 1 ? 's' : ''} refused for an invalid signature in the last hour.
               </strong>{' '}
-              Le code saisi n'est probablement pas celui défini dans l'application du téléphone. À la cinquième, le téléphone bloque toute commande
-              sensible pendant une heure.
+              The passphrase entered is probably not the one set in the phone app. At the fifth, the phone blocks every sensitive
+              command for an hour.
             </div>
           )}
           <div className="flush">
             {list.error && !list.commands ? (
               <ErrorBox message={list.error.message} onRetry={list.reload} />
             ) : list.loading ? (
-              <Loading label="Chargement de l'historique…" />
+              <Loading label="Loading the history…" />
             ) : cmds.length === 0 ? (
-              <Empty>Aucune commande envoyée à cet appareil.</Empty>
+              <Empty>No command sent to this device.</Empty>
             ) : (
               <CommandHistory commands={cmds} onCancel={(id) => void cancel(id)} cancelling={cancelling} />
             )}
           </div>
-          {list.error && list.commands && <p className="form-error">Actualisation impossible : {list.error.message}</p>}
+          {list.error && list.commands && <p className="form-error">Refresh failed: {list.error.message}</p>}
         </Card>
       </div>
 
@@ -277,7 +277,7 @@ export default function Commands() {
             setDialog(undefined);
             setNotice({
               tone: 'ok',
-              text: `« ${commandLabel(dialog)} » signée et envoyée. Suivez son état dans l'historique : seul le téléphone peut confirmer que la signature est valide.`,
+              text: `"${commandLabel(dialog)}" signed and sent. Follow its state in the history: only the phone can confirm that the signature is valid.`,
             });
             list.reload();
           }}
@@ -290,17 +290,17 @@ export default function Commands() {
 function ChannelPanel({ device, now, streamOpen }: { device: Device; now: Date; streamOpen: boolean }) {
   const ch = device.command_channel;
   const st = channelState(ch, now);
-  const mode = ch?.mode === 'stream' ? 'connexion permanente' : ch?.mode === 'poll' ? 'interrogation périodique' : 'mode inconnu';
+  const mode = ch?.mode === 'stream' ? 'permanent connection' : ch?.mode === 'poll' ? 'periodic polling' : 'unknown mode';
   return (
     <>
       <div className="stats">
-        <Stat label="État" value={st.label} tone={st.tone === 'neutral' ? undefined : st.tone} sub={st.key === 'unknown' ? undefined : st.key === 'polling' ? 'toutes les 1 à 15 min' : mode} />
+        <Stat label="State" value={st.label} tone={st.tone === 'neutral' ? undefined : st.tone} sub={st.key === 'unknown' ? undefined : st.key === 'polling' ? 'every 1 to 15 min' : mode} />
         <Stat
-          label="Dernier contact"
+          label="Last contact"
           value={ch?.last_contact ? fmtRelative(ch.last_contact, now) : '—'}
-          sub={ch?.last_contact ? fmtDateTime(ch.last_contact) : 'aucun contact connu'}
+          sub={ch?.last_contact ? fmtDateTime(ch.last_contact) : 'no known contact'}
         />
-        <Stat label="Console" value={streamOpen ? 'En direct' : 'Hors flux'} sub="flux des événements" tone={streamOpen ? 'ok' : 'warn'} />
+        <Stat label="Console" value={streamOpen ? 'Live' : 'No stream'} sub="event stream" tone={streamOpen ? 'ok' : 'warn'} />
       </div>
       <p className="hint cmd-hint">{st.hint}</p>
     </>
@@ -316,26 +316,26 @@ function PositionPanel({ loc, locateSince, fixArrived }: { loc: (LastLocation & 
     <>
       {locateSince !== undefined && !fixArrived && (
         <p className="state state-warn" role="status">
-          Localisation demandée à {fmtTime(locateSince)} : en attente de la nouvelle position…
+          Location requested at {fmtTime(locateSince)}: waiting for the new location…
         </p>
       )}
       {locateSince !== undefined && fixArrived && (
         <p className="state state-ok" role="status">
-          Nouvelle position reçue : la carte est à jour.
+          New location received: the map is up to date.
         </p>
       )}
       {!loc ? (
-        <Empty>Aucune position reçue pour cet appareil.</Empty>
+        <Empty>No location received for this device.</Empty>
       ) : (
         <>
           <div className="map-sm">
-            <Suspense fallback={<Loading label="Chargement de la carte…" />}>
-              <MapView points={points} selected={0} interactive={false} ariaLabel="Dernière position connue de l'appareil" />
+            <Suspense fallback={<Loading label="Loading the map…" />}>
+              <MapView points={points} selected={0} interactive={false} ariaLabel="Last known location of the device" />
             </Suspense>
           </div>
           <p className="hint overview-pos" data-testid="pos-info">
             {fmtDateTime(loc.ts)} ({fmtRelative(loc.ts)})
-            {loc.acc_m !== undefined ? ` · précision ±${fmtNumber(loc.acc_m)} m` : ''} · {fmtNumber(loc.lat, 5)}, {fmtNumber(loc.lon, 5)}
+            {loc.acc_m !== undefined ? ` · accuracy ±${fmtNumber(loc.acc_m)} m` : ''} · {fmtNumber(loc.lat, 5)}, {fmtNumber(loc.lon, 5)}
             {loc.provider ? (
               <>
                 {' '}

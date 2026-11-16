@@ -49,7 +49,7 @@ export default function Events() {
   const paged = usePagedEvents(params, 100);
 
   const filtersKey = `${deviceId}|${typeD}|${sevMin}|${q}`;
-  // Les événements reçus en direct sont rattachés aux filtres actifs : un changement de filtre les écarte.
+  // Events received live are tied to the active filters: changing a filter discards them.
   const [liveState, setLiveState] = useState<{ key: string; events: WatchpostEvent[] }>({ key: filtersKey, events: [] });
   const visibleLive = useMemo(() => (liveState.key === filtersKey ? liveState.events : []), [liveState, filtersKey]);
 
@@ -78,18 +78,18 @@ export default function Events() {
   return (
     <>
       <div className="page-head">
-        <h1>Événements</h1>
+        <h1>Events</h1>
         <label className="check">
           <input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} />
           <span className={`live-dot${status === 'open' ? '' : ' is-off'}`} aria-hidden="true" />
-          Direct
+          Live
           <span className="hint" role="status">
             {live
               ? status === 'open'
-                ? ` · connecté (${visibleLive.length} reçu${visibleLive.length > 1 ? 's' : ''})`
+                ? ` · connected (${visibleLive.length} received)`
                 : status === 'error'
-                  ? ' · connexion perdue, nouvelle tentative…'
-                  : ' · connexion…'
+                  ? ' · connection lost, retrying…'
+                  : ' · connecting…'
               : ''}
           </span>
         </label>
@@ -99,28 +99,28 @@ export default function Events() {
         <div className="toolbar">
           <PeriodPicker ctl={ctl} />
           <label className="filter">
-            Sévérité minimale
+            Minimum severity
             <select value={sevMin} onChange={(e) => setSevMin(Number(e.target.value))}>
-              <option value={0}>0 · Info (tout)</option>
+              <option value={0}>0 · Info (all)</option>
               <option value={1}>1 · Notable</option>
-              <option value={2}>2 · Avertissement</option>
-              <option value={3}>3 · Critique</option>
+              <option value={2}>2 · Warning</option>
+              <option value={3}>3 · Critical</option>
             </select>
           </label>
           <label className="filter grow">
-            Recherche dans les données
-            <input type="search" value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="paquet, domaine, SSID…" />
+            Search in the data
+            <input type="search" value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="package, domain, SSID…" />
           </label>
         </div>
         <div className="toolbar">
           <div className="filter grow">
-            <span id="type-label">Type (préfixes séparés par des virgules)</span>
+            <span id="type-label">Type (prefixes separated by commas)</span>
             <input
               list="event-types"
               aria-labelledby="type-label"
               value={type}
               onChange={(e) => setType(e.target.value)}
-              placeholder="ex. net.,security.log"
+              placeholder="e.g. net.,security.log"
               spellCheck={false}
             />
             <datalist id="event-types">
@@ -130,7 +130,7 @@ export default function Events() {
             </datalist>
           </div>
         </div>
-        <ul className="chip-list" aria-label="Domaines">
+        <ul className="chip-list" aria-label="Domains">
           {DOMAINS.map((d) => (
             <li key={d}>
               <button type="button" className="chip-btn" aria-pressed={prefixes.includes(`${d}.`)} onClick={() => setType(togglePrefix(type, `${d}.`))}>
@@ -141,7 +141,7 @@ export default function Events() {
           {prefixes.length > 0 && (
             <li>
               <button type="button" className="chip-btn" onClick={() => setType('')}>
-                Effacer le filtre
+                Clear the filter
               </button>
             </li>
           )}
@@ -150,7 +150,7 @@ export default function Events() {
 
       <Card className="events-card">
         <div className="flush">
-          <EventList paged={pagedView} newIds={newIds} empty="Aucun événement ne correspond à ces filtres sur cette période." />
+          <EventList paged={pagedView} newIds={newIds} empty="No event matches these filters for this period." />
         </div>
       </Card>
     </>

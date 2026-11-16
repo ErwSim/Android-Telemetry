@@ -1,6 +1,6 @@
-/* Version 1.2 : détections, profil de risque, opérations sensibles, rôles. Aucun style en ligne. */
+/* Version 1.2: detections, risk profile, sensitive operations, roles. No inline style. */
 
-/* ---------- Bandeau de situation (vue d'ensemble et détections) ---------- */
+/* ---------- Status banner (overview and detections) ---------- */
 .verdict {
   display: flex;
   align-items: center;
@@ -63,7 +63,7 @@
 .verdict-sub .hint {
   color: var(--text-muted);
 }
-/* Ce que les détections ne surveillent pas sur ce téléphone : visible même quand le verdict est vert. */
+/* What the detections do not monitor on this phone: visible even when the verdict is green. */
 .verdict-blind {
   margin: 6px 0 0;
   padding-left: 8px;
@@ -105,7 +105,7 @@
   margin: 10px 0 0;
 }
 
-/* ---------- Détections ---------- */
+/* ---------- Detections ---------- */
 .det-list {
   display: grid;
   gap: 12px;
@@ -248,7 +248,7 @@ a.btn {
   align-items: center;
 }
 
-/* ---------- Profil de risque ---------- */
+/* ---------- Risk profile ---------- */
 .risk-score {
   display: inline-flex;
   align-items: center;
@@ -348,7 +348,7 @@ a.btn {
   margin-top: 4px;
 }
 
-/* ---------- Opérations sensibles ---------- */
+/* ---------- Sensitive operations ---------- */
 .ops-cards {
   display: grid;
   gap: 10px;
@@ -392,7 +392,7 @@ a.btn {
   margin-bottom: 4px;
 }
 
-/* ---------- Fiche d'application ---------- */
+/* ---------- Application detail page ---------- */
 .sheet-head {
   display: flex;
   flex-wrap: wrap;
@@ -463,7 +463,7 @@ a.btn {
   text-decoration: underline;
 }
 
-/* Téléphone : les lignes du profil de risque deviennent des fiches (application, score et niveau, raisons). */
+/* Phone: risk profile rows become cards (application, score and level, reasons). */
 @media (max-width: 860px) {
   .risk-tbl thead {
     display: none;
@@ -507,7 +507,7 @@ a.btn {
   }
 }
 
-/* Capacité demandée mais pas accordée (§11.4) : trait pointillé. */
+/* Capability requested but not granted (§11.4): dashed outline. */
 .badge-declared .badge {
   border: 1px dashed var(--text-muted);
   background: transparent;

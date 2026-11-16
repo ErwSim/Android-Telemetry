@@ -17,11 +17,11 @@ import { useDevice } from '../state/device.tsx';
 import { isUnsupported, useMutes } from '../state/appData.ts';
 import { useAppLabels } from '../state/appLabels.ts';
 
-const PERIOD_TEXT: Record<string, string> = { today: "aujourd'hui", '24h': 'les dernières 24 h', '7d': 'les 7 derniers jours', '30d': 'les 30 derniers jours', custom: 'la période choisie' };
+const PERIOD_TEXT: Record<string, string> = { today: 'today', '24h': 'the last 24 h', '7d': 'the last 7 days', '30d': 'the last 30 days', custom: 'the selected period' };
 const SEV_OPTIONS = [
-  { v: 0, l: 'Toutes les gravités' },
-  { v: 2, l: 'Avertissement et plus' },
-  { v: 3, l: 'Critiques seulement' },
+  { v: 0, l: 'All severities' },
+  { v: 2, l: 'Warning and above' },
+  { v: 3, l: 'Critical only' },
 ];
 
 export default function Detections() {
@@ -52,8 +52,8 @@ export default function Detections() {
     reloadMutes();
   }, [reloadList, reloadMutes]));
 
-  // Arrivée en direct : événements serveur `detect.*` du flux SSE existant. Le filtre de type est respecté ;
-  // la période ne l'est que pour les périodes qui se terminent « maintenant ».
+  // Live arrival: server `detect.*` events of the existing SSE stream. The type filter is respected;
+  // the period only for periods that end "now".
   const typeRef = useRef(type);
   useEffect(() => {
     typeRef.current = type;
@@ -61,7 +61,7 @@ export default function Detections() {
   const periodKey = ctl.key;
   const onEvent = useCallback(
     (ev: WatchpostEvent) => {
-      // Sourdine posée ou levée (depuis un autre onglet, ou par le collecteur) : on relit la liste et les sourdines.
+      // Mute set or lifted (from another tab, or by the collector): we read the list and the mutes again.
       if (isMuteEvent(ev.type)) {
         reloadList();
         reloadMutes();
@@ -77,7 +77,7 @@ export default function Detections() {
   );
   const stream = useEventStream(true, deviceId, onEvent);
 
-  // Les sourdines en cours s'appliquent même aux détections créées avant elles ; une détection en sourdine est repliée par défaut.
+  // Current mutes also apply to detections created before them; a muted detection is collapsed by default.
   const covered = useMemo(() => applyMutes(paged.detections, mutes.data ?? []), [paged.detections, mutes.data]);
   const mutedCount = covered.filter((d) => d.muted).length;
   const visible = useMemo(() => covered.filter((d) => matchesDetection(d, { sevMin }) && (showMuted || !d.muted)), [covered, sevMin, showMuted]);
@@ -88,26 +88,26 @@ export default function Detections() {
   return (
     <>
       <div className="page-head">
-        <h1>Détections</h1>
+        <h1>Detections</h1>
         <span className="hint" role="status">
           <span className={`live-dot${stream === 'open' ? '' : ' is-off'}`} aria-hidden="true" />
-          {stream === 'open' ? 'En direct' : stream === 'error' ? 'Connexion perdue, nouvelle tentative…' : 'Connexion…'}
+          {stream === 'open' ? 'Live' : stream === 'error' ? 'Connection lost, retrying…' : 'Connecting…'}
         </span>
       </div>
 
       <div className="callout callout-info honest" role="note">
         <p>
-          <strong>Ce que montre cette page.</strong> Le collecteur surveille ce que font les applications (réseau, installations, droits sensibles, applications par défaut ; envois de SMS, micro et
-          caméra seulement si le collecteur expérimental d'opérations est actif) et signale les comportements anormaux, <em>quel que soit le moyen par lequel un logiciel malveillant s'est installé</em>. Ce sont des <strong>indices, pas des preuves</strong> :
-          chaque détection dit ce qui a été vu, pourquoi c'est suspect, ce que cela peut être d'innocent et que faire. Les <Link to="/alertes">Alertes</Link> montrent ce
-          que Wazuh en fait (règles, niveaux) : les détections y sont aussi envoyées, mais c'est ici qu'elles sont expliquées.
+          <strong>What this page shows.</strong> The collector monitors what applications do (network, installations, sensitive rights, default applications; SMS sending, microphone and
+          camera only if the experimental operations collector is active) and flags abnormal behaviours, <em>whatever the way malware got installed</em>. These are <strong>clues, not proof</strong>:
+          each detection says what was seen, why it is suspicious, what innocent thing it could be and what to do. The <Link to="/alerts">Alerts</Link> show what
+          Wazuh does with them (rules, levels): detections are also sent there, but this is where they are explained.
         </p>
       </div>
 
       {unsupported ? (
-        <Card title="Détections indisponibles">
+        <Card title="Detections unavailable">
           <Empty>
-            Ce collecteur ne fournit pas encore les détections (contrat v1.2, <code>GET /detections</code>). Mettez-le à jour pour les voir ici.
+            This collector does not provide detections yet (contract v1.2, <code>GET /detections</code>). Update it to see them here.
           </Empty>
         </Card>
       ) : (
@@ -116,8 +116,8 @@ export default function Detections() {
             <PeriodPicker ctl={ctl} />
             <label className="filter type-filter">
               Type
-              <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Type de détection">
-                <option value="">Tous les types</option>
+              <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Detection type">
+                <option value="">All types</option>
                 {DETECTION_TYPES.map((t) => (
                   <option key={t} value={t}>
                     {detectionLabel(t)}
@@ -126,8 +126,8 @@ export default function Detections() {
               </select>
             </label>
             <label className="filter">
-              Gravité
-              <select value={sevMin} onChange={(e) => setSevMin(Number(e.target.value))} aria-label="Gravité minimale">
+              Severity
+              <select value={sevMin} onChange={(e) => setSevMin(Number(e.target.value))} aria-label="Minimum severity">
                 {SEV_OPTIONS.map((o) => (
                   <option key={o.v} value={o.v}>
                     {o.l}
@@ -144,14 +144,14 @@ export default function Detections() {
                 setNewIds(new Set());
               }}
             >
-              Actualiser
+              Refresh
             </button>
           </div>
 
           {paged.error && paged.detections.length === 0 ? (
             <ErrorBox message={paged.error.message} onRetry={paged.reload} />
           ) : paged.loading && paged.detections.length === 0 ? (
-            <Loading label="Chargement des détections…" />
+            <Loading label="Loading detections…" />
           ) : (
             <>
               <div className="stack">
@@ -170,20 +170,20 @@ export default function Detections() {
                 {mutedCount > 0 && (
                   <label className="check">
                     <input type="checkbox" checked={showMuted} onChange={(e) => setShowMuted(e.target.checked)} />
-                    Afficher les détections en sourdine ({mutedCount})
+                    Show muted detections ({mutedCount})
                   </label>
                 )}
                 {type !== '' && (
                   <p className="hint">
-                    Le bandeau et les compteurs ne portent que sur le type « {detectionLabel(type)} ». Choisissez « Tous les types » pour la situation d'ensemble.
+                    The banner and the counters only cover the "{detectionLabel(type)}" type. Choose "All types" for the overall situation.
                   </p>
                 )}
                 {visible.length === 0 ? (
                   paged.detections.length > 0 ? (
-                    <Empty>Aucune détection ne correspond au filtre de gravité.</Empty>
+                    <Empty>No detection matches the severity filter.</Empty>
                   ) : null
                 ) : (
-                  <ul className={`det-list${paged.loading ? ' is-refreshing' : ''}`} aria-label="Détections">
+                  <ul className={`det-list${paged.loading ? ' is-refreshing' : ''}`} aria-label="Detections">
                     {visible.map((d, i) => (
                       <DetectionCard
                         key={d.id}
@@ -201,12 +201,12 @@ export default function Detections() {
                 {paged.hasMore && (
                   <div className="pager">
                     <button type="button" className="btn" onClick={paged.loadMore} disabled={paged.loadingMore}>
-                      {paged.loadingMore ? 'Chargement…' : 'Charger plus'}
+                      {paged.loadingMore ? 'Loading…' : 'Load more'}
                     </button>
-                    <span>{paged.detections.length} affichées</span>
+                    <span>{paged.detections.length} shown</span>
                   </div>
                 )}
-                {!paged.hasMore && visible.length > 0 && <div className="pager">{visible.length} détection{visible.length > 1 ? 's' : ''} — fin de la liste</div>}
+                {!paged.hasMore && visible.length > 0 && <div className="pager">{visible.length} detection{visible.length > 1 ? 's' : ''} — end of the list</div>}
               </div>
             </>
           )}
@@ -218,17 +218,17 @@ export default function Detections() {
       )}
       {muting.dialog}
 
-      <Card title="Les gardes de l'application Vigie" className="guards-card">
+      <Card title="The guards of the Watchpost app" className="guards-card">
         <details>
-          <summary>Rappel : verrouiller à l'avance ce qu'un logiciel malveillant utiliserait</summary>
+          <summary>Reminder: lock down in advance what malware would use</summary>
           <p className="hint">
-            Les gardes se règlent <strong>sur le téléphone</strong>, dans l'écran Politique de l'application Vigie (Device Owner requis). Elles sont éteintes par défaut, réversibles
-            (« Tout rétablir »), et la console ne peut ni les activer ni les désactiver : le serveur ne commande jamais le téléphone.
+            Guards are set <strong>on the phone</strong>, in the Policy screen of the Watchpost app (Device Owner required). They are off by default, reversible
+            ("Restore everything"), and the console can neither enable nor disable them: the server never commands the phone.
           </p>
           <ul className="guards">
             {GUARDS.map((g) => (
               <li key={g.key}>
-                <strong>{g.label}</strong> : {g.effect}
+                <strong>{g.label}</strong>: {g.effect}
               </li>
             ))}
           </ul>

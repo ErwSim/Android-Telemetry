@@ -31,8 +31,8 @@ const DAY = 86_400_000;
 const HISTORY_TYPES = 'app.installed,app.updated,app.removed,app.permission_changed';
 
 /**
- * Fiche d'une application : profil de risque et raisons, rôles par défaut, permissions, opérations sensibles,
- * domaines contactés et détections. Réunit ce que les autres pages montrent application par application.
+ * Detail page of an application: risk profile and reasons, default roles, permissions, sensitive operations,
+ * contacted domains and detections. Gathers what the other pages show application by application.
  */
 export default function AppSheet() {
   const [sp] = useSearchParams();
@@ -53,72 +53,72 @@ export default function AppSheet() {
 
   return (
     <>
-      <Link className="back-link" to="/applications">
+      <Link className="back-link" to="/apps">
         ← Applications
       </Link>
       <div className="sheet-head">
         <h1>{label ?? cleanText(pkg, 255)}</h1>
         {profile && <RiskBadge risk={profile} />}
-        {app?.system && <Badge>système</Badge>}
-        {app && isSideloaded(app) && <Badge tone="warn">hors boutique</Badge>}
-        {app?.enabled === false && <Badge tone="warn">désactivée</Badge>}
+        {app?.system && <Badge>system</Badge>}
+        {app && isSideloaded(app) && <Badge tone="warn">outside a store</Badge>}
+        {app?.enabled === false && <Badge tone="warn">disabled</Badge>}
       </div>
       <div className="sheet-sub">
         <AppName pkg={cleanText(pkg, 255)} label={label} />
         {device && <span>· {device.name || device.device_id}</span>}
-        <Link className="btn btn-sm" to={`/pistage?app=${encodeURIComponent(pkg)}`}>
-          Pistage
+        <Link className="btn btn-sm" to={`/tracking?app=${encodeURIComponent(pkg)}`}>
+          Tracking
         </Link>
-        <Link className="btn btn-sm" to={`/reseau?app=${encodeURIComponent(pkg)}`}>
-          Réseau
+        <Link className="btn btn-sm" to={`/network?app=${encodeURIComponent(pkg)}`}>
+          Network
         </Link>
       </div>
 
       {!inventory.loading && inventory.data && !app && !profile && (
         <div className="state state-warn" role="status">
-          Cette application ne figure ni dans le dernier inventaire ni dans les profils de risque : elle a peut-être été désinstallée, ou le paquet est mal orthographié.
+          This application appears neither in the latest inventory nor in the risk profiles: it may have been uninstalled, or the package name is misspelled.
         </div>
       )}
 
       <div className="grid grid-start">
-        <Card title="Profil de risque" className="span-7">
+        <Card title="Risk profile" className="span-7">
           <RiskCard state={risk} pkg={pkg} />
         </Card>
         <div className="span-5 stack">
-          <Card title="Rôles par défaut">
+          <Card title="Default roles">
             <RolesCard pkg={pkg} from={from90} to={to} />
           </Card>
-          <Card title="Informations">
+          <Card title="Information">
             {app ? (
               <KV
                 items={[
                   { k: 'Version', v: `${app.version_name ?? '—'}${app.version_code !== undefined ? ` (code ${app.version_code})` : ''}` },
-                  { k: 'Installateur', v: profile ? installerText(profile, app) : installerLabel(app.installer) },
-                  { k: 'SDK cible', v: app.target_sdk ?? '—' },
-                  { k: 'Première installation', v: fmtDateTime(app.first_install) },
-                  { k: 'Dernière mise à jour', v: fmtDateTime(app.last_update) },
+                  { k: 'Installer', v: profile ? installerText(profile, app) : installerLabel(app.installer) },
+                  { k: 'Target SDK', v: app.target_sdk ?? '—' },
+                  { k: 'First installed', v: fmtDateTime(app.first_install) },
+                  { k: 'Last updated', v: fmtDateTime(app.last_update) },
                   { k: 'Signature SHA-256', v: app.signer_sha256 ? <code className="break">{app.signer_sha256}</code> : '—' },
                 ]}
               />
             ) : (
-              <Empty>Aucune information d'inventaire.</Empty>
+              <Empty>No inventory information.</Empty>
             )}
           </Card>
         </div>
       </div>
 
       <div className="grid">
-        <Card title="Détections concernant cette application" className="span-12">
+        <Card title="Detections concerning this application" className="span-12">
           <SheetDetections pkg={pkg} from={from30} to={to} now={now} />
         </Card>
       </div>
 
       <div className="grid grid-start">
-        <Card title={`Permissions dangereuses accordées${app ? ` (${app.granted_dangerous?.length ?? 0})` : ''}`} className="span-6">
+        <Card title={`Dangerous permissions granted${app ? ` (${app.granted_dangerous?.length ?? 0})` : ''}`} className="span-6">
           {!app ? (
-            <Empty>Application absente de l'inventaire.</Empty>
+            <Empty>Application absent from the inventory.</Empty>
           ) : (app.granted_dangerous ?? []).length === 0 ? (
-            <p className="muted">Aucune.</p>
+            <p className="muted">None.</p>
           ) : (
             <ul className="chip-list">
               {(app.granted_dangerous ?? []).map((p) => (
@@ -129,19 +129,19 @@ export default function AppSheet() {
             </ul>
           )}
         </Card>
-        <Card title="Opérations sensibles (30 jours, expérimental)" className="span-6">
+        <Card title="Sensitive operations (30 days, experimental)" className="span-6">
           <SheetOps pkg={pkg} from={from30} to={to} />
         </Card>
       </div>
 
       <div className="grid">
-        <Card title="Domaines contactés (7 jours)" className="span-12">
+        <Card title="Domains contacted (7 days)" className="span-12">
           {deviceId ? <AppDomains deviceId={deviceId} pkg={pkg} from={from7} to={to} usage={undefined} /> : null}
         </Card>
       </div>
 
       <div className="grid">
-        <Card title="Historique (installations, mises à jour, permissions)" className="span-12">
+        <Card title="History (installations, updates, permissions)" className="span-12">
           <SheetHistory pkg={pkg} from={from90} to={to} />
         </Card>
       </div>
@@ -150,7 +150,7 @@ export default function AppSheet() {
 }
 
 function RiskCard({ state, pkg }: { state: ReturnType<typeof useAppRisk>; pkg: string }) {
-  if (isUnsupported(state.error)) return <Empty>Ce collecteur ne fournit pas encore le profil de risque (contrat v1.2).</Empty>;
+  if (isUnsupported(state.error)) return <Empty>This collector does not provide the risk profile yet (contract v1.2).</Empty>;
   return (
     <Async state={state}>
       {(d) => {
@@ -158,7 +158,7 @@ function RiskCard({ state, pkg }: { state: ReturnType<typeof useAppRisk>; pkg: s
         if (!r) {
           return (
             <Empty>
-              Aucun profil de risque reçu pour cette application. L'agent v1.2 en envoie un à l'installation, à la mise à jour, puis chaque jour si le score ou les raisons changent.
+              No risk profile received for this application. The v1.2 agent sends one at installation, at update, then every day if the score or reasons change.
             </Empty>
           );
         }
@@ -170,22 +170,22 @@ function RiskCard({ state, pkg }: { state: ReturnType<typeof useAppRisk>; pkg: s
                 <div className="stat-value">
                   <ScoreBar risk={r} />
                 </div>
-                <div className="stat-sub">sur 100 · {r.reasons.length} raison{r.reasons.length > 1 ? 's' : ''}</div>
+                <div className="stat-sub">out of 100 · {r.reasons.length} reason{r.reasons.length > 1 ? 's' : ''}</div>
               </div>
               <div className="stat">
-                <div className="stat-label">Niveau</div>
+                <div className="stat-label">Level</div>
                 <div className="stat-value">
                   <RiskBadge risk={r} />
                 </div>
-                <div className="stat-sub">{r.ts ? `relevé le ${fmtDate(r.ts)}` : ' '}</div>
+                <div className="stat-sub">{r.ts ? `reading of ${fmtDate(r.ts)}` : ' '}</div>
               </div>
               <div className="stat">
-                <div className="stat-label">Installateur</div>
-                <div className="stat-value">{r.from_store === false ? 'Hors boutique' : r.from_store ? 'Boutique' : 'Inconnu'}</div>
+                <div className="stat-label">Installer</div>
+                <div className="stat-value">{r.from_store === false ? 'Outside a store' : r.from_store ? 'Store' : 'Unknown'}</div>
                 <div className="stat-sub">{installerLabel(r.installer)}</div>
               </div>
             </div>
-            <p className="hint">Le score mesure ce que l'application pourrait faire, pas ce qu'elle fait : c'est un motif de regarder de plus près, pas une preuve.</p>
+            <p className="hint">The score measures what the application could do, not what it does: it is a reason to look more closely, not proof.</p>
             <GrantNote hasGranted={r.granted !== undefined} />
             <ComboCallout reasons={r.reasons} />
             <ReasonList reasons={r.reasons.filter((c) => !combosOf(c ? [c] : []).length)} granted={r.granted} />
@@ -196,7 +196,7 @@ function RiskCard({ state, pkg }: { state: ReturnType<typeof useAppRisk>; pkg: s
   );
 }
 
-/** Rôles tenus aujourd'hui (d'après `app.special_access`) et historique `app.role` où l'application gagne ou perd un rôle. */
+/** Roles held today (from `app.special_access`) and `app.role` history where the application gains or loses a role. */
 function RolesCard({ pkg, from, to }: { pkg: string; from: string; to: string }) {
   const { deviceId } = useDevice();
   const special = usePagedEvents(deviceId ? { device_id: deviceId, type: 'app.special_access', from, to } : null, 1);
@@ -208,9 +208,9 @@ function RolesCard({ pkg, from, to }: { pkg: string; from: string; to: string })
   if ((special.loading && !special.events[0]) || (roles.loading && roles.events.length === 0)) return <Loading />;
   return (
     <>
-      <h3 className="section-title">Rôles actuellement tenus</h3>
+      <h3 className="section-title">Roles currently held</h3>
       {held.length === 0 ? (
-        <p className="muted">Aucun rôle par défaut (SMS, téléphone, navigateur, assistant, accueil).</p>
+        <p className="muted">No default role (SMS, phone, browser, assistant, home).</p>
       ) : (
         <ul className="role-list">
           {held.map((r) => (
@@ -223,12 +223,12 @@ function RolesCard({ pkg, from, to }: { pkg: string; from: string; to: string })
       )}
       {accessibility.length > 0 && (
         <p>
-          <Badge tone="warn">Service d'accessibilité actif</Badge> <span className="mono break">{accessibility.map((a) => cleanText(a, 200)).join(', ')}</span>
+          <Badge tone="warn">Accessibility service active</Badge> <span className="mono break">{accessibility.map((a) => cleanText(a, 200)).join(', ')}</span>
         </p>
       )}
-      <h3 className="section-title">Changements de rôle (90 jours)</h3>
+      <h3 className="section-title">Role changes (90 days)</h3>
       {changes.length === 0 ? (
-        <p className="muted">Cette application n'a ni gagné ni perdu de rôle par défaut.</p>
+        <p className="muted">This application neither gained nor lost a default role.</p>
       ) : (
         <ul className="role-list">
           {changes.map((c) => (
@@ -236,7 +236,7 @@ function RolesCard({ pkg, from, to }: { pkg: string; from: string; to: string })
               <div className="role-change">
                 <strong>{roleLabel(c.role)}</strong>
                 <span className="muted">{fmtDateTime(c.ts)}</span>
-                {c.new === pkg ? <Badge tone="warn">obtenu</Badge> : <Badge>perdu</Badge>}
+                {c.new === pkg ? <Badge tone="warn">gained</Badge> : <Badge>lost</Badge>}
               </div>
             </li>
           ))}
@@ -274,13 +274,13 @@ function SheetDetections({ pkg, from, to, now }: { pkg: string; from: string; to
   const canMute = !isUnsupported(mutes.error);
   useEventStream(true, deviceId, onEvent);
   if (paged.error && paged.detections.length === 0) {
-    return isUnsupported(paged.error) ? <Empty>Ce collecteur ne fournit pas encore les détections (contrat v1.2).</Empty> : <ErrorBox message={paged.error.message} onRetry={paged.reload} />;
+    return isUnsupported(paged.error) ? <Empty>This collector does not provide detections yet (contract v1.2).</Empty> : <ErrorBox message={paged.error.message} onRetry={paged.reload} />;
   }
-  if (paged.loading && paged.detections.length === 0) return <Loading label="Chargement des détections…" />;
-  if (paged.detections.length === 0) return <Empty>Aucune détection pour cette application sur 30 jours.</Empty>;
+  if (paged.loading && paged.detections.length === 0) return <Loading label="Loading detections…" />;
+  if (paged.detections.length === 0) return <Empty>No detection for this application in 30 days.</Empty>;
   return (
     <div className="det-compact">
-      <ul className="det-list" aria-label="Détections de l'application">
+      <ul className="det-list" aria-label="Detections of the application">
         {shown.map((d, i) => (
           <DetectionCard
             key={d.id}
@@ -296,7 +296,7 @@ function SheetDetections({ pkg, from, to, now }: { pkg: string; from: string; to
       {paged.hasMore && (
         <div className="pager">
           <button type="button" className="btn" onClick={paged.loadMore} disabled={paged.loadingMore}>
-            {paged.loadingMore ? 'Chargement…' : 'Charger plus'}
+            {paged.loadingMore ? 'Loading…' : 'Load more'}
           </button>
         </div>
       )}
@@ -315,22 +315,22 @@ function SheetOps({ pkg, from, to }: { pkg: string; from: string; to: string }) 
   if (rows.length === 0) {
     return (
       <>
-        <p className="muted">Aucune donnée d'usage des opérations sensibles pour cette application.</p>
+        <p className="muted">No sensitive operations usage data for this application.</p>
         <p className="hint">
-          Mesure expérimentale, éteinte par défaut{opsCollectorState(device) ? '' : ' (collecteur non signalé par le téléphone)'}. <Link to="/applications?tab=ops">Comment l'activer</Link>.
+          Experimental measurement, off by default{opsCollectorState(device) ? '' : ' (collector not reported by the phone)'}. <Link to="/apps?tab=ops">How to enable it</Link>.
         </p>
       </>
     );
   }
   const mine = groupByApp(rows).find((a) => a.package === pkg);
-  if (!mine) return <p className="muted">Cette application n'a utilisé aucune opération sensible sur 30 jours.</p>;
+  if (!mine) return <p className="muted">This application used no sensitive operation in 30 days.</p>;
   return (
     <table className="tbl mini-tbl" data-testid="sheet-ops">
       <thead>
         <tr>
-          <th scope="col">Opération</th>
-          <th scope="col" className="right">Usages</th>
-          <th scope="col" className="right">En arrière-plan</th>
+          <th scope="col">Operation</th>
+          <th scope="col" className="right">Uses</th>
+          <th scope="col" className="right">In the background</th>
         </tr>
       </thead>
       <tbody>
@@ -353,7 +353,7 @@ function SheetHistory({ pkg, from, to }: { pkg: string; from: string; to: string
   const describe = (ev: WatchpostEvent) => describeEvent(ev);
   return (
     <div className="flush">
-      <EventList paged={mine} describe={describe} empty="Aucune installation, mise à jour ni changement de permission sur 90 jours." />
+      <EventList paged={mine} describe={describe} empty="No installation, update or permission change in 90 days." />
     </div>
   );
 }

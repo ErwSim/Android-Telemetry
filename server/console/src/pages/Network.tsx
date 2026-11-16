@@ -18,7 +18,7 @@ import { AppDomains } from '../components/AppDomains.tsx';
 const TimelineChart = lazy(() => import('../components/TimelineChart.tsx'));
 
 const NET_TYPES = ['net.dns', 'net.connect'];
-const NET_LABEL = (k: string) => (k === 'net.dns' ? 'Requêtes DNS' : k === 'net.connect' ? 'Connexions' : k);
+const NET_LABEL = (k: string) => (k === 'net.dns' ? 'DNS queries' : k === 'net.connect' ? 'Connections' : k);
 
 function useTop(deviceId: string | undefined, kind: TopKind, from: string, to: string, limit: number) {
   return useApi(deviceId ? `top:${deviceId}:${kind}:${from}:${to}:${limit}` : null, (s) =>
@@ -65,32 +65,32 @@ export default function Network() {
   return (
     <>
       <div className="page-head">
-        <h1>Réseau</h1>
+        <h1>Network</h1>
       </div>
       <p className="hint net-intro">
-        Cette page décrit le trafic observé sur le téléphone : noms demandés, destinations, volumes, chronologie. Pour savoir ce qui est <strong>bloqué ou autorisé</strong>,
-        par éditeur, et pour agir (bloquer un domaine, changer le niveau), ouvrez <Link to="/pistage">Pistage</Link>.
+        This page describes the traffic observed on the phone: names requested, destinations, volumes, timeline. To see what is <strong>blocked or allowed</strong>,
+        by publisher, and to act (block a domain, change the level), open <Link to="/tracking">Tracking</Link>.
       </p>
       <div className="toolbar">
         <PeriodPicker ctl={ctl} />
         <button type="button" className="btn" onClick={() => ctl.refresh()}>
-          Actualiser
+          Refresh
         </button>
       </div>
 
       <div className="grid">
-        <Card title="Part Google / Samsung" className="span-12">
+        <Card title="Google / Samsung share" className="span-12">
           <div className="two-col">
             <ShareBlock
-              title="Requêtes DNS par domaine"
-              note="d'après les 100 noms les plus fréquents"
+              title="DNS queries per domain"
+              note="based on the 100 most frequent names"
               loading={dns.loading && !dns.data}
               error={dns.error?.message}
               share={dns.data ? vendorShare(dns.data.items, 'host') : undefined}
             />
             <ShareBlock
-              title="Requêtes (DNS + connexions) par application"
-              note="classées selon l'éditeur du paquet"
+              title="Queries (DNS + connections) per application"
+              note="classified by the package's publisher"
               loading={(dnsPkg.loading && !dnsPkg.data) || (conPkg.loading && !conPkg.data)}
               error={dnsPkg.error?.message ?? conPkg.error?.message}
               share={dnsPkg.data && conPkg.data ? vendorShare(reqApps, 'package') : undefined}
@@ -101,42 +101,42 @@ export default function Network() {
 
       <div className="grid">
         <Card
-          title="Noms DNS les plus demandés"
+          title="Most requested DNS names"
           className="span-6"
           actions={
             <input
               type="search"
-              aria-label="Filtrer les noms DNS"
-              placeholder="Filtrer…"
+              aria-label="Filter the DNS names"
+              placeholder="Filter…"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
             />
           }
         >
-          <Async state={dns} isEmpty={(d) => d.items.length === 0} empty="Aucune requête DNS sur cette période (collecteur Device Owner requis).">
-            {() => <Ranking items={filteredDns} kind="host" limit={20} emptyText="Aucun nom ne correspond au filtre." />}
+          <Async state={dns} isEmpty={(d) => d.items.length === 0} empty="No DNS queries for this period (Device Owner collector required).">
+            {() => <Ranking items={filteredDns} kind="host" limit={20} emptyText="No name matches the filter." />}
           </Async>
         </Card>
-        <Card title="Destinations (connexions)" className="span-6">
-          <Async state={dest} isEmpty={(d) => d.items.length === 0} empty="Aucune connexion enregistrée sur cette période.">
+        <Card title="Destinations (connections)" className="span-6">
+          <Async state={dest} isEmpty={(d) => d.items.length === 0} empty="No connection recorded for this period.">
             {(d) => <Ranking items={d.items} kind="plain" limit={20} />}
           </Async>
         </Card>
       </div>
 
       <div className="grid">
-        <Card title="Applications les plus actives (requêtes)" className="span-6">
-          <Async state={dnsPkg} isEmpty={() => reqApps.length === 0} empty="Aucune requête attribuée à une application.">
+        <Card title="Most active applications (queries)" className="span-6">
+          <Async state={dnsPkg} isEmpty={() => reqApps.length === 0} empty="No query attributed to an application.">
             {() => (
               <>
                 <Ranking items={reqApps} kind="package" labelOf={labelOf} selected={pkg} onSelect={setPkg} limit={15} />
-                <p className="hint">Cliquez une application pour voir les domaines qu'elle contacte.</p>
+                <p className="hint">Click an application to see the domains it contacts.</p>
               </>
             )}
           </Async>
         </Card>
-        <Card title="Applications par volume de données" className="span-6">
-          <Async state={usage} isEmpty={(d) => d.items.length === 0} empty="Aucun volume d'usage sur cette période.">
+        <Card title="Applications by data volume" className="span-6">
+          <Async state={usage} isEmpty={(d) => d.items.length === 0} empty="No usage volume for this period.">
             {(d) => <Ranking items={d.items} kind="package" metric="bytes" labelOf={labelOf} selected={pkg} onSelect={setPkg} limit={15} />}
           </Async>
         </Card>
@@ -149,7 +149,7 @@ export default function Network() {
             className="span-12"
             actions={
               <button type="button" className="btn btn-sm" onClick={() => setPkg(undefined)}>
-                Fermer
+                Close
               </button>
             }
           >
@@ -159,15 +159,15 @@ export default function Network() {
       )}
 
       <div className="grid">
-        <Card title="Chronologie du trafic" className="span-12">
+        <Card title="Traffic timeline" className="span-12">
           <Async
             state={{ ...timeline, data: netTimeline }}
             isEmpty={(t) => t.series.length === 0 || t.buckets.length === 0}
-            empty="Aucune activité réseau sur cette période."
+            empty="No network activity for this period."
           >
             {(t) => (
               <Suspense fallback={<Loading />}>
-                <TimelineChart data={t} bucket={bucket} order={NET_TYPES} labelOf={NET_LABEL} ariaLabel="Requêtes DNS et connexions dans le temps" />
+                <TimelineChart data={t} bucket={bucket} order={NET_TYPES} labelOf={NET_LABEL} ariaLabel="DNS queries and connections over time" />
               </Suspense>
             )}
           </Async>
@@ -200,10 +200,10 @@ function ShareBlock({
       ) : loading ? (
         <Loading />
       ) : !share || share.total === 0 ? (
-        <Empty>Aucune donnée.</Empty>
+        <Empty>No data.</Empty>
       ) : (
         <>
-          <div className="share" role="img" aria-label={`Google ${fmtPct((share.google / share.total) * 100)}, Samsung ${fmtPct((share.samsung / share.total) * 100)}, autres ${fmtPct((share.other / share.total) * 100)}`}>
+          <div className="share" role="img" aria-label={`Google ${fmtPct((share.google / share.total) * 100)}, Samsung ${fmtPct((share.samsung / share.total) * 100)}, others ${fmtPct((share.other / share.total) * 100)}`}>
             {(['google', 'samsung', 'other'] as Vendor[]).map((v) => (
               <ShareSegment key={v} vendor={v} frac={share[v] / share.total} />
             ))}

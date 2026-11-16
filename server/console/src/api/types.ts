@@ -59,7 +59,7 @@ export interface LastLocation {
 
 export interface CommandChannelState {
   connected?: boolean;
-  /** `stream` (permanent connection), `poll` (polling) ou `unknown` */
+  /** `stream` (permanent connection), `poll` (polling) or `unknown` */
   mode?: string;
   last_contact?: string;
 }

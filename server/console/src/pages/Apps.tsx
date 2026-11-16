@@ -45,31 +45,31 @@ export default function Apps() {
     <>
       <div className="page-head">
         <h1>Applications</h1>
-        {apps.data?.ts && <span className="muted">Inventaire du {fmtDateTime(apps.data.ts)}</span>}
+        {apps.data?.ts && <span className="muted">Inventory of {fmtDateTime(apps.data.ts)}</span>}
       </div>
       <Tabs
         label="Sections"
         value={tab}
         onChange={setTab}
         tabs={[
-          { key: 'risk', label: 'Risque' },
-          { key: 'inventory', label: 'Inventaire' },
-          { key: 'ops', label: 'Opérations sensibles' },
-          { key: 'permissions', label: 'Permissions dangereuses' },
-          { key: 'special', label: 'Accès spéciaux' },
+          { key: 'risk', label: 'Risk' },
+          { key: 'inventory', label: 'Inventory' },
+          { key: 'ops', label: 'Sensitive operations' },
+          { key: 'permissions', label: 'Dangerous permissions' },
+          { key: 'special', label: 'Special access' },
           { key: 'notifications', label: 'Notifications' },
-          { key: 'history', label: 'Historique' },
+          { key: 'history', label: 'History' },
         ]}
       />
       {tab === 'risk' && <RiskTab risk={risk} inventory={apps.data?.apps ?? []} />}
       {tab === 'inventory' && (
-        <Async state={apps} isEmpty={(d) => d.apps.length === 0} empty="Aucun inventaire d'applications reçu pour cet appareil.">
+        <Async state={apps} isEmpty={(d) => d.apps.length === 0} empty="No application inventory received for this device.">
           {(d) => <Inventory apps={d.apps} riskMap={riskMap} />}
         </Async>
       )}
       {tab === 'ops' && <OpsTab />}
       {tab === 'permissions' && (
-        <Async state={apps} isEmpty={(d) => d.apps.length === 0} empty="Aucun inventaire d'applications reçu.">
+        <Async state={apps} isEmpty={(d) => d.apps.length === 0} empty="No application inventory received.">
           {(d) => <Permissions apps={d.apps} />}
         </Async>
       )}
@@ -82,13 +82,13 @@ export default function Apps() {
 
 type Cat = 'all' | 'user' | 'system' | 'disabled' | 'suspended' | 'hidden' | 'sideload';
 const CATS: { key: Cat; label: string }[] = [
-  { key: 'all', label: 'Toutes' },
-  { key: 'user', label: 'Utilisateur' },
-  { key: 'system', label: 'Système' },
-  { key: 'disabled', label: 'Désactivées' },
-  { key: 'suspended', label: 'Suspendues' },
-  { key: 'hidden', label: 'Masquées' },
-  { key: 'sideload', label: 'Hors store' },
+  { key: 'all', label: 'All' },
+  { key: 'user', label: 'User' },
+  { key: 'system', label: 'System' },
+  { key: 'disabled', label: 'Disabled' },
+  { key: 'suspended', label: 'Suspended' },
+  { key: 'hidden', label: 'Hidden' },
+  { key: 'sideload', label: 'Outside a store' },
 ];
 
 function inCat(a: AppInfo, c: Cat): boolean {
@@ -128,7 +128,7 @@ function Inventory({ apps, riskMap }: { apps: AppInfo[]; riskMap: Map<string, Ap
     const out = apps.filter(
       (a) =>
         inCat(a, cat) &&
-        (!installer || (a.installer || '(aucun)') === installer) &&
+        (!installer || (a.installer || '(none)') === installer) &&
         (!f || a.package.toLowerCase().includes(f) || (a.label ?? '').toLowerCase().includes(f)),
     );
     const name = (a: AppInfo) => (a.label ?? a.package).toLowerCase();
@@ -146,20 +146,20 @@ function Inventory({ apps, riskMap }: { apps: AppInfo[]; riskMap: Map<string, Ap
     <>
       <div className="stats app-summary">
         <Stat label="Applications" value={fmtNumber(apps.length)} />
-        <Stat label="Utilisateur" value={fmtNumber(counts.user)} />
-        <Stat label="Système" value={fmtNumber(counts.system)} />
-        <Stat label="Désactivées" value={fmtNumber(counts.disabled)} />
-        <Stat label="Suspendues" value={fmtNumber(counts.suspended)} tone={counts.suspended ? 'warn' : undefined} />
-        <Stat label="Hors store" value={fmtNumber(counts.sideload)} sub="installées hors Play / Galaxy Store" tone={counts.sideload ? 'warn' : undefined} />
+        <Stat label="User" value={fmtNumber(counts.user)} />
+        <Stat label="System" value={fmtNumber(counts.system)} />
+        <Stat label="Disabled" value={fmtNumber(counts.disabled)} />
+        <Stat label="Suspended" value={fmtNumber(counts.suspended)} tone={counts.suspended ? 'warn' : undefined} />
+        <Stat label="Outside a store" value={fmtNumber(counts.sideload)} sub="installed outside Play / Galaxy Store" tone={counts.sideload ? 'warn' : undefined} />
       </div>
       <Card className="inv-card">
         <div className="toolbar">
           <label className="filter grow">
-            Recherche
-            <input type="search" value={q} onChange={(e) => { setQ(e.target.value); setShown(100); }} placeholder="nom ou paquet" />
+            Search
+            <input type="search" value={q} onChange={(e) => { setQ(e.target.value); setShown(100); }} placeholder="name or package" />
           </label>
           <label className="filter">
-            Catégorie
+            Category
             <select value={cat} onChange={(e) => { setCat(e.target.value as Cat); setShown(100); }}>
               {CATS.map((c) => (
                 <option key={c.key} value={c.key}>
@@ -169,27 +169,27 @@ function Inventory({ apps, riskMap }: { apps: AppInfo[]; riskMap: Map<string, Ap
             </select>
           </label>
           <label className="filter">
-            Installateur
+            Installer
             <select value={installer} onChange={(e) => { setInstaller(e.target.value); setShown(100); }}>
-              <option value="">Tous</option>
+              <option value="">All</option>
               {installers.map((i) => (
                 <option key={i.key} value={i.key}>
-                  {i.key === '(aucun)' ? installerLabel(undefined) : installerLabel(i.key)} ({i.count})
+                  {i.key === '(none)' ? installerLabel(undefined) : installerLabel(i.key)} ({i.count})
                 </option>
               ))}
             </select>
           </label>
           <label className="filter">
-            Tri
+            Sort
             <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-              <option value="label">Nom</option>
-              <option value="update">Dernière mise à jour</option>
-              <option value="perms">Permissions dangereuses</option>
+              <option value="label">Name</option>
+              <option value="update">Last update</option>
+              <option value="perms">Dangerous permissions</option>
             </select>
           </label>
         </div>
         {rows.length === 0 ? (
-          <Empty>Aucune application ne correspond.</Empty>
+          <Empty>No matching application.</Empty>
         ) : (
           <div className="flush">
             <div className="table-wrap">
@@ -198,10 +198,10 @@ function Inventory({ apps, riskMap }: { apps: AppInfo[]; riskMap: Map<string, Ap
                   <tr>
                     <th scope="col">Application</th>
                     <th scope="col" className="hide-sm">Version</th>
-                    <th scope="col">Installateur</th>
-                    <th scope="col">État</th>
-                    <th scope="col" className="right">Perm. dang.</th>
-                    <th scope="col" className="hide-sm">Mise à jour</th>
+                    <th scope="col">Installer</th>
+                    <th scope="col">State</th>
+                    <th scope="col" className="right">Danger. perms</th>
+                    <th scope="col" className="hide-sm">Updated</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -212,20 +212,20 @@ function Inventory({ apps, riskMap }: { apps: AppInfo[]; riskMap: Map<string, Ap
                       <Fragment key={a.package}>
                         <tr>
                           <td>
-                            <button type="button" className="expander" aria-expanded={isOpen} aria-label={`Détails de ${a.label ?? a.package}`} onClick={() => setOpen(isOpen ? null : a.package)}>
+                            <button type="button" className="expander" aria-expanded={isOpen} aria-label={`Details of ${a.label ?? a.package}`} onClick={() => setOpen(isOpen ? null : a.package)}>
                               {isOpen ? '▾' : '▸'}
                             </button>
                             <AppName pkg={a.package} label={a.label} />
                           </td>
                           <td className="hide-sm">{a.version_name ?? '—'}</td>
-                          <td>{a.system && !a.installer ? 'Préinstallée' : installerLabel(a.installer)}</td>
+                          <td>{a.system && !a.installer ? 'Preinstalled' : installerLabel(a.installer)}</td>
                           <td>
                             <span className="chip-list">
-                              {a.system ? <Badge>système</Badge> : <Badge tone="info">utilisateur</Badge>}
-                              {a.enabled === false && <Badge tone="warn">désactivée</Badge>}
-                              {a.suspended && <Badge tone="warn">suspendue</Badge>}
-                              {a.hidden && <Badge>masquée</Badge>}
-                              {isSideloaded(a) && <Badge tone="warn">hors store</Badge>}
+                              {a.system ? <Badge>system</Badge> : <Badge tone="info">user</Badge>}
+                              {a.enabled === false && <Badge tone="warn">disabled</Badge>}
+                              {a.suspended && <Badge tone="warn">suspended</Badge>}
+                              {a.hidden && <Badge>hidden</Badge>}
+                              {isSideloaded(a) && <Badge tone="warn">outside a store</Badge>}
                               {riskMap.has(a.package) && levelInfo(riskMap.get(a.package)?.level, riskMap.get(a.package)?.score).key !== 'low' && <RiskBadge risk={riskMap.get(a.package) as AppRisk} />}
                             </span>
                           </td>
@@ -248,11 +248,11 @@ function Inventory({ apps, riskMap }: { apps: AppInfo[]; riskMap: Map<string, Ap
             <div className="pager">
               {rows.length > shown ? (
                 <button type="button" className="btn" onClick={() => setShown(shown + 100)}>
-                  Afficher plus
+                  Show more
                 </button>
               ) : null}
               <span>
-                {Math.min(shown, rows.length)} sur {rows.length}
+                {Math.min(shown, rows.length)} of {rows.length}
               </span>
             </div>
           </div>
@@ -268,21 +268,21 @@ function AppDetail({ app, risk }: { app: AppInfo; risk: AppRisk | undefined }) {
     <div className="two-col">
       <KV
         items={[
-          { k: 'Paquet', v: <code>{app.package}</code> },
+          { k: 'Package', v: <code>{app.package}</code> },
           { k: 'Version', v: `${app.version_name ?? '—'}${app.version_code !== undefined ? ` (code ${app.version_code})` : ''}` },
-          { k: 'SDK cible', v: app.target_sdk ?? '—' },
-          { k: 'Installateur', v: `${installerLabel(app.installer)}${app.installer ? ` (${app.installer})` : ''}` },
-          { k: 'Première installation', v: fmtDateTime(app.first_install) },
-          { k: 'Dernière mise à jour', v: fmtDateTime(app.last_update) },
+          { k: 'Target SDK', v: app.target_sdk ?? '—' },
+          { k: 'Installer', v: `${installerLabel(app.installer)}${app.installer ? ` (${app.installer})` : ''}` },
+          { k: 'First installed', v: fmtDateTime(app.first_install) },
+          { k: 'Last updated', v: fmtDateTime(app.last_update) },
           { k: 'Signature SHA-256', v: app.signer_sha256 ? <code className="break">{app.signer_sha256}</code> : '—' },
-          { k: 'Risque', v: risk ? <RiskBadge risk={risk} /> : 'non noté' },
-          { k: 'Fiche', v: <Link to={appSheetPath(app.package)}>Ouvrir la fiche de l'application</Link> },
+          { k: 'Risk', v: risk ? <RiskBadge risk={risk} /> : 'not scored' },
+          { k: 'Detail page', v: <Link to={appSheetPath(app.package)}>Open the application's detail page</Link> },
         ]}
       />
       <div>
-        <h3>Permissions dangereuses accordées ({perms.length})</h3>
+        <h3>Dangerous permissions granted ({perms.length})</h3>
         {perms.length === 0 ? (
-          <p className="muted">Aucune.</p>
+          <p className="muted">None.</p>
         ) : (
           <ul className="chip-list">
             {perms.map((p) => (
@@ -299,13 +299,13 @@ function AppDetail({ app, risk }: { app: AppInfo; risk: AppRisk | undefined }) {
 
 function RiskTab({ risk, inventory }: { risk: ReturnType<typeof useAppRisk>; inventory: AppInfo[] }) {
   if (isUnsupported(risk.error)) {
-    return <Empty>Ce collecteur ne fournit pas encore le profil de risque (contrat v1.2, GET /apps/risk).</Empty>;
+    return <Empty>This collector does not provide the risk profile yet (contract v1.2, GET /apps/risk).</Empty>;
   }
   return (
     <Async
       state={risk}
       isEmpty={(d) => d.apps.length === 0}
-      empty="Aucun profil de risque reçu pour cet appareil. L'agent v1.2 en envoie un à chaque installation et mise à jour d'application, puis chaque jour si le score ou les raisons changent."
+      empty="No risk profile received for this device. The v1.2 agent sends one at each application installation and update, then every day if the score or reasons change."
     >
       {(d) => <RiskView risks={d.apps} inventory={inventory} ts={d.ts} />}
     </Async>
@@ -327,7 +327,7 @@ function OpsTab() {
       {ops.error && !unsupported ? (
         <ErrorBox message={ops.error.message} onRetry={ops.reload} />
       ) : !ops.data && !unsupported ? (
-        <Loading label="Chargement…" />
+        <Loading label="Loading…" />
       ) : unsupported || !ops.data ? (
         <OpsEmpty device={device} reason="absent" />
       ) : ops.data.rows.length === 0 ? (
@@ -349,11 +349,11 @@ function Permissions({ apps }: { apps: AppInfo[] }) {
       <div className="toolbar">
         <label className="check">
           <input type="checkbox" checked={userOnly} onChange={(e) => setUserOnly(e.target.checked)} />
-          Applications utilisateur seulement
+          User applications only
         </label>
       </div>
       {groups.length === 0 ? (
-        <Empty>Aucune permission dangereuse accordée.</Empty>
+        <Empty>No dangerous permission granted.</Empty>
       ) : (
         <div className="grid">
           {groups.map((g) => (
@@ -363,7 +363,7 @@ function Permissions({ apps }: { apps: AppInfo[] }) {
               title={
                 <>
                   {permissionLabel(g.permission)}{' '}
-                  {SENSITIVE.has(shortPermission(g.permission)) && <Badge tone="warn">sensible</Badge>}
+                  {SENSITIVE.has(shortPermission(g.permission)) && <Badge tone="warn">sensitive</Badge>}
                 </>
               }
               actions={<span className="muted">{g.apps.length} app{g.apps.length > 1 ? 's' : ''}</span>}
@@ -385,13 +385,13 @@ function Permissions({ apps }: { apps: AppInfo[] }) {
 }
 
 const SPECIAL: { key: string; label: string; hint: string; risky: boolean }[] = [
-  { key: 'accessibility_services', label: "Services d'accessibilité", hint: "Peuvent lire l'écran et agir à votre place.", risky: true },
-  { key: 'notification_listeners', label: 'Écoute des notifications', hint: 'Lisent toutes les notifications reçues.', risky: true },
-  { key: 'device_admins', label: "Administrateurs de l'appareil", hint: 'Peuvent imposer des règles ou verrouiller/effacer.', risky: true },
-  { key: 'overlay_apps', label: "Superposition à l'écran", hint: "Peuvent s'afficher par-dessus d'autres apps.", risky: true },
-  { key: 'unknown_sources_apps', label: 'Installation de sources inconnues', hint: 'Peuvent installer des APK.', risky: true },
-  { key: 'usage_access_apps', label: "Accès aux données d'utilisation", hint: 'Voient quelles apps sont utilisées.', risky: false },
-  { key: 'vpn_apps', label: 'Applications VPN', hint: 'Peuvent faire transiter le trafic.', risky: true },
+  { key: 'accessibility_services', label: 'Accessibility services', hint: 'Can read the screen and act in your place.', risky: true },
+  { key: 'notification_listeners', label: 'Notification listeners', hint: 'Read all the notifications received.', risky: true },
+  { key: 'device_admins', label: 'Device administrators', hint: 'Can enforce rules or lock/erase.', risky: true },
+  { key: 'overlay_apps', label: 'Screen overlay', hint: 'Can draw over other apps.', risky: true },
+  { key: 'unknown_sources_apps', label: 'Installation from unknown sources', hint: 'Can install APKs.', risky: true },
+  { key: 'usage_access_apps', label: 'Usage data access', hint: 'See which apps are used.', risky: false },
+  { key: 'vpn_apps', label: 'VPN applications', hint: 'Can route traffic through them.', risky: true },
 ];
 
 function SpecialAccess({ labelOf }: { labelOf: (pkg: string) => string | undefined }) {
@@ -401,13 +401,13 @@ function SpecialAccess({ labelOf }: { labelOf: (pkg: string) => string | undefin
   const to = now.toISOString();
   const paged = usePagedEvents(deviceId ? { device_id: deviceId, type: 'app.special_access', from, to } : null, 1);
   const ev = paged.events[0];
-  if (paged.loading && !ev) return <Empty>Chargement…</Empty>;
+  if (paged.loading && !ev) return <Empty>Loading…</Empty>;
   if (paged.error) return <Empty>{paged.error.message}</Empty>;
-  if (!ev) return <Empty>Aucun relevé d'accès spéciaux sur les 30 derniers jours.</Empty>;
+  if (!ev) return <Empty>No special access reading in the last 30 days.</Empty>;
   const defaults = isRecord(ev.data['default_apps']) ? (ev.data['default_apps'] as Record<string, unknown>) : undefined;
   return (
     <>
-      <p className="muted">Relevé du {fmtDateTime(ev.ts)}.</p>
+      <p className="muted">Reading of {fmtDateTime(ev.ts)}.</p>
       <div className="grid">
         {SPECIAL.map((s) => {
           const items = list<unknown>(ev.data, s.key).map((x) => (typeof x === 'string' ? x : JSON.stringify(x)));
@@ -420,7 +420,7 @@ function SpecialAccess({ labelOf }: { labelOf: (pkg: string) => string | undefin
             >
               <p className="hint">{s.hint}</p>
               {items.length === 0 ? (
-                <p className="muted">Aucune application.</p>
+                <p className="muted">No application.</p>
               ) : (
                 <ul className="findings">
                   {items.map((it) => {
@@ -438,7 +438,7 @@ function SpecialAccess({ labelOf }: { labelOf: (pkg: string) => string | undefin
           );
         })}
         {defaults && (
-          <Card className="span-6" title="Applications par défaut">
+          <Card className="span-6" title="Default applications">
             <KV items={Object.entries(defaults).map(([k, v]) => ({ k, v: typeof v === 'string' ? labelOf(v) ? `${labelOf(v)} (${v})` : v : JSON.stringify(v) }))} />
           </Card>
         )}
@@ -450,12 +450,12 @@ function SpecialAccess({ labelOf }: { labelOf: (pkg: string) => string | undefin
 const HISTORY_TYPES = 'app.installed,app.updated,app.removed,app.permission_changed';
 
 const NOTIF_COLLECTOR: Record<string, string> = {
-  running: 'en marche',
-  disabled: 'désactivé dans l’application',
-  unavailable: 'indisponible : l’APK compagnon « notifier » n’est pas installé ou pas autorisé',
+  running: 'running',
+  disabled: 'disabled in the app',
+  unavailable: 'unavailable: the "notifier" companion APK is not installed or not authorised',
 };
 
-/** Quelles applications notifient, et (si l'option est active sur le téléphone) ce que disent leurs notifications. */
+/** Which applications notify, and (if the option is enabled on the phone) what their notifications say. */
 function Notifications({ labelOf }: { labelOf: (pkg: string) => string | undefined }) {
   const { deviceId, device } = useDevice();
   const ctl = usePeriod('7d');
@@ -480,41 +480,41 @@ function Notifications({ labelOf }: { labelOf: (pkg: string) => string | undefin
         <PeriodPicker ctl={ctl} />
       </div>
       <p className="hint">
-        Collecteur de notifications : {collector ? (NOTIF_COLLECTOR[collector] ?? collector) : 'état inconnu (aucune pulsation reçue)'}. Il est fourni par l'APK
-        compagnon, séparé de l'agent. Par défaut on ne voit que <em>quelle application</em> notifie ; le titre et le texte ne remontent que si l'option « Contenu
-        des notifications » est activée dans l'application (les codes numériques de 4 à 8 chiffres sont alors masqués). Ils viennent des applications : ils sont
-        affichés comme du simple texte.
+        Notification collector: {collector ? (NOTIF_COLLECTOR[collector] ?? collector) : 'state unknown (no heartbeat received)'}. It is provided by the companion
+        APK, separate from the agent. By default only <em>which application</em> notifies is visible; the title and text are only reported if the "Notification
+        content" option is enabled in the app (numeric codes of 4 to 8 digits are then masked). They come from the applications: they are
+        displayed as plain text.
       </p>
       <div className="grid grid-start">
-        <Card title={`Applications qui notifient le plus${total ? ` · ${fmtNumber(total)} notifications` : ''}`} className="span-5">
-          <Async state={top} isEmpty={(d) => d.items.length === 0} empty="Aucune notification enregistrée sur cette période (collecteur désactivé ou indisponible ?).">
+        <Card title={`Applications that notify the most${total ? ` · ${fmtNumber(total)} notifications` : ''}`} className="span-5">
+          <Async state={top} isEmpty={(d) => d.items.length === 0} empty="No notification recorded for this period (collector disabled or unavailable?).">
             {(d) => (
               <>
                 <Ranking items={d.items} kind="package" labelOf={labelOf} selected={pkg} onSelect={(k) => setPkg(pkg === k ? undefined : k)} limit={20} />
-                <p className="hint">Notifications publiées (pas les retraits). Cliquez une application pour filtrer la liste.</p>
+                <p className="hint">Notifications posted (not removals). Click an application to filter the list.</p>
               </>
             )}
           </Async>
         </Card>
         <Card
-          title={pkg ? `Notifications de ${labelOf(pkg) ?? pkg}` : 'Dernières notifications'}
+          title={pkg ? `Notifications of ${labelOf(pkg) ?? pkg}` : 'Latest notifications'}
           className="span-7"
           actions={
             pkg ? (
               <button type="button" className="btn btn-sm" onClick={() => setPkg(undefined)}>
-                Toutes les applications
+                All applications
               </button>
             ) : undefined
           }
         >
           {paged.events.length > 0 && (
             <p className="hint notif-sum">
-              Sur les {fmtNumber(paged.events.length)} dernières : {fmtNumber(sum.posted)} publiées, {fmtNumber(sum.removed)} retirées, {fmtNumber(sum.withContent)} avec
-              contenu{sum.redacted ? `, ${fmtNumber(sum.redacted)} au contenu masqué` : ''}.
+              Among the latest {fmtNumber(paged.events.length)}: {fmtNumber(sum.posted)} posted, {fmtNumber(sum.removed)} removed, {fmtNumber(sum.withContent)} with
+              content{sum.redacted ? `, ${fmtNumber(sum.redacted)} with hidden content` : ''}.
             </p>
           )}
           <div className="flush">
-            <EventList paged={paged} describe={describe} empty="Aucune notification sur cette période." />
+            <EventList paged={paged} describe={describe} empty="No notification for this period." />
           </div>
         </Card>
       </div>
@@ -535,17 +535,17 @@ function History({ labelOf }: { labelOf: (pkg: string) => string | undefined }) 
     return label && pkg ? base.replace(pkg, `${label} (${pkg})`) : base;
   };
   const kinds = [
-    { v: '', l: 'Tout' },
+    { v: '', l: 'All' },
     { v: 'app.installed', l: 'Installations' },
-    { v: 'app.updated', l: 'Mises à jour' },
-    { v: 'app.removed', l: 'Suppressions' },
+    { v: 'app.updated', l: 'Updates' },
+    { v: 'app.removed', l: 'Removals' },
     { v: 'app.permission_changed', l: 'Permissions' },
   ];
   return (
     <>
       <div className="toolbar">
         <PeriodPicker ctl={ctl} />
-        <div className="seg" role="group" aria-label="Type de changement">
+        <div className="seg" role="group" aria-label="Type of change">
           {kinds.map((k) => (
             <button key={k.v} type="button" className={`seg-btn${kind === k.v ? ' is-active' : ''}`} aria-pressed={kind === k.v} onClick={() => setKind(k.v)}>
               {k.l}
@@ -555,7 +555,7 @@ function History({ labelOf }: { labelOf: (pkg: string) => string | undefined }) 
       </div>
       <Card>
         <div className="flush">
-          <EventList paged={paged} describe={describe} empty="Aucune installation, mise à jour, suppression ou changement de permission sur cette période." />
+          <EventList paged={paged} describe={describe} empty="No installation, update, removal or permission change for this period." />
         </div>
       </Card>
     </>
