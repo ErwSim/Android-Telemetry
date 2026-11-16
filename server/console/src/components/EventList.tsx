@@ -3,11 +3,11 @@ import type { WatchpostEvent } from '../api/types.ts';
 import { EventTable } from './EventTable.tsx';
 import { Empty, ErrorBox, Loading } from './ui.tsx';
 
-/** Liste paginée d'événements avec états chargement / vide / erreur. */
+/** Paginated event list with loading / empty / error states. */
 export function EventList({
   paged,
   compact,
-  empty = 'Aucun événement.',
+  empty = 'No events.',
   describe,
   showDevice,
   newIds,
@@ -20,7 +20,7 @@ export function EventList({
   newIds?: ReadonlySet<string>;
 }) {
   if (paged.error && paged.events.length === 0) return <ErrorBox message={paged.error.message} onRetry={paged.reload} />;
-  if (paged.loading && paged.events.length === 0) return <Loading label="Chargement des événements…" />;
+  if (paged.loading && paged.events.length === 0) return <Loading label="Loading events…" />;
   if (paged.events.length === 0) return <Empty>{empty}</Empty>;
   const tableProps: Parameters<typeof EventTable>[0] = { events: paged.events };
   if (compact !== undefined) tableProps.compact = compact;
@@ -34,12 +34,12 @@ export function EventList({
       {paged.hasMore && (
         <div className="pager">
           <button type="button" className="btn" onClick={paged.loadMore} disabled={paged.loadingMore}>
-            {paged.loadingMore ? 'Chargement…' : 'Charger plus'}
+            {paged.loadingMore ? 'Loading…' : 'Load more'}
           </button>
-          <span>{paged.events.length} affichés</span>
+          <span>{paged.events.length} shown</span>
         </div>
       )}
-      {!paged.hasMore && <div className="pager">{paged.events.length} événement{paged.events.length > 1 ? 's' : ''} — fin de la liste</div>}
+      {!paged.hasMore && <div className="pager">{paged.events.length} event{paged.events.length > 1 ? 's' : ''} — end of the list</div>}
     </div>
   );
 }

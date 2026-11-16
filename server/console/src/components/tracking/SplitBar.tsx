@@ -1,13 +1,13 @@
 import { fmtNumber, fmtPct } from '../../lib/format.ts';
 
-/** Barre bloquées / autorisées. Le texte porte l'information (la couleur seule ne suffit pas). */
+/** Blocked / allowed bar. The text carries the information (colour alone is not enough). */
 export function SplitBar({ blocked, allowed }: { blocked: number | undefined; allowed: number | undefined }) {
   if (blocked === undefined && allowed === undefined) return <span className="muted">—</span>;
   const b = blocked ?? 0;
   const a = allowed ?? 0;
   const total = b + a;
   const pb = total > 0 ? (b / total) * 100 : 0;
-  const label = `${fmtNumber(b)} bloquées (${fmtPct(pb)}), ${fmtNumber(a)} autorisées`;
+  const label = `${fmtNumber(b)} blocked (${fmtPct(pb)}), ${fmtNumber(a)} allowed`;
   return (
     <span className="split" role="img" aria-label={label} title={label}>
       <span className="split-blocked" style={{ width: `${pb}%` }} />

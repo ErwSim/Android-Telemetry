@@ -287,7 +287,7 @@ export function describeEvent(ev: WatchpostEvent): string {
 }
 
 const levelName = (k: string | undefined): string => (k ? (LEVEL_FALLBACK[k]?.name ?? cleanText(k, 40)) : 'unknown');
-const ACTION_NAMES: Record<string, string> = { block: 'block', allow: 'allow', default: 'back to default setting' };
+const ACTION_NAMES: Record<string, string> = { block: 'block', allow: 'allow', default: 'reset to default' };
 
 /** `tracking.level_changed` (contract §9): `old` (absent if the state matched no level), `new`, `changes`, `user`. */
 function describeLevelChange(d: Record<string, unknown>): string {
@@ -302,7 +302,7 @@ function describeOverride(d: Record<string, unknown>): string {
   const prev = str(d, 'previous');
   const by = str(d, 'user') ? ` · by ${cleanText(str(d, 'user'), 60)}` : '';
   const head = ACTION_NAMES[action] ?? cleanText(action, 40);
-  return `${head.charAt(0).toUpperCase()}${head.slice(1)} of "${cleanText(str(d, 'domain'), 255) || '?'}"${bool(d, 'forced') ? ' · forced (essential domain)' : ''}${prev ? ` · previous rule: ${ACTION_NAMES[prev] ?? cleanText(prev, 40)}` : ''}${by}`;
+  return `Rule for "${cleanText(str(d, 'domain'), 255) || '?'}": ${head}${bool(d, 'forced') ? ' · forced (essential domain)' : ''}${prev ? ` · previous rule: ${ACTION_NAMES[prev] ?? cleanText(prev, 40)}` : ''}${by}`;
 }
 
 const NOTIFICATION_EVENTS: Record<string, string> = { posted: 'posted', removed: 'removed' };

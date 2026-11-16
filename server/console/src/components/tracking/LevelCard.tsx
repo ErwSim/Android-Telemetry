@@ -6,7 +6,7 @@ import { levelTexts, trackingErrorMessage } from '../../lib/tracking.ts';
 import { Dialog } from '../Dialog.tsx';
 import { Badge } from '../ui.tsx';
 
-/** Niveau de blocage : trois niveaux décrits, confirmation avant de changer les listes d'AdGuard Home. */
+/** Blocking level: three described levels, confirmation before changing AdGuard Home's lists. */
 export function LevelCard({ summary, onChanged }: { summary: TrackingSummary; onChanged: (level: string) => void }) {
   const levels = levelTexts(summary.levels);
   const current = summary.level;
@@ -30,7 +30,7 @@ export function LevelCard({ summary, onChanged }: { summary: TrackingSummary; on
       setChoice(undefined);
       onChanged(selected);
     } catch (e) {
-      setError(e instanceof ApiError ? `Le niveau n'a pas été changé. ${trackingErrorMessage(e)}` : String(e));
+      setError(e instanceof ApiError ? `The level was not changed. ${trackingErrorMessage(e)}` : String(e));
     } finally {
       setBusy(false);
     }
@@ -39,12 +39,12 @@ export function LevelCard({ summary, onChanged }: { summary: TrackingSummary; on
   return (
     <>
       <fieldset className="levels" disabled={off}>
-        <legend className="sr-only">Niveau de blocage</legend>
+        <legend className="sr-only">Blocking level</legend>
         {levels.map((l) => (
           <label key={l.key} className={`level${selected === l.key ? ' is-sel' : ''}`}>
             <input type="radio" name="level" value={l.key} checked={selected === l.key} onChange={() => setChoice(l.key)} />
             <span>
-              <strong>{l.name}</strong> {current === l.key && <Badge tone="ok">Actuel</Badge>}
+              <strong>{l.name}</strong> {current === l.key && <Badge tone="ok">Current</Badge>}
               <br />
               <span className="muted">{l.description}</span>
             </span>
@@ -52,34 +52,34 @@ export function LevelCard({ summary, onChanged }: { summary: TrackingSummary; on
         ))}
       </fieldset>
       {!off && !current && (
-        <p className="hint">Aucun niveau ne correspond à l'état actuel des listes d'AdGuard Home (réglées à la main ?). Choisir un niveau les remet d'équerre.</p>
+        <p className="hint">No level matches the current state of AdGuard Home's lists (set by hand?). Choosing a level brings them back in line.</p>
       )}
       {off ? (
-        <p className="hint">Le niveau ne peut pas être lu ni changé : AdGuard Home n'est pas joignable depuis le collecteur.</p>
+        <p className="hint">The level can be neither read nor changed: AdGuard Home is not reachable from the collector.</p>
       ) : (
         <div className="level-actions">
           <button type="button" className="btn btn-primary" disabled={!changed} onClick={() => setConfirm(true)}>
-            Appliquer le niveau {target ? `« ${target.name} »` : ''}…
+            Apply the {target ? `"${target.name}" ` : ''}level…
           </button>
           {changed && (
             <button type="button" className="btn" onClick={() => setChoice(undefined)}>
-              Annuler
+              Cancel
             </button>
           )}
         </div>
       )}
       {confirm && target && (
         <Dialog
-          title={`Passer au niveau « ${target.name} » ?`}
+          title={`Switch to the "${target.name}" level?`}
           busy={busy}
           onClose={() => setConfirm(false)}
           footer={
             <>
               <button type="button" className="btn" onClick={() => setConfirm(false)} disabled={busy}>
-                Annuler
+                Cancel
               </button>
               <button type="button" className="btn btn-primary" onClick={() => void apply()} disabled={busy}>
-                {busy ? 'Application…' : 'Changer le niveau'}
+                {busy ? 'Applying…' : 'Change the level'}
               </button>
             </>
           }
@@ -87,21 +87,21 @@ export function LevelCard({ summary, onChanged }: { summary: TrackingSummary; on
           <p>
             {from ? (
               <>
-                Du niveau <strong>{from.name}</strong> au niveau <strong>{target.name}</strong>.
+                From the <strong>{from.name}</strong> level to the <strong>{target.name}</strong> level.
               </>
             ) : (
               <>
-                Niveau <strong>{target.name}</strong>.
+                <strong>{target.name}</strong> level.
               </>
             )}
           </p>
           <p className="muted">{target.description}</p>
           <div className="callout callout-info">
             <ul>
-              <li>Le collecteur active ou désactive des listes de blocage dans AdGuard Home ; vos règles manuelles (Bloquer / Autoriser) sont conservées.</li>
-              <li>Le changement vaut pour tout ce qui utilise ce DNS, et s'applique aux prochaines requêtes (les décomptes passés ne changent pas).</li>
-              <li>Il est réversible : il suffit de rechoisir l'ancien niveau.</li>
-              {target.key === 'strict' && <li>Le niveau strict peut empêcher certaines applications de fonctionner pleinement : essayez-le quelques jours.</li>}
+              <li>The collector enables or disables blocklists in AdGuard Home; your manual rules (Block / Allow) are kept.</li>
+              <li>The change applies to everything that uses this DNS, and takes effect on the next queries (past counts do not change).</li>
+              <li>It is reversible: just choose the previous level again.</li>
+              {target.key === 'strict' && <li>The strict level may prevent some applications from working fully: try it for a few days.</li>}
             </ul>
           </div>
           {error && (

@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 
 /**
- * Boîte de dialogue modale native (`<dialog>`) : focus piégé, Échap et clic sur le fond pour fermer, focus rendu
- * au bouton d'origine. Pas de style en ligne (CSP). `busy` empêche la fermeture pendant une opération.
+ * Native modal dialog (`<dialog>`): trapped focus, Escape and click on the backdrop to close, focus returned
+ * to the originating button. No inline style (CSP). `busy` prevents closing during an operation.
  */
 export function Dialog({
   title,

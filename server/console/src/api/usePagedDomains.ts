@@ -23,7 +23,7 @@ export interface PagedDomains {
   reload: () => void;
 }
 
-/** Domaines suivis, paginés par curseur (du plus demandé au moins demandé). `null` désactive. */
+/** Tracked domains, paginated by cursor (most requested first). `null` disables. */
 export function usePagedDomains(params: DomainParams | null, pageSize = 50): PagedDomains {
   const [domains, setDomains] = useState<TrackingDomain[]>([]);
   const [cursor, setCursor] = useState<string | undefined>();

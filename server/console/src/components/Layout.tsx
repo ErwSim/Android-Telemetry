@@ -7,16 +7,16 @@ import { fmtRelative } from '../lib/format.ts';
 import { ErrorBox, Loading } from './ui.tsx';
 
 const NAV = [
-  { to: '/', label: "Vue d'ensemble", end: true, icon: 'M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z' },
-  { to: '/detections', label: 'Détections', icon: 'M15.500 14h-.8l-.3-.3A6.500 6.500 0 1 0 14 15.500l.3.3v.8l5 5 1.500-1.500zm-6 0a4.500 4.500 0 1 1 0-9 4.500 4.500 0 0 1 0 9z' },
-  { to: '/carte', label: 'Carte', icon: 'M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.500z' },
-  { to: '/evenements', label: 'Événements', icon: 'M4 5h16v2H4zm0 6h16v2H4zm0 6h10v2H4z' },
-  { to: '/reseau', label: 'Réseau', icon: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2c1 1.500 1.700 3.300 1.900 5h-3.800C10.300 8.300 11 6.500 12 5zM5.300 11h3c.1 1 .3 2 .6 3H6.200a7 7 0 0 1-.9-3zm3.600 5c.4 1.200.9 2.200 1.500 3a7 7 0 0 1-3.300-3zm6.200 0h1.800a7 7 0 0 1-3.300 3c.6-.8 1.100-1.800 1.500-3z' },
-  { to: '/pistage', label: 'Pistage', icon: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm-1-6v3.100A7 7 0 0 0 5.100 11H2v2h3.100A7 7 0 0 0 11 18.900V22h2v-3.100a7 7 0 0 0 5.900-5.900H22v-2h-3.100A7 7 0 0 0 13 5.100V2z' },
-  { to: '/applications', label: 'Applications', icon: 'M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z' },
-  { to: '/securite', label: 'Sécurité', icon: 'M12 2 4 5v6c0 5 3.400 9.300 8 11 4.600-1.700 8-6 8-11V5z' },
-  { to: '/commandes', label: 'Commandes', icon: 'M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 3v12h10V5zm5 14.500a1 1 0 1 0 0 2 1 1 0 0 0 0-2z' },
-  { to: '/alertes', label: 'Alertes', icon: 'M12 22a2.500 2.500 0 0 0 2.500-2.500h-5A2.500 2.500 0 0 0 12 22zm7-6V11a7 7 0 0 0-5.500-6.800V3a1.500 1.500 0 0 0-3 0v1.200A7 7 0 0 0 5 11v5l-2 2v1h18v-1z' },
+  { to: '/', label: 'Overview', end: true, icon: 'M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z' },
+  { to: '/detections', label: 'Detections', icon: 'M15.500 14h-.8l-.3-.3A6.500 6.500 0 1 0 14 15.500l.3.3v.8l5 5 1.500-1.500zm-6 0a4.500 4.500 0 1 1 0-9 4.500 4.500 0 0 1 0 9z' },
+  { to: '/map', label: 'Map', icon: 'M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.500z' },
+  { to: '/events', label: 'Events', icon: 'M4 5h16v2H4zm0 6h16v2H4zm0 6h10v2H4z' },
+  { to: '/network', label: 'Network', icon: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2c1 1.500 1.700 3.300 1.900 5h-3.800C10.300 8.300 11 6.500 12 5zM5.300 11h3c.1 1 .3 2 .6 3H6.200a7 7 0 0 1-.9-3zm3.600 5c.4 1.200.9 2.200 1.500 3a7 7 0 0 1-3.300-3zm6.200 0h1.800a7 7 0 0 1-3.300 3c.6-.8 1.100-1.800 1.500-3z' },
+  { to: '/tracking', label: 'Tracking', icon: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm-1-6v3.100A7 7 0 0 0 5.100 11H2v2h3.100A7 7 0 0 0 11 18.900V22h2v-3.100a7 7 0 0 0 5.900-5.900H22v-2h-3.100A7 7 0 0 0 13 5.100V2z' },
+  { to: '/apps', label: 'Applications', icon: 'M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z' },
+  { to: '/security', label: 'Security', icon: 'M12 2 4 5v6c0 5 3.400 9.300 8 11 4.600-1.700 8-6 8-11V5z' },
+  { to: '/commands', label: 'Commands', icon: 'M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 3v12h10V5zm5 14.500a1 1 0 1 0 0 2 1 1 0 0 0 0-2z' },
+  { to: '/alerts', label: 'Alerts', icon: 'M12 22a2.500 2.500 0 0 0 2.500-2.500h-5A2.500 2.500 0 0 0 12 22zm7-6V11a7 7 0 0 0-5.500-6.800V3a1.500 1.500 0 0 0-3 0v1.200A7 7 0 0 0 5 11v5l-2 2v1h18v-1z' },
 ];
 
 function Icon({ d }: { d: string }) {
@@ -29,9 +29,9 @@ function Icon({ d }: { d: string }) {
 
 function ThemeButton() {
   const { mode, cycle } = useTheme();
-  const label = mode === 'auto' ? 'Thème : automatique' : mode === 'light' ? 'Thème : clair' : 'Thème : sombre';
+  const label = mode === 'auto' ? 'Theme: automatic' : mode === 'light' ? 'Theme: light' : 'Theme: dark';
   return (
-    <button type="button" className="btn btn-icon" onClick={cycle} title={`${label} (cliquer pour changer)`} aria-label={`${label}. Changer de thème`}>
+    <button type="button" className="btn btn-icon" onClick={cycle} title={`${label} (click to change)`} aria-label={`${label}. Change theme`}>
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
         {mode === 'dark' ? (
           <path d="M20 14.500A8 8 0 0 1 9.500 4 8 8 0 1 0 20 14.500z" fill="currentColor" />
@@ -47,7 +47,7 @@ function ThemeButton() {
           </g>
         )}
       </svg>
-      <span className="theme-text">{mode === 'auto' ? 'Auto' : mode === 'light' ? 'Clair' : 'Sombre'}</span>
+      <span className="theme-text">{mode === 'auto' ? 'Auto' : mode === 'light' ? 'Light' : 'Dark'}</span>
     </button>
   );
 }
@@ -60,7 +60,7 @@ export default function Layout() {
   return (
     <div className="shell">
       <a className="skip" href="#main">
-        Aller au contenu
+        Skip to content
       </a>
       <header className="topbar">
         <button
@@ -80,34 +80,34 @@ export default function Layout() {
             <rect width="32" height="32" rx="7" fill="var(--accent)" />
             <path d="M4 17h6l3-8 5 15 3-7h7" fill="none" stroke="#fff" strokeWidth="2.400" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          Vigie
+          Watchpost
         </div>
         <div className="topbar-spacer" />
         {devices.length > 0 && (
           <label className="device-select">
-            <span className="sr-only">Appareil</span>
-            <select value={device?.device_id ?? ''} onChange={(e) => setDeviceId(e.target.value)} aria-label="Appareil">
+            <span className="sr-only">Device</span>
+            <select value={device?.device_id ?? ''} onChange={(e) => setDeviceId(e.target.value)} aria-label="Device">
               {devices.map((d) => (
                 <option key={d.device_id} value={d.device_id}>
                   {d.name || d.device_id}
-                  {d.revoked ? ' (révoqué)' : ''}
+                  {d.revoked ? ' (revoked)' : ''}
                 </option>
               ))}
             </select>
           </label>
         )}
         {device && (
-          <span className="topbar-seen" title="Dernier contact">
+          <span className="topbar-seen" title="Last contact">
             <span className={`dot ${isFresh(device.last_seen) ? 'dot-ok' : 'dot-bad'}`} aria-hidden="true" />
-            {device.last_seen ? fmtRelative(device.last_seen) : 'jamais vu'}
+            {device.last_seen ? fmtRelative(device.last_seen) : 'never seen'}
           </span>
         )}
         <ThemeButton />
-        <button type="button" className="btn btn-sm" onClick={() => void logout()} title={username ? `Connecté : ${username}` : undefined}>
-          Déconnexion
+        <button type="button" className="btn btn-sm" onClick={() => void logout()} title={username ? `Signed in: ${username}` : undefined}>
+          Sign out
         </button>
       </header>
-      <nav id="nav" className={`sidenav${open ? ' is-open' : ''}`} aria-label="Navigation principale">
+      <nav id="nav" className={`sidenav${open ? ' is-open' : ''}`} aria-label="Main navigation">
         <ul>
           {NAV.map((n) => (
             <li key={n.to}>
@@ -121,12 +121,12 @@ export default function Layout() {
       </nav>
       <main id="main" className="main" tabIndex={-1}>
         {loading && devices.length === 0 && !error ? (
-          <Loading label="Chargement des appareils…" />
+          <Loading label="Loading devices…" />
         ) : error && devices.length === 0 ? (
           <ErrorBox message={error.message} onRetry={reload} />
         ) : devices.length === 0 ? (
           <div className="state state-empty">
-            <strong>Aucun appareil enrôlé.</strong> Créez-en un avec <code>watchpost-collector enroll</code> sur le serveur.
+            <strong>No device enrolled.</strong> Create one with <code>watchpost-collector enroll</code> on the server.
           </div>
         ) : (
           <Outlet />

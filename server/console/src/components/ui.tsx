@@ -35,7 +35,7 @@ export function Card({
   );
 }
 
-export function Loading({ label = 'Chargement…' }: { label?: string }) {
+export function Loading({ label = 'Loading…' }: { label?: string }) {
   return (
     <div className="state state-loading" role="status" aria-live="polite">
       <span className="spinner" aria-hidden="true" />
@@ -44,24 +44,24 @@ export function Loading({ label = 'Chargement…' }: { label?: string }) {
   );
 }
 
-export function Empty({ children = 'Aucune donnée sur cette période.' }: { children?: ReactNode }) {
+export function Empty({ children = 'No data for this period.' }: { children?: ReactNode }) {
   return <div className="state state-empty">{children}</div>;
 }
 
 export function ErrorBox({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <div className="state state-error" role="alert">
-      <strong>Erreur.</strong> {message}
+      <strong>Error.</strong> {message}
       {onRetry && (
         <button type="button" className="btn btn-sm" onClick={onRetry}>
-          Réessayer
+          Retry
         </button>
       )}
     </div>
   );
 }
 
-/** Gère les trois états d'une requête ; `children` ne reçoit que des données présentes. */
+/** Handles the three states of a request; `children` only receives present data. */
 export function Async<T>({
   state,
   children,
@@ -76,7 +76,7 @@ export function Async<T>({
   loadingLabel?: string;
 }) {
   if (state.error) return <ErrorBox message={state.error.message} onRetry={state.reload} />;
-  if (state.data === undefined) return state.loading ? <Loading label={loadingLabel ?? 'Chargement…'} /> : null;
+  if (state.data === undefined) return state.loading ? <Loading label={loadingLabel ?? 'Loading…'} /> : null;
   if (isEmpty?.(state.data)) return <Empty>{empty}</Empty>;
   return (
     <div className={state.loading ? 'is-refreshing' : undefined} aria-busy={state.loading}>
@@ -99,7 +99,7 @@ const SEV_TONE: Tone[] = ['neutral', 'info', 'warn', 'bad'];
 export function SevBadge({ sev, short = false }: { sev: number; short?: boolean }) {
   const i = Math.max(0, Math.min(3, Math.trunc(sev)));
   return (
-    <Badge tone={SEV_TONE[i] ?? 'neutral'} title={`Sévérité ${i} : ${sevLabel(i)}`}>
+    <Badge tone={SEV_TONE[i] ?? 'neutral'} title={`Severity ${i}: ${sevLabel(i)}`}>
       {short ? i : `${i} · ${sevLabel(i)}`}
     </Badge>
   );
@@ -107,7 +107,7 @@ export function SevBadge({ sev, short = false }: { sev: number; short?: boolean 
 
 export function LevelBadge({ level }: { level: number }) {
   const tone: Tone = level >= 12 ? 'bad' : level >= 8 ? 'warn' : level >= 5 ? 'info' : 'neutral';
-  return <Badge tone={tone}>Niveau {level}</Badge>;
+  return <Badge tone={tone}>Level {level}</Badge>;
 }
 
 export function VendorBadge({ vendor }: { vendor: Vendor }) {
@@ -115,7 +115,7 @@ export function VendorBadge({ vendor }: { vendor: Vendor }) {
   return <span className={`vendor vendor-${vendor}`}>{VENDOR_LABELS[vendor]}</span>;
 }
 
-const STATUS_TEXT: Record<Status, string> = { ok: 'OK', warn: 'Attention', bad: 'Alerte', unknown: 'Info' };
+const STATUS_TEXT: Record<Status, string> = { ok: 'OK', warn: 'Warning', bad: 'Alert', unknown: 'Info' };
 export function StatusPill({ status }: { status: Status }) {
   const tone: Tone = status === 'ok' ? 'ok' : status === 'warn' ? 'warn' : status === 'bad' ? 'bad' : 'neutral';
   return <Badge tone={tone}>{STATUS_TEXT[status]}</Badge>;
@@ -160,7 +160,7 @@ export function Tabs<K extends string>({
   );
 }
 
-/** Barre horizontale proportionnelle (classements). */
+/** Proportional horizontal bar (rankings). */
 export function Bar({ value, max, tone }: { value: number; max: number; tone?: Vendor }) {
   const pct = max > 0 ? Math.max(2, Math.min(100, (value / max) * 100)) : 0;
   return (

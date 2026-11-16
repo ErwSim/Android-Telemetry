@@ -5,7 +5,7 @@ const MIN = 60_000;
 const pts = (...minutes: number[]) => minutes.map((m) => ({ t: m * MIN }));
 
 describe('detectGaps', () => {
-  it("détecte les écarts supérieurs au seuil, pas ceux qui l'égalent", () => {
+  it('detects gaps above the threshold, not those equal to it', () => {
     const p = pts(0, 5, 10, 40, 45, 75, 76);
     const g = detectGaps(p, 25 * MIN);
     expect(g.map((x) => [x.fromIdx, x.toIdx, x.durationMs / MIN])).toEqual([
@@ -14,14 +14,14 @@ describe('detectGaps', () => {
     ]);
     expect(detectGaps(pts(0, 30), 30 * MIN)).toEqual([]);
   });
-  it('ne renvoie rien pour 0 ou 1 point', () => {
+  it('returns nothing for 0 or 1 point', () => {
     expect(detectGaps([], MIN)).toEqual([]);
     expect(detectGaps(pts(3), MIN)).toEqual([]);
   });
 });
 
 describe('effectiveThreshold', () => {
-  it("relève le seuil quand la trace est sous-échantillonnée", () => {
+  it('raises the threshold when the track is downsampled', () => {
     const p = pts(0, 20, 40, 60, 80);
     expect(effectiveThreshold(p, 15 * MIN)).toBe(60 * MIN);
     expect(effectiveThreshold(pts(0, 1, 2, 3), 15 * MIN)).toBe(15 * MIN);
@@ -34,7 +34,7 @@ describe('effectiveThreshold', () => {
 });
 
 describe('splitSegments', () => {
-  it('découpe en segments continus', () => {
+  it('splits into continuous segments', () => {
     const g = detectGaps(pts(0, 5, 10, 60, 65, 130), 30 * MIN);
     expect(splitSegments(6, g)).toEqual([
       [0, 2],
@@ -53,18 +53,18 @@ describe('classifyGap', () => {
     bucketMs: 60 * MIN,
     totals,
   });
-  it('silent : aucun événement pendant le trou', () => {
+  it('silent: no event during the gap', () => {
     expect(classifyGap(gap, buckets([5, 0, 0, 7]))).toBe('silent');
   });
-  it('nofix : le téléphone a émis des événements', () => {
+  it('nofix: the phone emitted events', () => {
     expect(classifyGap(gap, buckets([5, 4, 6, 7]))).toBe('nofix');
   });
-  it('écarte les tranches de bord pour un trou long (événements juste avant la coupure)', () => {
+  it('discards the edge buckets for a long gap (events just before the cut)', () => {
     const long = { fromIdx: 0, toIdx: 1, start: 30 * MIN, end: 450 * MIN, durationMs: 420 * MIN };
     // tranches 0..7 d'une heure : 0 et 7 actives (bords), 1..6 vides
     expect(classifyGap(long, buckets([9, 0, 0, 0, 0, 0, 0, 9]))).toBe('silent');
   });
-  it("unknown : pas de chronologie ou trou plus court qu'une tranche", () => {
+  it('unknown: no timeline or gap shorter than a bucket', () => {
     expect(classifyGap(gap, undefined)).toBe('unknown');
     expect(classifyGap({ ...gap, start: 10 * MIN, end: 30 * MIN }, buckets([5, 5]))).toBe('unknown');
   });

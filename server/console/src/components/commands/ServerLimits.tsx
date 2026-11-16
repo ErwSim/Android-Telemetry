@@ -1,15 +1,15 @@
 /**
- * Ce que la signature des commandes sensibles garantit, et ses limites (contrat §8, « Ce que la signature garantit,
- * et ses limites », revue de sécurité de la v1.1). Le texte ne promet pas plus que la cryptographie ne tient.
+ * What the signature of sensitive commands guarantees, and its limits (contract §8, "What the signature guarantees,
+ * and its limits", v1.1 security review). The text does not promise more than the cryptography holds.
  */
 export function ServerLimits({ compact = false }: { compact?: boolean }) {
   if (compact) {
     return (
       <div className="callout callout-info">
         <p>
-          <strong>Le serveur ne connaît pas votre code.</strong> Il relaie la commande sans pouvoir la fabriquer ni vérifier la signature : un code faux
-          est accepté par le serveur, puis <strong>refusé par le téléphone</strong> (« signature invalide »), ce que vous verrez dans l'historique. Si
-          vous soupçonnez le serveur, ne saisissez plus le code ici.
+          <strong>The server does not know your passphrase.</strong> It relays the command without being able to forge it or verify the signature: a wrong
+          passphrase is accepted by the server, then <strong>refused by the phone</strong> ("invalid signature"), which you will see in the history. If
+          you suspect the server, do not enter the passphrase here any more.
         </p>
       </div>
     );
@@ -17,29 +17,29 @@ export function ServerLimits({ compact = false }: { compact?: boolean }) {
   return (
     <div className="callout callout-info" data-testid="server-limits">
       <p>
-        <strong>Ce que la signature garantit, et ce qu'elle ne garantit pas.</strong> Aucune commande sensible ne s'exécute sans une signature valide pour le
-        code défini sur le téléphone, mais cette garantie a des limites :
+        <strong>What the signature guarantees, and what it does not.</strong> No sensitive command runs without a valid signature for the
+        passphrase set on the phone, but this guarantee has limits:
       </p>
       <ul>
         <li>
-          <strong>Le code doit être fort.</strong> Le serveur conserve la commande et sa signature : il peut chercher le code hors ligne, à toute vitesse.
-          Seul un code à forte entropie résiste : <strong>cinq mots tirés au hasard</strong>, réservés à cet usage (12 caractères au minimum, et un code trop
-          faible est refusé).
+          <strong>The passphrase must be strong.</strong> The server keeps the command and its signature: it can search for the passphrase offline, at full speed.
+          Only a high-entropy passphrase holds up: <strong>five randomly chosen words</strong>, reserved for this use (12 characters at minimum, and a passphrase
+          that is too weak is refused).
         </li>
         <li>
-          <strong>Cette page est servie par le serveur.</strong> Un serveur compromis pourrait lire le code à la prochaine saisie, ou le demander sous un faux
-          prétexte. Si vous le soupçonnez, <strong>ne saisissez plus le code ici</strong> et changez-le dans l'application du téléphone.
+          <strong>This page is served by the server.</strong> A compromised server could read the passphrase at the next entry, or ask for it under a false
+          pretext. If you suspect it, <strong>do not enter the passphrase here any more</strong> and change it in the phone app.
         </li>
         <li>
-          <strong>« Annulée » et « expirée » n'engagent que le serveur.</strong> Une commande signée reste exécutable par le téléphone jusqu'à sa date
-          d'expiration si une copie existe. <strong>Seul le changement du code dans l'application du téléphone rend caduque une commande déjà signée.</strong>{' '}
-          Un effacement n'est donc valable que 15 minutes par défaut (24 heures au plus).
+          <strong>"Cancelled" and "expired" only commit the server.</strong> A signed command remains executable by the phone until its expiry
+          date if a copy exists. <strong>Only changing the passphrase in the phone app makes an already signed command void.</strong>{' '}
+          An erase is therefore only valid for 15 minutes by default (24 hours at most).
         </li>
         <li>
-          Le serveur ne peut pas vérifier le code : il accepte une signature fausse. <strong>Seul le téléphone détecte un code faux</strong> (« Signature
-          invalide » dans l'historique). Après 5 signatures invalides en une heure, le téléphone refuse toute commande sensible pendant une heure.
+          The server cannot verify the passphrase: it accepts a wrong signature. <strong>Only the phone detects a wrong passphrase</strong> ("Invalid
+          signature" in the history). After 5 invalid signatures within an hour, the phone refuses every sensitive command for an hour.
         </li>
-        <li>Le code n'est jamais envoyé ni mémorisé par cette page : il vous est redemandé à chaque commande.</li>
+        <li>The passphrase is never sent or remembered by this page: you are asked for it again with every command.</li>
       </ul>
     </div>
   );

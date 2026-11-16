@@ -7,7 +7,7 @@ import { AppName } from '../AppName.tsx';
 import { Badge, Empty } from '../ui.tsx';
 import { SplitBar } from './SplitBar.tsx';
 
-/** Vue par application : ce qu'elle contacte, bloqué ou autorisé, volumes. Une application à la fois est dépliée. */
+/** Per-application view: what it contacts, blocked or allowed, volumes. One application at a time is expanded. */
 export function AppsView({
   apps,
   showStatus,
@@ -24,27 +24,27 @@ export function AppsView({
   const [q, setQ] = useState('');
   const [shown, setShown] = useState(40);
   const rows = useMemo(() => filterApps(apps, q), [apps, q]);
-  // L'application ouverte depuis la liste des domaines passe en tête, même au-delà des 40 premières.
+  // The application opened from the domain list comes first, even beyond the first 40.
   const visible = useMemo(() => {
     const head = rows.slice(0, shown);
     const open = openPkg ? rows.find((a) => a.package === openPkg) : undefined;
     return open && !head.includes(open) ? [open, ...head] : head;
   }, [rows, shown, openPkg]);
 
-  if (apps.length === 0) return <Empty>Aucune application n'a émis de requête DNS sur cette période.</Empty>;
+  if (apps.length === 0) return <Empty>No application made a DNS query during this period.</Empty>;
   return (
     <>
       <div className="toolbar">
         <label className="filter grow">
-          Recherche
-          <input type="search" value={q} onChange={(e) => { setQ(e.target.value); setShown(40); }} placeholder="nom ou paquet" />
+          Search
+          <input type="search" value={q} onChange={(e) => { setQ(e.target.value); setShown(40); }} placeholder="name or package" />
         </label>
       </div>
       <p className="hint">
-        Les requêtes DNS par application viennent de l'agent. Les décomptes bloqué / autorisé et les octets par application sont des <strong>estimations</strong>{' '}
-        (répartition au prorata des requêtes DNS) : ils indiquent un ordre de grandeur, pas une mesure.
+        DNS queries per application come from the agent. The blocked / allowed counts and the bytes per application are <strong>estimates</strong>{' '}
+        (split in proportion to the DNS queries): they give an order of magnitude, not a measurement.
       </p>
-      {rows.length === 0 && <Empty>Aucune application ne correspond.</Empty>}
+      {rows.length === 0 && <Empty>No matching application.</Empty>}
       <ul className="trk-apps">
         {visible.map((a) => {
           const isOpen = openPkg === a.package;
@@ -56,12 +56,12 @@ export function AppsView({
                   <span aria-hidden="true">{isOpen ? '▾' : '▸'}</span> <AppName pkg={a.package} label={a.label} />
                 </span>
                 <span className="trk-app-num">
-                  <strong>{fmtNumber(a.queries)}</strong> <span className="muted">requêtes</span>
+                  <strong>{fmtNumber(a.queries)}</strong> <span className="muted">queries</span>
                 </span>
                 {showStatus && (
                   <span className="trk-app-split">
                     <SplitBar blocked={a.blocked} allowed={a.allowed} />
-                    <span className="muted"> {pct === undefined ? '' : `${fmtPct(pct)} bloquées`}</span>
+                    <span className="muted"> {pct === undefined ? '' : `${fmtPct(pct)} blocked`}</span>
                   </span>
                 )}
                 <span className="trk-app-bytes muted">
@@ -70,9 +70,9 @@ export function AppsView({
               </button>
               {isOpen && (
                 <div className="trk-app-body">
-                  <h3>Domaines les plus demandés</h3>
+                  <h3>Most requested domains</h3>
                   {(a.top_domains ?? []).length === 0 ? (
-                    <p className="muted">Aucun domaine détaillé.</p>
+                    <p className="muted">No detailed domain.</p>
                   ) : (
                     <ul className="findings">
                       {(a.top_domains ?? []).map((d) => {
@@ -82,9 +82,9 @@ export function AppsView({
                             {showStatus && <Badge tone={st.tone}>{st.label}</Badge>}
                             <span className="f-label mono break">{d.domain}</span>
                             <span className="f-val">
-                              {fmtNumber(d.count)} requêtes ·{' '}
+                              {fmtNumber(d.count)} queries ·{' '}
                               <button type="button" className="linkish" onClick={() => onShowDomain(d.domain)}>
-                                agir dans « Domaines »
+                                act in "Domains"
                               </button>
                             </span>
                           </li>
@@ -93,8 +93,8 @@ export function AppsView({
                     </ul>
                   )}
                   <p className="hint">
-                    Octets : volumes de l'application sur la période (↑ envoyés, ↓ reçus), tous sites confondus.{' '}
-                    <Link to={`/reseau?app=${encodeURIComponent(a.package)}`}>Détail réseau de cette application</Link>
+                    Bytes: the application's volumes over the period (↑ sent, ↓ received), all sites combined.{' '}
+                    <Link to={`/network?app=${encodeURIComponent(a.package)}`}>Network detail for this application</Link>
                   </p>
                 </div>
               )}
@@ -105,10 +105,10 @@ export function AppsView({
       {rows.length > shown && (
         <div className="pager">
           <button type="button" className="btn" onClick={() => setShown((n) => n + 40)}>
-            Afficher plus
+            Show more
           </button>
           <span>
-            {Math.min(shown, rows.length)} sur {rows.length}
+            {Math.min(shown, rows.length)} of {rows.length}
           </span>
         </div>
       )}

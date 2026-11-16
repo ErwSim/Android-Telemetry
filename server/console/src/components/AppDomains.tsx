@@ -8,8 +8,8 @@ import { str } from '../lib/data.ts';
 import { fmtBytes, fmtNumber } from '../lib/format.ts';
 
 /**
- * Domaines contactés par une application. L'API `/stats/top` n'a pas de filtre par paquet : on lit les
- * événements `net.dns` / `net.connect` (recherche textuelle sur le nom du paquet) puis on agrège ici.
+ * Domains contacted by an application. The `/stats/top` API has no per-package filter: we read the
+ * `net.dns` / `net.connect` events (text search on the package name) then aggregate here.
  */
 async function loadAppEvents(
   deviceId: string,
@@ -48,10 +48,10 @@ export function AppDomains({ deviceId, pkg, from, to, usage }: { deviceId: strin
     <>
       {usage?.bytes !== undefined && (
         <div className="stats app-stats">
-          <Stat label="Volume sur la période" value={fmtBytes(usage.bytes)} />
+          <Stat label="Volume over the period" value={fmtBytes(usage.bytes)} />
         </div>
       )}
-      <Async state={state} loadingLabel="Analyse des événements de l'application…">
+      <Async state={state} loadingLabel="Analysing the application's events…">
         {({ dns, con }) => {
           const dnsTop = countKeys(dns.hosts, 25).map((c) => ({ key: c.key, count: c.count }));
           const conTop = countKeys(con.hosts, 15).map((c) => ({ key: c.key, count: c.count }));
@@ -60,17 +60,17 @@ export function AppDomains({ deviceId, pkg, from, to, usage }: { deviceId: strin
             <>
               {truncated && (
                 <p className="state state-warn">
-                  Échantillon limité aux {fmtNumber(Math.max(dns.scanned, con.scanned))} événements les plus récents : les décomptes sont partiels.
+                  Sample limited to the {fmtNumber(Math.max(dns.scanned, con.scanned))} most recent events: counts are partial.
                 </p>
               )}
               <div className="two-col">
                 <div>
-                  <h3>Domaines demandés ({fmtNumber(dns.hosts.length)} requêtes)</h3>
-                  <Ranking items={dnsTop} kind="host" limit={25} emptyText="Aucune requête DNS pour cette application." />
+                  <h3>Domains requested ({fmtNumber(dns.hosts.length)} queries)</h3>
+                  <Ranking items={dnsTop} kind="host" limit={25} emptyText="No DNS queries for this application." />
                 </div>
                 <div>
-                  <h3>Destinations contactées ({fmtNumber(con.hosts.length)} connexions)</h3>
-                  <Ranking items={conTop} kind="plain" limit={15} emptyText="Aucune connexion pour cette application." />
+                  <h3>Destinations contacted ({fmtNumber(con.hosts.length)} connections)</h3>
+                  <Ranking items={conTop} kind="plain" limit={15} emptyText="No connections for this application." />
                 </div>
               </div>
             </>

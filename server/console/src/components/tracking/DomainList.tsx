@@ -26,16 +26,16 @@ export function DomainList({
   onNotice,
 }: {
   paged: PagedDomains;
-  /** AdGuard injoignable : actions désactivées */
+  /** AdGuard unreachable: actions disabled */
   degraded: boolean;
-  /** des décomptes bloqué/autorisé existent : colonnes statut et motif */
+  /** blocked/allowed counts exist: status and reason columns */
   showStatus: boolean;
   publisherNames: ReadonlyMap<string, string>;
   labelOf: (pkg: string | undefined) => string | undefined;
   onOpenApp: (pkg: string) => void;
   onNotice: (n: { tone: 'ok' | 'bad' | 'warn'; text: string }) => void;
 }) {
-  // Règles enregistrées pendant cette visite : elles s'affichent tout de suite, avant que les listes soient relues.
+  // Rules saved during this visit: they show up immediately, before the lists are read again.
   const [local, setLocal] = useState<ReadonlyMap<string, TrackAction>>(new Map());
   const [busy, setBusy] = useState<string | undefined>();
   const [conflict, setConflict] = useState<Pending | undefined>();
@@ -52,14 +52,14 @@ export function DomainList({
         tone: 'ok',
         text:
           action === 'default'
-            ? `Règle manuelle retirée pour « ${domain} » : retour au comportement des listes.`
-            : `« ${domain} » : règle « ${action === 'block' ? 'bloquer' : 'autoriser'} » enregistrée dans AdGuard Home. Elle s'applique aux prochaines requêtes ; les décomptes affichés restent ceux du passé.`,
+            ? `Manual rule removed for "${domain}": back to the lists' behaviour.`
+            : `"${domain}": rule "${action === 'block' ? 'block' : 'allow'}" saved in AdGuard Home. It applies to the next queries; the counts displayed remain those of the past.`,
       });
     } catch (e) {
       if (e instanceof ApiError && e.status === 409 && e.code === 'essential_domain' && action === 'block' && !force) {
         setConflict({ domain, action, conflict: parseConflict(e) });
       } else {
-        onNotice({ tone: 'bad', text: `La règle n'a pas été enregistrée. ${e instanceof ApiError ? trackingErrorMessage(e) : String(e)}` });
+        onNotice({ tone: 'bad', text: `The rule was not saved. ${e instanceof ApiError ? trackingErrorMessage(e) : String(e)}` });
         setConflict(undefined);
       }
     } finally {
@@ -69,8 +69,8 @@ export function DomainList({
   };
 
   if (paged.error && paged.domains.length === 0) return <ErrorBox message={paged.error.message} onRetry={paged.reload} />;
-  if (paged.loading && paged.domains.length === 0) return <Loading label="Chargement des domaines…" />;
-  if (paged.domains.length === 0) return <Empty>Aucun domaine ne correspond à ces filtres sur cette période.</Empty>;
+  if (paged.loading && paged.domains.length === 0) return <Loading label="Loading domains…" />;
+  if (paged.domains.length === 0) return <Empty>No domain matches these filters for this period.</Empty>;
 
   return (
     <div className={paged.loading ? 'is-refreshing' : undefined}>
@@ -78,12 +78,12 @@ export function DomainList({
         <table className="tbl trk-dom">
           <thead>
             <tr>
-              <th scope="col">Domaine</th>
+              <th scope="col">Domain</th>
               <th scope="col" className="right">
-                Requêtes
+                Queries
               </th>
-              {showStatus && <th scope="col">Statut</th>}
-              {showStatus && <th scope="col">Motif</th>}
+              {showStatus && <th scope="col">Status</th>}
+              {showStatus && <th scope="col">Reason</th>}
               <th scope="col">Applications</th>
               <th scope="col">
                 <span className="sr-only">Actions</span>
@@ -115,25 +115,25 @@ export function DomainList({
       <div className="pager">
         {paged.hasMore ? (
           <button type="button" className="btn" onClick={paged.loadMore} disabled={paged.loadingMore}>
-            {paged.loadingMore ? 'Chargement…' : 'Charger plus'}
+            {paged.loadingMore ? 'Loading…' : 'Load more'}
           </button>
         ) : null}
         <span>
-          {fmtNumber(paged.domains.length)} domaine{paged.domains.length > 1 ? 's' : ''}
-          {paged.hasMore ? '' : ' — fin de la liste'}
+          {fmtNumber(paged.domains.length)} domain{paged.domains.length > 1 ? 's' : ''}
+          {paged.hasMore ? '' : ' — end of the list'}
         </span>
       </div>
 
       {conflict && (
         <Dialog
-          title="Ce domaine est indispensable au téléphone"
+          title="This domain is essential to the phone"
           tone="danger"
           busy={forcing}
           onClose={() => setConflict(undefined)}
           footer={
             <>
               <button type="button" className="btn btn-primary" onClick={() => setConflict(undefined)} disabled={forcing}>
-                Ne pas bloquer
+                Do not block
               </button>
               <button
                 type="button"
@@ -144,13 +144,13 @@ export function DomainList({
                   void run(conflict.domain, 'block', true);
                 }}
               >
-                {forcing ? 'Blocage…' : 'Bloquer quand même'}
+                {forcing ? 'Blocking…' : 'Block anyway'}
               </button>
             </>
           }
         >
           <p>
-            Bloquer <strong className="mono break">{conflict.domain}</strong> casserait des fonctions essentielles :
+            Blocking <strong className="mono break">{conflict.domain}</strong> would break essential functions:
           </p>
           <div className="callout callout-bad">
             <p>{cleanText(conflict.conflict?.message, 400)}</p>
@@ -163,7 +163,7 @@ export function DomainList({
             )}
           </div>
           <p className="muted">
-            La règle est réversible (« Remettre par défaut »), mais tant qu'elle est active le téléphone peut perdre ces fonctions sans autre signe visible.
+            The rule is reversible ("Reset to default"), but as long as it is active the phone may lose these functions with no other visible sign.
           </p>
         </Dialog>
       )}
@@ -216,12 +216,12 @@ function DomainRow({
             {d.blocked !== undefined && d.allowed !== undefined && d.status === 'mixed' && (
               <span className="hint">
                 {' '}
-                {fmtNumber(d.blocked)} bloquées · {fmtNumber(d.allowed)} autorisées
+                {fmtNumber(d.blocked)} blocked · {fmtNumber(d.allowed)} allowed
               </span>
             )}
             {ov && (
               <div>
-                <Badge tone="info" title={pendingLocal ? "Règle enregistrée à l'instant : elle s'applique aux prochaines requêtes." : undefined}>
+                <Badge tone="info" title={pendingLocal ? 'Rule saved just now: it applies to the next queries.' : undefined}>
                   {ov}
                 </Badge>
               </div>
@@ -237,7 +237,7 @@ function DomainRow({
           {shown.length === 0 && <span className="muted">—</span>}
           {shown.map((a) => (
             <div key={a.package}>
-              <button type="button" className="linkish" onClick={() => onOpenApp(a.package)} title={`${a.package} : voir dans l'onglet Applications`}>
+              <button type="button" className="linkish" onClick={() => onOpenApp(a.package)} title={`${a.package}: see in the Applications tab`}>
                 {labelOf(a.package) ?? a.package}
               </button>{' '}
               <span className="muted">({fmtNumber(a.count)})</span>
@@ -245,7 +245,7 @@ function DomainRow({
           ))}
           {more > 0 && (
             <button type="button" className="linkish" onClick={onToggle} aria-expanded={isOpen}>
-              + {more} autre{more > 1 ? 's' : ''}
+              + {more} other{more > 1 ? 's' : ''}
             </button>
           )}
         </td>
@@ -257,7 +257,7 @@ function DomainRow({
                 type="button"
                 className={`btn btn-sm${a === 'block' ? ' btn-block' : ''}`}
                 disabled={degraded || busy}
-                title={degraded ? "Indisponible : AdGuard Home n'est pas joignable" : undefined}
+                title={degraded ? 'Unavailable: AdGuard Home is not reachable' : undefined}
                 onClick={() => onAction(a)}
                 aria-label={`${ACTION_LABELS[a]} ${d.domain}`}
               >
@@ -270,7 +270,7 @@ function DomainRow({
       {isOpen && more > 0 && (
         <tr>
           <td colSpan={6} className="detail-cell">
-            Applications qui demandent <span className="mono">{d.domain}</span> :{' '}
+            Applications requesting <span className="mono">{d.domain}</span>:{' '}
             {[...(d.apps ?? [])]
               .sort((a, b) => b.count - a.count)
               .map((a, i) => (

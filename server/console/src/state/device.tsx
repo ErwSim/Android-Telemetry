@@ -22,7 +22,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
   const { data, error, loading, reload } = useApi('devices', (signal) => api.devices(signal));
   const [selected, setSelected] = useState<string | null>(() => readStore(KEY));
 
-  // Rafraîchit l'état de l'appareil (dernier contact, batterie…) toutes les 60 s.
+  // Refreshes the device state (last contact, battery...) every 60 s.
   useEffect(() => {
     const t = window.setInterval(reload, 60_000);
     return () => window.clearInterval(t);

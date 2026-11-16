@@ -21,30 +21,30 @@ export function PublisherTable({
   return (
     <div className="table-wrap">
       <table className="tbl trk-pub">
-        <caption className="sr-only">Requêtes DNS par éditeur : bloquées et autorisées, domaines, applications, octets échangés</caption>
+        <caption className="sr-only">DNS queries per publisher: blocked and allowed, domains, applications, bytes exchanged</caption>
         <thead>
           <tr>
-            <th scope="col">Éditeur</th>
+            <th scope="col">Publisher</th>
             <th scope="col" className="right">
-              Requêtes
+              Queries
             </th>
-            {showStatus && <th scope="col">Bloquées / autorisées</th>}
+            {showStatus && <th scope="col">Blocked / allowed</th>}
             {showStatus && (
               <th scope="col" className="right hide-sm">
-                Bloquées
+                Blocked
               </th>
             )}
             <th scope="col" className="right hide-sm">
-              Domaines
+              Domains
             </th>
             <th scope="col" className="right hide-sm">
-              Applis
+              Apps
             </th>
             <th scope="col" className="right hide-sm">
-              Envoyé
+              Sent
             </th>
             <th scope="col" className="right hide-sm">
-              Reçu
+              Received
             </th>
           </tr>
         </thead>
@@ -59,7 +59,7 @@ export function PublisherTable({
                     className="linkish"
                     aria-pressed={selected === p.key}
                     onClick={() => onSelect(selected === p.key ? undefined : p.key)}
-                    title="Filtrer les domaines et les applications sur cet éditeur"
+                    title="Filter the domains and applications on this publisher"
                   >
                     <span className={`pub-swatch pub-${p.key}`} aria-hidden="true" />
                     {p.name}

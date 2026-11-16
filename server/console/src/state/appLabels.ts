@@ -3,7 +3,7 @@ import { api } from '../api/endpoints.ts';
 import { useApi } from '../api/useApi.ts';
 import { useDevice } from './device.tsx';
 
-/** Correspondance paquet → libellé d'application, d'après le dernier inventaire. */
+/** Package → application label mapping, from the latest inventory. */
 export function useAppLabels(): (pkg: string | undefined) => string | undefined {
   const { deviceId } = useDevice();
   const { data } = useApi(deviceId ? `apps:${deviceId}` : null, (s) => api.apps(deviceId, s));

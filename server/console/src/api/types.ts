@@ -1,5 +1,5 @@
-// Types de l'API console (docs/contrat/contrat.md §6) et des événements (§1-2).
-// Tous les champs de `data` sont optionnels : le catalogue donne un minimum, jamais une garantie.
+// Console API types (docs/contract/contract.md §6) and event types (§1-2).
+// All `data` fields are optional: the catalogue gives a minimum, never a guarantee.
 
 export type Sev = 0 | 1 | 2 | 3;
 
@@ -59,7 +59,7 @@ export interface LastLocation {
 
 export interface CommandChannelState {
   connected?: boolean;
-  /** `stream` (connexion permanente), `poll` (interrogation) ou `unknown` */
+  /** `stream` (permanent connection), `poll` (polling) ou `unknown` */
   mode?: string;
   last_contact?: string;
 }
@@ -74,7 +74,7 @@ export interface Device {
   last_heartbeat?: Heartbeat;
   last_location?: LastLocation;
   last_posture?: Posture;
-  /** Contrat §8 : état du canal de commandes. */
+  /** Contract §8: state of the command channel. */
   command_channel?: CommandChannelState;
 }
 
@@ -180,7 +180,7 @@ export interface MeResponse {
   username: string;
 }
 
-// ---------------------------------------------------------------- Commandes à distance (contrat §8)
+// ---------------------------------------------------------------- Remote commands (contract §8)
 
 export type CommandStatus = 'pending' | 'delivered' | 'executed' | 'failed' | 'refused' | 'expired' | 'cancelled';
 
@@ -203,7 +203,7 @@ export interface CommandsResponse {
   commands: RemoteCommand[];
 }
 
-// ---------------------------------------------------------------- Pistage (contrat §9)
+// ---------------------------------------------------------------- Tracking (contract §9)
 
 export interface TrackingLevelInfo {
   key: string;
@@ -276,24 +276,24 @@ export interface LevelResponse {
   level: string;
 }
 
-// ---------------------------------------------------------------- Profil de risque, usage, détections (contrat §11)
+// ---------------------------------------------------------------- Risk profile, usage, detections (contract §11)
 
 export type RiskLevel = 'low' | 'medium' | 'high';
 
-/** `app.risk` : dernier profil de risque d'une application (contrat §11.2). */
+/** `app.risk`: latest risk profile of an application (contract §11.2). */
 export interface AppRisk {
   package: string;
   label?: string;
   version_code?: number;
   installer?: string;
   from_store?: boolean;
-  /** 0 à 100 */
+  /** 0 to 100 */
   score: number;
-  /** `low`, `medium`, `high`, ou une valeur inconnue (repli : déduit du score) */
+  /** `low`, `medium`, `high`, or an unknown value (fallback: deduced from the score) */
   level: string;
-  /** capacités DÉCLARÉES (codes de la liste fermée du §11.2 ; un code inconnu est affiché tel quel) */
+  /** DECLARED capabilities (codes of the closed list of §11.2; an unknown code is displayed as is) */
   reasons: string[];
-  /** parmi `reasons`, celles effectivement ACCORDÉES (§11.4) ; absent si l'agent ne le dit pas */
+  /** among `reasons`, those actually GRANTED (§11.4); absent if the agent does not say */
   granted?: string[];
   ts?: string;
 }
@@ -303,14 +303,14 @@ export interface AppRiskResponse {
   apps: AppRisk[];
 }
 
-/** Ligne agrégée de `app.ops` : une application, une opération (contrat §11.2). */
+/** Aggregated `app.ops` row: one application, one operation (contract §11.2). */
 export interface AppOpsRow {
   package: string;
   label?: string;
   op: string;
   count: number;
   background_count?: number;
-  /** usages refusés par le système (garde de l'agent) : contrat non fixé, fourni par le collecteur */
+  /** uses refused by the system (agent guard): not fixed by the contract, provided by the collector */
   rejected_count?: number;
   last_ts?: string;
 }
@@ -321,14 +321,14 @@ export interface AppOpsResponse {
   rows: AppOpsRow[];
 }
 
-/** Détection calculée par le collecteur (contrat §11.3). */
+/** Detection computed by the collector (contract §11.3). */
 export interface Detection {
   id: string;
   ts: string;
   type: string;
   package?: string;
   label?: string;
-  /** 0 à 3, même échelle que `sev` des événements */
+  /** 0 to 3, same scale as the events' `sev` */
   severity: number;
   summary?: string;
   evidence: DataObject;
@@ -336,13 +336,13 @@ export interface Detection {
   window_to?: string;
   device_id?: string;
   updated_at?: string;
-  /** §11.4 : déjà signalé dans les 30 jours (sévérité plafonnée à 1) */
+  /** §11.4: already reported within 30 days (severity capped at 1) */
   recurring?: boolean;
   /** §11.4 : couverte par une sourdine : calculée et stockée, mais ni exportée ni notifiée */
   muted?: boolean;
 }
 
-/** Sourdine en cours (§11.4) : un couple (type, application) pour un appareil. */
+/** Current mute (§11.4): a (type, application) pair for a device. */
 export interface DetectionMute {
   type: string;
   package: string;

@@ -1,9 +1,9 @@
-// Client HTTP de l'API console. Chemins relatifs (même hôte que la console), cookie de session.
+// HTTP client of the console API. Relative paths (same host as the console), session cookie.
 
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
-  /** Corps JSON de l'erreur (champs supplémentaires, par exemple le détail d'un 409). */
+  /** JSON body of the error (extra fields, for example the detail of a 409). */
   readonly body: Record<string, unknown> | undefined;
   constructor(status: number, code: string, message: string, body?: Record<string, unknown>) {
     super(message);
@@ -16,10 +16,10 @@ export class ApiError extends Error {
 
 const BASE = '/api/console';
 
-// Décalage entre l'horloge du serveur (en-tête `Date` des réponses, précision d'une seconde) et celle de ce
-// navigateur : `issued_at` d'une commande doit être à moins de 10 min de l'heure du serveur (contrat §8).
+// Offset between the server's clock (`Date` header of the responses, one-second precision) and that of this
+// browser: a command's `issued_at` must be within 10 min of the server's time (contract §8).
 let serverSkewMs: number | undefined;
-/** serveur − navigateur, en ms, d'après la dernière réponse ; undefined si inconnu. */
+/** server − browser, in ms, from the last response; undefined if unknown. */
 export function clockSkewMs(): number | undefined {
   return serverSkewMs;
 }
@@ -27,13 +27,13 @@ export function clockSkewMs(): number | undefined {
 type Listener = () => void;
 const unauthorizedListeners = new Set<Listener>();
 
-/** Appelé quand une requête (hors connexion) reçoit 401 : la session a expiré. */
+/** Called when a request (other than login) receives 401: the session has expired. */
 export function onUnauthorized(fn: Listener): () => void {
   unauthorizedListeners.add(fn);
   return () => unauthorizedListeners.delete(fn);
 }
 
-/** Signale une session expirée détectée hors de `request` (flux SSE). */
+/** Reports an expired session detected outside `request` (SSE stream). */
 export function signalUnauthorized(): void {
   unauthorizedListeners.forEach((fn) => fn());
 }
@@ -63,7 +63,7 @@ async function parseError(res: Response): Promise<ApiError> {
       if (typeof extra['message'] === 'string') message = extra['message'];
     }
   } catch {
-    /* corps non JSON */
+    /* non-JSON body */
   }
   return new ApiError(res.status, code, message, extra);
 }
@@ -72,7 +72,7 @@ interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal;
-  /** Ne pas déclencher le retour à la connexion sur 401 (utilisé par /login et /me). */
+  /** Do not trigger the return to the login page on 401 (used by /login and /me). */
   noAuthRedirect?: boolean;
 }
 
@@ -91,7 +91,7 @@ export async function request<T>(path: string, query?: Query, opts: RequestOptio
     res = await fetch(`${BASE}${path}${buildQuery(query)}`, init);
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') throw e;
-    throw new ApiError(0, 'network', 'Serveur injoignable. Vérifiez la connexion.');
+    throw new ApiError(0, 'network', 'Server unreachable. Check the connection.');
   }
   const dateHeader = res.headers.get('Date');
   if (dateHeader) {
@@ -106,7 +106,7 @@ export async function request<T>(path: string, query?: Query, opts: RequestOptio
   try {
     return (await res.json()) as T;
   } catch {
-    throw new ApiError(res.status, 'bad_response', 'Réponse du serveur illisible.');
+    throw new ApiError(res.status, 'bad_response', 'Unreadable server response.');
   }
 }
 

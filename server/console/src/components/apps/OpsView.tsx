@@ -7,7 +7,7 @@ import { appSheetPath, cleanText } from '../../lib/text.ts';
 import { AppName } from '../AppName.tsx';
 import { Badge, Card, Empty } from '../ui.tsx';
 
-/** État du collecteur d'opérations sensibles dans la dernière pulsation (nom exact non fixé par le contrat : on cherche « ops »). */
+/** State of the sensitive operations collector in the last heartbeat (exact name not fixed by the contract: we look for "ops"). */
 export function opsCollectorState(device: Device | undefined): string | undefined {
   const c = device?.last_heartbeat?.collectors;
   if (!c) return undefined;
@@ -16,14 +16,14 @@ export function opsCollectorState(device: Device | undefined): string | undefine
 }
 
 const STATE_TEXT: Record<string, string> = {
-  running: 'en marche',
-  disabled: 'désactivé dans l’application',
-  unavailable: 'indisponible (permission DUMP non accordée ?)',
+  running: 'running',
+  disabled: 'disabled in the app',
+  unavailable: 'unavailable (DUMP permission not granted?)',
 };
 
 /**
- * État vide de l'usage des opérations sensibles. Ces données sont expérimentales et éteintes par défaut : la page
- * dit comment les activer, sans jamais présenter une absence de données comme une absence d'usage.
+ * Empty state of the sensitive operations usage. These data are experimental and off by default: the page
+ * says how to enable them, without ever presenting an absence of data as an absence of use.
  */
 export function OpsEmpty({ device, reason }: { device: Device | undefined; reason: 'absent' | 'empty' }) {
   const st = opsCollectorState(device);
@@ -31,35 +31,35 @@ export function OpsEmpty({ device, reason }: { device: Device | undefined; reaso
     <div className="state-ops" data-testid="ops-empty">
       <div className="callout callout-info">
         <p>
-          <strong>{reason === 'absent' ? "Aucune donnée d'usage des opérations sensibles pour cet appareil." : 'Aucune opération sensible utilisée sur cette période.'}</strong>{' '}
-          {reason === 'empty' && 'Si le collecteur est actif, c’est plutôt bon signe : le relevé est horaire et ne mentionne que les opérations réellement utilisées.'}
+          <strong>{reason === 'absent' ? 'No sensitive operations usage data for this device.' : 'No sensitive operation used during this period.'}</strong>{' '}
+          {reason === 'empty' && 'If the collector is active, this is rather a good sign: the reading is hourly and only mentions operations actually used.'}
         </p>
-        {st && <p>État du collecteur sur le téléphone : <strong>{STATE_TEXT[st] ?? st}</strong>.</p>}
+        {st && <p>Collector state on the phone: <strong>{STATE_TEXT[st] ?? st}</strong>.</p>}
       </div>
       <p>
-        Cette mesure est <strong>expérimentale</strong> et <strong>éteinte par défaut</strong> : elle lit les compteurs d'opérations d'Android (qui a envoyé un SMS, passé un appel, lu les
-        contacts, utilisé le micro ou la caméra, et combien de fois dont en arrière-plan) grâce à la permission <code>DUMP</code>, qu'Android n'accorde qu'en ligne de commande. Pour l'activer :
+        This measurement is <strong>experimental</strong> and <strong>off by default</strong>: it reads Android's operation counters (who sent an SMS, placed a call, read the
+        contacts, used the microphone or the camera, and how many times, including in the background) thanks to the <code>DUMP</code> permission, which Android only grants from the command line. To enable it:
       </p>
       <ol className="ops-steps">
         <li>
-          Brancher le téléphone à l'ordinateur (débogage USB) et lancer <code>./scripts/grant-adb-permissions.sh</code> (ou la version <code>.ps1</code> sous Windows) : il accorde{' '}
-          <code>DUMP</code> à Vigie (équivalent : <code>adb shell pm grant io.github.erwsim.watchpost android.permission.DUMP</code>).
+          Connect the phone to the computer (USB debugging) and run <code>./scripts/grant-adb-permissions.sh</code> (or the <code>.ps1</code> version on Windows): it grants{' '}
+          <code>DUMP</code> to Watchpost (equivalent: <code>adb shell pm grant io.github.erwsim.watchpost android.permission.DUMP</code>).
         </li>
         <li>
-          Dans l'application Vigie, onglet <em>Collecteurs</em> : activer le collecteur expérimental « Usage des opérations sensibles ».
+          In the Watchpost app, <em>Collectors</em> tab: enable the experimental "Sensitive operations usage" collector.
         </li>
-        <li>Attendre l'heure suivante : le premier relevé arrive dans l'heure, puis chaque heure.</li>
+        <li>Wait for the next hour: the first reading arrives within the hour, then every hour.</li>
       </ol>
       <p className="hint">
-        Tant que ces données manquent, les détections « SMS anormaux » et « micro ou caméra en arrière-plan » ne peuvent pas se déclencher ; les autres détections (réseau, nouvelles applications) et le
-        profil de risque fonctionnent sans elles. L'absence de ces données n'est <strong>pas</strong> une preuve qu'aucune application n'envoie de SMS : voyez aussi le profil de risque et les
-        permissions de chaque application.
+        As long as these data are missing, the "abnormal SMS" and "microphone or camera in the background" detections cannot trigger; the other detections (network, new applications) and the
+        risk profile work without them. The absence of these data is <strong>not</strong> proof that no application sends SMS: also check the risk profile and the
+        permissions of each application.
       </p>
     </div>
   );
 }
 
-/** Qui envoie des SMS, passe des appels, lit les contacts, utilise le micro ou la caméra, et combien de fois dont en arrière-plan. */
+/** Who sends SMS, places calls, reads contacts, uses the microphone or the camera, and how many times, including in the background. */
 export function OpsView({ rows, from, to, device }: { rows: AppOpsRow[]; from?: string | undefined; to?: string | undefined; device: Device | undefined }) {
   const [opFilter, setOpFilter] = useState('');
   const byOp = useMemo(() => groupByOp(rows), [rows]);
@@ -79,13 +79,13 @@ export function OpsView({ rows, from, to, device }: { rows: AppOpsRow[]; from?: 
       {byApp.some((a) => a.rejected > 0) && (
         <div className="callout callout-info" role="note">
           <p>
-            <strong>« Refusés »</strong> : usages que le système a empêchés (par exemple par la garde SMS de l'application Vigie). L'application a essayé : la tentative reste un signal, même sans effet.
+            <strong>"Refused"</strong>: uses that the system prevented (for example by the SMS guard of the Watchpost app). The application tried: the attempt remains a signal, even without effect.
           </p>
         </div>
       )}
       <p className="hint">
-        Données <strong>expérimentales</strong>{from && to ? ` du ${fmtDateTime(from)} au ${fmtDateTime(to)}` : ''} : compteurs d'opérations d'Android relevés toutes les heures. Un usage « en arrière-plan »
-        est fait alors que l'application n'est pas à l'écran.
+        <strong>Experimental</strong> data{from && to ? ` from ${fmtDateTime(from)} to ${fmtDateTime(to)}` : ''}: Android operation counters read every hour. A "background" use
+        is made while the application is not on screen.
       </p>
       <div className="ops-cards" data-testid="ops-cards">
         {headline.map((o) => {
@@ -95,12 +95,12 @@ export function OpsView({ rows, from, to, device }: { rows: AppOpsRow[]; from?: 
             <div key={o.op} className={`op-card${bg ? ' is-bg' : ''}`}>
               <h3>{info.label}</h3>
               <div className="op-n">{fmtNumber(o.count)}</div>
-              <div className="op-bg">{o.count === 0 ? 'aucun usage' : bg ? `dont ${fmtNumber(o.background)} en arrière-plan` : 'aucun en arrière-plan'}</div>
+              <div className="op-bg">{o.count === 0 ? 'no use' : bg ? `of which ${fmtNumber(o.background)} in the background` : 'none in the background'}</div>
               {o.apps.length > 0 && (
                 <ol>
                   {o.apps.slice(0, 3).map((a) => (
                     <li key={a.package} className="break">
-                      {cleanText(a.label, 60) || cleanText(a.package, 120)} : {fmtNumber(a.count)}
+                      {cleanText(a.label, 60) || cleanText(a.package, 120)}: {fmtNumber(a.count)}
                     </li>
                   ))}
                 </ol>
@@ -109,12 +109,12 @@ export function OpsView({ rows, from, to, device }: { rows: AppOpsRow[]; from?: 
           );
         })}
       </div>
-      <Card title="Détail par application et par opération">
+      <Card title="Detail per application and per operation">
         <div className="toolbar">
-          <ul className="chip-list" aria-label="Filtrer par opération">
+          <ul className="chip-list" aria-label="Filter by operation">
             <li>
               <button type="button" className="chip-btn" aria-pressed={opFilter === ''} onClick={() => setOpFilter('')}>
-                Toutes
+                All
               </button>
             </li>
             {byOp.map((o) => (
@@ -127,7 +127,7 @@ export function OpsView({ rows, from, to, device }: { rows: AppOpsRow[]; from?: 
           </ul>
         </div>
         {flat.length === 0 ? (
-          <Empty>Aucun usage pour cette opération.</Empty>
+          <Empty>No use for this operation.</Empty>
         ) : (
           <div className="flush">
             <div className="table-wrap">
@@ -135,11 +135,11 @@ export function OpsView({ rows, from, to, device }: { rows: AppOpsRow[]; from?: 
                 <thead>
                   <tr>
                     <th scope="col">Application</th>
-                    <th scope="col">Opération</th>
-                    <th scope="col" className="right">Usages</th>
-                    <th scope="col" className="right">En arrière-plan</th>
-                    {hasRejected && <th scope="col" className="right">Refusés</th>}
-                    <th scope="col" className="hide-sm">Dernier usage</th>
+                    <th scope="col">Operation</th>
+                    <th scope="col" className="right">Uses</th>
+                    <th scope="col" className="right">In the background</th>
+                    {hasRejected && <th scope="col" className="right">Refused</th>}
+                    <th scope="col" className="hide-sm">Last use</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -157,7 +157,7 @@ export function OpsView({ rows, from, to, device }: { rows: AppOpsRow[]; from?: 
                         <td className="right">
                           {r.background > 0 ? (
                             <>
-                              {fmtNumber(r.background)} {share >= 0.5 && <Badge tone="warn">surtout en arrière-plan</Badge>}
+                              {fmtNumber(r.background)} {share >= 0.5 && <Badge tone="warn">mostly in the background</Badge>}
                             </>
                           ) : (
                             <span className="muted">0</span>

@@ -8,7 +8,7 @@ function parseDuration(v: string): number | undefined {
   return v.trim() !== '' && Number.isFinite(n) ? n : undefined;
 }
 
-/** Commandes simples (sans signature) : sonner, vibrer, arrêter la sonnerie, localiser. */
+/** Simple commands (no signature): ring, vibrate, stop ringing, locate. */
 export function SimpleActions({ disabled, onSend }: { disabled: boolean; onSend: (type: Simple, params: CommandParams) => void }) {
   const [ringS, setRingS] = useState(String(LIMITS.ringDefault));
   const [ringVibrate, setRingVibrate] = useState(true);
@@ -16,19 +16,19 @@ export function SimpleActions({ disabled, onSend }: { disabled: boolean; onSend:
 
   const ringN = parseDuration(ringS);
   const vibN = parseDuration(vibS);
-  const ringErr = ringN === undefined ? 'Indiquez une durée.' : validateParams('ring', { duration_s: ringN });
-  const vibErr = vibN === undefined ? 'Indiquez une durée.' : validateParams('vibrate', { duration_s: vibN });
+  const ringErr = ringN === undefined ? 'Enter a duration.' : validateParams('ring', { duration_s: ringN });
+  const vibErr = vibN === undefined ? 'Enter a duration.' : validateParams('vibrate', { duration_s: vibN });
 
   return (
     <div className="cmd-list">
       <div className="cmd-row">
         <div className="cmd-info">
-          <strong>Sonner</strong>
-          <span className="hint">Sonnerie à plein volume, même si le téléphone est en silencieux.</span>
+          <strong>Ring</strong>
+          <span className="hint">Ring at full volume, even if the phone is on silent.</span>
         </div>
         <div className="cmd-ctl">
           <label className="filter">
-            Durée (s)
+            Duration (s)
             <input
               type="number"
               inputMode="numeric"
@@ -41,7 +41,7 @@ export function SimpleActions({ disabled, onSend }: { disabled: boolean; onSend:
             />
           </label>
           <label className="check">
-            <input type="checkbox" checked={ringVibrate} onChange={(e) => setRingVibrate(e.target.checked)} /> Vibrer aussi
+            <input type="checkbox" checked={ringVibrate} onChange={(e) => setRingVibrate(e.target.checked)} /> Vibrate too
           </label>
           <button
             type="button"
@@ -49,24 +49,24 @@ export function SimpleActions({ disabled, onSend }: { disabled: boolean; onSend:
             disabled={disabled || !!ringErr}
             onClick={() => onSend('ring', { duration_s: ringN as number, vibrate: ringVibrate })}
           >
-            Sonner
+            Ring
           </button>
         </div>
         {ringErr && (
           <p id="ring-err" className="form-error cmd-err" role="alert">
-            {ringErr} (1 à {LIMITS.ringMax} s)
+            {ringErr} (1 to {LIMITS.ringMax} s)
           </p>
         )}
       </div>
 
       <div className="cmd-row">
         <div className="cmd-info">
-          <strong>Vibrer</strong>
-          <span className="hint">Fait vibrer le téléphone, sans son.</span>
+          <strong>Vibrate</strong>
+          <span className="hint">Makes the phone vibrate, without sound.</span>
         </div>
         <div className="cmd-ctl">
           <label className="filter">
-            Durée (s)
+            Duration (s)
             <input
               type="number"
               inputMode="numeric"
@@ -79,36 +79,36 @@ export function SimpleActions({ disabled, onSend }: { disabled: boolean; onSend:
             />
           </label>
           <button type="button" className="btn btn-primary" disabled={disabled || !!vibErr} onClick={() => onSend('vibrate', { duration_s: vibN as number })}>
-            Vibrer
+            Vibrate
           </button>
         </div>
         {vibErr && (
           <p id="vib-err" className="form-error cmd-err" role="alert">
-            {vibErr} (1 à {LIMITS.vibrateMax} s)
+            {vibErr} (1 to {LIMITS.vibrateMax} s)
           </p>
         )}
       </div>
 
       <div className="cmd-row">
         <div className="cmd-info">
-          <strong>Arrêter la sonnerie</strong>
-          <span className="hint">Coupe une sonnerie en cours.</span>
+          <strong>Stop ringing</strong>
+          <span className="hint">Stops a ring in progress.</span>
         </div>
         <div className="cmd-ctl">
           <button type="button" className="btn" disabled={disabled} onClick={() => onSend('stop_ring', {})}>
-            Arrêter la sonnerie
+            Stop ringing
           </button>
         </div>
       </div>
 
       <div className="cmd-row">
         <div className="cmd-info">
-          <strong>Localiser maintenant</strong>
-          <span className="hint">Position précise immédiate (jusqu'à 60 s d'acquisition), puis envoi immédiat des données en attente. La carte se met à jour à l'arrivée de la position.</span>
+          <strong>Locate now</strong>
+          <span className="hint">Immediate precise location (up to 60 s of acquisition), then immediate upload of the pending data. The map updates when the location arrives.</span>
         </div>
         <div className="cmd-ctl">
           <button type="button" className="btn btn-primary" disabled={disabled} onClick={() => onSend('locate', {})}>
-            Localiser maintenant
+            Locate now
           </button>
         </div>
       </div>

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { countKeys, groupPermissions, mergeTop, stackSeries, timelineTotals, vendorShare } from './agg.ts';
 
 describe('countKeys', () => {
-  it('trie par fréquence puis ordre alphabétique et ignore les vides', () => {
+  it('sorts by frequency then alphabetical order and ignores empty ones', () => {
     expect(countKeys(['b', 'a', 'b', undefined, 'c', 'a', 'b'])).toEqual([
       { key: 'b', count: 3 },
       { key: 'a', count: 2 },
@@ -13,7 +13,7 @@ describe('countKeys', () => {
 });
 
 describe('mergeTop', () => {
-  it('additionne compteurs et octets par clé', () => {
+  it('adds up counters and bytes per key', () => {
     const m = mergeTop([{ key: 'a', count: 2, bytes: 10 }, { key: 'b', count: 1 }], [{ key: 'a', count: 3 }, { key: 'b', count: 5, bytes: 4 }]);
     expect(m).toEqual([
       { key: 'b', count: 6, bytes: 4 },
@@ -23,20 +23,20 @@ describe('mergeTop', () => {
 });
 
 describe('vendorShare', () => {
-  it('répartit Google / Samsung / autres pour des noms DNS', () => {
+  it('splits Google / Samsung / others for DNS names', () => {
     const s = vendorShare(
       [
         { key: 'app-measurement.com', count: 10 },
         { key: 'play.googleapis.com', count: 5 },
         { key: 'eu-api.samsungcloud.com', count: 4 },
-        { key: 'lemonde.fr', count: 1 },
+        { key: 'news.example', count: 1 },
         { key: 'notgoogle.com', count: 2 },
       ],
       'host',
     );
     expect(s).toEqual({ google: 15, samsung: 4, other: 3, total: 22 });
   });
-  it('classe les paquets et pondère par octets', () => {
+  it('classifies packages and weights by bytes', () => {
     const s = vendorShare(
       [
         { key: 'com.google.android.gms', count: 1, bytes: 100 },
@@ -51,7 +51,7 @@ describe('vendorShare', () => {
 });
 
 describe('groupPermissions', () => {
-  it('regroupe par permission, la plus répandue en premier', () => {
+  it('groups by permission, the most widespread first', () => {
     const g = groupPermissions([
       { package: 'a', granted_dangerous: ['CAMERA', 'MIC'] },
       { package: 'b', granted_dangerous: ['CAMERA'] },
@@ -72,10 +72,10 @@ describe('timeline', () => {
       { key: 'app', counts: [1, 0] },
     ],
   };
-  it('totaux par tranche', () => {
+  it('totals per bucket', () => {
     expect(timelineTotals(t).totals).toEqual([4, 1]);
   });
-  it('empile les séries dans l\'ordre demandé', () => {
+  it('stacks the series in the requested order', () => {
     const s = stackSeries(t, ['app']);
     expect(s.keys).toEqual(['app', 'net']);
     expect(s.cumulative).toEqual([

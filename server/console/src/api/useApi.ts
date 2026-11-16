@@ -16,10 +16,10 @@ interface Settled<T> {
 }
 
 /**
- * Chargement d'une ressource. `fetcher` est ré-exécuté quand `key` change (valeur sérialisable décrivant
- * les paramètres) ou après `reload()`. Les réponses obsolètes sont ignorées et les requêtes en vol annulées.
- * Passer `null` comme clé désactive le chargement. Pendant un rechargement, les données précédentes de la
- * même clé restent visibles.
+ * Loading of a resource. `fetcher` is re-run when `key` changes (a serialisable value describing
+ * the parameters) or after `reload()`. Stale responses are ignored and in-flight requests cancelled.
+ * Passing `null` as the key disables loading. During a reload, the previous data for the
+ * same key stay visible.
  */
 export function useApi<T>(key: string | null, fetcher: (signal: AbortSignal) => Promise<T>): ApiState<T> {
   const [settled, setSettled] = useState<Settled<T> | undefined>();

@@ -11,7 +11,7 @@ export function Ranking({
   onSelect,
   selected,
   limit = 15,
-  emptyText = 'Aucune donnée.',
+  emptyText = 'No data.',
 }: {
   items: TopItem[];
   kind: 'host' | 'package' | 'plain';

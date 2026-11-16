@@ -22,7 +22,7 @@ export interface PagedEvents {
   reload: () => void;
 }
 
-/** Liste d'événements paginée par curseur (du plus récent au plus ancien). `null` désactive. */
+/** Event list paginated by cursor (newest first). `null` disables. */
 export function usePagedEvents(params: EventsParams | null, pageSize = 100): PagedEvents {
   const [events, setEvents] = useState<WatchpostEvent[]>([]);
   const [cursor, setCursor] = useState<string | undefined>();

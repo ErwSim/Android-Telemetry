@@ -20,7 +20,7 @@ export function parseStreamEvent(raw: string): WatchpostEvent | undefined {
   }
 }
 
-/** Abonnement SSE (`/stream`). Reconnexion automatique gérée par EventSource ; 401 → retour à la connexion. */
+/** SSE subscription (`/stream`). Automatic reconnection handled by EventSource; 401 → back to the login page. */
 export function useEventStream(enabled: boolean, deviceId: string | undefined, onEvent: (e: WatchpostEvent) => void): StreamStatus {
   const key = enabled && typeof EventSource !== 'undefined' ? `on:${deviceId ?? ''}` : null;
   const [st, setSt] = useState<{ key: string; status: StreamStatus }>({ key: '', status: 'off' });
@@ -41,7 +41,7 @@ export function useEventStream(enabled: boolean, deviceId: string | undefined, o
     es.addEventListener('event', handle as EventListener);
     es.onerror = () => {
       setSt({ key, status: 'error' });
-      // EventSource ne donne pas le code HTTP : on vérifie si la session est encore valide.
+      // EventSource does not give the HTTP code: we check whether the session is still valid.
       void api.me().catch((e: unknown) => {
         if (e instanceof ApiError && e.status === 401) signalUnauthorized();
       });

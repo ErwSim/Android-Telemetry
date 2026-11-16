@@ -15,12 +15,12 @@ import { isUnsupported, useMutes } from '../../state/appData.ts';
 const MAX = 200;
 
 /**
- * Vue d'ensemble : « Rien à signaler » ou le nombre de détections récentes par gravité, avec les plus récentes.
- * Se met à jour quand le flux SSE apporte une détection.
+ * Overview: "Nothing to report" or the number of recent detections by severity, with the most recent ones.
+ * Updates when the SSE stream brings a detection.
  */
 export function DetectionsOverview({ deviceId, now }: { deviceId: string; now: Date }) {
   const { device } = useDevice();
-  // Fenêtre arrondie à 5 minutes : la clé ne change pas à chaque minute (pas de clignotement de chargement).
+  // Window rounded to 5 minutes: the key does not change every minute (no loading flicker).
   const slot = Math.floor(now.getTime() / 300_000) * 300_000;
   const from = new Date(slot - 7 * 24 * 3600_000).toISOString();
   const to = new Date(slot + 300_000).toISOString();
@@ -33,22 +33,22 @@ export function DetectionsOverview({ deviceId, now }: { deviceId: string; now: D
 
   if (state.error && isUnsupported(state.error)) {
     return (
-      <Card title="Détections" className="ov-det">
-        <p className="muted">Ce collecteur ne fournit pas encore les détections (contrat v1.2).</p>
+      <Card title="Detections" className="ov-det">
+        <p className="muted">This collector does not provide detections yet (contract v1.2).</p>
       </Card>
     );
   }
   if (state.error) {
     return (
-      <Card title="Détections" className="ov-det">
+      <Card title="Detections" className="ov-det">
         <ErrorBox message={state.error.message} onRetry={reload} />
       </Card>
     );
   }
   if (!state.data) {
     return (
-      <Card title="Détections" className="ov-det">
-        <Loading label="Chargement des détections…" />
+      <Card title="Detections" className="ov-det">
+        <Loading label="Loading detections…" />
       </Card>
     );
   }
@@ -56,9 +56,9 @@ export function DetectionsOverview({ deviceId, now }: { deviceId: string; now: D
   const recent = [...active(list)].sort((a, b) => b.severity - a.severity || (a.ts < b.ts ? 1 : -1)).slice(0, 3);
   return (
     <div className="ov-det" data-testid="overview-detections">
-      <Verdict detections={list} truncated={!!state.data.next_cursor} periodLabel="les 7 derniers jours" linkToDetections scope={monitoringScope(opsCollectorState(device))} mutedCount={list.filter((d) => d.muted).length} />
+      <Verdict detections={list} truncated={!!state.data.next_cursor} periodLabel="the last 7 days" linkToDetections scope={monitoringScope(opsCollectorState(device))} mutedCount={list.filter((d) => d.muted).length} />
       {recent.length > 0 && (
-        <ul className="findings ov-det-list" aria-label="Détections les plus graves">
+        <ul className="findings ov-det-list" aria-label="Most serious detections">
           {recent.map((d) => (
             <li key={d.id}>
               <SevBadge sev={d.severity} short />
@@ -69,7 +69,7 @@ export function DetectionsOverview({ deviceId, now }: { deviceId: string; now: D
             </li>
           ))}
           <li>
-            <Link to="/detections">Voir toutes les détections</Link>
+            <Link to="/detections">See all detections</Link>
           </li>
         </ul>
       )}

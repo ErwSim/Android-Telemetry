@@ -26,11 +26,11 @@ export function EventTable({
       <table className="tbl tbl-stack">
         <thead>
           <tr>
-            <th scope="col">Heure</th>
-            <th scope="col">Sévérité</th>
+            <th scope="col">Time</th>
+            <th scope="col">Severity</th>
             <th scope="col">Type</th>
-            {showDevice && <th scope="col">Appareil</th>}
-            <th scope="col">Détail</th>
+            {showDevice && <th scope="col">Device</th>}
+            <th scope="col">Detail</th>
           </tr>
         </thead>
         <tbody>
@@ -44,7 +44,7 @@ export function EventTable({
                       type="button"
                       className="expander"
                       aria-expanded={isOpen}
-                      aria-label={isOpen ? "Masquer le détail de l'événement" : "Afficher le détail de l'événement"}
+                      aria-label={isOpen ? 'Hide the event detail' : 'Show the event detail'}
                       onClick={() => setOpen(isOpen ? null : ev.id)}
                     >
                       {isOpen ? '▾' : '▸'}
@@ -89,11 +89,11 @@ export function EventDetailBody({ ev }: { ev: WatchpostEvent }) {
     <div>
       <div className="kv-inline hint">
         <span>
-          Identifiant <code>{ev.id}</code>
+          ID <code>{ev.id}</code>
         </span>
         {ev.seq !== undefined && <span> · seq {ev.seq}</span>}
-        {ev.received_at && <span> · reçu le {fmtDateTime(ev.received_at)}</span>}{' '}
-        · <Link to={`/evenements/${encodeURIComponent(ev.id)}`}>Permalien</Link>
+        {ev.received_at && <span> · received on {fmtDateTime(ev.received_at)}</span>}{' '}
+        · <Link to={`/events/${encodeURIComponent(ev.id)}`}>Permalink</Link>
       </div>
       <JsonView value={ev} />
     </div>

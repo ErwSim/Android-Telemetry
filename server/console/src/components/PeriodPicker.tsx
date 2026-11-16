@@ -10,7 +10,7 @@ export interface PeriodControl {
   customTo: string;
   setCustomFrom: (v: string) => void;
   setCustomTo: (v: string) => void;
-  /** Recalcule « maintenant » pour les périodes relatives. */
+  /** Recomputes "now" for the relative periods. */
   refresh: () => void;
 }
 
@@ -49,7 +49,7 @@ export function PeriodPicker({ ctl, keys = KEYS }: { ctl: PeriodControl; keys?: 
   const invalid = ctl.key === 'custom' && !(new Date(ctl.customFrom) < new Date(ctl.customTo));
   return (
     <div className="period">
-      <div className="seg" role="group" aria-label="Période">
+      <div className="seg" role="group" aria-label="Period">
         {keys.map((k) => (
           <button
             key={k}
@@ -65,7 +65,7 @@ export function PeriodPicker({ ctl, keys = KEYS }: { ctl: PeriodControl; keys?: 
       {ctl.key === 'custom' && (
         <div className="period-custom">
           <label>
-            Du
+            From
             <input
               type="datetime-local"
               value={ctl.customFrom}
@@ -74,7 +74,7 @@ export function PeriodPicker({ ctl, keys = KEYS }: { ctl: PeriodControl; keys?: 
             />
           </label>
           <label>
-            au
+            to
             <input
               type="datetime-local"
               value={ctl.customTo}
@@ -84,7 +84,7 @@ export function PeriodPicker({ ctl, keys = KEYS }: { ctl: PeriodControl; keys?: 
           </label>
           {invalid && (
             <span className="form-error" role="alert">
-              La fin doit suivre le début (période de 24 h utilisée).
+              The end must come after the start (24 h period used).
             </span>
           )}
         </div>

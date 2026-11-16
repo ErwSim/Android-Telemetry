@@ -43,7 +43,7 @@ export default function TimelineChart({ data, bucket, order, labelOf = defaultLa
     const n = stacked.keys.length;
     const spanS = (stacked.x[stacked.x.length - 1] ?? 0) - (stacked.x[0] ?? 0);
 
-    // uPlot dessine dans l'ordre : on place la série cumulée la plus haute en premier.
+    // uPlot draws in order: the highest cumulative series is placed first.
     const rev = [...stacked.cumulative].reverse();
     const keysRev = [...stacked.keys].reverse();
     const rawCounts = stacked.keys.map((k) => data.series.find((s) => s.key === k)?.counts ?? []);
@@ -126,7 +126,7 @@ export default function TimelineChart({ data, bucket, order, labelOf = defaultLa
             }
             if (!any) {
               const none = document.createElement('div');
-              none.textContent = 'Aucun événement';
+              none.textContent = 'No events';
               t.append(none);
             }
             t.hidden = false;
@@ -153,7 +153,7 @@ export default function TimelineChart({ data, bucket, order, labelOf = defaultLa
 
   return (
     <div className="chart">
-      <div className="chart-plot" ref={host} role="img" aria-label={`${ariaLabel} — ${fmtNumber(total)} événements`} />
+      <div className="chart-plot" ref={host} role="img" aria-label={`${ariaLabel} — ${fmtNumber(total)} events`} />
       <div className="chart-tip" ref={tip} hidden />
       <ul className="legend">
         {stacked.keys.map((k, i) => (

@@ -13,13 +13,13 @@ export const MUTE_REASON_MAX = 200;
 export interface MuteTarget {
   type: string;
   package: string;
-  /** nom lisible pour le texte du dialogue */
+  /** readable name for the dialog text */
   name: string;
 }
 
 /**
- * Mise en sourdine d'un couple (type de détection, application) : demande de confirmation qui dit ce que cela fait et ne
- * fait pas, puis appel de l'API. `onChanged` recharge la liste et les sourdines.
+ * Muting a (detection type, application) pair: a confirmation that says what it does and does not
+ * do, then the API call. `onChanged` reloads the list and the mutes.
  */
 export function useMuting(deviceId: string | undefined, onChanged: () => void): {
   askMute: (d: Detection) => void;
@@ -49,11 +49,11 @@ export function useMuting(deviceId: string | undefined, onChanged: () => void): 
       const r = reason.trim();
       if (r) body.reason = r;
       await api.muteDetection(body);
-      setNotice(`« ${detectionLabel(target.type)} » ne sera plus signalé pour ${target.name}. Elle reste calculée et visible, repliée, dans cette page.`);
+      setNotice(`"${detectionLabel(target.type)}" will no longer be reported for ${target.name}. It is still computed and visible, collapsed, on this page.`);
       setTarget(undefined);
       onChanged();
     } catch (e) {
-      setError(e instanceof ApiError ? muteErrorMessage(e) : 'Mise en sourdine impossible.');
+      setError(e instanceof ApiError ? muteErrorMessage(e) : 'Muting failed.');
     } finally {
       setBusy(false);
     }
@@ -64,9 +64,9 @@ export function useMuting(deviceId: string | undefined, onChanged: () => void): 
       if (!deviceId) return;
       try {
         await api.unmuteDetection({ device_id: deviceId, type: t.type, package: t.package });
-        setNotice(`Sourdine levée : « ${detectionLabel(t.type)} » sera de nouveau signalé pour cette application.`);
+        setNotice(`Mute lifted: "${detectionLabel(t.type)}" will be reported again for this application.`);
       } catch (e) {
-        setNotice(e instanceof ApiError ? muteErrorMessage(e) : 'Levée de la sourdine impossible.');
+        setNotice(e instanceof ApiError ? muteErrorMessage(e) : 'Lifting the mute failed.');
       } finally {
         onChanged();
       }
@@ -76,38 +76,38 @@ export function useMuting(deviceId: string | undefined, onChanged: () => void): 
 
   const dialog = target ? (
     <Dialog
-      title="Ne plus signaler pour cette application"
+      title="Stop reporting for this application"
       busy={busy}
       onClose={() => setTarget(undefined)}
       footer={
         <>
           <button type="button" className="btn" onClick={() => setTarget(undefined)} disabled={busy}>
-            Annuler
+            Cancel
           </button>
           <button type="button" className="btn btn-primary" onClick={() => void confirm()} disabled={busy}>
-            {busy ? 'Enregistrement…' : 'Mettre en sourdine'}
+            {busy ? 'Saving…' : 'Mute'}
           </button>
         </>
       }
     >
       <p>
-        Vous allez mettre en sourdine <strong>« {detectionLabel(target.type)} »</strong> pour <strong className="break">{target.name}</strong> (<span className="mono break">{cleanText(target.package, 255)}</span>).
+        You are about to mute <strong>"{detectionLabel(target.type)}"</strong> for <strong className="break">{target.name}</strong> (<span className="mono break">{cleanText(target.package, 255)}</span>).
       </p>
       <div className="callout callout-info" data-testid="mute-explain">
         <p>
-          <strong>Ce que cela change.</strong> La détection reste <strong>calculée et enregistrée</strong> : vous la retrouvez ici, repliée, avec un filtre pour la revoir. Elle ne sera
-          <strong> plus envoyée vers Wazuh ni notifiée</strong> : vous n'aurez plus d'alerte pour ce type de détection sur cette application.
+          <strong>What this changes.</strong> The detection is still <strong>computed and recorded</strong>: you will find it here, collapsed, with a filter to see it again. It will
+          <strong> no longer be sent to Wazuh or notified</strong>: you will no longer get an alert for this type of detection on this application.
         </p>
         <p>
-          <strong>Ce que cela ne change pas.</strong> Les autres types de détection, les autres applications et le profil de risque ne sont pas touchés. Certaines détections ne peuvent pas être mises en sourdine (envoi de SMS
-          anormal, changement d'application par défaut). Vous pouvez lever la sourdine à tout moment, dans « Sourdines en cours ».
+          <strong>What this does not change.</strong> Other detection types, other applications and the risk profile are not affected. Some detections cannot be muted (abnormal SMS
+          sending, default application change). You can lift the mute at any time, in "Current mutes".
         </p>
       </div>
       <label className="field">
         <span>
-          <strong>Motif</strong> <span className="muted">(facultatif, pour vous en souvenir)</span>
+          <strong>Reason</strong> <span className="muted">(optional, to remind yourself)</span>
         </span>
-        <textarea rows={2} maxLength={MUTE_REASON_MAX} value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy} placeholder="Ex. : navigateur avec DNS sécurisé, voulu" />
+        <textarea rows={2} maxLength={MUTE_REASON_MAX} value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy} placeholder="E.g. browser with secure DNS, intended" />
         <span className="counter">
           {reason.length} / {MUTE_REASON_MAX}
         </span>
@@ -123,24 +123,24 @@ export function useMuting(deviceId: string | undefined, onChanged: () => void): 
   return { askMute, unmute, dialog, notice };
 }
 
-/** Sourdines en cours, avec leur levée. */
+/** Current mutes, with their lifting. */
 export function MutesCard({ mutes, onUnmute, labelOf }: { mutes: readonly DetectionMute[]; onUnmute: (m: DetectionMute) => void; labelOf?: (pkg: string) => string | undefined }) {
   return (
-    <Card title={`Sourdines en cours (${mutes.length})`} className="mutes-card" id="sourdines">
+    <Card title={`Current mutes (${mutes.length})`} className="mutes-card" id="mutes">
       {mutes.length === 0 ? (
-        <Empty>Aucune sourdine : toutes les détections sont signalées.</Empty>
+        <Empty>No mutes: all detections are reported.</Empty>
       ) : (
         <div className="flush">
           <div className="table-wrap">
             <table className="tbl" data-testid="mutes-table">
               <thead>
                 <tr>
-                  <th scope="col">Détection</th>
+                  <th scope="col">Detection</th>
                   <th scope="col">Application</th>
-                  <th scope="col" className="hide-sm">Motif</th>
-                  <th scope="col" className="hide-sm">Depuis</th>
+                  <th scope="col" className="hide-sm">Reason</th>
+                  <th scope="col" className="hide-sm">Since</th>
                   <th scope="col">
-                    <span className="sr-only">Lever</span>
+                    <span className="sr-only">Lift</span>
                   </th>
                 </tr>
               </thead>
@@ -161,7 +161,7 @@ export function MutesCard({ mutes, onUnmute, labelOf }: { mutes: readonly Detect
                       </td>
                       <td>
                         <button type="button" className="btn btn-sm" onClick={() => onUnmute(m)}>
-                          Lever la sourdine
+                          Lift the mute
                         </button>
                       </td>
                     </tr>

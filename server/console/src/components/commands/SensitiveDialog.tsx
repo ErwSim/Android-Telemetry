@@ -24,26 +24,26 @@ export type SensitiveKind = Extract<CommandType, 'lock' | 'clear_lock_message' |
 
 const MIN_MS = 60_000;
 
-/** Choix de validité : un effacement vaut 15 min par défaut et 24 h au plus ; verrouillage 7 jours par défaut, 30 au plus (contrat §8). */
+/** Validity choices: an erase is 15 min by default and 24 h at most; lock 7 days by default, 30 at most (contract §8). */
 const VALIDITIES: Record<SensitiveKind, { ms: number; label: string }[]> = {
   wipe: [
     { ms: 5 * MIN_MS, label: '5 minutes' },
-    { ms: 15 * MIN_MS, label: '15 minutes (par défaut)' },
-    { ms: HOUR_MS, label: '1 heure' },
-    { ms: 6 * HOUR_MS, label: '6 heures' },
-    { ms: DAY_MS, label: '24 heures (maximum)' },
+    { ms: 15 * MIN_MS, label: '15 minutes (default)' },
+    { ms: HOUR_MS, label: '1 hour' },
+    { ms: 6 * HOUR_MS, label: '6 hours' },
+    { ms: DAY_MS, label: '24 hours (maximum)' },
   ],
   lock: [
-    { ms: HOUR_MS, label: '1 heure' },
-    { ms: DAY_MS, label: '24 heures' },
-    { ms: 7 * DAY_MS, label: '7 jours (par défaut)' },
-    { ms: 30 * DAY_MS, label: '30 jours (maximum)' },
+    { ms: HOUR_MS, label: '1 hour' },
+    { ms: DAY_MS, label: '24 hours' },
+    { ms: 7 * DAY_MS, label: '7 days (default)' },
+    { ms: 30 * DAY_MS, label: '30 days (maximum)' },
   ],
   clear_lock_message: [
-    { ms: HOUR_MS, label: '1 heure' },
-    { ms: DAY_MS, label: '24 heures' },
-    { ms: 7 * DAY_MS, label: '7 jours (par défaut)' },
-    { ms: 30 * DAY_MS, label: '30 jours (maximum)' },
+    { ms: HOUR_MS, label: '1 hour' },
+    { ms: DAY_MS, label: '24 hours' },
+    { ms: 7 * DAY_MS, label: '7 days (default)' },
+    { ms: 30 * DAY_MS, label: '30 days (maximum)' },
   ],
 };
 
@@ -51,9 +51,9 @@ const VALIDITIES: Record<SensitiveKind, { ms: number; label: string }[]> = {
 type Phase = 'idle' | 'signing' | 'sending';
 
 /**
- * Commande sensible : le code est saisi à chaque fois dans un champ non contrôlé (il n'existe que dans le DOM de
- * ce champ, jamais dans l'état React), sert à dériver la clé puis la signature par WebCrypto, et le champ est
- * vidé aussitôt. Ni le code ni la clé ne sont stockés ni envoyés : seul `{ device_id, payload, sig }` part.
+ * Sensitive command: the passphrase is entered each time in an uncontrolled field (it only exists in that
+ * field's DOM, never in React state), is used to derive the key then the signature with WebCrypto, and the field is
+ * cleared immediately. Neither the passphrase nor the key is stored or sent: only `{ device_id, payload, sig }` leaves.
  */
 export function SensitiveDialog({
   kind,
@@ -96,7 +96,7 @@ export function SensitiveDialog({
     const code = el.value;
     const problem = codeProblem(code);
     if (code === '' || problem) {
-      setError(problem ?? 'Saisissez votre code de commande.');
+      setError(problem ?? 'Enter your command passphrase.');
       return;
     }
     setError(undefined);
@@ -113,10 +113,10 @@ export function SensitiveDialog({
       sig = await signPayload(code, device.device_id, prepared.payload);
     } catch (e) {
       setPhase('idle');
-      setError(e instanceof Error ? e.message : 'La signature a échoué.');
+      setError(e instanceof Error ? e.message : 'Signing failed.');
       return;
     } finally {
-      // Le code ne reste nulle part : le champ est vidé dès que la signature est calculée.
+      // The passphrase stays nowhere: the field is cleared as soon as the signature is computed.
       el.value = '';
       setCodeLen(0);
     }
@@ -126,17 +126,17 @@ export function SensitiveDialog({
       onSent(r.id);
     } catch (e) {
       setPhase('idle');
-      setError(e instanceof ApiError ? sendError(e) : 'Envoi impossible.');
+      setError(e instanceof ApiError ? sendError(e) : 'Sending failed.');
     }
   };
 
   const title =
-    kind === 'wipe' ? "Effacer le téléphone (réinitialisation d'usine)" : kind === 'lock' ? 'Verrouiller le téléphone avec un message' : 'Effacer le message de verrouillage';
+    kind === 'wipe' ? 'Erase the phone (factory reset)' : kind === 'lock' ? 'Lock the phone with a message' : 'Clear the lock message';
 
   const codeField = (
     <div className="field">
       <label htmlFor="cmd-code">
-        <strong>Code de commande</strong> <span className="muted">(12 caractères au moins, à ressaisir à chaque fois ; idéalement cinq mots tirés au hasard, réservés à cet usage)</span>
+        <strong>Command passphrase</strong> <span className="muted">(at least 12 characters, to be entered again each time; ideally five randomly chosen words, reserved for this use)</span>
       </label>
       <div className="code-row">
         <input
@@ -154,16 +154,16 @@ export function SensitiveDialog({
           aria-describedby="cmd-code-help"
         />
         <button type="button" className="btn btn-sm" onClick={() => setShowCode((v) => !v)} aria-pressed={showCode} disabled={busy}>
-          {showCode ? 'Masquer' : 'Afficher'}
+          {showCode ? 'Hide' : 'Show'}
         </button>
       </div>
       <p id="cmd-code-help" className="hint">
         {codeLen > 0 && codeLen < LIMITS.codeMin
-          ? `${codeLen} caractère${codeLen > 1 ? 's' : ''} sur ${LIMITS.codeMin} au moins. `
+          ? `${codeLen} character${codeLen > 1 ? 's' : ''} out of at least ${LIMITS.codeMin}. `
           : ''}
-        Le code est utilisé ici, dans ce navigateur, pour calculer la signature, puis effacé. Il n'est ni envoyé au serveur ni enregistré.
-        Les espaces comptent. <strong>Cette page est servie par votre serveur</strong> : un serveur compromis pourrait lire le code à la saisie. Si vous le
-        soupçonnez, <strong>ne saisissez plus le code ici</strong> et changez-le dans l'application du téléphone.
+        The passphrase is used here, in this browser, to compute the signature, then erased. It is neither sent to the server nor stored.
+        Spaces count. <strong>This page is served by your server</strong>: a compromised server could read the passphrase as you type it. If you
+        suspect it, <strong>do not enter the passphrase here any more</strong> and change it in the phone app.
       </p>
     </div>
   );
@@ -171,7 +171,7 @@ export function SensitiveDialog({
   const validityField = (
     <label className="field">
       <span>
-        <strong>Validité de la commande</strong>
+        <strong>Command validity</strong>
       </span>
       <select value={validityMs} onChange={(e) => setValidityMs(Number(e.target.value))} disabled={busy}>
         {VALIDITIES[kind].map((v) => (
@@ -181,11 +181,11 @@ export function SensitiveDialog({
         ))}
       </select>
       <span className="hint">
-        Si le téléphone est éteint ou hors ligne, la commande l'attend jusqu'au {fmtDateTime(new Date(openedAt + validityMs))}.
-        {isWipe ? " Un effacement n'est valable que 15 minutes par défaut et 24 heures au plus : plus la durée est courte, moins il reste exposé. " : ' '}
-        Vous pouvez l'annuler tant qu'elle est « En attente », mais <strong>« annulée » et « expirée » n'engagent que le serveur</strong> : le téléphone, lui,
-        exécute toute commande correctement signée jusqu'à cette date s'il en détient une copie. <strong>Seul le changement du code de commande dans
-        l'application du téléphone rend caduque une commande déjà signée.</strong>
+        If the phone is off or offline, the command waits for it until {fmtDateTime(new Date(openedAt + validityMs))}.
+        {isWipe ? ' An erase is only valid for 15 minutes by default and 24 hours at most: the shorter the duration, the less exposed it stays. ' : ' '}
+        You can cancel it while it is "Pending", but <strong>"cancelled" and "expired" only commit the server</strong>: the phone itself
+        executes any correctly signed command until that date if it holds a copy. <strong>Only changing the command passphrase in
+        the phone app makes an already signed command void.</strong>
       </span>
     </label>
   );
@@ -193,21 +193,21 @@ export function SensitiveDialog({
   const footer = (
     <>
       <button type="button" className="btn" onClick={onClose} disabled={busy}>
-        Annuler
+        Cancel
       </button>
       {isWipe && step > 1 && (
         <button type="button" className="btn" onClick={() => setStep((s) => (s === 3 ? 2 : 1))} disabled={busy}>
-          Retour
+          Back
         </button>
       )}
       {isWipe && step === 1 && (
         <button type="button" className="btn btn-primary" onClick={() => setStep(2)} disabled={!confirmed}>
-          Continuer
+          Continue
         </button>
       )}
       {isWipe && step === 2 && (
         <button type="button" className="btn btn-primary" onClick={() => setStep(lastStep)} disabled={!nameOk}>
-          Continuer
+          Continue
         </button>
       )}
       {step === 3 && (
@@ -217,7 +217,7 @@ export function SensitiveDialog({
           onClick={() => void submit()}
           disabled={busy || !cryptoOk || codeLen < LIMITS.codeMin || (kind === 'lock' && (!confirmed || !!messageProblem))}
         >
-          {phase === 'signing' ? 'Calcul de la signature…' : phase === 'sending' ? 'Envoi…' : isWipe ? 'Signer et effacer définitivement' : 'Signer et envoyer'}
+          {phase === 'signing' ? 'Computing the signature…' : phase === 'sending' ? 'Sending…' : isWipe ? 'Sign and erase permanently' : 'Sign and send'}
         </button>
       )}
     </>
@@ -225,29 +225,29 @@ export function SensitiveDialog({
 
   return (
     <Dialog title={title} onClose={onClose} busy={busy} footer={footer} tone={isWipe ? 'danger' : undefined}>
-      {isWipe && <p className="dlg-steps">Étape {stepNo} sur {stepCount}</p>}
+      {isWipe && <p className="dlg-steps">Step {stepNo} of {stepCount}</p>}
 
       {isWipe && step === 1 && (
         <>
           <div className="callout callout-bad">
             <p>
-              <strong>Cette action est irréversible.</strong> Le téléphone est réinitialisé aux paramètres d'usine : applications, photos, messages, comptes et
-              réglages sont supprimés, sans corbeille ni retour en arrière. L'agent Vigie disparaît aussi : il faudra réenrôler l'appareil.
+              <strong>This action is irreversible.</strong> The phone is reset to factory settings: applications, photos, messages, accounts and
+              settings are deleted, with no recycle bin and no way back. The Watchpost agent disappears too: the device will have to be enrolled again.
             </p>
           </div>
           <div className="callout callout-warn">
             <p>
-              <strong>L'effacement doit avoir été autorisé dans l'application du téléphone</strong> (réglage « Autoriser l'effacement à distance », éteint par
-              défaut). Sinon le téléphone refusera la commande (« canal désactivé ») et rien ne sera effacé.
+              <strong>The erase must have been allowed in the phone app</strong> (the "Allow remote erase" setting, off by
+              default). Otherwise the phone will refuse the command ("channel disabled") and nothing will be erased.
             </p>
           </div>
           <p className="muted">
-            À réserver à un téléphone perdu ou volé que vous ne reverrez pas. Pour le retrouver, utilisez plutôt <em>Sonner</em> et <em>Localiser maintenant</em> ;
-            pour le protéger sans rien perdre, <em>Verrouiller avec message</em>.
+            To be reserved for a lost or stolen phone that you will not see again. To find it, use <em>Ring</em> and <em>Locate now</em> instead;
+            to protect it without losing anything, use <em>Lock with message</em>.
           </p>
           <label className="check">
             <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
-            Je comprends que l'effacement est irréversible.
+            I understand that the erase is irreversible.
           </label>
         </>
       )}
@@ -255,14 +255,14 @@ export function SensitiveDialog({
       {isWipe && step === 2 && (
         <>
           <p>
-            Pour confirmer, tapez le nom de l'appareil : <strong className="mono">{deviceName}</strong>
+            To confirm, type the device name: <strong className="mono">{deviceName}</strong>
           </p>
           <p className="hint">
-            Identifiant qui sera signé : <span className="mono">{device.device_id}</span> (celui qu'affiche l'application du téléphone, écran
-            « Enrôlement »).
+            Identifier that will be signed: <span className="mono">{device.device_id}</span> (the one shown by the phone app, on the
+            "Enrollment" screen).
           </p>
           <label className="field">
-            <span className="sr-only">Nom de l'appareil</span>
+            <span className="sr-only">Device name</span>
             <input
               type="text"
               value={typedName}
@@ -273,19 +273,19 @@ export function SensitiveDialog({
               placeholder={deviceName}
             />
           </label>
-          {typedName !== '' && !nameOk && <p className="form-error">Ce n'est pas le nom exact de l'appareil.</p>}
+          {typedName !== '' && !nameOk && <p className="form-error">That is not the exact name of the device.</p>}
         </>
       )}
 
       {kind === 'lock' && (
         <>
           <p>
-            Le téléphone verrouille son écran tout de suite et affiche le message ci-dessous sur l'écran de verrouillage (avec Device Owner actif). Il se
-            déverrouille ensuite normalement avec son code ou son empreinte.
+            The phone locks its screen right away and shows the message below on the lock screen (with Device Owner active). It then
+            unlocks normally with its PIN or fingerprint.
           </p>
           <label className="field">
             <span>
-              <strong>Message affiché</strong> <span className="muted">(facultatif)</span>
+              <strong>Message shown</strong> <span className="muted">(optional)</span>
             </span>
             <textarea
               rows={3}
@@ -293,7 +293,7 @@ export function SensitiveDialog({
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               disabled={busy}
-              placeholder="Téléphone perdu, appelez le 01 23 45 67 89"
+              placeholder="Lost phone — please call +1 555 0100"
             />
             {messageProblem && (
               <span className="form-error" role="alert">
@@ -306,18 +306,18 @@ export function SensitiveDialog({
           </label>
           {message.trim() !== '' && (
             <p className="callout">
-              Aperçu : <q>{message}</q>
+              Preview: <q>{message}</q>
             </p>
           )}
           <label className="check">
             <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} disabled={busy} />
-            Je confirme vouloir verrouiller ce téléphone maintenant.
+            I confirm that I want to lock this phone now.
           </label>
         </>
       )}
 
       {kind === 'clear_lock_message' && (
-        <p>Le message affiché sur l'écran de verrouillage du téléphone est effacé. Le téléphone n'est ni verrouillé ni déverrouillé par cette commande.</p>
+        <p>The message shown on the phone's lock screen is cleared. This command neither locks nor unlocks the phone.</p>
       )}
 
       {step === 3 && (
@@ -325,7 +325,7 @@ export function SensitiveDialog({
           {isWipe && (
             <div className="callout callout-bad">
               <p>
-                Dernière étape : <strong>{deviceName}</strong> sera effacé dès qu'il recevra cette commande.
+                Last step: <strong>{deviceName}</strong> will be erased as soon as it receives this command.
               </p>
             </div>
           )}
@@ -334,20 +334,20 @@ export function SensitiveDialog({
           {recentBadSignatures > 0 && (
             <div className="callout callout-warn" role="alert">
               <strong>
-                {recentBadSignatures} signature{recentBadSignatures > 1 ? 's' : ''} invalide{recentBadSignatures > 1 ? 's' : ''} dans la dernière heure.
+                {recentBadSignatures} invalid signature{recentBadSignatures > 1 ? 's' : ''} in the last hour.
               </strong>{' '}
-              À la cinquième, le téléphone refuse toute commande sensible pendant une heure. Vérifiez votre code avant de réessayer.
+              At the fifth, the phone refuses every sensitive command for an hour. Check your passphrase before trying again.
             </div>
           )}
           {!cryptoOk && (
             <div className="state state-error" role="alert">
-              WebCrypto est indisponible : ouvrez la console en HTTPS (ou sur localhost) pour signer une commande.
+              WebCrypto is unavailable: open the console over HTTPS (or on localhost) to sign a command.
             </div>
           )}
           {codeField}
           {phase === 'signing' && (
             <p className="muted" role="status">
-              Dérivation de la clé (600 000 itérations) puis signature : quelques secondes.
+              Deriving the key (600,000 iterations) then signing: a few seconds.
             </p>
           )}
         </>
@@ -364,6 +364,6 @@ export function SensitiveDialog({
 
 function sendError(e: ApiError): string {
   if (e.status === 0) return e.message;
-  return `Le serveur a refusé la commande. ${commandErrorMessage(e)}`;
+  return `The server refused the command. ${commandErrorMessage(e)}`;
 }
 

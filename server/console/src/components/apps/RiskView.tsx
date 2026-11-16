@@ -12,19 +12,19 @@ import type { RiskLevel } from '../../api/types.ts';
 
 type Sort = 'score' | 'name';
 
-/** Texte d'installateur : « Play Store », « Hors boutique (ADB) »… d'après `installer` et `from_store`. */
+/** Installer text: "Play Store", "Outside a store (ADB)"... from `installer` and `from_store`. */
 export function installerText(r: Pick<AppRisk, 'installer' | 'from_store'>, inv?: AppInfo): string {
   const inst = r.installer ?? inv?.installer;
   const name = installerLabel(inst);
-  if (r.from_store === false) return inst ? `Hors boutique (${name})` : 'Hors boutique';
+  if (r.from_store === false) return inst ? `Outside a store (${name})` : 'Outside a store';
   if (r.from_store === true) return name;
   return name;
 }
 
 /**
- * Profil de risque (`app.risk`) : classement par score, niveau, raisons en clair, combinaisons mises en évidence,
- * installateur. Le score résume des capacités, pas un comportement : une application à risque élevé n'est pas
- * forcément malveillante.
+ * Risk profile (`app.risk`): ranking by score, level, reasons in plain words, highlighted combinations,
+ * installer. The score summarises capabilities, not behaviour: a high-risk application is not
+ * necessarily malicious.
  */
 export function RiskView({ risks, inventory, ts }: { risks: AppRisk[]; inventory: AppInfo[]; ts: string | undefined }) {
   const [q, setQ] = useState('');
@@ -48,46 +48,46 @@ export function RiskView({ risks, inventory, ts }: { risks: AppRisk[]; inventory
   return (
     <>
       <div className="stats app-summary">
-        <Stat label="Risque élevé" value={fmtNumber(counts.high)} tone={counts.high ? 'bad' : 'ok'} />
-        <Stat label="Risque moyen" value={fmtNumber(counts.medium)} tone={counts.medium ? 'warn' : undefined} />
-        <Stat label="Risque faible" value={fmtNumber(counts.low)} />
-        <Stat label="Combinaisons à risque" value={fmtNumber(counts.withCombo)} sub="profils de logiciel malveillant" tone={counts.withCombo ? 'bad' : 'ok'} />
+        <Stat label="High risk" value={fmtNumber(counts.high)} tone={counts.high ? 'bad' : 'ok'} />
+        <Stat label="Medium risk" value={fmtNumber(counts.medium)} tone={counts.medium ? 'warn' : undefined} />
+        <Stat label="Low risk" value={fmtNumber(counts.low)} />
+        <Stat label="Risky combinations" value={fmtNumber(counts.withCombo)} sub="malware profiles" tone={counts.withCombo ? 'bad' : 'ok'} />
       </div>
       <p className="hint">
-        Chaque application est notée de 0 à 100 à l'installation, à la mise à jour, puis chaque jour si ses capacités changent{ts ? ` (dernier relevé le ${fmtDateTime(ts)})` : ''}. Le score
-        mesure ce que l'application <em>pourrait</em> faire, pas ce qu'elle fait : un score élevé n'est pas une preuve de malveillance, c'est un motif de regarder de plus près. Les
-        applications du système et l'agent Vigie sont notés mais plafonnés à « faible ».
+        Each application is scored from 0 to 100 at installation, at update, then every day if its capabilities change{ts ? ` (last reading on ${fmtDateTime(ts)})` : ''}. The score
+        measures what the application <em>could</em> do, not what it does: a high score is not proof of malice, it is a reason to look more closely. System
+        applications and the Watchpost agent are scored but capped at "low".
       </p>
       <GrantNote hasGranted={risks.some((r) => r.granted !== undefined)} />
       <Card className="inv-card">
         <div className="toolbar">
           <label className="filter grow">
-            Recherche
-            <input type="search" value={q} onChange={(e) => { setQ(e.target.value); setShown(100); }} placeholder="nom ou paquet" />
+            Search
+            <input type="search" value={q} onChange={(e) => { setQ(e.target.value); setShown(100); }} placeholder="name or package" />
           </label>
           <label className="filter">
-            Niveau
+            Level
             <select value={level} onChange={(e) => { setLevel(e.target.value as RiskLevel | 'all'); setShown(100); }}>
-              <option value="all">Tous</option>
-              <option value="high">Élevé</option>
-              <option value="medium">Moyen et plus</option>
-              <option value="low">Faible et plus</option>
+              <option value="all">All</option>
+              <option value="high">High</option>
+              <option value="medium">Medium and above</option>
+              <option value="low">Low and above</option>
             </select>
           </label>
           <label className="filter">
-            Tri
+            Sort
             <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-              <option value="score">Score décroissant</option>
-              <option value="name">Nom</option>
+              <option value="score">Score, descending</option>
+              <option value="name">Name</option>
             </select>
           </label>
           <label className="check">
             <input type="checkbox" checked={comboOnly} onChange={(e) => { setComboOnly(e.target.checked); setShown(100); }} />
-            Combinaisons seulement
+            Combinations only
           </label>
         </div>
         {rows.length === 0 ? (
-          <Empty>Aucune application ne correspond.</Empty>
+          <Empty>No matching application.</Empty>
         ) : (
           <div className="flush">
             <div className="table-wrap">
@@ -96,9 +96,9 @@ export function RiskView({ risks, inventory, ts }: { risks: AppRisk[]; inventory
                   <tr>
                     <th scope="col">Application</th>
                     <th scope="col">Score</th>
-                    <th scope="col">Niveau</th>
-                    <th scope="col">Raisons</th>
-                    <th scope="col" className="hide-sm">Installateur</th>
+                    <th scope="col">Level</th>
+                    <th scope="col">Reasons</th>
+                    <th scope="col" className="hide-sm">Installer</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -112,7 +112,7 @@ export function RiskView({ risks, inventory, ts }: { risks: AppRisk[]; inventory
                       <Fragment key={r.package}>
                         <tr className={`risk-${lv.key}`} data-risk={lv.key}>
                           <td className="c-app">
-                            <button type="button" className="expander" aria-expanded={isOpen} aria-label={`Raisons du score de ${label ?? r.package}`} onClick={() => setOpen(isOpen ? null : r.package)}>
+                            <button type="button" className="expander" aria-expanded={isOpen} aria-label={`Reasons for the score of ${label ?? r.package}`} onClick={() => setOpen(isOpen ? null : r.package)}>
                               {isOpen ? '▾' : '▸'}
                             </button>
                             <AppName pkg={cleanText(r.package, 255)} label={label} />
@@ -127,7 +127,7 @@ export function RiskView({ risks, inventory, ts }: { risks: AppRisk[]; inventory
                             <ReasonChips reasons={r.reasons} granted={r.granted} />
                           </td>
                           <td className="hide-sm">
-                            {installerText(r, app)} {sideloaded && <Badge tone="warn">hors boutique</Badge>}
+                            {installerText(r, app)} {sideloaded && <Badge tone="warn">outside a store</Badge>}
                           </td>
                         </tr>
                         {isOpen && (
@@ -137,7 +137,7 @@ export function RiskView({ risks, inventory, ts }: { risks: AppRisk[]; inventory
                               <ReasonList reasons={r.reasons.filter((c) => combosOf([c]).length === 0)} granted={r.granted} />
                               <p className="det-actions">
                                 <Link className="btn btn-sm btn-primary" to={appSheetPath(r.package)}>
-                                  Fiche de l'application
+                                  Application detail page
                                 </Link>
                               </p>
                             </td>
@@ -152,11 +152,11 @@ export function RiskView({ risks, inventory, ts }: { risks: AppRisk[]; inventory
             <div className="pager">
               {rows.length > shown ? (
                 <button type="button" className="btn" onClick={() => setShown(shown + 100)}>
-                  Afficher plus
+                  Show more
                 </button>
               ) : null}
               <span>
-                {Math.min(shown, rows.length)} sur {rows.length}
+                {Math.min(shown, rows.length)} of {rows.length}
               </span>
             </div>
           </div>

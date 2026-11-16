@@ -7,7 +7,7 @@ export type AuthStatus = 'loading' | 'authed' | 'anon';
 interface AuthValue {
   status: AuthStatus;
   username?: string;
-  /** Message affiché sur la page de connexion (session expirée…). */
+  /** Message shown on the login page (expired session...). */
   notice?: string;
   login: (u: string, p: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -25,7 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then((m) => setState({ status: 'authed', username: m.username }))
       .catch((e: unknown) => {
         if (ctrl.signal.aborted) return;
-        // 401 attendu hors session ; toute autre erreur renvoie aussi à la connexion (qui affichera l'erreur).
+        // 401 expected outside a session; any other error also leads to the login page (which will show the error).
         const notice = e instanceof ApiError && e.status !== 401 ? e.message : undefined;
         setState(notice ? { status: 'anon', notice } : { status: 'anon' });
       });
@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(
     () =>
       onUnauthorized(() =>
-        setState((s) => (s.status === 'authed' ? { status: 'anon', notice: 'Votre session a expiré. Reconnectez-vous.' } : s)),
+        setState((s) => (s.status === 'authed' ? { status: 'anon', notice: 'Your session has expired. Sign in again.' } : s)),
       ),
     [],
   );
@@ -50,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await api.logout();
     } catch {
-      /* la session locale est quand même abandonnée */
+      /* the local session is dropped anyway */
     }
     setState({ status: 'anon' });
   }, []);

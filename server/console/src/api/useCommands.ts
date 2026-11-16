@@ -15,9 +15,9 @@ const FAST_MS = 2500;
 const SLOW_MS = 20_000;
 
 /**
- * Historique des commandes, rafraîchi en direct : toutes les 2,5 s tant qu'une commande est `pending` ou
- * `delivered` (son état évolue), toutes les 20 s sinon. `reload()` force une lecture immédiate (par exemple à la
- * réception d'un `command.result` par le flux SSE).
+ * Command history, refreshed live: every 2.5 s while a command is `pending` or
+ * `delivered` (its state evolves), every 20 s otherwise. `reload()` forces an immediate read (for example on
+ * receiving a `command.result` through the SSE stream).
  */
 export function useCommandList(deviceId: string | undefined, limit = 50): CommandList {
   const [state, setState] = useState<{ key: string; commands?: RemoteCommand[]; error?: ApiError }>({ key: '' });
@@ -39,7 +39,7 @@ export function useCommandList(deviceId: string | undefined, limit = 50): Comman
       .catch((e: unknown) => {
         if (c.signal.aborted) return;
         const error = e instanceof ApiError ? e : new ApiError(0, 'unknown', e instanceof Error ? e.message : String(e));
-        // Une erreur passagère n'efface pas la liste déjà affichée.
+        // A transient error does not clear the list already displayed.
         setState((s) => (s.key === key ? { key, ...(s.commands ? { commands: s.commands } : {}), error } : { key, error }));
       });
   }, [deviceId, limit, key]);

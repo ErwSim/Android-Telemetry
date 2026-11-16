@@ -8,9 +8,9 @@ import { AppName } from '../AppName.tsx';
 import { Badge, SevBadge } from '../ui.tsx';
 
 /**
- * Une détection, lisible par le propriétaire : ce qui a été observé (une phrase), l'application, la période,
- * les preuves, pourquoi c'est suspect, ce qui peut l'expliquer sans malveillance, et que faire. Tout le texte
- * venu du téléphone ou du réseau (noms d'applications, de paquets, de domaines) est affiché comme du texte.
+ * A detection, readable by the user: what was observed (one sentence), the application, the period,
+ * the evidence, why it is suspicious, what may explain it without malice, and what to do. All text
+ * coming from the phone or the network (names of applications, packages, domains) is displayed as text.
  */
 export function DetectionCard({
   d,
@@ -25,9 +25,9 @@ export function DetectionCard({
   open?: boolean;
   isNew?: boolean;
   now?: Date;
-  /** faux sur la fiche de l'application elle-même */
+  /** false on the application's own detail page */
   showAppLink?: boolean;
-  /** mise en sourdine (§11.4) : proposée seulement pour un type masquable */
+  /** muting (§11.4): offered only for a mutable type */
   onMute?: ((d: Detection) => void) | undefined;
   onUnmute?: ((d: Detection) => void) | undefined;
 }) {
@@ -45,9 +45,9 @@ export function DetectionCard({
       <div className="det-head">
         <SevBadge sev={sev} />
         <Badge tone="info">{detectionLabel(d.type)}</Badge>
-        {info.review && <Badge tone="warn" title="Une revue : cette application détient un droit sensible, a-t-elle une raison de l'avoir ?">À vérifier</Badge>}
-        {d.recurring && <Badge title="Déjà signalé dans les 30 jours : la gravité est plafonnée à 1 (Notable)">Déjà signalé, récurrent</Badge>}
-        {d.muted && <Badge tone="neutral" title="Calculée et enregistrée, mais ni alertée ni notifiée">En sourdine</Badge>}
+        {info.review && <Badge tone="warn" title="A review: this application holds a sensitive right; does it have a reason to?">To check</Badge>}
+        {d.recurring && <Badge title="Already reported within 30 days: the severity is capped at 1 (Notable)">Already reported, recurring</Badge>}
+        {d.muted && <Badge tone="neutral" title="Computed and recorded, but neither alerted nor notified">Muted</Badge>}
         <time className="det-time" dateTime={d.ts} title={fmtDateTime(d.ts)}>
           {fmtRelative(d.ts, now)}
         </time>
@@ -55,37 +55,37 @@ export function DetectionCard({
       <h3 className="det-what">{observation(d)}</h3>
       {info.review && (
         <p className="hint det-review" data-testid="det-review">
-          Ceci est une <strong>revue</strong>, pas la preuve d'un abus : cette application peut envoyer des SMS sans passer par votre messagerie. Est-ce voulu ?
+          This is a <strong>review</strong>, not proof of abuse: this application can send SMS without going through your messaging app. Is this intended?
         </p>
       )}
       <div className="det-meta">
         {pkg ? (
           <span>
-            Application : <AppName pkg={cleanText(pkg, 255)} label={label || undefined} />
+            Application: <AppName pkg={cleanText(pkg, 255)} label={label || undefined} />
           </span>
         ) : (
-          <span>Application : inconnue</span>
+          <span>Application: unknown</span>
         )}
         <span>
-          Période : <strong>{window ?? `détectée le ${fmtDateTime(d.ts)}`}</strong>
+          Period: <strong>{window ?? `detected on ${fmtDateTime(d.ts)}`}</strong>
         </span>
-        {d.updated_at && d.updated_at !== d.ts && <span>Mise à jour : {fmtRelative(d.updated_at, now)}</span>}
+        {d.updated_at && d.updated_at !== d.ts && <span>Updated: {fmtRelative(d.updated_at, now)}</span>}
       </div>
       {evidence.length > 0 && (
-        <ul className="chip-list det-chips" aria-label="Éléments de preuve (aperçu)">
+        <ul className="chip-list det-chips" aria-label="Evidence items (preview)">
           {evidence.slice(0, 4).map((e) => (
-            <li key={e.label} className="chip" title={`${e.label} : ${e.value}`}>
-              <span className="muted">{e.label} :</span> <span className="break">{e.value.length > 60 ? `${e.value.slice(0, 57)}…` : e.value}</span>
+            <li key={e.label} className="chip" title={`${e.label}: ${e.value}`}>
+              <span className="muted">{e.label}:</span> <span className="break">{e.value.length > 60 ? `${e.value.slice(0, 57)}…` : e.value}</span>
             </li>
           ))}
         </ul>
       )}
       <details className="det-more" open={open}>
-        <summary>Preuves, explications et que faire</summary>
+        <summary>Evidence, explanations and what to do</summary>
         <div className="det-body">
           {evidence.length > 0 && (
             <section>
-              <h4>Éléments de preuve</h4>
+              <h4>Evidence items</h4>
               <dl className="kv">
                 {evidence.map((e) => (
                   <div key={e.label} className="kv-row">
@@ -98,10 +98,10 @@ export function DetectionCard({
           )}
           {domains.length > 0 && (
             <section>
-              <h4>Domaines concernés (ouvrir dans Pistage pour les bloquer)</h4>
+              <h4>Domains concerned (open in Tracking to block them)</h4>
               <div className="det-domains">
                 {domains.map((dom) => (
-                  <Link key={dom} className="chip-link" to={`/pistage?q=${encodeURIComponent(dom)}&period=30d`}>
+                  <Link key={dom} className="chip-link" to={`/tracking?q=${encodeURIComponent(dom)}&period=30d`}>
                     {dom}
                   </Link>
                 ))}
@@ -110,23 +110,23 @@ export function DetectionCard({
           )}
           {d.summary && d.summary !== observation(d) && (
             <section>
-              <h4>Description du collecteur</h4>
+              <h4>Collector description</h4>
               <p className="break">{cleanText(d.summary, 400)}</p>
             </section>
           )}
           <section>
-            <h4>Pourquoi c'est suspect</h4>
+            <h4>Why it is suspicious</h4>
             <p>{info.why}</p>
             {d.type === 'detect.default_app_changed' && d.evidence['role'] === 'sms' && (
               <p className="callout callout-bad" data-testid="det-sms-role">
-                <strong>Rôle SMS : la voie classique des chevaux de Troie SMS.</strong> Une application qui se fait désigner application SMS par défaut obtient l'envoi, la lecture et l'interception des SMS
-                (codes de votre banque compris) et échappe aux refus de permission. À moins que vous ne l'ayez choisie vous-même, remettez l'ancienne application et désinstallez la nouvelle.
+                <strong>SMS role: the classic route of SMS trojans.</strong> An application that gets itself designated as the default SMS app obtains sending, reading and interception of SMS
+                (your bank's codes included) and escapes permission refusals. Unless you chose it yourself, put the previous application back and uninstall the new one.
               </p>
             )}
           </section>
           {info.innocent.length > 0 && (
             <section>
-              <h4>Ce que cela peut être d'innocent</h4>
+              <h4>What innocent things it could be</h4>
               <ul>
                 {info.innocent.map((t) => (
                   <li key={t}>{t}</li>
@@ -135,7 +135,7 @@ export function DetectionCard({
             </section>
           )}
           <section>
-            <h4>Que faire</h4>
+            <h4>What to do</h4>
             <ul>
               {info.actions.map((t) => (
                 <li key={t}>{t}</li>
@@ -144,42 +144,42 @@ export function DetectionCard({
             <div className="det-actions">
               {pkg && showAppLink && (
                 <Link className="btn btn-sm btn-primary" to={appSheetPath(pkg)}>
-                  Fiche de l'application
+                  Application detail page
                 </Link>
               )}
               {pkg && (
-                <Link className="btn btn-sm" to={`/pistage?app=${enc}&period=7d`}>
-                  Ses domaines dans Pistage
+                <Link className="btn btn-sm" to={`/tracking?app=${enc}&period=7d`}>
+                  Its domains in Tracking
                 </Link>
               )}
               {pkg && (
-                <Link className="btn btn-sm" to={`/reseau?app=${enc}`}>
-                  Son trafic dans Réseau
+                <Link className="btn btn-sm" to={`/network?app=${enc}`}>
+                  Its traffic in Network
                 </Link>
               )}
               {d.muted && onUnmute && (
                 <button type="button" className="btn btn-sm" onClick={() => onUnmute(d)}>
-                  Réactiver le signalement
+                  Resume reporting
                 </button>
               )}
               {!d.muted && onMute && isMutable(d) && (
                 <button type="button" className="btn btn-sm" onClick={() => onMute(d)} data-testid="mute-btn">
-                  Ne plus signaler pour cette application
+                  Stop reporting for this application
                 </button>
               )}
               {(d.type === 'detect.sensor_background' || d.type === 'detect.sms_abuse') && (
-                <Link className="btn btn-sm" to="/securite?tab=sensors">
-                  Caméra et micro (Sécurité)
+                <Link className="btn btn-sm" to="/security?tab=sensors">
+                  Camera and microphone (Security)
                 </Link>
               )}
             </div>
           </section>
           {guard && (
             <section className="det-guard">
-              <h4>Garde de l'application Vigie qui répond à ce risque</h4>
+              <h4>Watchpost app guard that answers this risk</h4>
               <p>
-                <strong>Garde « {guard.label} »</strong> : {guard.effect} Elle se règle sur le téléphone (écran Politique) : la console ne peut pas l'activer, le
-                serveur ne commande jamais le téléphone.
+                <strong>"{guard.label}" guard</strong>: {guard.effect} It is set on the phone (Policy screen): the console cannot enable it, the
+                server never commands the phone.
               </p>
             </section>
           )}

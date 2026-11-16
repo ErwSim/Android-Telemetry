@@ -5,7 +5,7 @@ export type ThemeMode = 'auto' | 'light' | 'dark';
 
 interface ThemeValue {
   mode: ThemeMode;
-  /** thème réellement appliqué */
+  /** theme actually applied */
   effective: 'light' | 'dark';
   cycle: () => void;
 }
@@ -43,7 +43,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const cycle = useCallback(() => {
     const next: ThemeMode = mode === 'auto' ? 'light' : mode === 'light' ? 'dark' : 'auto';
     writeStore(KEY, next === 'auto' ? null : next);
-    // Appliqué tout de suite : les graphiques lisent les variables CSS dans leurs effets, avant celui-ci.
+    // Applied immediately: charts read the CSS variables in their effects, before this one.
     applyTheme(next);
     setMode(next);
   }, [mode]);
@@ -59,7 +59,7 @@ export function useTheme(): ThemeValue {
   return v;
 }
 
-/** Lit une variable CSS du thème courant (pour le canvas des graphiques et de la carte). */
+/** Reads a CSS variable of the current theme (for the chart and map canvas). */
 export function cssVar(name: string, fallback = '#888'): string {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return v || fallback;

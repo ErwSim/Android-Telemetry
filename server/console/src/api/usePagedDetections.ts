@@ -7,7 +7,7 @@ import { matchesDetection, mergeDetections } from '../lib/detections.ts';
 export interface DetectionParams {
   device_id?: string | undefined;
   type?: string | undefined;
-  /** filtre par application : transmis au collecteur ET appliqué ici (le contrat §11.3 ne le prévoit pas) */
+  /** filter by application: sent to the collector AND applied here (contract §11.3 does not provide for it) */
   package?: string | undefined;
   from: string;
   to: string;
@@ -19,19 +19,19 @@ export interface PagedDetections {
   loadingMore: boolean;
   error: ApiError | undefined;
   hasMore: boolean;
-  /** vrai si la première page n'est pas la liste complète (curseur renvoyé) */
+  /** true if the first page is not the complete list (cursor returned) */
   loadMore: () => void;
   reload: () => void;
-  /** ajoute une détection reçue en direct (déjà filtrée par l'appelant) */
+  /** adds a detection received live (already filtered by the caller) */
   addLive: (d: Detection) => void;
 }
 
-/** Nombre maximal de pages enchaînées automatiquement quand un filtre côté client vide la page reçue. */
+/** Maximum number of pages chained automatically when a client-side filter empties the received page. */
 const MAX_AUTO_PAGES = 6;
 
 /**
- * Détections paginées par curseur (du plus récent au plus ancien). `null` désactive. Le filtre de type et
- * d'application est aussi appliqué ici : un collecteur qui l'ignorerait ne ferait pas apparaître de lignes en trop.
+ * Detections paginated by cursor (newest first). `null` disables. The type and application
+ * filter is also applied here: a collector that ignored it would not make extra rows appear.
  */
 export function usePagedDetections(params: DetectionParams | null, pageSize = 50): PagedDetections {
   const [detections, setDetections] = useState<Detection[]>([]);

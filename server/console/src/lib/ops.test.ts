@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { HEADLINE_OPS, backgroundShare, groupByApp, groupByOp, opInfo, parseOpsResponse } from './ops.ts';
 
-describe('opérations sensibles', () => {
-  it('traduit les dix opérations du contrat et laisse passer une inconnue', () => {
-    expect(opInfo('send_sms').label).toBe('Envoi de SMS');
-    expect(opInfo('record_audio').label).toBe('Micro');
-    expect(opInfo('camera').label).toBe('Caméra');
+describe('sensitive operations', () => {
+  it('translates the ten operations of the contract and lets an unknown one through', () => {
+    expect(opInfo('send_sms').label).toBe('SMS sending');
+    expect(opInfo('record_audio').label).toBe('Microphone');
+    expect(opInfo('camera').label).toBe('Camera');
     expect(opInfo('teleport').label).toBe('teleport');
     expect(opInfo('toString').group).toBe('other');
     expect(HEADLINE_OPS).toEqual(['send_sms', 'call_phone', 'read_contacts', 'record_audio', 'camera']);
   });
 
-  it('lit les deux formes de réponse (lignes à plat, ou opérations imbriquées par application)', () => {
+  it('reads both response forms (flat rows, or operations nested per application)', () => {
     const flat = parseOpsResponse({ ops: [{ package: 'a', op: 'send_sms', count: 5, background_count: 4, last_ts: '2026-11-16T10:00:00Z' }, { package: 'a', op: 'camera', count: 1 }] });
     const nested = parseOpsResponse({ apps: [{ package: 'a', label: 'A', ops: [{ op: 'send_sms', count: 5, background_count: 4 }, { op: 'camera', count: 1 }] }] });
     expect(flat.rows).toHaveLength(2);
@@ -19,7 +19,7 @@ describe('opérations sensibles', () => {
     expect(nested.rows[0]?.label).toBe('A');
   });
 
-  it('une réponse absente, vide ou mal formée donne zéro ligne, sans exception', () => {
+  it('a missing, empty or malformed response gives zero rows, without exception', () => {
     expect(parseOpsResponse(undefined).rows).toEqual([]);
     expect(parseOpsResponse(null).rows).toEqual([]);
     expect(parseOpsResponse({}).rows).toEqual([]);
@@ -27,7 +27,7 @@ describe('opérations sensibles', () => {
     expect(parseOpsResponse({ ops: [null, 3, { package: 'a' }, { op: 'camera', count: 1 }, { package: 'a', op: 'camera', count: -4 }] }).rows).toEqual([{ package: 'a', op: 'camera', count: 0 }]);
   });
 
-  it('agrège par application (totaux, arrière-plan plafonné au total) et par opération', () => {
+  it('aggregates per application (totals, background capped at the total) and per operation', () => {
     const rows = parseOpsResponse({
       ops: [
         { package: 'a', op: 'send_sms', count: 100, background_count: 90 },
@@ -46,7 +46,7 @@ describe('opérations sensibles', () => {
     expect(ops[0]?.apps.map((a) => a.package)).toEqual(['a', 'b']);
   });
 
-  it('lit et additionne les usages refusés par le système (rejected_count du collecteur)', () => {
+  it('reads and adds up the uses refused by the system (collector rejected_count)', () => {
     const r = parseOpsResponse({ apps: [{ package: 'a', ops: [{ op: 'send_sms', count: 10, background_count: 10, rejected_count: 4 }, { op: 'read_contacts', count: 2, rejected_count: 0 }] }] });
     expect(r.rows[0]?.rejected_count).toBe(4);
     expect(r.rows[1]?.rejected_count).toBeUndefined();
@@ -55,7 +55,7 @@ describe('opérations sensibles', () => {
     expect(a?.ops.map((o) => o.rejected)).toEqual([4, 0]);
   });
 
-  it('part en arrière-plan', () => {
+  it('background share', () => {
     expect(backgroundShare(10, 5)).toBe(0.5);
     expect(backgroundShare(0, 5)).toBe(0);
     expect(backgroundShare(2, 9)).toBe(1);

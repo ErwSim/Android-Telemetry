@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 
 type Tok = { t: 'key' | 'str' | 'num' | 'lit' | 'punct'; s: string };
 
-/** Découpe un JSON indenté en jetons pour la coloration (sans innerHTML). */
+/** Splits indented JSON into tokens for colouring (without innerHTML). */
 export function tokenizeJson(text: string): Tok[] {
   const re = /("(?:\\.|[^"\\])*")(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|\b(true|false|null)\b|([{}[\],:])|(\s+)/g;
   const out: Tok[] = [];
@@ -54,15 +54,15 @@ export function JsonView({ value, maxChars = 20000 }: { value: unknown; maxChars
     <div className="json">
       <div className="json-tools">
         <button type="button" className="btn btn-sm" onClick={copy}>
-          {copied ? 'Copié' : 'Copier le JSON'}
+          {copied ? 'Copied' : 'Copy JSON'}
         </button>
         {truncated && (
           <button type="button" className="btn btn-sm" onClick={() => setFull(true)}>
-            Tout afficher ({Math.round(text.length / 1024)} Kio)
+            Show all ({Math.round(text.length / 1024)} KiB)
           </button>
         )}
       </div>
-      <pre className="json-pre" tabIndex={0} aria-label="Contenu JSON">
+      <pre className="json-pre" tabIndex={0} aria-label="JSON content">
         {toks.map((k, i) => (
           <span key={i} className={`j-${k.t}`}>
             {k.s}

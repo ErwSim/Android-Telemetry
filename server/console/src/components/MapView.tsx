@@ -6,7 +6,7 @@ import { loadConfig, DEFAULT_CONFIG, type AppConfig } from '../lib/config.ts';
 import { circleRing } from '../lib/geo.ts';
 import { cssVar, useTheme } from '../state/theme.tsx';
 
-// Worker servi par le même hôte : pas besoin de `worker-src blob:`.
+// Worker served by the same host: no need for `worker-src blob:`.
 maplibregl.setWorkerUrl(workerUrl);
 
 export interface MapPoint {
@@ -15,20 +15,20 @@ export interface MapPoint {
   /** epoch ms */
   t: number;
   acc?: number;
-  /** `gps`, `network`, `fused` (contrat §2) : fournisseur de la position */
+  /** `gps`, `network`, `fused` (contract §2): location provider */
   provider?: string;
 }
 
 export interface MapViewProps {
   points: MapPoint[];
-  /** Segments continus [début, fin] (index inclus) ; par défaut un seul segment. */
+  /** Continuous segments [start, end] (indexes inclusive); a single segment by default. */
   segments?: [number, number][];
-  /** Trous : tirets entre le dernier point avant et le premier après. */
+  /** Gaps: dashes between the last point before and the first after. */
   gaps?: { fromIdx: number; toIdx: number }[];
   selected?: number | undefined;
   onSelect?: (i: number) => void;
   interactive?: boolean;
-  /** Zoom initial pour une position unique. */
+  /** Initial zoom for a single location. */
   singleZoom?: number;
   ariaLabel: string;
 }
@@ -81,8 +81,8 @@ function applyColors(map: maplibregl.Map) {
   set('route', 'line-color', accent);
   set('trail', 'line-color', accent);
   set('gaps', 'line-color', warn);
-  // Fournisseur : GPS = disque plein (couleur d'accent), réseau = anneau creux, fusionné = disque plein violet.
-  // Une précision supérieure à 100 m ajoute un contour orange.
+  // Provider: GPS = filled disc (accent colour), network = hollow ring, fused = filled purple disc.
+  // An accuracy worse than 100 m adds an orange outline.
   const gps = cssVar('--prov-gps', accent);
   const network = cssVar('--prov-network', '#0f766e');
   const fused = cssVar('--prov-fused', '#9333ea');
@@ -118,7 +118,7 @@ export default function MapView({
   });
   const fitted = useRef<string>('');
 
-  // Création de la carte (une fois par thème : le fond de carte change de style).
+  // Map creation (once per theme: the base map changes style).
   useEffect(() => {
     let disposed = false;
     let map: maplibregl.Map | null = null;
@@ -137,7 +137,7 @@ export default function MapView({
           canvasContextAttributes: { preserveDrawingBuffer: false },
         });
       } catch (e) {
-        setFailure(e instanceof Error ? e.message : 'WebGL indisponible');
+        setFailure(e instanceof Error ? e.message : 'WebGL unavailable');
         return;
       }
       mapRef.current = map;
@@ -232,7 +232,7 @@ export default function MapView({
     };
   }, [effective, interactive]);
 
-  // Données de la trace.
+  // Track data.
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
@@ -272,7 +272,7 @@ export default function MapView({
         geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
       })),
     });
-    // Cadrage une fois par jeu de points (évite de recadrer pendant la lecture du trajet).
+    // Framing once per set of points (avoids reframing during track playback).
     const sig = `${points.length}:${points[0]?.t ?? 0}:${points[points.length - 1]?.t ?? 0}`;
     if (fitted.current !== sig && points.length > 0) {
       fitted.current = sig;
@@ -287,7 +287,7 @@ export default function MapView({
     }
   }, [ready, points, segments, gaps, singleZoom]);
 
-  // Point sélectionné, cercle de précision et trajet parcouru.
+  // Selected point, accuracy circle and travelled track.
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
@@ -315,7 +315,7 @@ export default function MapView({
     if (!bounds.contains([p.lon, p.lat])) map.easeTo({ center: [p.lon, p.lat], duration: 250 });
   }, [ready, points, segments, selected]);
 
-  // Couleurs des couches selon le thème (les variables CSS changent avec data-theme).
+  // Layer colours according to the theme (CSS variables change with data-theme).
   useEffect(() => {
     const map = mapRef.current;
     if (ready && map) applyColors(map);
@@ -325,7 +325,7 @@ export default function MapView({
     return (
       <div className="map map-fallback" role="img" aria-label={ariaLabel}>
         <p>
-          <strong>Carte indisponible</strong> (WebGL requis). {failure}
+          <strong>Map unavailable</strong> (WebGL required). {failure}
         </p>
       </div>
     );
@@ -335,7 +335,7 @@ export default function MapView({
       <div ref={host} className="map" role="region" aria-label={ariaLabel} />
       {tileProblem && (
         <div className="map-notice" role="status">
-          Fond de carte indisponible (tuiles non chargées). La trace reste affichée.
+          Base map unavailable (tiles not loaded). The track is still displayed.
         </div>
       )}
     </div>

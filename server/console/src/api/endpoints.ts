@@ -66,8 +66,8 @@ export const api = {
     request<PostureResponse>('/posture', { device_id }, signal ? { signal } : {}),
   alerts: (q: { from?: string; to?: string; level_min?: number; limit?: number }, signal?: AbortSignal) =>
     request<AlertsResponse>('/alerts', q as Query, signal ? { signal } : {}),
-  // Profil de risque, usage des opérations sensibles, détections (§11). Les réponses sont lues avec tolérance :
-  // le contrat fixe les champs mais pas l'enveloppe exacte, et `app.ops` peut être absent.
+  // Risk profile, sensitive operations usage, detections (§11). Responses are read tolerantly:
+  // the contract fixes the fields but not the exact envelope, and `app.ops` may be absent.
   appsRisk: async (device_id?: string, signal?: AbortSignal): Promise<AppRiskResponse> =>
     parseRiskResponse(await request<unknown>('/apps/risk', { device_id }, signal ? { signal } : {})),
   appsOps: async (q: Range & { device_id?: string }, signal?: AbortSignal): Promise<AppOpsResponse> =>
@@ -76,20 +76,20 @@ export const api = {
     q: Range & { device_id?: string; type?: string; package?: string; limit?: number; cursor?: string },
     signal?: AbortSignal,
   ): Promise<DetectionsResponse> => parseDetectionsResponse(await request<unknown>('/detections', q as unknown as Query, signal ? { signal } : {})),
-  // Mise en sourdine des détections (§11.4)
+  // Muting detections (§11.4)
   detectionMutes: async (device_id?: string, signal?: AbortSignal): Promise<DetectionMute[]> =>
     parseMutes(await request<unknown>('/detections/mutes', { device_id }, signal ? { signal } : {})),
   muteDetection: (body: { device_id: string; type: string; package: string; reason?: string }) =>
     request<void>('/detections/mute', undefined, { method: 'POST', body }),
   unmuteDetection: (body: { device_id: string; type: string; package: string }) =>
     request<void>('/detections/mute', undefined, { method: 'DELETE', body }),
-  // Commandes à distance (§8)
+  // Remote commands (§8)
   commands: (q: { device_id?: string; limit?: number }, signal?: AbortSignal) =>
     request<CommandsResponse>('/commands', q as Query, signal ? { signal } : {}),
   createCommand: (body: { device_id: string; payload: string; sig?: string }) =>
     request<{ id: string }>('/commands', undefined, { method: 'POST', body }),
   cancelCommand: (id: string) => request<void>(`/commands/${encodeURIComponent(id)}/cancel`, undefined, { method: 'POST' }),
-  // Pistage (§9)
+  // Tracking (§9)
   trackingSummary: (q: Range & { device_id?: string }, signal?: AbortSignal) =>
     request<TrackingSummary>('/tracking/summary', q as unknown as Query, signal ? { signal } : {}),
   trackingDomains: (
