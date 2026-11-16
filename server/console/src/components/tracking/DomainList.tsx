@@ -55,7 +55,7 @@ export function DomainList({
       if (e instanceof ApiError && e.status === 409 && action === 'block') {
         setConflict({ domain, action, conflict: parseConflict(e) });
       } else if (e instanceof ApiError && e.status === 503) {
-        onNotice({ tone: 'bad', text: "AdGuard Home n'est pas joignable : la règle n'a pas été enregistrée." });
+        onNotice({ tone: 'bad', text: `La règle n'a pas été enregistrée. ${e.message}` });
         setConflict(undefined);
       } else {
         onNotice({ tone: 'bad', text: `La règle n'a pas été enregistrée. ${e instanceof ApiError ? e.message : String(e)}` });

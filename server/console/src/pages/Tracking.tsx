@@ -121,7 +121,7 @@ export default function Tracking() {
       ) : (
         <>
           <div className="grid grid-start">
-            <Card title="Synthèse par éditeur" className="span-8">
+            <Card title="Synthèse par éditeur" className="span-12">
               <Async state={summary} isEmpty={(s) => s.publishers.length === 0} empty="Aucune requête DNS sur cette période (l'agent doit être Device Owner, ou AdGuard Home doit journaliser).">
                 {(s) => {
                   const totals = totalsOf(s.totals, s.publishers);
@@ -143,7 +143,7 @@ export default function Tracking() {
                 }}
               </Async>
             </Card>
-            <Card title="Niveau de blocage" className="span-4">
+            <Card title="Niveau de blocage" className="span-12">
               <Async state={summary}>{(s) => <LevelCard summary={s} onChanged={() => { setNotice({ tone: 'ok', text: 'Niveau de blocage changé : il s\'applique aux prochaines requêtes.' }); summary.reload(); domains.reload(); }} />}</Async>
             </Card>
           </div>

@@ -173,7 +173,16 @@ export function parseConflict(e: Pick<ApiError, 'message' | 'body'>): Conflict {
     const v = body[k];
     if (typeof v === 'string' && v.trim()) impacts.push(v.trim());
     else if (Array.isArray(v)) {
-      for (const x of v) if (typeof x === 'string' && x.trim()) impacts.push(x.trim());
+      for (const x of v) {
+        if (typeof x === 'string' && x.trim()) impacts.push(x.trim());
+        // Collecteur : { domain, breaks } (domaine indispensable et ce qu'il casserait).
+        else if (x && typeof x === 'object') {
+          const o = x as Record<string, unknown>;
+          const what = typeof o['breaks'] === 'string' ? o['breaks'].trim() : '';
+          const dom = typeof o['domain'] === 'string' ? o['domain'].trim() : '';
+          if (what) impacts.push(dom ? `${dom} : ${what}` : what);
+        }
+      }
     }
   }
   return { message: e.message, impacts };

@@ -107,6 +107,13 @@ describe('409 domaine indispensable', () => {
     expect(c.message).toBe('Domaine indispensable');
     expect(c.impacts).toEqual(['Notifications push', 'Mises à jour']);
   });
+  it('lit le format du collecteur : breaks = [{ domain, breaks }]', () => {
+    const c = parseConflict({
+      message: 'bloquer x casserait…',
+      body: { error: 'essential_domain', breaks: [{ domain: 'mtalk.google.com', breaks: 'notifications push' }, { domain: 'a.fr' }] },
+    });
+    expect(c.impacts).toEqual(['mtalk.google.com : notifications push']);
+  });
   it('accepte une chaîne et ignore ce qui n’est pas du texte', () => {
     expect(parseConflict({ message: 'm', body: { breaks: 'Les notifications' } }).impacts).toEqual(['Les notifications']);
     expect(parseConflict({ message: 'm', body: { impacts: [1, { a: 1 }] } }).impacts).toEqual([]);

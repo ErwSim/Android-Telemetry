@@ -131,23 +131,6 @@ export default function Commands() {
         </div>
       )}
 
-      <div className="grid grid-start">
-        <Card title="Canal de commandes" className="span-7">
-          <ChannelPanel device={device} now={now} streamOpen={stream === 'open'} />
-        </Card>
-        <Card
-          title="Dernière position"
-          className="span-5"
-          actions={
-            <Link to="/carte" className="btn btn-sm">
-              Ouvrir la carte
-            </Link>
-          }
-        >
-          <PositionPanel loc={loc} locateSince={locateSince} fixArrived={!!fixArrived} />
-        </Card>
-      </div>
-
       {notice && (
         <div className={`state ${notice.tone === 'ok' ? 'state-ok' : notice.tone === 'warn' ? 'state-warn' : 'state-error'}`} role="status" aria-live="polite">
           {notice.text}
@@ -155,42 +138,59 @@ export default function Commands() {
       )}
 
       <div className="grid grid-start">
-        <Card title="Actions simples" className="span-7">
-          <p className="hint">Sans code : le serveur peut les relayer seul. Valables 1 heure.</p>
-          <SimpleActions disabled={disabled} onSend={(t, p) => void sendSimple(t, p)} />
-        </Card>
-        <Card title="Actions sensibles" className="span-5">
-          <ServerLimits />
-          {!canSign() && (
-            <div className="state state-error" role="alert">
-              WebCrypto est indisponible dans ce contexte : ouvrez la console en HTTPS (ou sur localhost) pour signer.
+        <div className="span-7 stack">
+          <Card title="Canal de commandes">
+            <ChannelPanel device={device} now={now} streamOpen={stream === 'open'} />
+          </Card>
+          <Card title="Actions simples">
+            <p className="hint">Sans code : le serveur peut les relayer seul. Valables 1 heure.</p>
+            <SimpleActions disabled={disabled} onSend={(t, p) => void sendSimple(t, p)} />
+          </Card>
+        </div>
+        <div className="span-5 stack">
+          <Card
+            title="Dernière position"
+            actions={
+              <Link to="/carte" className="btn btn-sm">
+                Ouvrir la carte
+              </Link>
+            }
+          >
+            <PositionPanel loc={loc} locateSince={locateSince} fixArrived={!!fixArrived} />
+          </Card>
+          <Card title="Actions sensibles (signées)">
+            {!canSign() && (
+              <div className="state state-error" role="alert">
+                WebCrypto est indisponible dans ce contexte : ouvrez la console en HTTPS (ou sur localhost) pour signer.
+              </div>
+            )}
+            <div className="cmd-list">
+              <div className="cmd-row">
+                <div className="cmd-info">
+                  <strong>Verrouiller avec message</strong>
+                  <span className="hint">Verrouille l'écran et affiche un message de votre choix.</span>
+                </div>
+                <div className="cmd-ctl">
+                  <button type="button" className="btn btn-primary" disabled={disabled} onClick={() => setDialog('lock')}>
+                    Verrouiller…
+                  </button>
+                </div>
+              </div>
+              <div className="cmd-row">
+                <div className="cmd-info">
+                  <strong>Effacer le message</strong>
+                  <span className="hint">Retire le message de l'écran de verrouillage.</span>
+                </div>
+                <div className="cmd-ctl">
+                  <button type="button" className="btn" disabled={disabled} onClick={() => setDialog('clear_lock_message')}>
+                    Effacer le message…
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
-          <div className="cmd-list">
-            <div className="cmd-row">
-              <div className="cmd-info">
-                <strong>Verrouiller avec message</strong>
-                <span className="hint">Verrouille l'écran et affiche un message de votre choix.</span>
-              </div>
-              <div className="cmd-ctl">
-                <button type="button" className="btn btn-primary" disabled={disabled} onClick={() => setDialog('lock')}>
-                  Verrouiller…
-                </button>
-              </div>
-            </div>
-            <div className="cmd-row">
-              <div className="cmd-info">
-                <strong>Effacer le message</strong>
-                <span className="hint">Retire le message de l'écran de verrouillage.</span>
-              </div>
-              <div className="cmd-ctl">
-                <button type="button" className="btn" disabled={disabled} onClick={() => setDialog('clear_lock_message')}>
-                  Effacer le message…
-                </button>
-              </div>
-            </div>
-          </div>
-        </Card>
+            <ServerLimits />
+          </Card>
+        </div>
       </div>
 
       <div className="grid">

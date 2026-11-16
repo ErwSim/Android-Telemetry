@@ -4,7 +4,7 @@
 // Identifiants : admin / vigie (MOCK_USER, MOCK_PASSWORD).
 // Contrôle de test : POST /__mock/control { wazuh?, expire?, fail?, latency_ms?,
 //   adguard?, channel?: "stream"|"poll"|"offline", agent?: { disabled, wipe_allowed, code_configured, device_owner,
-//   locate_fail, deliver_ms, exec_ms }, reset_lockout? } ; GET /__mock/requests : corps des requêtes modifiantes reçues.
+//   locate_fail, deliver_ms, exec_ms }, quiet? (plus d'événements aléatoires en direct) } ; GET /__mock/requests : corps des requêtes modifiantes reçues.
 // Code de commande du mock (celui de l'« app » simulée) : MOCK_COMMAND_CODE, défaut « correct horse battery staple ».
 import http from 'node:http';
 import fs from 'node:fs';
@@ -47,7 +47,8 @@ const gen = generate(NOW);
 const events: MockEvent[] = gen.events;
 const byId = new Map(events.map((e) => [e.id, e]));
 const sessions = new Map<string, string>();
-const control: { wazuh: boolean; fail: string[]; latency_ms: number } = {
+const control: { wazuh: boolean; fail: string[]; latency_ms: number; quiet: boolean } = {
+  quiet: false,
   wazuh: process.env['MOCK_WAZUH'] !== '0',
   fail: [],
   latency_ms: 0,
@@ -339,6 +340,10 @@ function broadcast(e: MockEvent): void {
 }
 function scheduleLive(): void {
   setTimeout(() => {
+    if (control.quiet) {
+      scheduleLive();
+      return;
+    }
     const e = liveEvent(liveRng, Date.now(), seqCounter++, liveBoot, lastLoc);
     events.push(e);
     byId.set(e.id, e);
@@ -405,7 +410,9 @@ const server = http.createServer((req, res) => {
         channel?: cmd.AgentSim['channel'];
         agent?: Partial<cmd.AgentSim>;
         reset_lockout?: boolean;
+        quiet?: boolean;
       };
+      if (typeof b.quiet === 'boolean') control.quiet = b.quiet;
       if (typeof b.adguard === 'boolean') track.adguard = b.adguard;
       if (b.channel) cmd.agent.channel = b.channel;
       if (b.agent) Object.assign(cmd.agent, b.agent);
@@ -543,7 +550,7 @@ const server = http.createServer((req, res) => {
           if (b.action !== 'block' && b.action !== 'allow' && b.action !== 'default') return err(res, 400, 'bad_action', 'action : block, allow ou default');
           const essential = trk.ESSENTIAL[domain];
           if (b.action === 'block' && essential && b.force !== true) {
-            return sendJson(res, 409, { error: 'essential_domain', message: `« ${domain} » est un domaine indispensable au téléphone : le bloquer le casserait.`, impacts: essential });
+            return sendJson(res, 409, { error: 'essential_domain', message: `« ${domain} » est un domaine indispensable au téléphone : le bloquer le casserait.`, breaks: essential.map((breaks) => ({ domain, breaks })) });
           }
           track.overrides.push({ t: Date.now(), domain, action: b.action });
           res.writeHead(204);

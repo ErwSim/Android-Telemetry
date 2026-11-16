@@ -84,8 +84,12 @@ async function main() {
       { name: 'clair-telephone', scheme: 'light', viewport: { width: 390, height: 844 }, mobile: true },
       { name: 'sombre-telephone', scheme: 'dark', viewport: { width: 390, height: 844 }, mobile: true },
     ];
-    for (const sc of scenarios) await runScenario(browser, sc);
-    await runBehaviours(browser);
+    // ONLY=features : seulement les parcours commandes / pistage / notifications (itération rapide).
+    if (process.env.ONLY !== 'features') {
+      for (const sc of scenarios) await runScenario(browser, sc);
+      await runBehaviours(browser);
+    }
+    await runFeatures(browser);
     await browser.close();
   } finally {
     mock.kill();
@@ -96,6 +100,10 @@ async function main() {
 }
 
 function instrument(page, label, state) {
+  state.requests = state.requests || [];
+  state.logs = state.logs || [];
+  page.on('console', (m) => state.logs.push(m.text()));
+  page.on('request', (r) => state.requests.push({ url: r.url(), body: r.postData() || '', headers: JSON.stringify(r.headers()) }));
   page.on('console', (m) => {
     if (m.type() === 'error' || m.type() === 'warning') {
       const t = m.text();
@@ -144,15 +152,15 @@ async function newContext(browser, sc, state) {
 }
 
 async function login(page) {
-  await page.goto(`${BASE}/`, { waitUntil: 'networkidle' });
-  if (!page.url().includes('/connexion')) throw new Error('pas de redirection vers /connexion');
+  await page.goto(`${BASE}/`, { waitUntil: 'load' });
+  await page.waitForURL(/\/connexion/, { timeout: 10000 }).catch(() => { throw new Error('pas de redirection vers /connexion'); });
   await page.fill('input[name=username]', 'admin');
   await page.fill('input[name=password]', 'vigie');
   await Promise.all([page.waitForURL(`${BASE}/`), page.click('button[type=submit]')]);
 }
 
 async function settle(page, sel) {
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('load');
   if (sel) await page.waitForSelector(sel, { timeout: 15000 });
   await page.waitForTimeout(700);
 }
@@ -169,7 +177,8 @@ async function runScenario(browser, sc) {
   const page = await ctx.newPage();
   instrument(page, sc.name, state);
 
-  await page.goto(`${BASE}/connexion`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/connexion`, { waitUntil: 'load' });
+  await page.waitForSelector('input[name=username]');
   await shot(page, sc, '00-connexion');
   await login(page);
 
@@ -181,9 +190,11 @@ async function runScenario(browser, sc) {
     ['05-applications', '/applications', '.tbl'],
     ['06-securite', '/securite', '.findings'],
     ['07-alertes', '/alertes', '.tbl'],
+    ['08-commandes', '/commandes', '.cmd-list'],
+    ['09-pistage', '/pistage', '.trk-dom tbody tr'],
   ];
   for (const [name, url, sel] of pages) {
-    await page.goto(`${BASE}${url}`, { waitUntil: 'networkidle' });
+    await page.goto(`${BASE}${url}`, { waitUntil: 'load' });
     await settle(page, sel);
     await shot(page, sc, name);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -191,19 +202,19 @@ async function runScenario(browser, sc) {
   }
 
   // Détails interactifs une fois par scénario clair/sombre bureau + téléphone.
-  await page.goto(`${BASE}/evenements`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/evenements`, { waitUntil: 'load' });
   await page.click('.tbl tbody .expander');
   await page.waitForSelector('.json-pre');
   await shot(page, sc, '03b-evenement-detail');
 
-  await page.goto(`${BASE}/securite`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/securite`, { waitUntil: 'load' });
   for (const [tab, name] of [['Journal système', 'log'], ['Caméra et micro', 'capteurs'], ['Certificats d\'AC', 'certs'], ['Cellulaire et BLE', 'radio'], ['Politique appliquée', 'politique'], ['Déverrouillages', 'keyguard']]) {
     await page.click(`role=tab[name="${tab}"]`);
     await settle(page, '.tbl, .findings');
     await shot(page, sc, `06-securite-${name}`);
   }
 
-  await page.goto(`${BASE}/applications`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/applications`, { waitUntil: 'load' });
   await settle(page, '.tbl');
   for (const [tab, name] of [['Permissions dangereuses', 'permissions'], ['Accès spéciaux', 'acces'], ['Historique', 'historique']]) {
     await page.click(`role=tab[name="${tab}"]`);
@@ -211,12 +222,35 @@ async function runScenario(browser, sc) {
     await shot(page, sc, `05-applications-${name}`);
   }
 
-  await page.goto(`${BASE}/reseau`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/reseau`, { waitUntil: 'load' });
   await settle(page, '.rank');
   await page.click('.rank .linkish[aria-pressed]');
   await page.waitForSelector('.two-col .rank', { timeout: 20000 });
   await settle(page);
   await shot(page, sc, '04b-reseau-app');
+
+  // Pistage : onglet Applications, application dépliée.
+  await page.goto(`${BASE}/pistage`, { waitUntil: 'load' });
+  await settle(page, '.trk-dom tbody tr');
+  await page.click('role=tab[name="Applications"]');
+  await page.waitForSelector('.trk-apps > li');
+  await page.click('.trk-app-head >> nth=0');
+  await page.waitForSelector('.trk-app-body');
+  await shot(page, sc, '09-pistage-applications');
+
+  // Applications : notifications (contenu, contenu masqué, texte hostile non interprété).
+  await page.goto(`${BASE}/applications`, { waitUntil: 'load' });
+  await settle(page, '.tbl');
+  await page.click('role=tab[name="Notifications"]');
+  await page.waitForSelector('.rank li');
+  await page.waitForSelector('.tbl tbody tr');
+  await settle(page);
+  await shot(page, sc, '05-applications-notifications');
+
+  // Carte : fournisseurs de position.
+  await page.goto(`${BASE}/carte`, { waitUntil: 'load' });
+  await settle(page, '.replay');
+  await shot(page, sc, '02-carte-fournisseurs');
 
   const csp = await page.evaluate(() => window.__csp);
   if (csp.length) fail(`${sc.name} : violations CSP : ${[...new Set(csp)].join(' | ')}`);
@@ -250,13 +284,13 @@ async function runBehaviours(browser) {
   await page.click('button[aria-label^="Thème"]');
   if ((await attr()) !== 'dark') fail('bascule de thème : attendu dark');
   else ok('bascule de thème');
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   if ((await attr()) !== 'dark') fail('thème non mémorisé après rechargement');
   else ok('thème mémorisé');
   await page.click('button[aria-label^="Thème"]');
 
   // Carte : curseur temporel et lecture.
-  await page.goto(`${BASE}/carte`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/carte`, { waitUntil: 'load' });
   await settle(page, '.replay');
   const count0 = await page.textContent('.replay-info');
   await page.fill('input[type=range]', '10').catch(async () => {
@@ -278,7 +312,7 @@ async function runBehaviours(browser) {
   if (silent < 1) fail('carte 7 j : aucun trou « sans événement » détecté'); else ok(`carte 7 j : ${silent} trou(s) sans événement`);
 
   // Événements : filtre, sévérité, direct.
-  await page.goto(`${BASE}/evenements`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/evenements`, { waitUntil: 'load' });
   await settle(page, '.tbl');
   await page.click('.chip-btn:has-text("Sécurité")');
   await page.selectOption('select >> nth=0', { index: 0 }).catch(() => undefined);
@@ -307,7 +341,7 @@ async function runBehaviours(browser) {
 
   // Alertes : wazuh false.
   await control({ wazuh: false });
-  await page.goto(`${BASE}/alertes`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/alertes`, { waitUntil: 'load' });
   await page.waitForSelector('text=Wazuh non configuré');
   await page.screenshot({ path: path.join(OUT, 'alertes-sans-wazuh.png') });
   ok('alertes : wazuh=false géré');
@@ -315,19 +349,19 @@ async function runBehaviours(browser) {
 
   // Erreur serveur : état d'erreur + Réessayer.
   await control({ fail: ['/stats/top'] });
-  await page.goto(`${BASE}/reseau`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/reseau`, { waitUntil: 'load' });
   await page.waitForSelector('.state-error button:has-text("Réessayer")');
   await page.screenshot({ path: path.join(OUT, 'reseau-erreur.png') });
   ok('état d\'erreur avec réessai');
   await control({ fail: [] });
 
   // Appareil sans données : états vides.
-  await page.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/`, { waitUntil: 'load' });
   await page.selectOption('select[aria-label=Appareil]', { label: 'ancien-s23 (révoqué)' });
   await page.waitForTimeout(800);
   await page.screenshot({ path: path.join(OUT, 'appareil-vide.png'), fullPage: true });
   for (const u of ['/carte', '/evenements', '/reseau', '/applications', '/securite']) {
-    await page.goto(`${BASE}${u}`, { waitUntil: 'networkidle' });
+    await page.goto(`${BASE}${u}`, { waitUntil: 'load' });
     await page.waitForTimeout(500);
     const empty = await page.locator('.state-empty, .state-error').count();
     if (!empty) fail(`appareil sans données : ${u} sans état vide`);
@@ -336,7 +370,9 @@ async function runBehaviours(browser) {
   await page.selectOption('select[aria-label=Appareil]', { label: 's25' });
 
   // Session expirée : retour à la connexion.
-  await page.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/`, { waitUntil: 'load' });
+  await page.waitForSelector('.sidenav');
+  await page.waitForSelector('.stats');
   await control({ expire: true });
   await page.click('.sidenav a:has-text("Événements")');
   await page.waitForURL(/\/connexion/);
@@ -349,7 +385,7 @@ async function runBehaviours(browser) {
   ok('mauvais mot de passe : erreur affichée');
 
   // Navigation clavier : le lien d'évitement est le premier élément focalisable.
-  await page.goto(`${BASE}/connexion`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/connexion`, { waitUntil: 'load' });
   const active = await page.evaluate(() => document.activeElement && document.activeElement.getAttribute('name'));
   if (active !== 'username') fail('focus initial de la connexion'); else ok('focus initial sur l\'identifiant');
 
@@ -358,6 +394,288 @@ async function runBehaviours(browser) {
   for (const e of state.errors) fail(e);
   const extra = [...state.hosts].filter((h) => h !== TILE_HOST);
   if (extra.length) fail(`comportements : hôtes tiers : ${extra.join(', ')}`);
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Commandes à distance, pistage, notifications : comportements de bout en bout contre le serveur factice.
+const RIGHT_CODE = 'correct horse battery staple';
+const WRONG_CODE = 'mauvais code 987654';
+
+async function runFeatures(browser) {
+  console.log('\n== commandes, pistage, notifications (clair, bureau)');
+  const sc = { name: 'fonctions', scheme: 'light', viewport: { width: 1280, height: 900 } };
+  const state = {
+    errors: [],
+    hosts: new Set(),
+    expected: (p, st) =>
+      (st === 401 && p === '/api/console/me') ||
+      (st === 409 && (p.startsWith('/api/console/tracking/override') || p.includes('/cancel'))) ||
+      (st === 503 && p.startsWith('/api/console/tracking/')) ||
+      (st === 400 && p.startsWith('/api/console/commands')) ||
+      (st === 429 && p.startsWith('/api/console/commands')),
+  };
+  const ctx = await newContext(browser, sc, state);
+  const page = await ctx.newPage();
+  instrument(page, 'fonctions', state);
+  await login(page);
+  await control({ quiet: true, channel: 'stream', adguard: true, agent: { disabled: false, wipe_allowed: false, code_configured: true, device_owner: true, locate_fail: false, deliver_ms: 300, exec_ms: 500 } });
+
+  const rowOf = (label) => page.locator('.cmd-tbl tbody tr', { hasText: label }).first();
+  const waitStatus = (label, text, timeout = 15000) =>
+    page.waitForFunction(([l, t]) => [...document.querySelectorAll('.cmd-tbl tbody tr')].some((r) => r.textContent.includes(l) && r.textContent.includes(t)), [label, text], { timeout });
+
+  // ---- Canal et commande simple
+  await page.goto(`${BASE}/commandes`, { waitUntil: 'load' });
+  await settle(page, '.cmd-list');
+  if (!(await page.textContent('.main')).includes('Connecté')) fail('commandes : état du canal « Connecté » absent'); else ok('canal connecté affiché');
+  await page.click('button:has-text("Vibrer"):not(:has-text("aussi"))');
+  await page.waitForSelector('.cmd-tbl tbody tr:first-child:has-text("Vibrer")');
+  await waitStatus('Vibrer', 'Exécutée');
+  ok('vibrer : en attente -> remise -> exécutée (suivi en direct)');
+  // valeur hors bornes : bouton désactivé
+  await page.fill('.cmd-row:has-text("Sonner") input[type=number]', '999');
+  if (!(await page.locator('.cmd-row:has-text("Sonner") button.btn-primary').isDisabled())) fail('sonner : durée 999 acceptée'); else ok('sonner : durée hors bornes refusée par l\'interface');
+  await page.fill('.cmd-row:has-text("Sonner") input[type=number]', '20');
+  await page.click('.cmd-row:has-text("Sonner") button.btn-primary');
+  await waitStatus('Sonner', 'Exécutée');
+
+  // ---- Localiser : la carte se met à jour à l'arrivée de la position
+  const before = await page.textContent('[data-testid=pos-info]');
+  await page.click('button:has-text("Localiser maintenant")');
+  await page.waitForSelector('text=en attente de la nouvelle position');
+  await page.waitForSelector('text=Nouvelle position reçue : la carte est à jour', { timeout: 20000 });
+  const after = await page.textContent('[data-testid=pos-info]');
+  if (before === after) fail('localiser : la position affichée n\'a pas changé'); else ok('localiser : position mise à jour par le flux SSE (' + after.trim().slice(0, 60) + '…)');
+  await page.waitForSelector('[data-testid=pos-info] .badge:has-text("GPS")');
+  await shot(page, sc, '08-commandes-localisation', false);
+
+  // ---- Annulation tant que « En attente »
+  await control({ channel: 'offline' });
+  await page.reload({ waitUntil: 'load' });
+  await settle(page, '.cmd-list');
+  if (!(await page.textContent('.main')).includes('Hors ligne')) fail('canal hors ligne non affiché'); else ok('canal hors ligne affiché');
+  await page.click('button:has-text("Arrêter la sonnerie")');
+  await page.waitForSelector('.cmd-tbl tbody tr:first-child:has-text("En attente")');
+  await page.screenshot({ path: path.join(OUT, 'commandes-hors-ligne-attente.png'), fullPage: true });
+  await page.click('.cmd-tbl tbody tr:first-child button:has-text("Annuler")');
+  await waitStatus('Arrêter la sonnerie', 'Annulée');
+  ok('commande en attente annulée');
+  await control({ channel: 'poll' });
+  await page.reload({ waitUntil: 'load' });
+  await settle(page, '.cmd-list');
+  if (!(await page.textContent('.main')).includes('Interrogation')) fail('mode interrogation non affiché'); else ok('mode interrogation affiché');
+  await control({ channel: 'stream' });
+
+  // ---- Verrouillage : mauvais code (bad_signature), puis bon code
+  const sensitiveSteps = async (code, message) => {
+    await page.click('button:has-text("Verrouiller…")');
+    await page.waitForSelector('dialog[open]');
+    await page.fill('dialog textarea', message);
+    const btn = page.locator('dialog button:has-text("Signer et envoyer")');
+    if (!(await btn.isDisabled())) fail('verrouillage : bouton actif sans confirmation ni code');
+    await page.check('dialog input[type=checkbox]');
+    await page.fill('#cmd-code', 'court');
+    if (!(await btn.isDisabled())) fail('verrouillage : code de moins de 12 caractères accepté');
+    await page.fill('#cmd-code', code);
+    await btn.click();
+    await page.waitForSelector('dialog[open]', { state: 'detached', timeout: 20000 });
+  };
+  await page.goto(`${BASE}/commandes`, { waitUntil: 'load' });
+  await settle(page, '.cmd-list');
+  await page.click('button:has-text("Verrouiller…")');
+  await page.waitForSelector('dialog[open]');
+  await page.screenshot({ path: path.join(OUT, 'commandes-dialogue-verrouiller.png') });
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('dialog[open]', { state: 'detached' });
+  ok('dialogue de verrouillage : Échap ferme');
+  await sensitiveSteps(WRONG_CODE, 'Téléphone perdu, appelez le 01 23 45 67 89');
+  await waitStatus('Verrouiller avec message', 'Refusée');
+  await page.waitForSelector('.cmd-tbl tbody tr:first-child:has-text("Signature invalide")');
+  await page.waitForSelector('.history-warn');
+  ok('mauvais code : refus « signature invalide » par le téléphone, avertissement affiché');
+  await page.screenshot({ path: path.join(OUT, 'commandes-bad-signature.png'), fullPage: true });
+  await sensitiveSteps(RIGHT_CODE, 'Téléphone perdu, appelez le 01 23 45 67 89');
+  await page.waitForFunction(() => document.querySelector('.cmd-tbl tbody tr:first-child')?.textContent.includes('Exécutée'), null, { timeout: 15000 });
+  ok('bon code : verrouillage exécuté (la signature du navigateur est reconnue par l\'agent factice)');
+  // effacer le message
+  await page.click('button:has-text("Effacer le message…")');
+  await page.waitForSelector('dialog[open]');
+  await page.fill('#cmd-code', RIGHT_CODE);
+  await page.click('dialog button:has-text("Signer et envoyer")');
+  await page.waitForSelector('dialog[open]', { state: 'detached', timeout: 20000 });
+  await page.waitForFunction(() => document.querySelector('.cmd-tbl tbody tr:first-child')?.textContent.includes('Exécutée'), null, { timeout: 15000 });
+  ok('effacer le message : exécuté');
+
+  // ---- Effacer le téléphone : parcours en trois étapes, refus « disabled » puis exécution
+  const wipeFlow = async (expectDone) => {
+    await page.click('button:has-text("Effacer le téléphone…")');
+    await page.waitForSelector('dialog[open]');
+    const next = page.locator('dialog button:has-text("Continuer")');
+    if (!(await next.isDisabled())) fail('effacement : étape 1 franchissable sans confirmation');
+    if (expectDone) await page.screenshot({ path: path.join(OUT, 'commandes-effacement-etape1.png') });
+    await page.check('dialog input[type=checkbox]');
+    await next.click();
+    await page.fill('dialog input[type=text]', 'mauvais nom');
+    if (!(await next.isDisabled())) fail('effacement : étape 2 franchie avec un mauvais nom');
+    await page.fill('dialog input[type=text]', 's25');
+    await next.click();
+    if (expectDone) await page.screenshot({ path: path.join(OUT, 'commandes-effacement-etape3.png') });
+    await page.fill('#cmd-code', RIGHT_CODE);
+    await page.click('dialog button:has-text("Signer et effacer")');
+    await page.waitForSelector('dialog[open]', { state: 'detached', timeout: 20000 });
+  };
+  await wipeFlow(true);
+  await page.waitForFunction(() => document.querySelector('.cmd-tbl tbody tr:first-child')?.textContent.includes('Refusée'), null, { timeout: 15000 });
+  if (!(await rowOf('Effacer le téléphone').textContent()).includes('Canal désactivé')) fail('effacement non autorisé : motif « disabled » non traduit'); else ok('effacement non autorisé dans l\'app : refus « Canal désactivé » traduit');
+  await control({ agent: { wipe_allowed: true } });
+  await wipeFlow(false);
+  await page.waitForFunction(() => document.querySelector('.cmd-tbl tbody tr:first-child')?.textContent.includes('Exécutée'), null, { timeout: 15000 });
+  ok('effacement autorisé : exécuté après le parcours en trois étapes');
+  await page.screenshot({ path: path.join(OUT, 'commandes-historique.png'), fullPage: true });
+
+  // ---- Le code ne quitte jamais la page
+  const secrets = [RIGHT_CODE, WRONG_CODE];
+  const variants = (c) => [c, encodeURIComponent(c), Buffer.from(c).toString('base64'), Buffer.from(c).toString('hex'), c.replace(/ /g, '+')];
+  const leaks = [];
+  for (const r of state.requests) for (const c of secrets) for (const v of variants(c)) {
+    if (r.url.includes(v) || r.body.includes(v) || r.headers.includes(v)) leaks.push(`requête ${r.url} contient « ${v} »`);
+  }
+  for (const l of state.logs) for (const c of secrets) if (l.includes(c)) leaks.push('journal console : ' + l.slice(0, 80));
+  const posts = state.requests.filter((r) => r.url.endsWith('/api/console/commands') && r.body);
+  const mockLog = await (await fetch(`${BASE}/__mock/requests`)).json();
+  for (const r of mockLog) for (const c of secrets) for (const v of variants(c)) if (r.body.includes(v)) leaks.push('serveur : corps contenant le code');
+  const storage = await page.evaluate(async () => {
+    const dump = { local: JSON.stringify({ ...localStorage }), session: JSON.stringify({ ...sessionStorage }), cookie: document.cookie, idb: [] };
+    try { dump.idb = ((await indexedDB.databases?.()) || []).map((d) => d.name); } catch { /* ignoré */ }
+    dump.inputs = [...document.querySelectorAll('input')].map((i) => i.value).join('|');
+    return dump;
+  });
+  for (const c of secrets) for (const part of [storage.local, storage.session, storage.cookie, storage.inputs]) if (part.includes(c)) leaks.push('stockage ou champ contenant le code');
+  if (storage.idb.length) leaks.push('IndexedDB créée : ' + storage.idb.join(','));
+  if (leaks.length) for (const l of leaks) fail('FUITE DU CODE : ' + l);
+  else ok(`le code ne quitte pas la page : ${state.requests.length} requêtes, ${state.logs.length} messages console, ${mockLog.length} corps reçus par le serveur, stockages, cookies et champs inspectés`);
+  if (posts.length < 4) fail('commandes sensibles : corps POST attendus non observés');
+  else {
+    const bodies = posts.map((r) => JSON.parse(r.body));
+    const signed = bodies.filter((b) => b.sig);
+    const keysOk = signed.length >= 4 && signed.every((b) => Object.keys(b).sort().join() === 'device_id,payload,sig' && typeof b.payload === 'string' && JSON.parse(b.payload).id);
+    if (!keysOk) fail('corps d\'une commande signée inattendu'); else ok('corps envoyé : uniquement { device_id, payload (chaîne), sig }');
+    if (bodies.filter((b) => !b.sig).some((b) => 'sig' in b)) fail('commande simple avec sig');
+  }
+  // Journal du serveur : un seul `payload` signé chaque fois (même chaîne que celle de l'historique).
+
+  // ---- Pistage : filtres, actions, 409, niveau, dégradé
+  await page.goto(`${BASE}/pistage`, { waitUntil: 'load' });
+  await settle(page, '.trk-dom tbody tr');
+  await page.click('.trk-pub .linkish >> nth=0');
+  await settle(page, '.trk-dom tbody tr');
+  const pub1 = await page.locator('.trk-dom tbody tr').count();
+  await page.click('.seg-btn:has-text("Bloqués")');
+  await settle(page, '.trk-dom tbody tr');
+  const blockedRows = await page.locator('.trk-dom tbody tr').allTextContents();
+  if (!blockedRows.length || !blockedRows.every((t) => t.includes('Bloqué') || t.includes('Mixte'))) fail('filtre Bloqués : lignes non bloquées'); else ok(`filtres éditeur + bloqués : ${blockedRows.length} domaines (sur ${pub1} de l'éditeur)`);
+  await page.click('.seg-btn:has-text("Tous")');
+  await page.click('button:has-text("retirer le filtre")');
+  await page.fill('input[placeholder^="ex. doubleclick"]', 'pagead2');
+  await page.waitForSelector('.trk-dom tbody tr:has-text("pagead2.googlesyndication.com")');
+  ok('recherche de domaine');
+  await page.fill('input[placeholder^="ex. doubleclick"]', 'www.leboncoin.fr');
+  await page.waitForSelector('.trk-dom tbody tr:has-text("www.leboncoin.fr")');
+  const row = page.locator('.trk-dom tbody tr', { hasText: 'www.leboncoin.fr' }).first();
+  await row.locator('button:has-text("Bloquer")').click();
+  await row.locator('button:has-text("Remettre par défaut")').waitFor();
+  if (!(await row.textContent()).includes('Règle manuelle : bloquer')) fail('override : badge de règle absent'); else ok('Bloquer : règle enregistrée et affichée');
+  await row.locator('button:has-text("Remettre par défaut")').click();
+  await row.locator('button:has-text("Bloquer")').waitFor();
+  ok('Remettre par défaut : règle retirée');
+  await row.locator('button:has-text("Bloquer")').click();
+  await row.locator('button:has-text("Remettre par défaut")').waitFor();
+  // 409 : domaine indispensable
+  await page.fill('input[placeholder^="ex. doubleclick"]', 'mtalk.google.com');
+  await page.waitForSelector('.trk-dom tbody tr:has-text("mtalk.google.com")');
+  await page.locator('.trk-dom tbody tr', { hasText: 'mtalk.google.com' }).first().locator('button:has-text("Bloquer")').click();
+  await page.waitForSelector('dialog[open]:has-text("indispensable")');
+  await page.waitForSelector('dialog[open] li:has-text("notifications push")');
+  await page.screenshot({ path: path.join(OUT, 'pistage-409.png') });
+  await page.click('dialog button:has-text("Ne pas bloquer")');
+  await page.waitForSelector('dialog[open]', { state: 'detached' });
+  if ((await page.locator('.trk-dom tbody tr', { hasText: 'mtalk.google.com' }).first().textContent()).includes('Règle manuelle')) fail('409 : règle créée sans confirmation');
+  await page.locator('.trk-dom tbody tr', { hasText: 'mtalk.google.com' }).first().locator('button:has-text("Bloquer")').click();
+  await page.waitForSelector('dialog[open]:has-text("indispensable")');
+  await page.click('dialog button:has-text("Bloquer quand même")');
+  await page.waitForSelector('dialog[open]', { state: 'detached' });
+  await page.locator('.trk-dom tbody tr', { hasText: 'mtalk.google.com' }).first().locator('button:has-text("Remettre par défaut")').waitFor();
+  ok('409 domaine indispensable : détail affiché, refus sans force, blocage avec confirmation');
+  await page.locator('.trk-dom tbody tr', { hasText: 'mtalk.google.com' }).first().locator('button:has-text("Remettre par défaut")').click();
+  await page.waitForTimeout(400);
+  // Niveau
+  await page.fill('input[placeholder^="ex. doubleclick"]', '');
+  await page.click('.level:has-text("Strict")');
+  await page.click('button:has-text("Appliquer le niveau")');
+  await page.waitForSelector('dialog[open]:has-text("Passer au niveau")');
+  await page.screenshot({ path: path.join(OUT, 'pistage-niveau-confirmation.png') });
+  await page.click('dialog button:has-text("Changer le niveau")');
+  await page.waitForSelector('dialog[open]', { state: 'detached' });
+  await page.waitForSelector('.level.is-sel:has-text("Strict") .badge:has-text("Actuel")');
+  ok('niveau de blocage : confirmation puis changement (strict)');
+  await page.click('.level:has-text("Équilibré")');
+  await page.click('button:has-text("Appliquer le niveau")');
+  await page.click('dialog button:has-text("Changer le niveau")');
+  await page.waitForSelector('.level.is-sel:has-text("Équilibré") .badge:has-text("Actuel")');
+  // AdGuard indisponible
+  await control({ adguard: false });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.state-warn:has-text("Mode dégradé")');
+  await page.waitForSelector('.trk-dom tbody tr');
+  const dis = await page.locator('.trk-dom tbody tr button.btn-sm').evaluateAll((els) => els.length === 0 || els.every((e) => e.disabled));
+  const lvlDis = await page.locator('fieldset.levels').evaluate((e) => e.disabled);
+  const txt = await page.textContent('.main');
+  if (!dis || !lvlDis) fail('mode dégradé : actions ou niveau non désactivés'); else ok('adguard=false : vue DNS seule, actions et niveau désactivés avec explication');
+  if (txt.includes('Bloquées') && (await page.locator('.trk-pub').textContent()).includes('Bloquées / autorisées')) fail('mode dégradé : colonnes bloqué/autorisé affichées');
+  await shot(page, sc, '09-pistage-degrade');
+  await control({ adguard: true });
+
+  // ---- Notifications : contenu, masquage, texte hostile affiché comme texte
+  await page.goto(`${BASE}/evenements`, { waitUntil: 'load' });
+  await settle(page, '.tbl');
+  await page.click('button.seg-btn:has-text("7 jours")');
+  await page.fill('input[list=event-types]', 'app.notification');
+  await page.waitForSelector('.tbl tbody tr:has-text("contenu masqué")', { timeout: 15000 });
+  await page.fill('input[type=search]', 'iPhone');
+  await page.waitForSelector('.tbl tbody tr:has-text("Gagnez un iPhone")', { timeout: 15000 });
+  const hostile = await page.locator('.tbl tbody tr', { hasText: 'Gagnez un iPhone' }).first().textContent();
+  const imgs = await page.locator('.main img, .main b').count();
+  if (!hostile.includes('<img src=x onerror=alert(1)>') || imgs) fail('notification hostile : balisage interprété'); else ok('notification : titre et texte hostiles affichés comme texte, jamais interprétés');
+  if (hostile.includes('‮')) fail('notification : caractère bidirectionnel conservé');
+  await page.screenshot({ path: path.join(OUT, 'evenements-notifications.png') });
+  await page.goto(`${BASE}/carte`, { waitUntil: 'load' });
+  await settle(page, '.replay');
+  await page.click('button.seg-btn:has-text("7 jours")');
+  await settle(page, '.replay');
+  const prov = await page.textContent('.main');
+  if (!/Fournisseur/.test(prov) || !prov.includes('Fournisseurs')) fail('carte : fournisseur non indiqué'); else ok('carte : fournisseur de la position indiqué (détail du point, légende, résumé)');
+  // Suivi en direct de la carte : une nouvelle position reçue pendant qu'on regarde la trace
+  await page.click('button.seg-btn:has-text("24 h")');
+  await settle(page, '.replay');
+  await page.waitForSelector('[data-testid=live-status]:has-text("connecté")');
+  const nBefore = await page.textContent('.replay-info');
+  const other = await ctx.newPage();
+  instrument(other, 'fonctions-2', state);
+  await other.goto(`${BASE}/commandes`, { waitUntil: 'load' });
+  await other.waitForSelector('.cmd-list');
+  await other.click('button:has-text("Localiser maintenant")');
+  await page.waitForSelector('[data-testid=live-status]:has-text("dernière position reçue")', { timeout: 20000 });
+  const nAfter = await page.textContent('.replay-info');
+  if (nBefore === nAfter) fail('carte : la trace n\'a pas reçu la nouvelle position'); else ok('carte : position reçue en direct ajoutée à la trace après « Localiser maintenant »');
+  await page.screenshot({ path: path.join(OUT, 'carte-direct-apres-localisation.png') });
+  await other.close();
+
+  const csp = await page.evaluate(() => window.__csp);
+  if (csp.length) fail(`fonctions : violations CSP : ${[...new Set(csp)].join(' | ')}`); else ok('aucune violation CSP (WebCrypto, dialogues natifs)');
+  for (const e of state.errors) fail(e);
+  const extra = [...state.hosts].filter((h) => h !== TILE_HOST);
+  if (extra.length) fail(`fonctions : hôtes tiers : ${extra.join(', ')}`); else ok('aucune requête vers un tiers');
   await ctx.close();
 }
 

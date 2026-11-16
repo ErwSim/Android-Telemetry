@@ -30,7 +30,7 @@ export function LevelCard({ summary, onChanged }: { summary: TrackingSummary; on
       setChoice(undefined);
       onChanged(selected);
     } catch (e) {
-      setError(e instanceof ApiError ? (e.status === 503 ? "AdGuard Home n'est pas joignable : le niveau n'a pas été changé." : e.message) : String(e));
+      setError(e instanceof ApiError ? `Le niveau n'a pas été changé. ${e.message}` : String(e));
     } finally {
       setBusy(false);
     }

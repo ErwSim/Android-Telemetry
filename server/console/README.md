@@ -1,10 +1,11 @@
 # Console web Vigie
 
-Tableau de bord du propriétaire : position, réseau par application, inventaire, posture de sécurité,
-événements et alertes Wazuh. React 19, TypeScript strict, Vite, MapLibre GL JS, uPlot, React Router.
+Tableau de bord du propriétaire : position, réseau par application, pistage (ce qui est bloqué ou autorisé),
+commandes à distance, inventaire, posture de sécurité, événements et alertes Wazuh. React 19, TypeScript strict, Vite, MapLibre GL JS, uPlot, React Router.
 Interface en français, thèmes clair et sombre. Aucune ressource externe au chargement, hors tuiles de carte.
 
-La console ne parle qu'à l'API `/api/console/*` du collecteur (contrat §6 de `docs/contrat/contrat.md`).
+La console ne parle qu'à l'API `/api/console/*` du collecteur (contrat §6, §8 commandes, §9 pistage, §10
+notifications de `docs/contrat/contrat.md`).
 
 ## Développement
 
@@ -23,26 +24,45 @@ catalogue et des `data` partiels. Il émet aussi des événements en direct sur 
 `POST /__mock/control` permet de simuler `{"wazuh": false}`, `{"expire": true}` (session expirée),
 `{"fail": ["/stats/top"]}` (erreur 500) ou `{"latency_ms": 800}`.
 
+Le mock simule aussi (contrat §8-§10) :
+
+- **commandes** : validation du collecteur (type, bornes, validité, `sig` présent si et seulement si sensible, limites 20/h
+  et 10 en attente, `409` à l'annulation d'une commande déjà remise) et **agent simulé** qui récupère les commandes, vérifie la
+  signature avec la clé dérivée de `MOCK_COMMAND_CODE` (défaut `correct horse battery staple`, le code du vecteur du contrat),
+  respecte l'ordre des vérifications du §8 (`disabled`, `malformed`, `bad_signature`, `locked_out` après 5 échecs, `replay`,
+  `expired`, `not_device_owner`…), émet `command.result` et, pour `locate`, une vraie `location.fix` sur le flux SSE. Contrôles :
+  `{"channel": "stream"|"poll"|"offline"}`, `{"agent": {"disabled", "wipe_allowed", "code_configured", "device_owner",
+  "locate_fail", "deliver_ms", "exec_ms"}}` ; `GET /__mock/requests` rend les corps des requêtes modifiantes reçues ;
+- **pistage** : décomptes dérivés des `net.dns`/`net.usage` générés, politique (niveau + règles manuelles) évaluée à l'heure de
+  chaque requête (changer le niveau produit des domaines « mixtes »), motifs au format AdGuard, `PUT /tracking/override` avec
+  `409` pour les domaines indispensables (`force`), `PUT /tracking/level`, et `{"adguard": false}` (vue DNS seule, `503` sur les `PUT`) ;
+- **notifications** : `app.notification` avec titre/texte (depuis J-3), contenu masqué (`redacted`), texte hostile et texte très long.
+
 ## Build, tests, vérification
 
 ```sh
 npm run typecheck   # tsc strict (src + mock)
 npm run lint
-npm test            # vitest : formatage, agrégations, trous de trajet, posture, filtres…
+npm test            # vitest : formatage, agrégations, trous de trajet, posture, filtres, signature des commandes (vecteur §8), pistage…
 npm run build       # sortie statique dans dist/
 npm run verify      # parcours Chromium (Playwright global) contre le serveur factice servant dist/
 ```
 
 `npm run verify` démarre le serveur factice avec `--static dist` (qui applique la CSP ci-dessous et le repli SPA),
 parcourt chaque page en clair/sombre et en bureau/téléphone, et échoue sur toute erreur console, exception,
-violation CSP, statut HTTP inattendu ou requête hors hôte local et hors tuiles. Captures dans `OUT` (défaut
-`verify-out/`). `TILES=real` laisse passer les vrais appels aux tuiles OSM (sinon une tuile synthétique est servie).
+violation CSP, statut HTTP inattendu ou requête hors hôte local et hors tuiles. Il rejoue aussi, contre le mock, les
+parcours de bout en bout : commandes simples et suivi en direct, annulation, verrouillage avec un mauvais code
+(`bad_signature` constaté par l'agent simulé) puis le bon, effacement en trois étapes, position qui arrive après « Localiser
+maintenant » (carte et trace en direct), pistage (filtres, Bloquer/Autoriser/Remettre par défaut, `409` puis `force`, niveau,
+`adguard: false`), notifications hostiles affichées comme texte, fournisseurs de position ; et **prouve que le code de
+commande ne quitte pas la page** (aucune requête, aucun journal console, aucun corps reçu par le serveur factice, aucun
+stockage, cookie ou champ ne le contient, ni en clair ni encodé). Captures dans `OUT` (défaut `verify-out/`). `TILES=real` laisse passer les vrais appels aux tuiles OSM (sinon une tuile synthétique est servie).
 
 ## Déploiement
 
 `dist/` est servi à la racine du même hôte que l'API (chemins absolus `/assets/…`, API en `/api/console/…`).
 Le serveur doit renvoyer `index.html` pour toute URL de page inconnue (routage côté client : `/carte`,
-`/evenements`, `/evenements/:id`, `/reseau`, `/applications`, `/securite`, `/alertes`, `/connexion`) mais un 404
+`/evenements`, `/evenements/:id`, `/reseau`, `/pistage`, `/applications`, `/securite`, `/alertes`, `/commandes`, `/connexion`) mais un 404
 pour un fichier absent (`/assets/…`). Les fichiers `.js` doivent être servis en `text/javascript` (le worker
 MapLibre est publié en `.js` pour cela).
 
@@ -85,13 +105,47 @@ base-uri 'none'; form-action 'self'; frame-ancestors 'none'
 ```
 index.html, public/            point d'entrée, config.json (tuiles), theme-init.js, favicon
 src/api/                       client HTTP, types du contrat, useApi, pagination par curseur, flux SSE
-src/lib/                       formatage fr, périodes, trous de trajet, géo, agrégations, posture, Google/Samsung
+src/lib/                       formatage fr, périodes, trous de trajet, géo, agrégations, posture, Google/Samsung,
+                               commandes (ULID, payload, signature WebCrypto), pistage, notifications, fournisseurs
 src/state/                     session, appareil sélectionné, thème, libellés d'applications
 src/components/                mise en page, carte (MapLibre), graphique (uPlot), tableaux, JSON, sélecteur de période
-src/pages/                     Login, Overview, MapPage, Events, Network, Apps, Security, Alerts
+src/pages/                     Login, Overview, MapPage, Events, Network, Tracking, Apps, Security, Alerts, Commands
 mock/                          serveur factice (Node 22, TypeScript sans compilation) et générateur de données
 scripts/verify-browser.cjs     vérification navigateur
 ```
+
+## Commandes à distance (page « Commandes »)
+
+Choix : une **page dédiée** (et non la vue d'ensemble) car elle porte des gestes lourds (dialogues de confirmation, historique
+qui se met à jour en direct) ; la vue d'ensemble n'affiche que l'état du canal et renvoie vers elle.
+
+- Le **navigateur** génère l'ULID, construit `payload` (JSON sérialisé **une seule fois** ; c'est cette chaîne exacte qui est
+  signée et envoyée), fixe la validité (1 h simple, 7 jours sensible par défaut, 30 jours au plus) et signe les commandes
+  sensibles : `K = PBKDF2-HMAC-SHA256(code, "vigie-cmd-v1:" + device_id, 600 000, 32 octets)` puis
+  `sig = base64(HMAC-SHA256(K, UTF-8(payload)))`, par WebCrypto (`src/lib/commands.ts`). Le test `commands.test.ts` reproduit
+  le vecteur du contrat §8 (K, payload reconstruit à l'identique, signature, accents en UTF-8).
+- Le **code de commande** est saisi à chaque commande dans un champ **non contrôlé** (il n'existe pas dans l'état React), sert
+  à dériver la clé puis à signer, et le champ est vidé aussitôt. Ni code ni clé dans `localStorage`, `sessionStorage`,
+  IndexedDB, cookie, journal ou requête ; seul `{ device_id, payload, sig }` part. La clé dérivée est remise à zéro après
+  import dans WebCrypto. Limite assumée : une chaîne JavaScript ne peut pas être effacée de la mémoire, elle est seulement
+  abandonnée au ramasse-miettes. WebCrypto exige un contexte sécurisé (HTTPS ou localhost) : sinon l'interface le dit et
+  désactive les commandes sensibles.
+- Garde-fous : confirmation explicite pour verrouiller ; effacement du téléphone en trois étapes (irréversibilité et rappel
+  que l'effacement doit être autorisé dans l'app, nom de l'appareil à retaper, puis code). L'interface explique que le serveur
+  ne connaît pas le code, ne peut pas vérifier la signature, et qu'un code faux n'est détecté que par le téléphone
+  (`bad_signature`, avertissement après chaque refus, rappel de la limite de 5 par heure).
+- L'historique se rafraîchit toutes les 2,5 s tant qu'une commande est `pending`/`delivered` (et à chaque `command.result` du
+  flux SSE) ; annulation possible tant que `pending`.
+- « Localiser maintenant » : le flux SSE apporte le `location.fix` ; la carte de la page Commandes et la trace de la page Carte
+  (« Suivi en direct ») se mettent à jour.
+
+## Pistage (page « Pistage »)
+
+Répartition avec **Réseau** : *Réseau* décrit le trafic observé (noms demandés, destinations, volumes, chronologie) et marche
+sans AdGuard ; *Pistage* répond à « qu'est-ce qui est bloqué ou autorisé, vers qui, et que fait-on » (éditeurs, statut, motif,
+actions, niveau). Les deux pages se renvoient l'une à l'autre (`/reseau?app=<paquet>` ouvre le détail d'une application).
+La page affiche en permanence que Vigie voit à qui le téléphone parle, combien et depuis quelle application, **pas le contenu**
+(chiffré). Sans AdGuard (`adguard: false`) : vue DNS seule, pas de statut, actions et niveau désactivés avec explication.
 
 ## Limites connues liées au contrat §6
 

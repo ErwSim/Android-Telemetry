@@ -1926,3 +1926,9 @@ textarea {
 .notif-sum {
   margin: 0 0 8px;
 }
+
+@media (min-width: 861px) {
+  .levels {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

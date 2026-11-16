@@ -30,7 +30,7 @@ export function PublisherTable({
             </th>
             {!degraded && <th scope="col">Bloquées / autorisées</th>}
             {!degraded && (
-              <th scope="col" className="right">
+              <th scope="col" className="right hide-sm">
                 Bloquées
               </th>
             )}
@@ -40,7 +40,7 @@ export function PublisherTable({
             <th scope="col" className="right hide-sm">
               Applis
             </th>
-            <th scope="col" className="right">
+            <th scope="col" className="right hide-sm">
               Envoyé
             </th>
             <th scope="col" className="right hide-sm">
@@ -74,10 +74,10 @@ export function PublisherTable({
                     <SplitBar blocked={p.blocked} allowed={p.allowed} />
                   </td>
                 )}
-                {!degraded && <td className="right">{pct === undefined ? '—' : fmtPct(pct)}</td>}
+                {!degraded && <td className="right hide-sm">{pct === undefined ? '—' : fmtPct(pct)}</td>}
                 <td className="right hide-sm">{fmtNumber(p.domains)}</td>
                 <td className="right hide-sm">{fmtNumber(p.apps)}</td>
-                <td className="right">{fmtBytes(p.tx_bytes)}</td>
+                <td className="right hide-sm">{fmtBytes(p.tx_bytes)}</td>
                 <td className="right hide-sm">{fmtBytes(p.rx_bytes)}</td>
               </tr>
             );
@@ -92,7 +92,7 @@ export function PublisherTable({
                 <SplitBar blocked={totals.blocked} allowed={totals.allowed} />
               </td>
             )}
-            {!degraded && <td className="right">{totals.blocked === undefined ? '—' : fmtPct(blockedPct(totals) ?? 0)}</td>}
+            {!degraded && <td className="right hide-sm">{totals.blocked === undefined ? '—' : fmtPct(blockedPct(totals) ?? 0)}</td>}
             <td className="hide-sm" colSpan={4} />
           </tr>
         </tfoot>
