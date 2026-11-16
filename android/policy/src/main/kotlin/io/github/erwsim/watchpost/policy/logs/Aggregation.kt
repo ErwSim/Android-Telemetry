@@ -1,4 +1,4 @@
-package io.github.erwsim.vigie.policy.logs
+package io.github.erwsim.watchpost.policy.logs
 
 /** A group of identical log entries: the first one, how many, and the time of the last one. */
 data class Aggregated<T>(val first: T, val count: Int, val firstMs: Long, val lastMs: Long, val members: List<T>)

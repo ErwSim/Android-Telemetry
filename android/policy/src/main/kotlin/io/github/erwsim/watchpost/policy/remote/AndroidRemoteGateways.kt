@@ -1,9 +1,9 @@
-package io.github.erwsim.vigie.policy.remote
+package io.github.erwsim.watchpost.policy.remote
 
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
-import io.github.erwsim.vigie.policy.VigieAdminReceiver
+import io.github.erwsim.watchpost.policy.WatchpostAdminReceiver
 
 /**
  * [LockScreenGateway] on `DevicePolicyManager` (signatures checked against the android-37.0 SDK):
@@ -15,7 +15,7 @@ import io.github.erwsim.vigie.policy.VigieAdminReceiver
  */
 class AndroidLockScreenGateway(private val context: Context) : LockScreenGateway {
     private val dpm: DevicePolicyManager get() = checkNotNull(context.getSystemService(DevicePolicyManager::class.java)) { "no DevicePolicyManager" }
-    private val admin: ComponentName get() = ComponentName(context, VigieAdminReceiver::class.java)
+    private val admin: ComponentName get() = ComponentName(context, WatchpostAdminReceiver::class.java)
 
     override fun isDeviceOwner(): Boolean = try {
         dpm.isDeviceOwnerApp(context.packageName)

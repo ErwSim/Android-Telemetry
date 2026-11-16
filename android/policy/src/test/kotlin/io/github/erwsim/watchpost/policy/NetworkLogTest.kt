@@ -1,11 +1,11 @@
-package io.github.erwsim.vigie.policy
+package io.github.erwsim.watchpost.policy
 
-import io.github.erwsim.vigie.core.event.Rfc3339
-import io.github.erwsim.vigie.core.testing.Contract
-import io.github.erwsim.vigie.policy.logs.NetRecord
-import io.github.erwsim.vigie.policy.logs.NetworkLogProcessor
-import io.github.erwsim.vigie.policy.logs.OwnerResolver
-import io.github.erwsim.vigie.policy.logs.aggregateByWindow
+import io.github.erwsim.watchpost.core.event.Rfc3339
+import io.github.erwsim.watchpost.core.testing.Contract
+import io.github.erwsim.watchpost.policy.logs.NetRecord
+import io.github.erwsim.watchpost.policy.logs.NetworkLogProcessor
+import io.github.erwsim.watchpost.policy.logs.OwnerResolver
+import io.github.erwsim.watchpost.policy.logs.aggregateByWindow
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive

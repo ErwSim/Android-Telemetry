@@ -1,4 +1,4 @@
-package io.github.erwsim.vigie.policy.logs
+package io.github.erwsim.watchpost.policy.logs
 
 import android.app.admin.ConnectEvent
 import android.app.admin.DevicePolicyManager
@@ -7,15 +7,15 @@ import android.app.admin.NetworkEvent
 import android.content.ComponentName
 import android.content.pm.PackageManager
 import androidx.core.content.edit
-import io.github.erwsim.vigie.core.collector.Collector
-import io.github.erwsim.vigie.core.collector.CollectorContext
-import io.github.erwsim.vigie.core.collector.Requirement
-import io.github.erwsim.vigie.core.event.Severity
-import io.github.erwsim.vigie.core.settings.SettingKey
-import io.github.erwsim.vigie.core.settings.SettingSpec
-import io.github.erwsim.vigie.policy.PolicyModule
-import io.github.erwsim.vigie.policy.R
-import io.github.erwsim.vigie.policy.VigieAdminReceiver
+import io.github.erwsim.watchpost.core.collector.Collector
+import io.github.erwsim.watchpost.core.collector.CollectorContext
+import io.github.erwsim.watchpost.core.collector.Requirement
+import io.github.erwsim.watchpost.core.event.Severity
+import io.github.erwsim.watchpost.core.settings.SettingKey
+import io.github.erwsim.watchpost.core.settings.SettingSpec
+import io.github.erwsim.watchpost.policy.PolicyModule
+import io.github.erwsim.watchpost.policy.R
+import io.github.erwsim.watchpost.policy.WatchpostAdminReceiver
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -68,7 +68,7 @@ class NetworkLogCollector : Collector {
         }
     }
 
-    /** From [VigieAdminReceiver] (main thread): must return fast. */
+    /** From [WatchpostAdminReceiver] (main thread): must return fast. */
     fun onBatchAvailable(context: android.content.Context, token: Long) {
         context.getSharedPreferences("collector_$id", android.content.Context.MODE_PRIVATE)
             .edit { putLong(K_NOTIFIED, token) }
@@ -149,7 +149,7 @@ class NetworkLogCollector : Collector {
     }
 
     private fun dpm(ctx: CollectorContext) = ctx.appContext.getSystemService(DevicePolicyManager::class.java)
-    private fun admin(ctx: CollectorContext) = ComponentName(ctx.appContext, VigieAdminReceiver::class.java)
+    private fun admin(ctx: CollectorContext) = ComponentName(ctx.appContext, WatchpostAdminReceiver::class.java)
 
     companion object {
         const val ID = "network_log"

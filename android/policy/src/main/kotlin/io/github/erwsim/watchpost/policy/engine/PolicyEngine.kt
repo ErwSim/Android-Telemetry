@@ -1,10 +1,10 @@
-package io.github.erwsim.vigie.policy.engine
+package io.github.erwsim.watchpost.policy.engine
 
-import io.github.erwsim.vigie.core.event.AgentClock
-import io.github.erwsim.vigie.core.event.Severity
-import io.github.erwsim.vigie.core.sink.EventSink
-import io.github.erwsim.vigie.core.sink.emit
-import io.github.erwsim.vigie.policy.dns.DnsProbe
+import io.github.erwsim.watchpost.core.event.AgentClock
+import io.github.erwsim.watchpost.core.event.Severity
+import io.github.erwsim.watchpost.core.sink.EventSink
+import io.github.erwsim.watchpost.core.sink.emit
+import io.github.erwsim.watchpost.policy.dns.DnsProbe
 
 /** What a preview line would do. */
 enum class ChangeOp {
@@ -14,7 +14,7 @@ enum class ChangeOp {
     /** Applied earlier, no longer selected: will be undone. */
     REVERT,
 
-    /** Selected and already applied by Vigie: nothing to do. */
+    /** Selected and already applied by Watchpost: nothing to do. */
     UNCHANGED,
 
     /** Package not installed on this device. */
@@ -23,7 +23,7 @@ enum class ChangeOp {
     /** Refused by the hard-coded deny list or restriction guard. */
     SKIP_DENIED,
 
-    /** Already in the wanted state without Vigie (left alone, and therefore never undone). */
+    /** Already in the wanted state without Watchpost (left alone, and therefore never undone). */
     SKIP_ALREADY,
 
     /** Not possible here (missing WRITE_SECURE_SETTINGS, unreadable key, no DNS host…). */
@@ -169,7 +169,7 @@ class PolicyEngine(
             PackageDenyList.isDenied(item.pkg, protected) -> change(item, ChangeOp.SKIP_DENIED, DENY_REASON)
             safe { gateway.isInstalled(item.pkg) } != true -> change(item, ChangeOp.SKIP_ABSENT)
             safe { gateway.isHidden(item.pkg) || gateway.isSuspended(item.pkg) } == true ->
-                change(item, ChangeOp.SKIP_ALREADY, "déjà masqué ou suspendu hors de Vigie")
+                change(item, ChangeOp.SKIP_ALREADY, "déjà masqué ou suspendu hors de Watchpost")
             else -> change(item, ChangeOp.APPLY, if (item.method == PackageMethod.HIDE) "masqué" else "suspendu")
         }
         is PermissionEntry -> when {
@@ -188,7 +188,7 @@ class PolicyEngine(
         }
         is RestrictionEntry -> when {
             RestrictionGuard.isForbidden(item.key) -> change(item, ChangeOp.SKIP_DENIED, "restriction interdite (porte de secours, fonctions vitales, ou hors de la liste vérifiée)")
-            safe { gateway.hasRestriction(item.key) } == true -> change(item, ChangeOp.SKIP_ALREADY, "déjà posée hors de Vigie")
+            safe { gateway.hasRestriction(item.key) } == true -> change(item, ChangeOp.SKIP_ALREADY, "déjà posée hors de Watchpost")
             else -> change(item, ChangeOp.APPLY)
         }
         is SettingEntry -> when {
@@ -214,7 +214,7 @@ class PolicyEngine(
      * list re-checked), never trusted from the screen.
      */
     fun apply(selection: PolicySelection): EngineReport = synchronized(lock) {
-        if (!isDeviceOwner()) return EngineReport(failed = listOf("Vigie n'est pas Device Owner"))
+        if (!isDeviceOwner()) return EngineReport(failed = listOf("Watchpost n'est pas Device Owner"))
         store.saveSelection(selection)
         val profile = selection.profile.wire
         var report = EngineReport()
@@ -279,9 +279,9 @@ class PolicyEngine(
      * Denies [permissions] of `base.target` and records them in [base] (created or extended), write-ahead:
      * the record (with each permission's previous state) is on disk before the first change, each
      * permission is marked applied once its denial is read back. A permission already denied:
-     * - by another record of Vigie (a catalog item, another guard): shared, with that record's original
+     * - by another record of Watchpost (a catalog item, another guard): shared, with that record's original
      *   state, so that whichever is undone last restores it (see [revertPermissions]);
-     * - outside Vigie: left alone and not recorded (never undone).
+     * - outside Watchpost: left alone and not recorded (never undone).
      * A permission that fails is reported and does not stop the others. With [keepEmpty] (quarantine),
      * the record is kept even when nothing was denied.
      */
@@ -332,7 +332,7 @@ class PolicyEngine(
         return report
     }
 
-    /** The original state of [permission] of [pkg] if another record of Vigie holds it denied, else null. */
+    /** The original state of [permission] of [pkg] if another record of Watchpost holds it denied, else null. */
     internal fun claimOf(pkg: String, permission: String, exceptId: String): PermissionPrev? =
         store.state().records.asSequence()
             .filter { it.id != exceptId && it.kind == ItemKind.PERMISSION && it.target == pkg }
@@ -467,9 +467,9 @@ class PolicyEngine(
 
     // ---------------------------------------------------------------- VPN (manual)
 
-    /** Always-on VPN for an installed VPN app ([pkg] null removes Vigie's setting). */
+    /** Always-on VPN for an installed VPN app ([pkg] null removes Watchpost's setting). */
     fun setAlwaysOnVpn(pkg: String?, lockdown: Boolean): EngineReport = synchronized(lock) {
-        if (!isDeviceOwner()) return EngineReport(failed = listOf("Vigie n'est pas Device Owner"))
+        if (!isDeviceOwner()) return EngineReport(failed = listOf("Watchpost n'est pas Device Owner"))
         if (pkg == null) return revertLocked(PolicySelection.ID_VPN)
         val protected = safe { gateway.protectedPackages() } ?: emptySet()
         if (PackageDenyList.isDenied(pkg, protected)) return refused("always_on_vpn", pkg, null)
@@ -505,7 +505,7 @@ class PolicyEngine(
 
     /**
      * Safety net when the applied state cannot be trusted (unreadable preferences, or on request from
-     * the ADB rescue): restores everything the catalog can have changed, without knowing what Vigie
+     * the ADB rescue): restores everything the catalog can have changed, without knowing what Watchpost
      * really applied. Catalog packages hidden or suspended are shown again, catalog restrictions set
      * by this admin (and the private DNS lock) are cleared, catalog permissions denied by policy go
      * back to the user's control, and the private DNS stops being imposed on the enrolled host
@@ -515,7 +515,7 @@ class PolicyEngine(
     fun sweepCatalog(): EngineReport = synchronized(lock) { sweepLocked() }
 
     private fun sweepLocked(): EngineReport {
-        if (!isDeviceOwner()) return EngineReport(failed = listOf("Vigie n'est pas Device Owner"))
+        if (!isDeviceOwner()) return EngineReport(failed = listOf("Watchpost n'est pas Device Owner"))
         var report = EngineReport()
         for (e in catalog.packages) {
             if (safe { gateway.isInstalled(e.pkg) } != true) continue
@@ -607,7 +607,7 @@ class PolicyEngine(
 
     /**
      * Restores the permissions of a PERMISSION record ([only]: a subset of them) to their exact previous
-     * state. A permission still held denied by another record of Vigie is not touched (that record keeps
+     * state. A permission still held denied by another record of Watchpost is not touched (that record keeps
      * the same original state and restores it when it is undone). The record is removed once nothing in
      * it remains applied, unless [keepRecord] (quarantine: the package stays quarantined).
      */
@@ -620,7 +620,7 @@ class PolicyEngine(
         // denial was read back as failed) may nevertheless be denied on the device. Whatever is denied by
         // policy now and was not before is restored too (otherwise it would stay denied and locked in the
         // Settings for ever): only this admin can have denied it, and a denial held by another record of
-        // Vigie is left to that record below.
+        // Watchpost is left to that record below.
         fun deniedByTheCrash(p: PermissionPrev) = !p.applied && p.prevState != Dpm.GRANT_DENIED &&
             safe { gateway.permissionGrantState(pkg, p.permission) } == Dpm.GRANT_DENIED
         // Foreground location before background location when granting back.
@@ -704,7 +704,7 @@ class PolicyEngine(
         }
         var failure = if (restored) null else error ?: "aucun effet constaté"
         // Could not restore "off" or the previous host: at least stop imposing our host (automatic mode),
-        // so that the phone never stays bound to a server Vigie no longer manages. Kept for a retry.
+        // so that the phone never stays bound to a server Watchpost no longer manages. Kept for a retry.
         if (!restored && mode == Dpm.DNS_MODE_HOSTNAME && safe { gateway.privateDnsHost() } == record.target) {
             attempt { Dpm.dnsSetError(gateway.setPrivateDnsOpportunistic()) }
             if (safe { gateway.privateDnsMode() } == Dpm.DNS_MODE_OPPORTUNISTIC) failure += " ; mode automatique appliqué à la place"
@@ -745,7 +745,7 @@ class PolicyEngine(
      * undone, unless [force] (the remaining items are listed in the report).
      */
     fun removeDeviceOwner(force: Boolean): EngineReport = synchronized(lock) {
-        if (!isDeviceOwner()) return EngineReport(failed = listOf("Vigie n'est pas Device Owner"))
+        if (!isDeviceOwner()) return EngineReport(failed = listOf("Watchpost n'est pas Device Owner"))
         val undo = revertAllLockedForRemoval()
         if (!undo.allOk && !force) return undo
         var report = undo
@@ -876,8 +876,8 @@ class PolicyEngine(
         const val EVENT_TYPE = "security.policy"
         const val LABEL_DNS = "DNS privé imposé"
         const val LABEL_BACKUP = "Réactiver la sauvegarde Android"
-        const val DENY_REASON = "liste de refus (paquet vital, OTA, attestation, lanceur, téléphone, clavier, installeur ou Vigie)"
-        const val OWNER_TARGET = "io.github.erwsim.vigie"
+        const val DENY_REASON = "liste de refus (paquet vital, OTA, attestation, lanceur, téléphone, clavier, installeur ou Watchpost)"
+        const val OWNER_TARGET = "io.github.erwsim.watchpost"
         internal const val MAX_ERROR = 300
 
         fun kindOf(item: CatalogItem): ItemKind = when (item) {

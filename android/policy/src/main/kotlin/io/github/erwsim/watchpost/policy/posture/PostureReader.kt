@@ -1,4 +1,4 @@
-package io.github.erwsim.vigie.policy.posture
+package io.github.erwsim.watchpost.policy.posture
 
 import android.Manifest
 import android.app.AppOpsManager
@@ -11,8 +11,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.UserManager
 import android.provider.Settings
-import io.github.erwsim.vigie.core.capability.SystemProps
-import io.github.erwsim.vigie.policy.VigieAdminReceiver
+import io.github.erwsim.watchpost.core.capability.SystemProps
+import io.github.erwsim.watchpost.policy.WatchpostAdminReceiver
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.cert.CertificateFactory
@@ -25,7 +25,7 @@ import java.security.cert.X509Certificate
  */
 class PostureReader(private val context: Context) {
     private val dpm: DevicePolicyManager? get() = context.getSystemService(DevicePolicyManager::class.java)
-    private val admin get() = ComponentName(context, VigieAdminReceiver::class.java)
+    private val admin get() = ComponentName(context, WatchpostAdminReceiver::class.java)
 
     /** Cached: these properties only change with a reboot. */
     private val verifiedBootState: String? by lazy { SystemProps.get("ro.boot.verifiedbootstate") }

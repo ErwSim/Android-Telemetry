@@ -1,4 +1,4 @@
-package io.github.erwsim.vigie.policy.engine
+package io.github.erwsim.watchpost.policy.engine
 
 /**
  * Everything the policy engine does to the device, behind one interface so that the engine logic

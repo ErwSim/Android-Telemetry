@@ -1,25 +1,25 @@
-package io.github.erwsim.vigie.policy
+package io.github.erwsim.watchpost.policy
 
-import io.github.erwsim.vigie.core.sink.EventSink
-import io.github.erwsim.vigie.core.testing.Contract
-import io.github.erwsim.vigie.core.testing.FakeClock
-import io.github.erwsim.vigie.core.testing.MemoryPrefs
-import io.github.erwsim.vigie.policy.dns.ProbeResult
-import io.github.erwsim.vigie.policy.engine.AppliedRecord
-import io.github.erwsim.vigie.policy.engine.AppliedState
-import io.github.erwsim.vigie.policy.engine.ChangeOp
-import io.github.erwsim.vigie.policy.engine.Dpm
-import io.github.erwsim.vigie.policy.engine.ItemKind
-import io.github.erwsim.vigie.policy.engine.PackageMethod
-import io.github.erwsim.vigie.policy.engine.PermissionPrev
-import io.github.erwsim.vigie.policy.engine.PolicyCatalog
-import io.github.erwsim.vigie.policy.engine.PolicyEngine
-import io.github.erwsim.vigie.policy.engine.PolicySelection
-import io.github.erwsim.vigie.policy.engine.PolicyStore
-import io.github.erwsim.vigie.policy.engine.Profile
-import io.github.erwsim.vigie.policy.engine.RecordStatus
-import io.github.erwsim.vigie.policy.engine.RestrictionGuard
-import io.github.erwsim.vigie.policy.engine.SettingGuard
+import io.github.erwsim.watchpost.core.sink.EventSink
+import io.github.erwsim.watchpost.core.testing.Contract
+import io.github.erwsim.watchpost.core.testing.FakeClock
+import io.github.erwsim.watchpost.core.testing.MemoryPrefs
+import io.github.erwsim.watchpost.policy.dns.ProbeResult
+import io.github.erwsim.watchpost.policy.engine.AppliedRecord
+import io.github.erwsim.watchpost.policy.engine.AppliedState
+import io.github.erwsim.watchpost.policy.engine.ChangeOp
+import io.github.erwsim.watchpost.policy.engine.Dpm
+import io.github.erwsim.watchpost.policy.engine.ItemKind
+import io.github.erwsim.watchpost.policy.engine.PackageMethod
+import io.github.erwsim.watchpost.policy.engine.PermissionPrev
+import io.github.erwsim.watchpost.policy.engine.PolicyCatalog
+import io.github.erwsim.watchpost.policy.engine.PolicyEngine
+import io.github.erwsim.watchpost.policy.engine.PolicySelection
+import io.github.erwsim.watchpost.policy.engine.PolicyStore
+import io.github.erwsim.watchpost.policy.engine.Profile
+import io.github.erwsim.watchpost.policy.engine.RecordStatus
+import io.github.erwsim.watchpost.policy.engine.RestrictionGuard
+import io.github.erwsim.watchpost.policy.engine.SettingGuard
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -304,7 +304,7 @@ class PolicyEngineRescueTest {
         e.apply(PolicySelection(Profile.BALANCED, mapOf("dns" to false, "backup" to false)))
         gw.throwOnHide += "com.samsung.android.rubin.app"
         assertFalse(e.removeDeviceOwner(force = false).allOk)
-        assertTrue("still Device Owner: Vigie can retry later", gw.owner)
+        assertTrue("still Device Owner: Watchpost can retry later", gw.owner)
         assertTrue("com.samsung.android.rubin.app" in gw.hidden)
     }
 }

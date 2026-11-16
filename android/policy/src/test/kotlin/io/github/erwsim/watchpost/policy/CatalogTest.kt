@@ -1,11 +1,11 @@
-package io.github.erwsim.vigie.policy
+package io.github.erwsim.watchpost.policy
 
 import android.os.UserManager
-import io.github.erwsim.vigie.policy.engine.PackageDenyList
-import io.github.erwsim.vigie.policy.engine.PolicyCatalog
-import io.github.erwsim.vigie.policy.engine.Profile
-import io.github.erwsim.vigie.policy.engine.RestrictionGuard
-import io.github.erwsim.vigie.policy.engine.Risk
+import io.github.erwsim.watchpost.policy.engine.PackageDenyList
+import io.github.erwsim.watchpost.policy.engine.PolicyCatalog
+import io.github.erwsim.watchpost.policy.engine.Profile
+import io.github.erwsim.watchpost.policy.engine.RestrictionGuard
+import io.github.erwsim.watchpost.policy.engine.Risk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -35,7 +35,7 @@ class CatalogTest {
             "com.google.android.webview", "com.samsung.android.app.routines", "com.sec.android.app.launcher",
             "com.android.systemui", "com.android.phone", "com.android.settings", "com.sec.android.diagmonagent",
             "com.samsung.android.securitylogagent", "com.samsung.android.knox.attestation", "com.android.shell",
-            "com.google.android.packageinstaller", "io.github.erwsim.vigie",
+            "com.google.android.packageinstaller", "io.github.erwsim.watchpost",
         ).forEach { assertTrue(it, PackageDenyList.isDenied(it)) }
         assertTrue(RestrictionGuard.isForbidden(UserManager.DISALLOW_DEBUGGING_FEATURES))
         assertTrue(RestrictionGuard.isForbidden(UserManager.DISALLOW_SHARE_LOCATION))

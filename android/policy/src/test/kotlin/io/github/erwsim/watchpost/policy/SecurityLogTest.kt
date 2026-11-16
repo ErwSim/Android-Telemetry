@@ -1,12 +1,12 @@
-package io.github.erwsim.vigie.policy
+package io.github.erwsim.watchpost.policy
 
 import android.app.admin.SecurityLog
-import io.github.erwsim.vigie.core.event.Severity
-import io.github.erwsim.vigie.core.testing.Contract
-import io.github.erwsim.vigie.policy.logs.RawSecurityEvent
-import io.github.erwsim.vigie.policy.logs.SecurityLogFilter
-import io.github.erwsim.vigie.policy.logs.SecurityLogProcessor
-import io.github.erwsim.vigie.policy.logs.SecurityLogTranslator
+import io.github.erwsim.watchpost.core.event.Severity
+import io.github.erwsim.watchpost.core.testing.Contract
+import io.github.erwsim.watchpost.policy.logs.RawSecurityEvent
+import io.github.erwsim.watchpost.policy.logs.SecurityLogFilter
+import io.github.erwsim.watchpost.policy.logs.SecurityLogProcessor
+import io.github.erwsim.watchpost.policy.logs.SecurityLogTranslator
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -50,15 +50,15 @@ class SecurityLogTest {
             Triple(SecurityLog.TAG_MEDIA_MOUNT, arrayOf<Any>("/storage/4A21-0000", "SanDisk"), mapOf("mount_point" to "/storage/4A21-0000", "label" to "SanDisk")),
             Triple(SecurityLog.TAG_MEDIA_UNMOUNT, arrayOf<Any>("/storage/4A21-0000", "SanDisk"), mapOf("mount_point" to "/storage/4A21-0000", "label" to "SanDisk")),
             Triple(SecurityLog.TAG_CRYPTO_SELF_TEST_COMPLETED, 1, mapOf("success" to "true")),
-            Triple(SecurityLog.TAG_KEY_GENERATED, arrayOf<Any>(1, "vigie_key", 10301), mapOf("success" to "true", "alias" to "vigie_key", "uid" to "10301")),
+            Triple(SecurityLog.TAG_KEY_GENERATED, arrayOf<Any>(1, "watchpost_key", 10301), mapOf("success" to "true", "alias" to "watchpost_key", "uid" to "10301")),
             Triple(SecurityLog.TAG_KEY_IMPORT, arrayOf<Any>(1, "k", 10301), mapOf("success" to "true", "alias" to "k", "uid" to "10301")),
             Triple(SecurityLog.TAG_KEY_DESTRUCTION, arrayOf<Any>(0, "k", 10301), mapOf("success" to "false", "alias" to "k", "uid" to "10301")),
             Triple(SecurityLog.TAG_KEY_INTEGRITY_VIOLATION, arrayOf<Any>("k", 10301), mapOf("alias" to "k", "uid" to "10301")),
             Triple(SecurityLog.TAG_CERT_AUTHORITY_INSTALLED, arrayOf<Any>(1, "CN=Proxy CA", 0), mapOf("success" to "true", "subject" to "CN=Proxy CA", "user_id" to "0")),
             Triple(SecurityLog.TAG_CERT_AUTHORITY_REMOVED, arrayOf<Any>(1, "CN=Proxy CA", 0), mapOf("success" to "true", "subject" to "CN=Proxy CA", "user_id" to "0")),
             Triple(SecurityLog.TAG_CERT_VALIDATION_FAILURE, "expired", mapOf("reason" to "expired")),
-            Triple(SecurityLog.TAG_USER_RESTRICTION_ADDED, arrayOf<Any>("io.github.erwsim.vigie", 0, "no_add_user"), mapOf("admin_package" to "io.github.erwsim.vigie", "user_id" to "0", "restriction" to "no_add_user")),
-            Triple(SecurityLog.TAG_USER_RESTRICTION_REMOVED, arrayOf<Any>("io.github.erwsim.vigie", 0, "no_add_user"), mapOf("admin_package" to "io.github.erwsim.vigie", "user_id" to "0", "restriction" to "no_add_user")),
+            Triple(SecurityLog.TAG_USER_RESTRICTION_ADDED, arrayOf<Any>("io.github.erwsim.watchpost", 0, "no_add_user"), mapOf("admin_package" to "io.github.erwsim.watchpost", "user_id" to "0", "restriction" to "no_add_user")),
+            Triple(SecurityLog.TAG_USER_RESTRICTION_REMOVED, arrayOf<Any>("io.github.erwsim.watchpost", 0, "no_add_user"), mapOf("admin_package" to "io.github.erwsim.watchpost", "user_id" to "0", "restriction" to "no_add_user")),
             Triple(SecurityLog.TAG_PASSWORD_CHANGED, arrayOf<Any>(196608, 0), mapOf("complexity" to "196608", "user_id" to "0")),
             Triple(SecurityLog.TAG_WIFI_CONNECTION, arrayOf<Any>("AA:BB:CC:DD:EE:FF", "connect", ""), mapOf("bssid" to "aa:bb:cc:dd:ee:ff", "event_type" to "connect", "reason" to "")),
             Triple(SecurityLog.TAG_WIFI_DISCONNECTION, arrayOf<Any>("AA:BB:CC:DD:EE:FF", "local"), mapOf("bssid" to "aa:bb:cc:dd:ee:ff", "reason" to "local")),
@@ -70,7 +70,7 @@ class SecurityLogTest {
             // Tags without names in the contract: argN.
             Triple(SecurityLog.TAG_WIPE_FAILURE, null, emptyMap()),
             Triple(SecurityLog.TAG_REMOTE_LOCK, arrayOf<Any>("com.admin", 0, 0), mapOf("arg0" to "com.admin", "arg1" to "0", "arg2" to "0")),
-            Triple(SecurityLog.TAG_BACKUP_SERVICE_TOGGLED, arrayOf<Any>("io.github.erwsim.vigie", 0, 1), mapOf("arg0" to "io.github.erwsim.vigie", "arg1" to "0", "arg2" to "1")),
+            Triple(SecurityLog.TAG_BACKUP_SERVICE_TOGGLED, arrayOf<Any>("io.github.erwsim.watchpost", 0, 1), mapOf("arg0" to "io.github.erwsim.watchpost", "arg1" to "0", "arg2" to "1")),
             Triple(SecurityLog.TAG_CAMERA_POLICY_SET, arrayOf<Any>("com.admin", 0, 0, 1), mapOf("arg0" to "com.admin", "arg1" to "0", "arg2" to "0", "arg3" to "1")),
         )
         // The table covers every tag named by the contract (shared reference of the contract).
@@ -127,7 +127,7 @@ class SecurityLogTest {
         assertEquals(2, byTag.getValue("app_process_start").size)
         val whatsapp = byTag.getValue("app_process_start").single { it.data["fields"]!!.jsonObject.s("process") == "com.whatsapp" }
         assertEquals("5", whatsapp.data.s("count"))
-        assertEquals(io.github.erwsim.vigie.core.event.Rfc3339.format(1_763_000_000_000L + 4 * 60_000L), whatsapp.data.s("last_event_ts"))
+        assertEquals(io.github.erwsim.watchpost.core.event.Rfc3339.format(1_763_000_000_000L + 4 * 60_000L), whatsapp.data.s("last_event_ts"))
         assertNull(byTag.getValue("app_process_start").single { it.data["fields"]!!.jsonObject.s("process") == "com.signal" }.data["count"])
         assertEquals(1, byTag.getValue("wifi_connection").size)
         assertEquals(Severity.NOTABLE, byTag.getValue("adb_shell_interactive").single().sev)

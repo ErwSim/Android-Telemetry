@@ -1,26 +1,26 @@
-package io.github.erwsim.vigie.policy.ui
+package io.github.erwsim.watchpost.policy.ui
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import androidx.annotation.StringRes
-import io.github.erwsim.vigie.core.settings.AgentSettings
-import io.github.erwsim.vigie.policy.PolicyModule
-import io.github.erwsim.vigie.policy.R
-import io.github.erwsim.vigie.policy.engine.DeviceRoles
-import io.github.erwsim.vigie.policy.engine.GuardKey
-import io.github.erwsim.vigie.policy.engine.GuardPreview
-import io.github.erwsim.vigie.policy.engine.GuardStatus
-import io.github.erwsim.vigie.policy.engine.AndroidDevicePolicyGateway
-import io.github.erwsim.vigie.policy.engine.AppliedRecord
-import io.github.erwsim.vigie.policy.engine.CatalogItem
-import io.github.erwsim.vigie.policy.engine.Dpm
-import io.github.erwsim.vigie.policy.engine.EngineReport
-import io.github.erwsim.vigie.policy.engine.JournalEntry
-import io.github.erwsim.vigie.policy.engine.PlannedChange
-import io.github.erwsim.vigie.policy.engine.PolicyCatalog
-import io.github.erwsim.vigie.policy.engine.PolicyEngine
-import io.github.erwsim.vigie.policy.engine.PolicySelection
-import io.github.erwsim.vigie.policy.engine.Profile
+import io.github.erwsim.watchpost.core.settings.AgentSettings
+import io.github.erwsim.watchpost.policy.PolicyModule
+import io.github.erwsim.watchpost.policy.R
+import io.github.erwsim.watchpost.policy.engine.DeviceRoles
+import io.github.erwsim.watchpost.policy.engine.GuardKey
+import io.github.erwsim.watchpost.policy.engine.GuardPreview
+import io.github.erwsim.watchpost.policy.engine.GuardStatus
+import io.github.erwsim.watchpost.policy.engine.AndroidDevicePolicyGateway
+import io.github.erwsim.watchpost.policy.engine.AppliedRecord
+import io.github.erwsim.watchpost.policy.engine.CatalogItem
+import io.github.erwsim.watchpost.policy.engine.Dpm
+import io.github.erwsim.watchpost.policy.engine.EngineReport
+import io.github.erwsim.watchpost.policy.engine.JournalEntry
+import io.github.erwsim.watchpost.policy.engine.PlannedChange
+import io.github.erwsim.watchpost.policy.engine.PolicyCatalog
+import io.github.erwsim.watchpost.policy.engine.PolicyEngine
+import io.github.erwsim.watchpost.policy.engine.PolicySelection
+import io.github.erwsim.watchpost.policy.engine.Profile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -130,7 +130,7 @@ class PolicyController(
         }
     }
 
-    private fun currentDnsHost(): String? = dnsHost() ?: io.github.erwsim.vigie.core.Agent.getOrNull()?.enrollment?.state?.value?.privateDnsHost
+    private fun currentDnsHost(): String? = dnsHost() ?: io.github.erwsim.watchpost.core.Agent.getOrNull()?.enrollment?.state?.value?.privateDnsHost
 
     fun setProfile(profile: Profile) = updateSelection { it.copy(profile = profile) }
 

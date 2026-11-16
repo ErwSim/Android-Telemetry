@@ -1,12 +1,12 @@
-package io.github.erwsim.vigie.policy.remote
+package io.github.erwsim.watchpost.policy.remote
 
-import io.github.erwsim.vigie.core.command.AcceptedCommand
-import io.github.erwsim.vigie.core.command.CommandExecutor
-import io.github.erwsim.vigie.core.command.CommandParams
-import io.github.erwsim.vigie.core.command.CommandTypes
-import io.github.erwsim.vigie.core.command.ExecutionResult
-import io.github.erwsim.vigie.core.command.Refusal
-import io.github.erwsim.vigie.core.command.WipeGate
+import io.github.erwsim.watchpost.core.command.AcceptedCommand
+import io.github.erwsim.watchpost.core.command.CommandExecutor
+import io.github.erwsim.watchpost.core.command.CommandParams
+import io.github.erwsim.watchpost.core.command.CommandTypes
+import io.github.erwsim.watchpost.core.command.ExecutionResult
+import io.github.erwsim.watchpost.core.command.Refusal
+import io.github.erwsim.watchpost.core.command.WipeGate
 
 /**
  * Device Owner calls of the remote commands `lock` and `clear_lock_message` (contract §8), behind an

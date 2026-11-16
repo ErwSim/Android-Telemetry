@@ -1,18 +1,18 @@
-package io.github.erwsim.vigie.policy
+package io.github.erwsim.watchpost.policy
 
-import io.github.erwsim.vigie.core.testing.Contract
-import io.github.erwsim.vigie.core.testing.FakeClock
-import io.github.erwsim.vigie.core.testing.MemoryPrefs
-import io.github.erwsim.vigie.policy.dns.ProbeResult
-import io.github.erwsim.vigie.policy.engine.ChangeOp
-import io.github.erwsim.vigie.policy.engine.Dpm
-import io.github.erwsim.vigie.policy.engine.PolicyCatalog
-import io.github.erwsim.vigie.policy.engine.PolicyEngine
-import io.github.erwsim.vigie.policy.engine.PolicySelection
-import io.github.erwsim.vigie.policy.engine.PolicyStore
-import io.github.erwsim.vigie.policy.engine.Profile
-import io.github.erwsim.vigie.policy.engine.RecordStatus
-import io.github.erwsim.vigie.core.sink.EventSink
+import io.github.erwsim.watchpost.core.testing.Contract
+import io.github.erwsim.watchpost.core.testing.FakeClock
+import io.github.erwsim.watchpost.core.testing.MemoryPrefs
+import io.github.erwsim.watchpost.policy.dns.ProbeResult
+import io.github.erwsim.watchpost.policy.engine.ChangeOp
+import io.github.erwsim.watchpost.policy.engine.Dpm
+import io.github.erwsim.watchpost.policy.engine.PolicyCatalog
+import io.github.erwsim.watchpost.policy.engine.PolicyEngine
+import io.github.erwsim.watchpost.policy.engine.PolicySelection
+import io.github.erwsim.watchpost.policy.engine.PolicyStore
+import io.github.erwsim.watchpost.policy.engine.Profile
+import io.github.erwsim.watchpost.policy.engine.RecordStatus
+import io.github.erwsim.watchpost.core.sink.EventSink
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
@@ -110,7 +110,7 @@ class PolicyEngineTest {
         assertEquals(ChangeOp.SKIP_DENIED, plan.getValue("pkg:com.samsung.android.kgclient").op)
         assertEquals(ChangeOp.SKIP_DENIED, plan.getValue("pkg:com.example.launcher").op) // dynamic: default launcher
         assertEquals(ChangeOp.SKIP_DENIED, plan.getValue("restr:no_debugging_features").op)
-        assertEquals(ChangeOp.SKIP_ALREADY, plan.getValue("restr:no_add_user").op) // not Vigie's: never undone
+        assertEquals(ChangeOp.SKIP_ALREADY, plan.getValue("restr:no_add_user").op) // not Watchpost's: never undone
         assertEquals(ChangeOp.APPLY, plan.getValue("restr:no_cellular_2g").op)
         assertEquals(ChangeOp.APPLY, plan.getValue("set:global:ble_scan_always_enabled").op)
         assertEquals(ChangeOp.APPLY, plan.getValue("perm:$gms:0").op)
@@ -145,9 +145,9 @@ class PolicyEngineTest {
         assertFalse(gw.calls.any { "kgclient" in it || "com.example.launcher" in it || "no_debugging_features" in it })
         assertFalse("com.samsung.android.kgclient" in gw.hidden)
         assertFalse("no_debugging_features" in gw.restrictions)
-        // Vigie itself is always protected.
-        assertTrue(io.github.erwsim.vigie.policy.engine.PackageDenyList.isDenied("io.github.erwsim.vigie"))
-        assertTrue(io.github.erwsim.vigie.policy.engine.PackageDenyList.isDenied("com.android.providers.contacts"))
+        // Watchpost itself is always protected.
+        assertTrue(io.github.erwsim.watchpost.policy.engine.PackageDenyList.isDenied("io.github.erwsim.watchpost"))
+        assertTrue(io.github.erwsim.watchpost.policy.engine.PackageDenyList.isDenied("com.android.providers.contacts"))
     }
 
     @Test
@@ -433,12 +433,12 @@ class PolicyEngineTest {
         gw.hidden += "com.old.tracker"
         val store = PolicyStore(prefs)
         store.saveState(
-            io.github.erwsim.vigie.policy.engine.AppliedState(
+            io.github.erwsim.watchpost.policy.engine.AppliedState(
                 records = listOf(
-                    io.github.erwsim.vigie.policy.engine.AppliedRecord(
-                        id = "pkg:com.old.tracker", kind = io.github.erwsim.vigie.policy.engine.ItemKind.PACKAGE,
+                    io.github.erwsim.watchpost.policy.engine.AppliedRecord(
+                        id = "pkg:com.old.tracker", kind = io.github.erwsim.watchpost.policy.engine.ItemKind.PACKAGE,
                         target = "com.old.tracker", status = RecordStatus.APPLIED,
-                        method = io.github.erwsim.vigie.policy.engine.PackageMethod.HIDE,
+                        method = io.github.erwsim.watchpost.policy.engine.PackageMethod.HIDE,
                     ),
                 ),
             ),

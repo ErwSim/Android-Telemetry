@@ -1,18 +1,18 @@
-package io.github.erwsim.vigie.policy.logs
+package io.github.erwsim.watchpost.policy.logs
 
 import android.app.admin.DevicePolicyManager
 import android.app.admin.SecurityLog
 import android.content.ComponentName
 import android.content.Context
 import androidx.core.content.edit
-import io.github.erwsim.vigie.core.collector.Collector
-import io.github.erwsim.vigie.core.collector.CollectorContext
-import io.github.erwsim.vigie.core.collector.Requirement
-import io.github.erwsim.vigie.core.settings.SettingKey
-import io.github.erwsim.vigie.core.settings.SettingSpec
-import io.github.erwsim.vigie.policy.PolicyModule
-import io.github.erwsim.vigie.policy.R
-import io.github.erwsim.vigie.policy.VigieAdminReceiver
+import io.github.erwsim.watchpost.core.collector.Collector
+import io.github.erwsim.watchpost.core.collector.CollectorContext
+import io.github.erwsim.watchpost.core.collector.Requirement
+import io.github.erwsim.watchpost.core.settings.SettingKey
+import io.github.erwsim.watchpost.core.settings.SettingSpec
+import io.github.erwsim.watchpost.policy.PolicyModule
+import io.github.erwsim.watchpost.policy.R
+import io.github.erwsim.watchpost.policy.WatchpostAdminReceiver
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -61,7 +61,7 @@ class SecurityLogCollector : Collector {
         }
     }
 
-    /** From [VigieAdminReceiver] (main thread). */
+    /** From [WatchpostAdminReceiver] (main thread). */
     fun onLogsAvailable(context: Context) {
         val c = ctx
         if (c != null) {
@@ -130,7 +130,7 @@ class SecurityLogCollector : Collector {
     }
 
     private fun dpm(ctx: CollectorContext) = ctx.appContext.getSystemService(DevicePolicyManager::class.java)
-    private fun admin(ctx: CollectorContext) = ComponentName(ctx.appContext, VigieAdminReceiver::class.java)
+    private fun admin(ctx: CollectorContext) = ComponentName(ctx.appContext, WatchpostAdminReceiver::class.java)
 
     companion object {
         const val ID = "security_log"

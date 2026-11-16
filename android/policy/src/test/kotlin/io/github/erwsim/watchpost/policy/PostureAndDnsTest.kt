@@ -1,15 +1,15 @@
-package io.github.erwsim.vigie.policy
+package io.github.erwsim.watchpost.policy
 
-import io.github.erwsim.vigie.core.event.Severity
-import io.github.erwsim.vigie.policy.dns.DnsGuardDecision
-import io.github.erwsim.vigie.policy.dns.DnsGuardInput
-import io.github.erwsim.vigie.policy.dns.DnsGuardLogic
-import io.github.erwsim.vigie.policy.dns.DnsMessage
-import io.github.erwsim.vigie.policy.engine.AppliedRecord
-import io.github.erwsim.vigie.policy.engine.ItemKind
-import io.github.erwsim.vigie.policy.posture.CaCert
-import io.github.erwsim.vigie.policy.posture.CaCertDiff
-import io.github.erwsim.vigie.policy.posture.PostureDiff
+import io.github.erwsim.watchpost.core.event.Severity
+import io.github.erwsim.watchpost.policy.dns.DnsGuardDecision
+import io.github.erwsim.watchpost.policy.dns.DnsGuardInput
+import io.github.erwsim.watchpost.policy.dns.DnsGuardLogic
+import io.github.erwsim.watchpost.policy.dns.DnsMessage
+import io.github.erwsim.watchpost.policy.engine.AppliedRecord
+import io.github.erwsim.watchpost.policy.engine.ItemKind
+import io.github.erwsim.watchpost.policy.posture.CaCert
+import io.github.erwsim.watchpost.policy.posture.CaCertDiff
+import io.github.erwsim.watchpost.policy.posture.PostureDiff
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue

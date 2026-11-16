@@ -1,7 +1,7 @@
-package io.github.erwsim.vigie.policy.logs
+package io.github.erwsim.watchpost.policy.logs
 
-import io.github.erwsim.vigie.core.event.Rfc3339
-import io.github.erwsim.vigie.core.event.eventData
+import io.github.erwsim.watchpost.core.event.Rfc3339
+import io.github.erwsim.watchpost.core.event.eventData
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 

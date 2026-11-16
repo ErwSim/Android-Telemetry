@@ -1,4 +1,4 @@
-package io.github.erwsim.vigie.policy.posture
+package io.github.erwsim.watchpost.policy.posture
 
 import android.app.admin.DevicePolicyManager
 import android.content.IntentFilter
@@ -7,14 +7,14 @@ import android.net.Uri
 import android.provider.Settings
 import android.security.KeyChain
 import androidx.core.content.edit
-import io.github.erwsim.vigie.core.collector.CollectReason
-import io.github.erwsim.vigie.core.collector.Collector
-import io.github.erwsim.vigie.core.collector.CollectorContext
-import io.github.erwsim.vigie.core.collector.PeriodicSpec
-import io.github.erwsim.vigie.core.event.Severity
-import io.github.erwsim.vigie.core.event.VigieJson
-import io.github.erwsim.vigie.core.event.eventData
-import io.github.erwsim.vigie.policy.R
+import io.github.erwsim.watchpost.core.collector.CollectReason
+import io.github.erwsim.watchpost.core.collector.Collector
+import io.github.erwsim.watchpost.core.collector.CollectorContext
+import io.github.erwsim.watchpost.core.collector.PeriodicSpec
+import io.github.erwsim.watchpost.core.event.Severity
+import io.github.erwsim.watchpost.core.event.WatchpostJson
+import io.github.erwsim.watchpost.core.event.eventData
+import io.github.erwsim.watchpost.policy.R
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -130,10 +130,10 @@ class PostureCollector : Collector {
         ctx.prefs.edit { putString(K_POSTURE, encode(current)) }
     }
 
-    private fun encode(map: Map<String, String>) = VigieJson.encodeToString(MAP, map)
+    private fun encode(map: Map<String, String>) = WatchpostJson.encodeToString(MAP, map)
 
     private fun decode(text: String): Map<String, String>? = try {
-        VigieJson.decodeFromString(MAP, text)
+        WatchpostJson.decodeFromString(MAP, text)
     } catch (_: Exception) {
         null
     }

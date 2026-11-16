@@ -1,7 +1,7 @@
-package io.github.erwsim.vigie.policy.logs
+package io.github.erwsim.watchpost.policy.logs
 
 import android.app.admin.SecurityLog
-import io.github.erwsim.vigie.core.event.Severity
+import io.github.erwsim.watchpost.core.event.Severity
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive

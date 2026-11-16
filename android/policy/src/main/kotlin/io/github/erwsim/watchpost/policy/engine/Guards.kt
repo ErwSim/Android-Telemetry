@@ -1,7 +1,7 @@
-package io.github.erwsim.vigie.policy.engine
+package io.github.erwsim.watchpost.policy.engine
 
 /**
- * Packages Vigie must never hide, suspend or restrict, whatever the catalog says
+ * Packages Watchpost must never hide, suspend or restrict, whatever the catalog says
  * (docs/research/android-plateforme.md §3.6 and §7.3). `setApplicationHidden` has no platform
  * guard rail: hiding one of these can lock the phone (kgclient), stop OTA updates, break
  * attestation (Play Integrity), or leave no launcher, dialer, keyboard or ADB shell.
@@ -13,8 +13,8 @@ package io.github.erwsim.vigie.policy.engine
 object PackageDenyList {
     /** Exact package names. */
     val PACKAGES: Set<String> = setOf(
-        // Vigie itself and the platform.
-        "io.github.erwsim.vigie",
+        // Watchpost itself and the platform.
+        "io.github.erwsim.watchpost",
         "android",
         "com.android.shell", // ADB shell: the rescue path.
         "com.android.systemui",
@@ -27,7 +27,7 @@ object PackageDenyList {
         "com.samsung.android.gru",
         "com.samsung.android.wifi.softap.resources",
         "com.samsung.android.app.routines",
-        "com.samsung.android.securitylogagent", // watches /system changes: useful to Vigie.
+        "com.samsung.android.securitylogagent", // watches /system changes: useful to Watchpost.
         "com.sec.android.diagmonagent", // relaunch loop when disabled (heat, battery drain).
         // OTA updates.
         "com.sec.android.soagent",
@@ -92,7 +92,7 @@ object PackageDenyList {
 }
 
 /**
- * Restrictions Vigie may set. Two lists, both hard-coded:
+ * Restrictions Watchpost may set. Two lists, both hard-coded:
  * - [FORBIDDEN]: restrictions that would cut the ADB rescue path, the location the agent relies on,
  *   or a vital function of the phone. Listed explicitly so that the reason stays written down;
  * - [ALLOWED]: the only keys ever passed to `addUserRestriction`, each reviewed against the
@@ -108,12 +108,12 @@ object RestrictionGuard {
     val FORBIDDEN: Set<String> = setOf(
         "no_debugging_features", // cuts ADB: the rescue path.
         "no_config_date_time",
-        "no_share_location", // turns location off for the user, Vigie included.
+        "no_share_location", // turns location off for the user, Watchpost included.
         "no_config_location",
         "no_usb_signaling", // defensive: not a public restriction, never set.
         "no_factory_reset", // the user's last resort stays available.
         "no_modify_accounts",
-        "no_install_apps", // would also block "adb install" (updates of Vigie itself).
+        "no_install_apps", // would also block "adb install" (updates of Watchpost itself).
         "no_uninstall_apps",
         "no_control_apps",
         "no_outgoing_calls",
@@ -152,7 +152,7 @@ object RestrictionGuard {
 }
 
 /**
- * `Settings.Global` / `Settings.Secure` keys Vigie may write with WRITE_SECURE_SETTINGS. That
+ * `Settings.Global` / `Settings.Secure` keys Watchpost may write with WRITE_SECURE_SETTINGS. That
  * permission can write anything (`adb_enabled`, `user_setup_complete`, `private_dns_mode`,
  * `default_input_method`…): only the keys reviewed here ever reach `Settings.*.putString`, whatever
  * the catalog says. Undoing (writing back the recorded previous value) is never filtered.

@@ -1,10 +1,10 @@
-package io.github.erwsim.vigie.policy
+package io.github.erwsim.watchpost.policy
 
-import io.github.erwsim.vigie.policy.engine.AppInfo
-import io.github.erwsim.vigie.policy.engine.DevicePolicyGateway
-import io.github.erwsim.vigie.policy.engine.DeviceRoles
-import io.github.erwsim.vigie.policy.engine.Dpm
-import io.github.erwsim.vigie.policy.engine.ServiceApp
+import io.github.erwsim.watchpost.policy.engine.AppInfo
+import io.github.erwsim.watchpost.policy.engine.DevicePolicyGateway
+import io.github.erwsim.watchpost.policy.engine.DeviceRoles
+import io.github.erwsim.watchpost.policy.engine.Dpm
+import io.github.erwsim.watchpost.policy.engine.ServiceApp
 
 /**
  * In-memory device for the engine tests. [snapshot] captures everything the engine can change, to
@@ -86,7 +86,7 @@ class FakeGateway : DevicePolicyGateway {
     }
 
     override fun isDeviceOwner() = owner
-    override fun protectedPackages(): Set<String> = dynamicProtected + "io.github.erwsim.vigie"
+    override fun protectedPackages(): Set<String> = dynamicProtected + "io.github.erwsim.watchpost"
     override fun isInstalled(pkg: String) = pkg in installed
     override fun isHidden(pkg: String) = pkg in hidden
 

@@ -1,4 +1,4 @@
-package io.github.erwsim.vigie.policy.engine
+package io.github.erwsim.watchpost.policy.engine
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable

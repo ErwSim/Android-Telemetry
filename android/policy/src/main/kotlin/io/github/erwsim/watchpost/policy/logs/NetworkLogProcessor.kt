@@ -1,7 +1,7 @@
-package io.github.erwsim.vigie.policy.logs
+package io.github.erwsim.watchpost.policy.logs
 
-import io.github.erwsim.vigie.core.event.Rfc3339
-import io.github.erwsim.vigie.core.event.eventData
+import io.github.erwsim.watchpost.core.event.Rfc3339
+import io.github.erwsim.watchpost.core.event.eventData
 import kotlinx.serialization.json.JsonObject
 
 /** One Device Owner network log entry reduced to plain values (from `DnsEvent`/`ConnectEvent`). */
@@ -115,7 +115,7 @@ object NetworkLogProcessor {
         )
     }
 
-    private fun io.github.erwsim.vigie.core.event.EventDataBuilder.timing(g: Aggregated<NetRecord>) {
+    private fun io.github.erwsim.watchpost.core.event.EventDataBuilder.timing(g: Aggregated<NetRecord>) {
         if (g.count > 1) {
             put("count", g.count)
             put("last_event_ts", Rfc3339.format(g.lastMs))

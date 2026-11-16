@@ -1,4 +1,4 @@
-package io.github.erwsim.vigie.policy.engine
+package io.github.erwsim.watchpost.policy.engine
 
 import android.annotation.SuppressLint
 import android.content.SharedPreferences
@@ -34,7 +34,7 @@ enum class RecordStatus {
 @Serializable
 data class PermissionPrev(
     val permission: String,
-    /** `PERMISSION_GRANT_STATE_*` before Vigie denied it. */
+    /** `PERMISSION_GRANT_STATE_*` before Watchpost denied it. */
     @SerialName("prev_state") val prevState: Int,
     /** Whether it was granted before (matters when [prevState] is DEFAULT: user-controlled). */
     @SerialName("prev_granted") val prevGranted: Boolean,
@@ -42,7 +42,7 @@ data class PermissionPrev(
 )
 
 /**
- * One change Vigie made to the device, with everything needed to undo it exactly. Flat on
+ * One change Watchpost made to the device, with everything needed to undo it exactly. Flat on
  * purpose (nullable fields per kind): unknown fields are ignored on read, so an older or newer
  * app version can still undo what an other version applied.
  */
@@ -80,11 +80,11 @@ data class AppliedRecord(
     @SerialName("guard_allowed") val guardAllowed: List<String>? = null,
     /** Quarantine guard record: released package → its first install time (an update keeps it released). */
     val released: Map<String, Long> = emptyMap(),
-    /** Accessibility / input methods guard: the permitted list before Vigie (meaningful when [prevListSet]). */
+    /** Accessibility / input methods guard: the permitted list before Watchpost (meaningful when [prevListSet]). */
     @SerialName("prev_list") val prevList: List<String>? = null,
-    /** False: there was no permitted list before Vigie (`null`, everything allowed). */
+    /** False: there was no permitted list before Watchpost (`null`, everything allowed). */
     @SerialName("prev_list_set") val prevListSet: Boolean = false,
-    /** Accessibility / input methods guard: the permitted list Vigie set. */
+    /** Accessibility / input methods guard: the permitted list Watchpost set. */
     @SerialName("applied_list") val appliedList: List<String>? = null,
     /** Quarantine record: first install time of the package when it was quarantined. */
     @SerialName("first_install_ms") val firstInstallMs: Long? = null,

@@ -20,7 +20,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "vigie-agent"
+rootProject.name = "watchpost-agent"
 
 include(":core", ":collectors", ":policy", ":app")
 include(":notifier", ":notifier:protocol")

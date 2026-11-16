@@ -1,22 +1,22 @@
-package io.github.erwsim.vigie.policy
+package io.github.erwsim.watchpost.policy
 
-import io.github.erwsim.vigie.core.sink.EventSink
-import io.github.erwsim.vigie.core.testing.Contract
-import io.github.erwsim.vigie.core.testing.FakeClock
-import io.github.erwsim.vigie.core.testing.MemoryPrefs
-import io.github.erwsim.vigie.policy.dns.ProbeResult
-import io.github.erwsim.vigie.policy.engine.DevicePolicyGateway
-import io.github.erwsim.vigie.policy.engine.DeviceRoles
-import io.github.erwsim.vigie.policy.engine.Dpm
-import io.github.erwsim.vigie.policy.engine.GuardKey
-import io.github.erwsim.vigie.policy.engine.GuardNotice
-import io.github.erwsim.vigie.policy.engine.GuardPermissions
-import io.github.erwsim.vigie.policy.engine.PolicyCatalog
-import io.github.erwsim.vigie.policy.engine.PolicyEngine
-import io.github.erwsim.vigie.policy.engine.PolicySelection
-import io.github.erwsim.vigie.policy.engine.PolicyStore
-import io.github.erwsim.vigie.policy.engine.Profile
-import io.github.erwsim.vigie.policy.engine.ServiceApp
+import io.github.erwsim.watchpost.core.sink.EventSink
+import io.github.erwsim.watchpost.core.testing.Contract
+import io.github.erwsim.watchpost.core.testing.FakeClock
+import io.github.erwsim.watchpost.core.testing.MemoryPrefs
+import io.github.erwsim.watchpost.policy.dns.ProbeResult
+import io.github.erwsim.watchpost.policy.engine.DevicePolicyGateway
+import io.github.erwsim.watchpost.policy.engine.DeviceRoles
+import io.github.erwsim.watchpost.policy.engine.Dpm
+import io.github.erwsim.watchpost.policy.engine.GuardKey
+import io.github.erwsim.watchpost.policy.engine.GuardNotice
+import io.github.erwsim.watchpost.policy.engine.GuardPermissions
+import io.github.erwsim.watchpost.policy.engine.PolicyCatalog
+import io.github.erwsim.watchpost.policy.engine.PolicyEngine
+import io.github.erwsim.watchpost.policy.engine.PolicySelection
+import io.github.erwsim.watchpost.policy.engine.PolicyStore
+import io.github.erwsim.watchpost.policy.engine.Profile
+import io.github.erwsim.watchpost.policy.engine.ServiceApp
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
@@ -48,8 +48,8 @@ class CapabilityGuardsTest {
     private val game = "com.example.game"
     private val bank = "fr.example.bank"
     private val otherDialer = "com.example.dialer"
-    private val companion = "io.github.erwsim.vigie.notifier"
-    private val vigie = "io.github.erwsim.vigie"
+    private val companion = "io.github.erwsim.watchpost.notifier"
+    private val watchpost = "io.github.erwsim.watchpost"
 
     // System apps.
     private val samsungMessages = "com.samsung.android.messaging"
@@ -108,7 +108,7 @@ class CapabilityGuardsTest {
         gw.install(bank, camera, callPhone)
         gw.install(otherDialer, callPhone, readCallLog)
         gw.install(companion, sendSms) // hypothetical: the companion is never touched
-        gw.install(vigie, sendSms, fine)
+        gw.install(watchpost, sendSms, fine)
         listOf(samsungMessages, sos, samsungDialer, honeyboard, talkback).forEach { gw.install(it, sendSms, callPhone); gw.system += it }
         gw.roles = DeviceRoles(sms = samsungMessages, dialer = samsungDialer, systemDialer = samsungDialer, ime = honeyboard, home = "com.sec.android.app.launcher")
         // The malware was granted SEND_SMS by the user; Signal reads SMS.
@@ -136,14 +136,14 @@ class CapabilityGuardsTest {
         assertEquals("liste choisie", exempt[signal])
         assertEquals("application du système", exempt[samsungMessages])
         assertEquals("application du système", exempt[sos])
-        assertEquals("Vigie ou son compagnon", exempt[companion])
-        assertEquals("Vigie ou son compagnon", exempt[vigie])
+        assertEquals("Watchpost ou son compagnon", exempt[companion])
+        assertEquals("Watchpost ou son compagnon", exempt[watchpost])
 
         assertTrue(e.guards.set(GuardKey.SMS, true, allowed = setOf(signal)).allOk)
         assertEquals(Dpm.GRANT_DENIED, state(malware, sendSms))
         assertFalse(gw.isPermissionGranted(malware, sendSms))
-        // Never touched: the list, system apps (SOS sends SMS), the default SMS app, Vigie and its companion.
-        for (pkg in listOf(signal, samsungMessages, sos, companion, vigie)) {
+        // Never touched: the list, system apps (SOS sends SMS), the default SMS app, Watchpost and its companion.
+        for (pkg in listOf(signal, samsungMessages, sos, companion, watchpost)) {
             assertFalse(pkg, gw.calls.any { it.startsWith("perm $pkg ") })
         }
         // Reading SMS is the option only.
@@ -247,7 +247,7 @@ class CapabilityGuardsTest {
     // ---------------------------------------------------------------- hard limits
 
     @Test
-    fun `no list can make a guard touch the SMS app, the dialer, the system, Vigie or its companion, but keyboard and home are not spared`() {
+    fun `no list can make a guard touch the SMS app, the dialer, the system, Watchpost or its companion, but keyboard and home are not spared`() {
         val e = engine()
         // A hostile or careless list: empty, so nothing is exempt by choice.
         e.guards.set(GuardKey.SMS, true, extended = true, allowed = emptySet())
@@ -259,7 +259,7 @@ class CapabilityGuardsTest {
         gw.install("com.third.launcher", contacts, callPhone)
         gw.roles = gw.roles.copy(ime = "com.third.keyboard", home = "com.third.launcher")
         e.guards.reconcile()
-        for (pkg in listOf(samsungMessages, samsungDialer, sos, honeyboard, vigie, companion)) {
+        for (pkg in listOf(samsungMessages, samsungDialer, sos, honeyboard, watchpost, companion)) {
             assertFalse(pkg, gw.calls.any { it.startsWith("perm $pkg ") })
             assertNull(pkg, e.record(GuardKey.QUARANTINE.packageRecordId(pkg)))
         }

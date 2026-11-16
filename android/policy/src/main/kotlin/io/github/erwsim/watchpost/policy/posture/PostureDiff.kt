@@ -1,6 +1,6 @@
-package io.github.erwsim.vigie.policy.posture
+package io.github.erwsim.watchpost.policy.posture
 
-import io.github.erwsim.vigie.core.event.Severity
+import io.github.erwsim.watchpost.core.event.Severity
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
