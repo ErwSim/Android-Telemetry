@@ -439,7 +439,7 @@ or drains abnormally, or an agent that stops, is dealt with **before** adding a 
 | **Contactless payment** | a real small payment with the application you use (Google Wallet or Samsung Wallet), with a physical card as backup; transit card if you have one |
 | Basic functions | calls, SMS, mobile data, Wi-Fi, Bluetooth (car, earbuds, watch), camera, keyboard |
 | Samsung update | Settings › Software update › Download and install: must answer normally |
-| Watchpost | Home with no error; console: regular uploads; Security › Applied policy page: every line `ok` |
+| Watchpost | Home with no error; console: regular uploads; Security › Policy applied page: every line `ok` |
 | AdGuard (if DNS active) | query log: look for blocked domains tied to an application that misbehaves |
 
 If something breaks: **note what and since when**, then "Restore" the last applied item; if the symptom disappears,
@@ -469,7 +469,7 @@ query); otherwise, nothing changes and the log says "pre-check".
 
 Checks: the DNS card shows the mode and the host; on Wi-Fi **then on mobile data**, browse and open two or three
 applications; Settings › Connections › More connection settings › Private DNS (usual path) shows your host; in
-AdGuard Home, the query log shows requests from the phone; in the console, Security › Applied policy page:
+AdGuard Home, the query log shows requests from the phone; in the console, Security › Policy applied page:
 `private_dns_set` successful. Let it run **several days**: look for applications that complain and for blocked
 domains in AdGuard's log (guide 05 for unblocking).
 
@@ -647,7 +647,7 @@ The order suggested by the application itself is: **Quarantine, Keyboards, Acces
 
 | # | Guard | Checks after enabling | What can break |
 |---|---|---|---|
-| 1 | **Quarantine** (no immediate effect) | Install a small test application (APK or store): notification "New app in quarantine"; Settings › Apps › the app › Permissions: SMS, contacts, microphone… greyed out "controlled by the administrator". "**Release**" (Guards › Quarantined apps): the app asks again. Update it: no new quarantine. Console › Security › Applied policy: `quarantined` and `released`. | a brand-new application cannot use the microphone, camera, contacts, SMS, calls, background location before being released; **pairing a watch, earbuds, car or lock whose app was just installed fails without a message** (Bluetooth and nearby devices) |
+| 1 | **Quarantine** (no immediate effect) | Install a small test application (APK or store): notification "New app in quarantine"; Settings › Apps › the app › Permissions: SMS, contacts, microphone… greyed out "controlled by the administrator". "**Release**" (Guards › Quarantined apps): the app asks again. Update it: no new quarantine. Console › Security › Policy applied: `quarantined` and `released`. | a brand-new application cannot use the microphone, camera, contacts, SMS, calls, background location before being released; **pairing a watch, earbuds, car or lock whose app was just installed fails without a message** (Bluetooth and nearby devices) |
 | 2 | **Keyboards** (empty list) | The preview must name as "guarded" any third-party keyboard that is enabled. Normal typing, **including the PIN after a reboot** (Samsung keyboard). Settings › General management › Keyboard: a non-approved keyboard cannot be enabled. | enabling a new keyboard (Gboard, SwiftKey…) without having added it to the list; no risk of being left without a keyboard (a keyboard already enabled continues, the system one remains offered); the guard is applied only in One UI's Settings screen (**to be verified**) |
 | 3 | **Accessibility** (empty list) | Services already enabled are kept (Android requires it); TalkBack and Samsung's Voice Assistant remain enableable; a third-party service that is not enabled can no longer be ("disabled by the administrator"). | a new password manager, Tasker, MacroDroid, a blocker or launcher that uses accessibility, if it is not in the list |
 | 4 | **Calls** (no option) | The preview is **rarely empty** (`CALL_PHONE` is requested by messengers, banks, maps, watch, car; every application that had it is stopped at the denial). Call from the dialer and from Samsung's address book. Emergency call: do not actually dial, just check that the dialer opens. | direct calling from a third-party app (home automation, watch, car, taxi); opening the dialer with a prefilled number remains possible; the "Phone" group of the denied applications is frozen |
@@ -661,7 +661,7 @@ application, default app, accessibility service already active, a window of a fe
 permission groups, other users) are in `android/README.md`, "What the guards cannot prevent".
 
 **Default apps and risk profile**: the `app_risk` and `app_role` collectors are on by default (nothing to do); they
-feed the console (Apps › Risk, Security › Default roles) and the detections. The experimental `app_ops` counters are
+feed the console (Applications › Risk, Security › Default roles) and the detections. The experimental `app_ops` counters are
 **off by default**: enable them only to check them (guide 08, §5).
 
 ## 17. Install the notification companion (optional)
@@ -702,7 +702,7 @@ no file) and hands notifications to the agent through a local channel protected 
    Notifications › ⋮ › "Allow restricted settings", then grant access.
 4. Open **Watchpost Notifications**: access granted, listener service connected, agent present (same key), collection
    active. In Watchpost › Collectors › **Notifications**, the collector goes from "unavailable" to "active" (at the
-   latest at the 15-minute maintenance pass). Console › Apps › **Notifications**: events arrive, **without title or
+   latest at the 15-minute maintenance pass). Console › Applications › **Notifications**: events arrive, **without title or
    text**.
 5. **Adjust**: in Watchpost, "Notification content" is **off by default** (switch it on only after a few days) and
    "Mask numeric codes" is on; in the companion, the two lists (apps excluded from content: banks, payment,

@@ -193,7 +193,7 @@ In Watchpost › Settings › Device Owner › Policy:
   quarantine included, which it switches off first), from the most recent to the oldest. An item that resists stays
   listed with its error: try again. The system network and security logs stay on; Watchpost remains Device Owner.
 
-The "Action log" of the screen, and the console (Security › Applied policy), say what succeeded or failed.
+The "Action log" of the screen, and the console (Security › Policy applied), say what succeeded or failed.
 
 ## Level 3 — The ADB rescue (the application is not usable)
 

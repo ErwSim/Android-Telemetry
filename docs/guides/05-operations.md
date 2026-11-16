@@ -33,9 +33,9 @@ heartbeats plus a margin), the theme, log out. Each page offers a period (select
 | **Events** | all the events, filterable by severity (0 info to 3 critical), by text (package, domain, SSID…) and by type (prefixes separated by commas, e.g. `net.,security.log`). Tap an event to see all its data. |
 | **Network** | "Google / Samsung share" (DNS and applications), most requested DNS names, destinations (connections), most active applications, **data volumes per application**, timeline. The DNS names and connections **per application** come from the Device Owner's network log: they arrive in batches (up to 1 h 30 late) and do not cover UDP/QUIC or hard-coded IPs. |
 | **Tracking** | what is blocked or allowed, towards whom, from which application, and what to do (§2.2) |
-| **Apps** | tabs **Risk** (§2.4, the first), Inventory (state, installer, dangerous permissions, updates; "Outside a store" = installed from outside the Play Store/Galaxy Store; filters Disabled, Suspended, Hidden), **Sensitive operations** (`app.ops`, experimental: empty as long as that collector does not work), Dangerous permissions, **Special access** (accessibility, notification listeners, administrators, overlay, unknown sources, usage access, VPN, default apps), Notifications (companion), History. An **application sheet** (from the risk tab, the inventory, the detections) gathers profile, roles, detections, permissions, operations, domains contacted and installation history. |
+| **Applications** | tabs **Risk** (§2.4, the first), Inventory (state, installer, dangerous permissions, updates; "Outside a store" = installed from outside the Play Store/Galaxy Store; filters Disabled, Suspended, Hidden), **Sensitive operations** (`app.ops`, experimental: empty as long as that collector does not work), Dangerous permissions, **Special access** (accessibility, notification listeners, administrators, overlay, unknown sources, usage access, VPN, default apps), Notifications (companion), History. An **application sheet** (from the risk tab, the inventory, the detections) gathers profile, roles, detections, permissions, operations, domains contacted and installation history. |
 | **Commands** | remote commands (§2.3) |
-| **Security** | tabs Posture (current state and history of changes), **Default roles** (SMS app, dialer, keyboard, home, browser: state and history of changes), System log (`security.log`), Camera and microphone, Unlocks (failures), CA certificates (added by the user), Cellular and BLE (2G, trackers), Applied policy (`security.policy`). |
+| **Security** | tabs Posture (current state and history of changes), **Default roles** (SMS app, dialer, keyboard, home, browser: state and history of changes), System log (`security.log`), Camera and microphone, Unlocks (failures), CA certificates (added by the user), Cellular and BLE (2G, trackers), Policy applied (`security.policy`). |
 | **Alerts** | Wazuh alerts over the period, filterable by level. "Wazuh not configured" means that the collector cannot reach the indexer (abnormal with this installation: `sudo docker compose logs collector`). |
 
 Limits to keep in mind: the "top" statistics and hourly timelines are aligned on whole UTC hours; a late event
@@ -75,7 +75,7 @@ application's SMS guard is the real protection**. Detections are **hints**, not 
 **Muting.** On a detection (or on the application sheet), **"Stop reporting for this application"**, with an optional
 reason. The confirmation says it: the detection **stays computed and recorded**, but is **no longer sent to Wazuh nor
 notified**, and the console collapses it ("Show muted detections (N)" box); it does not count in the verdict. The
-"Active mutes" card lists the mutes with their reason, who and when, and their lifting. **Cannot be muted**:
+"Current mutes" card lists the mutes with their reason, who and when, and their lifting. **Cannot be muted**:
 `sms_abuse`, `default_app_changed`, `inventory_mismatch`, `flood`. Every mute and every lifting is an event
 (`detect.muted`, `detect.unmuted`, Wazuh alert): a mute you did not set means that someone used your console (change
 the password). Global settings (thresholds, exempted applications, mail clients): `WATCHPOST_DETECT_*` variables in
@@ -93,7 +93,7 @@ whom the phone talks to, how much and from which application, **never the conten
   measurement, others): requests, blocked, allowed, domains, applications, bytes sent and received. **The bytes per
   publisher and the blocked/allowed counts per application are estimates** (distributed in proportion to DNS
   requests).
-- **Domains and Apps tabs**: each domain with its status (blocked, allowed, mixed), the reason (responsible list) and
+- **Domains and Applications tabs**: each domain with its status (blocked, allowed, mixed), the reason (responsible list) and
   the applications that request it; **Block**, **Allow** and **Reset to default** buttons (a rule written in AdGuard,
   in a block managed by Watchpost; your manual rules are not touched). Essential domains (connectivity check, push
   notifications, updates) are blocked only after a confirmation that says what the block would break
@@ -121,7 +121,7 @@ The "Command channel" card says whether the phone is connected (permanent mode) 
 - **Danger zone**: Erase the phone, in three steps (an explanation and a reminder that erasing must be allowed in the
   application; the device name to retype; the passphrase). Valid for 15 minutes by default, 24 hours at most.
 - **History** (updated live): states pending, delivered, executed, failed, refused, expired, cancelled. A command
-  **delivered and then expired with no reply** is shown as "Expired with no reply: may have been executed"; only a
+  **delivered and then expired with no reply** is shown as "Expired without a response" (it may have been executed); only a
   command never delivered is called "never executed". **Cancel** binds only the server: a signed command already
   delivered remains executable until it expires. The limits are 20 commands per hour and 10 pending per device.
 
@@ -133,7 +133,7 @@ creation fails ("this computer's clock is off").
 doubt it, do not enter the passphrase (guide 04, case F). A lead outside this repository: sign from a copy of the
 console kept off the server.
 
-### 2.4 The Risk tab (Apps)
+### 2.4 The Risk tab (Applications)
 
 Every application receives a score from 0 to 100 and a level (low 0-29, medium 30-69, high 70-100) according to its
 **declared capabilities** (requested permissions, components, installer, absence of an icon, start at boot…), with
@@ -188,8 +188,8 @@ Rule families (identifiers 100100 to 100549; details in `infra/README.md` §7.2)
 | **Agent** | `agent.tamper` tampering (12), collection or upload disabled (5), buffer saturated (6), stop (3) | Did you cause it (switch, removal, update)? If not, look at the detail (`kind`: `force_stop`, `permission_revoked`, `admin_disabled`, `device_owner_lost`…), check the phone, then the system log. |
 | **Absence** | no event for 60 min (7), resumption (3), sequence gaps (6, or 3 if explained by a purge), counter gone backwards (8) | Phone off, offline, private DNS unreachable (the agent no longer resolves `ingest.…`), agent stopped? See §5. |
 | **Posture** (one alert per field changed) | verified boot degraded (12), encryption lost (10), Device Owner lost (10), private DNS disabled/non-strict or towards an unexpected host (10), wireless ADB (9), lock removed (8), ADB (7), unknown sources (6), Play Protect (5), developer options (4) | A setting change you did not make is the important signal. Reread Security › Posture; put the setting back; for a non-strict private DNS, see whether there was a fallback (severity-2 `security.policy`). Security patch older than 3 months (6) or 6 months (9): update. |
-| **Sensors** | microphone or camera used while the device is locked (10), microphone outside a call (6) or camera (8) with the screen off, any use flagged (2) | Who? Watchpost **does not know**: cross-reference with `app.foreground` and the network traffic of the same minute (Apps, Network), look at the dangerous permissions (Apps), revoke or uninstall the suspect application. |
-| **Apps** | installed from outside the Play/Galaxy Store (8) or with no installer/ADB (8), new accessibility app (10), device administrator (10), notification listener (8), VPN (7), sensitive permission granted (5) | Do you recognise the application? Apps › Special access; remove the access or uninstall. Accessibility and administrator are the most serious. |
+| **Sensors** | microphone or camera used while the device is locked (10), microphone outside a call (6) or camera (8) with the screen off, any use flagged (2) | Who? Watchpost **does not know**: cross-reference with `app.foreground` and the network traffic of the same minute (Applications, Network), look at the dangerous permissions (Applications), revoke or uninstall the suspect application. |
+| **Apps** | installed from outside the Play/Galaxy Store (8) or with no installer/ADB (8), new accessibility app (10), device administrator (10), notification listener (8), VPN (7), sensitive permission granted (5) | Do you recognise the application? Applications › Special access; remove the access or uninstall. Accessibility and administrator are the most serious. |
 | **Security** | user CA added (10), repeated failed unlocks (10), `security.log`: ADB shell (10), ADB command or transfer (8), logging stopped (12), key integrity violation (12), restriction removed (5)… | A CA you do not know about allows interception of encrypted traffic: remove it (Settings › Security). Unlock failures: someone tried your phone. |
 | **Network** | null cellular cipher (12), 2G downgrade (10), BLE tracker following (10), mock location (9), open Wi-Fi (4), network without private DNS (5), time change ≥ 1 h (5), USB with ADB (5) | Tracker: look at the map and the `net.ble_tracker` event (tracker type, duration) and look for it physically. Mock location: a simulation application is installed. |
 | **Tracking** | DNS request by an application towards Google/Samsung telemetry (2, **without an alert**, tagged for the dashboards) | Nothing: it is statistics ("tracking and DNS" dashboard). |

@@ -200,7 +200,7 @@ hours minimum between each.
   `app.foreground` appears (100 to 400 per day); hourly `net.usage` (estimated values, delay of at least 30
   minutes); compare with Settings › Connections › Data usage. *Note*: discrepancies, missing applications.
 - [ ] **V50. Inventory and application changes.** *Test*: install then uninstall an application from the Play Store:
-  `app.installed`, `app.removed`; revoke/grant a permission: `app.permission_changed`; the Apps › Special access
+  `app.installed`, `app.removed`; revoke/grant a permission: `app.permission_changed`; the Applications › Special access
   page. *Note*: delays, missing fields.
 - [ ] **V51. USB and ADB events.** *Test*: plug in the cable, run a script: `device.usb`, `security.log`
   (`adb_shell_cmd`), corresponding Wazuh alerts (expected, guide 05). *Note*: the noise level.
@@ -253,7 +253,7 @@ hours minimum between each.
 - [ ] **V68. Default applications (`app.role`).** *Test*: change browser, keyboard, SMS app; console › Security ›
   Default roles and `app.special_access.default_apps`. *Note*: the roles that can be read (the assistant and autofill
   are **not guaranteed**: an absent value means "unknown"), the absence of an event at the first reading.
-- [ ] **V69. Risk profile (`app.risk`).** *Test*: console › Apps › Risk; compare a few scores with reality,
+- [ ] **V69. Risk profile (`app.risk`).** *Test*: console › Applications › Risk; compare a few scores with reality,
   **especially parental-control, automation, antivirus and caller-identification applications if you have any**
   (expected "high"). *Note*: a legitimate application that is "high", an application that should be and is not, the
   number of events of the first pass (about a hundred expected), "granted" versus "requested".

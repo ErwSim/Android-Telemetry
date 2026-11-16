@@ -526,7 +526,7 @@ Life of a command:
   does not close the command on the server side.
 - **Results.** The first result received is authoritative. A result received after expiry or cancellation
   **updates** the state of the command (the phone is authoritative); until a result arrives for a command that
-  was delivered, the console shows "Expired with no reply: may have been executed".
+  was delivered, the console shows "Expired without a response", saying that the command may have been executed.
 - Each creation, cancellation and result is logged by the collector and exported to Wazuh as server events
   (`watchpost.source = "server"`): `command.issued`, `command.cancelled`, `command.reported`, `command.expired`.
 

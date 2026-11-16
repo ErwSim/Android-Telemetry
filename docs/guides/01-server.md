@@ -169,7 +169,7 @@ Test-NetConnection <VPS IP> -Port 9200
 | AdGuard Home | `https://adguard.watchpost.example.org` | two logins likewise: Caddy, then AdGuard (`admin`) |
 
 - Watchpost console: with no enrolled device, it shows "This device has never sent data" or an empty device list:
-  this is normal. The pages (Overview, Detections, Map, Events, Network, Tracking, Apps, Security, Commands, Alerts)
+  this is normal. The pages (Overview, Detections, Map, Events, Network, Tracking, Applications, Security, Commands, Alerts)
   are described in [guide 05](05-operations.md). The **Tracking** page relies on AdGuard Home: it is complete only
   if AdGuard is reachable (`docker compose ps`).
 - Wazuh: three dashboards are already imported, "Watchpost — phone security", "Watchpost — tracking and DNS" and
