@@ -5,10 +5,10 @@
     "device_id": "dev_0123456789abcdef",
     "type": "lock",
     "now_ms": 1794823200000,
-    "payload": "{\"v\":1,\"id\":\"01M7HWS780NKH9D038100NPH7B\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{\"message\":\"Teléfono perdido 🙂 — «llámeme» al \\\"+1 555 0100\\\"\\nline 2 \\\\ it's a test\"},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
-    "sig": "gEEVepCteVsjMEY8Jn2IQMd8Je5pNvoow4xTR1xhRUs=",
+    "payload": "{\"v\":1,\"id\":\"01M7HWS780NKH9D038100NPH7B\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{\"message\":\"Handy verloren 🙂 — «bitte anrufen» unter \\\"+1 555 0100\\\"\\nline 2 \\\\ it's a test\"},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
+    "sig": "aWk9xkq3TOkN4uSLwFTNCP08wH3myGEYhFn0fAxfrQE=",
     "expect": {
-      "message": "Teléfono perdido 🙂 — «llámeme» al \"+1 555 0100\"\nline 2 \\ it's a test"
+      "message": "Handy verloren 🙂 — «bitte anrufen» unter \"+1 555 0100\"\nline 2 \\ it's a test"
     }
   },
   {

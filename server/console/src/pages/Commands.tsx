@@ -99,18 +99,23 @@ export default function Commands() {
     setNotice(undefined);
     try {
       const c = prepareCommand(deviceId, type, params, defaultValidityMs(type), issueTime(Date.now(), clockSkewMs()));
-      await api.createCommand({ device_id: deviceId, payload: c.payload });
+      // Armed before sending: a fast agent can push its fix on the SSE stream before the POST response comes back.
       if (type === 'locate') {
         waitingFix.current = true;
         setFixArrived(false);
         setLocateSince(Date.now());
       }
+      await api.createCommand({ device_id: deviceId, payload: c.payload });
       setNotice({
         tone: 'ok',
         text: `"${commandLabel(type)}" sent to the server. ${channel.key === 'connected' ? 'The phone receives it in a moment.' : 'It waits for the phone to connect (see the channel state).'}`,
       });
       list.reload();
     } catch (e) {
+      if (type === 'locate') {
+        waitingFix.current = false;
+        setLocateSince(undefined);
+      }
       fail(e);
     } finally {
       setSending(false);

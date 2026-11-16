@@ -143,13 +143,24 @@ async function main() {
     await page.screenshot({ path: path.join(OUT, 'real-04b-tracking-409.png') });
     ok('409 essential domain: ' + (await page.locator('dialog[open] .callout li').allTextContents()).join(' | ').slice(0, 120));
     await page.click('dialog button:has-text("Do not block")');
-    await page.fill('input[placeholder^="e.g. doubleclick"]', 'tracker');
+    await page.fill('input[placeholder^="e.g. doubleclick"]', '');
     await page.waitForTimeout(1500);
-    let target = page.locator('.trk-dom tbody tr:has(button:has-text("Block"))').first();
-    if (!(await target.count())) { await page.fill('input[placeholder^="e.g. doubleclick"]', ''); await page.waitForTimeout(1500); target = page.locator('.trk-dom tbody tr:has(button:has-text("Block")):not(:has-text("mtalk"))').first(); }
-    const dom = (await target.locator('.c-dom .mono').textContent()).trim();
-    await target.locator('button:has-text("Block")').first().click();
-    await page.waitForSelector('dialog[open]', { timeout: 3000 }).then(async () => { await page.click('dialog button:has-text("Do not block")'); fail('domain ' + dom + ' flagged essential'); }).catch(() => undefined);
+    // First blockable domain that the collector does not flag as essential (an essential one opens the 409 dialog).
+    const candidates = await page.locator('.trk-dom tbody tr:has(button:has-text("Block")) .c-dom .mono').allTextContents();
+    let dom = '';
+    for (const c of candidates.map((t) => t.trim())) {
+      const r = page.locator('.trk-dom tbody tr', { hasText: c }).first();
+      await r.locator('button:has-text("Block")').first().click();
+      const dialog = await page.waitForSelector('dialog[open]', { timeout: 2500 }).then(() => true).catch(() => false);
+      if (dialog) {
+        await page.click('dialog button:has-text("Do not block")');
+        await page.waitForSelector('dialog[open]', { state: 'detached' });
+        continue;
+      }
+      dom = c;
+      break;
+    }
+    if (!dom) throw new Error('no non-essential domain to block');
     const row = page.locator('.trk-dom tbody tr', { hasText: dom }).first();
     await row.locator('button:has-text("Reset to default")').waitFor({ timeout: 15000 });
     ok('Block ' + dom + ': rule saved in AdGuard Home ("manual rule" badge)');

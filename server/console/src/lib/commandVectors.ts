@@ -30,7 +30,7 @@ export const VECTOR_CODES = {
 } as const;
 
 const MESSAGES = {
-  mixed: 'Teléfono perdido 🙂 — «llámeme» al "+1 555 0100"\nline 2 \\ it\'s a test',
+  mixed: 'Handy verloren 🙂 — «bitte anrufen» unter "+1 555 0100"\nline 2 \\ it\'s a test',
   emoji200: '🙂'.repeat(100),
   padded: '  \n spaces and line feeds around \n  ',
   bidi: 'مرحبا بالعالم — שלום עולם — ‮override‬ — 👨‍👩‍👧‍👦 — z̶a̶l̶g̶o̶',
