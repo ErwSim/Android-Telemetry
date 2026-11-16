@@ -155,7 +155,7 @@ le relevé d'AdGuard Home marque les heures où il compte un blocage « menace �
 1 h 30 à 2 h plus tard, ou des jours après une période hors ligne) remarque ses heures, qui sont réévaluées.
 Idempotence : `detections` est unique sur (appareil, type, sujet, début de fenêtre), vérifié dans la transaction
 qui écrit la détection et son événement ; réévaluer une fenêtre (lot tardif, redémarrage, passage suivant)
-n'ajoute rien. Une heure remarquée pendant son évaluation reste à évaluer (compteur `gen`). Les lectures passent
+n'ajoute rien — l'`evidence` est donc l'état au moment de la détection (une journée de fraude au SMS est signalée dès le premier seuil franchi, avec le compte d'alors). Une heure remarquée pendant son évaluation reste à évaluer (compteur `gen`). Les lectures passent
 par le pool en lecture seule (WAL : l'ingestion n'attend jamais) ; les écritures sont une courte transaction par
 appareil et par tour de 256 heures ; un passage s'arrête après 20 s et reprend au suivant. À la mise à jour, la
 migration 6 marque les deux derniers jours déjà stockés : les détections portent sur les données reçues ensuite.
