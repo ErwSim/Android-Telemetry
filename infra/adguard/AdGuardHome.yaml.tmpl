@@ -120,9 +120,12 @@ querylog:
   dir_path: /opt/adguardhome/querylog
   ignored: []
   interval: 168h
-  # Écrit chaque requête sur disque sans attendre (sinon le journal arrive par paquets de 1000
-  # dans Wazuh, avec un retard de plusieurs heures sur un seul téléphone).
-  size_memory: 1
+  # Entrées gardées en mémoire avant écriture sur disque. 50 : le journal arrive dans Wazuh par
+  # petits paquets (pas de retard de plusieurs heures comme avec le défaut de 1000) ; à 1, AdGuard
+  # perd lui-même des entrées sous requêtes simultanées ; au-delà de 500 (une page de l'API), le
+  # relevé du collecteur (vue « pistage », detect.threat_domain) peut en sauter (contrat §8).
+  # Géré par Vigie : réappliqué à chaque install.sh, y compris sur une installation existante.
+  size_memory: 50
   enabled: true
   ignored_enabled: false
   file_enabled: true

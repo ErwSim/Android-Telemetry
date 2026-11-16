@@ -14,9 +14,10 @@ def ev(typ, data, sev=0, dev="dev_7k2m9q", name="s25", source=None):
     seq[0] += 1
     v = {"device_id": dev, "device_name": name, "id": "01JTEST%019d" % seq[0],
         "ts": "2026-11-15T21:43:03.974Z", "received_at": "2026-11-15T21:43:05.120Z", "seq": seq[0],
-        "type": typ, "domain": typ.split('.')[0], "sev": sev, "data": data}
-    if source:  # événements produits par le collecteur (commandes, contrat §8)
+        "type": typ, "domain": typ.split('.')[0], "sev": sev}
+    if source:  # événements produits par le collecteur (commandes §8, pistage §9, détections §11.3)
         v["seq"] = 0; v["source"] = source
+    v["data"] = data
     return json.dumps({"vigie": v}, ensure_ascii=False, separators=(',', ':'))
 CMD = "01JCQ8Z3K4M5N6P7Q8R9S0T1V2"
 def issued(typ, params=None, sev=0, **kw):
@@ -37,6 +38,38 @@ def agh(qh, filtered=False, listid=10, ip="203.0.113.7", cp="dot"):
         d["Result"] = {}; d["Upstream"] = "https://dns.quad9.net:443/dns-query"
     d["Elapsed"] = 186617
     return json.dumps(d, separators=(',', ':'))
+# v1.2 : détections (contrat §11.3), applications des scénarios du simulateur
+TORCH = ("com.flashlight.pro.tools", "Lampe Torche Pro")
+TROJAN = ("com.android.systemupdate.service", "Mise à jour du système")
+SPY = ("com.android.battery.service", "Battery Service")
+VAULT = ("com.gallery.vault.hide", "Coffre Photos")
+PUZZLE = ("com.puzzle.relax.free", "Puzzle Relax")
+CLEANER = ("com.cleaner.boost.free", "Nettoyeur Boost")
+FASTVPN = ("com.fastvpn.browser", "Navigateur Rapide")
+BROWSER = ("com.sec.android.app.sbrowser", "Samsung Internet")
+DAY = ("2026-11-15T00:00:00.000Z", "2026-11-16T00:00:00.000Z")
+INSTALL_WINDOW = ("2026-11-15T12:42:07.204Z", "2026-11-16T12:42:07.204Z")
+def det(kind, app, evidence, sev=3, update=False, window=DAY):
+    d = {"evidence": evidence, "label": app[1], "package": app[0], "summary": "%s : constat de test (%s)" % (app[1], kind),
+         "window_from": window[0], "window_to": window[1]}
+    if update:
+        d["update"] = True; d["detection_id"] = "01M7JPAP1R31CWDX8J7CFDY1M7"
+    return ev("detect." + kind, d, sev, source="server")
+def newapp(caps, high, reasons, score, level="high"):
+    e = {"capabilities": caps, "from_store": False, "high_risk": high, "installed_at": INSTALL_WINDOW[0],
+         "installer": "com.google.android.packageinstaller", "level": level, "reasons": reasons, "score": score}
+    if caps:
+        e["minutes_to_first_capability"] = 3
+    return e
+def risk(app, level, score, reasons, installer, vc=7):
+    return ev("app.risk", {"from_store": installer in ("com.android.vending", "com.sec.android.app.samsungapps"), "installer": installer,
+        "label": app[1], "level": level, "package": app[0], "reasons": reasons, "score": score, "version_code": vc},
+        {"low": 0, "medium": 1, "high": 2}[level])
+def guard(action, key, target, permission=None, sev=None, ok=True):
+    d = {"action": action, "ok": ok, "profile": "guard:" + key, "target": target}
+    if permission: d["permission"] = permission
+    if not ok: d["error"] = "SecurityException"
+    return ev("security.policy", d, 1 if sev is None else sev)
 def pc(field, old, new, sev=0):
     return ev("security.posture_change", {"field": field, "old": old, "new": new}, sev)
 def watch(o):
@@ -201,6 +234,65 @@ cases = [
  ("100270", "notification-avec-contenu", "Notification avec titre et texte (jamais dans la description)", [ev("app.notification", {"package": "org.thoughtcrime.securesms", "event": "posted", "category": "msg", "channel": "messages", "ongoing": False, "importance": "high", "title": "Alice <script>\"'", "text": "Ton code est 123456 — « secret » \\ ligne\nsuivante", "redacted": True})]),
  ("100270", "notification-retiree", "Notification retirée (sans contenu)", [ev("app.notification", {"package": "com.whatsapp", "event": "removed", "category": "msg", "channel": "c", "ongoing": False, "importance": "default"})]),
  ("100233", "commandes-rafale-effacement", "Rafale terminée par un effacement : l'alerte d'effacement n'est pas masquée", [issued("ring", {"duration_s": 5}) for _ in range(7)] + [issued("wipe", {}, 2)]),
+ # --- v1.2 : détections du collecteur (contrat §11.3 ; formes relevées dans l'export réel du collecteur)
+ ("100460", "detection-domaine-menace", "Application qui contacte des domaines de menaces (sév. 3)", [det("threat_domain", TROJAN, {"blocked": 21, "domain_count": 2, "domains": ["api.secure-bank-sync.example", "gate.cdn-update-check.example"], "lists": ["HaGeZi Threat Intelligence Feeds (medium)"], "requests": 96})]),
+ ("100461", "detection-domaine-menace-navigateur", "Navigateur qui a suivi un lien d'hameçonnage (sév. 2)", [det("threat_domain", BROWSER, {"blocked": 1, "domain_count": 1, "domains": ["login-banque.phish.example"], "lists": ["HaGeZi Threat Intelligence Feeds (medium)"], "requests": 1}, 2)]),
+ ("100462", "detection-fraude-sms", "Envoi de SMS par une appli qui n'est pas l'appli SMS", [det("sms_abuse", TORCH, {"background": 860, "default_sms_app": ["com.samsung.android.messaging"], "read_contacts": 11, "reason": "not_default_sms_app", "rejected": 0, "sent": 860})]),
+ ("100463", "detection-micro-arriere-plan", "Micro et caméra en arrière-plan (le micro l'emporte)", [det("sensor_background", SPY, {"camera_background": 3, "camera_count": 3, "microphone_background": 44, "microphone_count": 44, "ops": ["record_audio", "camera"]}, 2)]),
+ ("100464", "detection-camera-arriere-plan", "Caméra seule en arrière-plan", [det("sensor_background", SPY, {"camera_background": 5, "camera_count": 5, "ops": ["camera"]}, 2)]),
+ ("100465", "detection-pic-envoi", "Pic d'envoi isolé (sév. 2, niveau modéré)", [det("upload_spike", VAULT, {"first_hour": "2026-11-16T16:00:00.000Z", "history_hours": 26, "hours": 1, "learning": True, "peak_hour": "2026-11-16T16:00:00.000Z", "screen_on_minutes": 6, "threshold_bytes": 1073741824, "tx_bytes": 3743416320}, 2)]),
+ ("100466", "detection-eventail", "Centaines d'adresses en une heure (proxy résidentiel)", [det("fanout", PUZZLE, {"addresses": 476, "connections": 476, "first_hour": "2026-11-16T00:00:00.000Z", "hours": 5, "peak_hour": "2026-11-16T01:00:00.000Z", "ports": [443, 80, 8080], "sample": ["31.15.28.24", "31.19.75.243"], "screen_on_minutes": 0, "threshold": 100}, 2)]),
+ ("100467", "detection-ports-courriel", "Connexion SMTP d'une appli ordinaire (sév. 2)", [det("mail_ports", CLEANER, {"addresses": 1, "connections": 2, "ports": [587], "sample": ["64.5.242.51"]}, 2)]),
+ ("100468", "detection-spam", "Volume de spam (sév. 3)", [det("mail_ports", CLEANER, {"addresses": 347, "connections": 676, "ports": [587, 25], "sample": ["64.5.242.51", "64.36.183.25", "64.37.161.91"]})]),
+ ("100469", "detection-contournement-dns", "Résolveur DoH/DoT public utilisé", [det("dns_bypass", FASTVPN, {"connections": 70, "providers": ["Cloudflare DNS", "Google Public DNS"], "resolvers": ["1.0.0.1:443", "8.8.8.8:853", "[2606:4700:4700::1111]:443"]}, 2)]),
+ ("100470", "detection-nouvelle-app-capacites-grave", "Appli récente à risque (combo) qui obtient l'envoi de SMS", [det("new_app_risky", TORCH, newapp(["permission:SEND_SMS"], True, ["sideloaded", "sms_send", "boot_receiver", "combo_sms_fraud"], 91), 3, window=INSTALL_WINDOW)]),
+ ("100471", "detection-nouvelle-app-capacites", "Appli récente qui obtient l'accessibilité (sév. 2)", [det("new_app_risky", ("com.example.helper", "Assistant Plus"), newapp(["accessibility"], False, ["accessibility_service"], 25, level="low"), 2, window=INSTALL_WINDOW)]),
+ ("100472", "detection-nouvelle-app-vpn", "Appli récente qui devient VPN (sév. 1)", [det("new_app_risky", FASTVPN, newapp(["vpn"], False, ["vpn_service"], 20, level="low"), 1, window=INSTALL_WINDOW)]),
+ ("100473", "detection-nouvelle-app-risque-seul", "Risque élevé sans capacité : déjà alerté par app.risk (marqué)", [det("new_app_risky", TROJAN, newapp([], True, ["sideloaded", "accessibility_service", "overlay", "combo_banking_trojan"], 95), 3, window=INSTALL_WINDOW)]),
+ ("100474", "detection-nouvelle-app-risque-seul-sev2", "Risque élevé (sans combo) sans capacité (marqué)", [det("new_app_risky", ("com.parental.ctrl", "Contrôle parental"), newapp([], True, ["no_launcher_icon", "background_location", "boot_receiver"], 65), 2, window=INSTALL_WINDOW)]),
+ ("100450", "detection-type-inconnu", "Type de détection sans règle dédiée", [det("future_kind", PUZZLE, {"x": 1}, 2)]),
+ ("100100", "detection-imitee", "detect.* envoyé par un appareil (sans source serveur) : aucune alerte", [ev("detect.sms_abuse", {"package": "com.flashlight.pro.tools", "label": "Lampe Torche Pro", "evidence": {"sent": 1}}, 3)]),
+ ("100451", "detection-mise-a-jour", "Mise à jour d'une détection déjà grave (nouveau domaine) : pas de seconde alerte grave", [det("threat_domain", TROJAN, {"domains": ["a.example"], "domain_count": 1, "requests": 5, "blocked": 5, "lists": ["TIF"]}), det("threat_domain", TROJAN, {"domains": ["a.example", "b.example"], "domain_count": 2, "requests": 9, "blocked": 9, "lists": ["TIF"]}, update=True)]),
+ ("100453", "detection-mise-a-jour-sev2", "Mise à jour d'une détection de sévérité 2", [det("fanout", PUZZLE, {"addresses": 320, "ports": [443]}, 2), det("fanout", PUZZLE, {"addresses": 480, "ports": [443, 8080]}, 2, update=True)]),
+ ("100452", "detection-aggravee", "Détection de sévérité 2 mise à jour en sévérité 3 (aggravation)", [det("mail_ports", CLEANER, {"addresses": 2, "connections": 3, "ports": [587]}, 2), det("mail_ports", CLEANER, {"addresses": 25, "connections": 140, "ports": [587, 25]}, 3, update=True)]),
+ ("100489", "detection-correlation", "Deux types de détection pour la même application en 24 h", [det("sms_abuse", TORCH, {"reason": "not_default_sms_app", "sent": 860, "rejected": 0, "background": 860}), det("threat_domain", TORCH, {"domains": ["panel.sms-gateway-pay.example"], "domain_count": 1, "requests": 40, "blocked": 40, "lists": ["TIF"]})]),
+ ("100460", "detection-correlation-autre-app", "Deux détections pour deux applications différentes : pas de corrélation", [det("sms_abuse", TORCH, {"reason": "volume", "sent": 300}), det("threat_domain", TROJAN, {"domains": ["c2.example"], "domain_count": 1, "requests": 4, "blocked": 4, "lists": ["TIF"]})]),
+ ("100460", "detection-correlation-meme-type", "Même type deux jours de suite : pas de corrélation", [det("threat_domain", TROJAN, {"domains": ["c2.example"], "domain_count": 1}), det("threat_domain", TROJAN, {"domains": ["c2.example"], "domain_count": 1}, window=("2026-11-16T00:00:00.000Z", "2026-11-17T00:00:00.000Z"))]),
+ # --- v1.2 : profil de risque, rôles, opérations (§11.2)
+ ("100500", "risque-faible", "Profil de risque faible : marqué, pas d'alerte", [risk(("com.google.android.gms", "Services Google Play"), "low", 0, [], "com.android.vending", 254432035)]),
+ ("100500", "risque-moyen", "Profil de risque moyen : marqué", [risk(("com.qrscan.free.reader", "QR Scanner"), "medium", 35, ["sideloaded", "unknown_installer"], "com.google.android.packageinstaller")]),
+ ("100501", "risque-eleve-hors-installation", "Risque élevé sans installation récente (mise à jour)", [risk(("com.parental.ctrl", "Contrôle parental"), "high", 65, ["no_launcher_icon", "background_location", "boot_receiver"], "com.android.vending")]),
+ ("100502", "risque-eleve-installation", "Application à risque élevé installée", [ev("app.installed", {"package": "com.parental.ctrl", "version_name": "3.1", "version_code": 31, "installer": "com.android.vending", "signer_sha256": H}), risk(("com.parental.ctrl", "Contrôle parental"), "high", 65, ["no_launcher_icon", "background_location", "boot_receiver"], "com.android.vending")]),
+ ("100503", "risque-combo-installation", "Application au profil de logiciel malveillant installée", [ev("app.installed", {"package": TORCH[0], "version_name": "1.0", "version_code": 7, "installer": "com.google.android.packageinstaller", "signer_sha256": H}, 1), risk(TORCH, "high", 91, ["sideloaded", "unknown_installer", "no_launcher_icon", "sms_send", "boot_receiver", "combo_sms_fraud"], "com.google.android.packageinstaller")]),
+ ("100501", "risque-eleve-autre-installation", "Installation d'une autre application : pas de corrélation", [ev("app.installed", {"package": "org.example.app", "version_name": "1", "version_code": 1, "installer": "com.android.vending", "signer_sha256": H}), risk(("com.parental.ctrl", "Contrôle parental"), "high", 65, ["boot_receiver"], "com.android.vending")]),
+ ("100511", "role-sms", "Nouvelle appli SMS par défaut", [ev("app.role", {"role": "sms", "old": "com.samsung.android.messaging", "new": TORCH[0]}, 2)]),
+ ("100512", "role-telephone", "Nouvelle appli de téléphone par défaut", [ev("app.role", {"role": "dialer", "old": "com.samsung.android.dialer", "new": "com.truecaller"}, 2)]),
+ ("100513", "role-clavier", "Nouveau clavier par défaut", [ev("app.role", {"role": "keyboard", "old": "com.samsung.android.honeyboard", "new": "com.keyboard.themes.free"}, 2)]),
+ ("100514", "role-assistant", "Nouvel assistant par défaut", [ev("app.role", {"role": "assistant", "old": "com.google.android.googlequicksearchbox", "new": "com.example.assistant"}, 2)]),
+ ("100510", "role-navigateur", "Nouveau navigateur par défaut (information)", [ev("app.role", {"role": "browser", "old": "com.sec.android.app.sbrowser", "new": "org.mozilla.firefox"}, 1)]),
+ ("100510", "role-sms-inconnu", "Rôle SMS devenu illisible (new absent) : information", [ev("app.role", {"role": "sms", "old": "com.samsung.android.messaging"}, 2)]),
+ ("100520", "operations-app", "app.ops.app ordinaire : marqué", [ev("app.ops.app", {"background_count": 3, "count": 8, "from": "2026-11-13T17:00:00Z", "last_ts": "2026-11-13T17:33:32.227Z", "op": "fine_location", "package": "com.google.android.gms", "rejected_count": 0, "to": "2026-11-13T18:00:00Z"})]),
+ ("100522", "operations-sms-refuses", "Envois de SMS refusés (garde SMS)", [ev("app.ops.app", {"background_count": 0, "count": 0, "from": "2026-11-16T13:00:00Z", "last_ts": "2026-11-16T13:16:20.276Z", "op": "send_sms", "package": TORCH[0], "rejected_count": 76, "to": "2026-11-16T14:00:00Z"})]),
+ ("100521", "operations-appel-refuse", "Appel refusé (garde appels)", [ev("app.ops.app", {"background_count": 2, "count": 0, "from": "2026-11-16T13:00:00Z", "op": "call_phone", "package": "com.example.dialer.fraud", "rejected_count": 2, "to": "2026-11-16T14:00:00Z"})]),
+ ("100160", "permission-envoi-sms", "Permission d'envoi de SMS accordée", [ev("app.permission_changed", {"package": TORCH[0], "permission": "android.permission.SEND_SMS", "granted": True}, 1)]),
+ # --- v1.2 : gardes (security.policy, profile guard:<clé>, §11.1)
+ ("100531", "garde-activee", "Garde SMS activée", [guard("guard_enabled", "sms", "sms")]),
+ ("100532", "garde-desactivee", "Garde SMS désactivée (affaiblissement)", [guard("guard_disabled", "sms", "sms")]),
+ ("100533", "garde-quarantaine", "Application mise en quarantaine", [guard("quarantined", "quarantine", TORCH[0])]),
+ ("100534", "garde-liberee", "Application libérée de la quarantaine", [guard("released", "quarantine", TORCH[0])]),
+ ("100530", "garde-permission-refusee", "Permission refusée par une garde : marqué", [guard("permission_denied", "sms", TORCH[0], "android.permission.SEND_SMS", 1)]),
+ ("100535", "garde-permission-rendue", "Permission rendue par une garde", [guard("permission_restored", "sms", "com.example.otp", "android.permission.SEND_SMS")]),
+ ("100187", "garde-echec", "Échec d'une garde sur un paquet (ok = false, alerte d'échec)", [guard("permission_denied", "sms", "com.example.app", "android.permission.SEND_SMS", 1, ok=False)]),
+ # --- v1.2 : vue « pistage » (tracking.*, événements du collecteur)
+ ("100540", "pistage-niveau-renforce", "Niveau de blocage renforcé (sév. 1)", [ev("tracking.level_changed", {"old": "equilibre", "new": "strict", "changes": 4, "user": "admin"}, 1, source="server")]),
+ ("100541", "pistage-niveau-affaibli", "Niveau de blocage abaissé (sév. 2)", [ev("tracking.level_changed", {"old": "strict", "new": "permissif", "changes": 5, "user": "admin"}, 2, source="server")]),
+ ("100546", "pistage-niveau-depuis-inconnu", "Niveau posé depuis un état inconnu (old absent, sév. 2)", [ev("tracking.level_changed", {"new": "equilibre", "changes": 2, "user": "admin"}, 2, source="server")]),
+ ("100100", "pistage-niveau-imite", "tracking.* envoyé par un appareil : aucune alerte", [ev("tracking.level_changed", {"old": "strict", "new": "permissif", "user": "admin"}, 2)]),
+ ("100542", "pistage-blocage", "Domaine bloqué depuis la console", [ev("tracking.override", {"domain": "graph.facebook.com", "action": "block", "forced": False, "user": "admin"}, 1, source="server")]),
+ ("100543", "pistage-autorisation", "Domaine autorisé de force depuis la console", [ev("tracking.override", {"domain": "gate.cdn-update-check.example", "action": "allow", "forced": False, "user": "admin"}, 2, source="server")]),
+ ("100544", "pistage-blocage-retire", "Blocage manuel retiré", [ev("tracking.override", {"domain": "graph.facebook.com", "action": "default", "forced": False, "previous": "block", "user": "admin"}, 2, source="server")]),
+ ("100545", "pistage-blocage-indispensable", "Blocage forcé d'un domaine indispensable", [ev("tracking.override", {"domain": "fcm.googleapis.com", "action": "block", "forced": True, "user": "admin"}, 2, source="server")]),
+ ("100542", "pistage-autorisation-retiree", "Autorisation retirée (retour au défaut, renforcement)", [ev("tracking.override", {"domain": "x.example", "action": "default", "forced": False, "previous": "allow", "user": "admin"}, 1, source="server")]),
 ]
 for i, (rid, slug, desc, lines) in enumerate(cases, 1):
     with open(os.path.join(out, "%03d-%s.log" % (i, slug)), "w") as f:

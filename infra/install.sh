@@ -194,6 +194,14 @@ for k in VIGIE_NOTIFY_URL VIGIE_NOTIFY_TOPIC VIGIE_NOTIFY_TOKEN VIGIE_NOTIFY_SMT
   VIGIE_NOTIFY_SMTP_USER VIGIE_NOTIFY_SMTP_PASSWORD VIGIE_NOTIFY_SMTP_FROM VIGIE_NOTIFY_SMTP_TO; do
   grep -qE "^$k=" "$ENV_FILE" || env_set "$k" ""
 done
+# Détections du collecteur (v1.2, contrat §11.3) : clés créées vides, jamais écrasées ensuite. Vide =
+# défaut du collecteur (README §7.4) ; une valeur invalide empêche le collecteur de démarrer.
+if ! grep -qE '^VIGIE_DETECT_' "$ENV_FILE"; then
+  printf '%s\n' "# Détections du collecteur (VIGIE_DETECT_*) : vide = défaut du collecteur, voir infra/README.md §7.4" >>"$ENV_FILE"
+fi
+for k in $VIGIE_DETECT_VARS; do
+  grep -qE "^$k=" "$ENV_FILE" || env_set "$k" ""
+done
 NOTIFY_LEVEL="$(env_get VIGIE_NOTIFY_LEVEL)"
 [[ "$NOTIFY_LEVEL" =~ ^([1-9]|1[0-6])$ ]] || die "VIGIE_NOTIFY_LEVEL doit être un niveau Wazuh entre 1 et 16"
 

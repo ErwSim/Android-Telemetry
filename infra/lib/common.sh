@@ -37,6 +37,14 @@ gen_password() {
 
 gen_hex() { local h; h="$(openssl rand -hex 32)"; printf '%s' "${h:0:${1:-16}}"; }
 
+# Seuils et réglages des détections du collecteur (v1.2), transmis tels quels par docker-compose.yml ;
+# vides dans .env = défauts du collecteur (server/collector/README.md, « Détections »).
+VIGIE_DETECT_VARS="VIGIE_DETECT_ENABLED VIGIE_DETECT_DISABLE VIGIE_DETECT_INTERVAL_S \
+VIGIE_DETECT_UPLOAD_FLOOR_MB VIGIE_DETECT_UPLOAD_FACTOR VIGIE_DETECT_UPLOAD_LEARN_DAYS \
+VIGIE_DETECT_FANOUT VIGIE_DETECT_FANOUT_SCREEN_OFF VIGIE_DETECT_MAIL_MIN VIGIE_DETECT_MAIL_CLIENTS \
+VIGIE_DETECT_DNS_BYPASS_MIN VIGIE_DETECT_DNS_BYPASS_PORTS VIGIE_DETECT_DNS_BYPASS_EXEMPT \
+VIGIE_DETECT_SMS_OTHER_MIN VIGIE_DETECT_SMS_DAILY_MAX VIGIE_DETECT_MIC_BG_MIN VIGIE_DETECT_CAMERA_BG_MIN"
+
 # Lecture d'une variable du fichier .env (sans l'exécuter)
 env_get() {
   local key="$1"

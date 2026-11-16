@@ -34,7 +34,13 @@ fi
 # 2b. Débit : la file entre wazuh-logcollector et l'analyse (1024 lignes par défaut) déborde quand
 #     le collecteur exporte d'un coup le tampon d'un téléphone resté hors ligne (« Target 'agent'
 #     message queue is full… Log lines may be lost », constaté à l'essai avec 3 h d'historique).
+# 2c. Corrélation : avec plusieurs fils d'analyse (défaut : un par processeur), des événements reçus
+#     dans la même milliseconde sont évalués en parallèle et ne se voient pas entre eux ; les règles
+#     de corrélation (100489 : détections du collecteur, écrites par rafales ; 100502 : app.risk
+#     après app.installed) les manquaient (constaté à l'essai v1.2). Un seul fil : ordre du fichier
+#     respecté ; largement suffisant pour quelques téléphones (débit mesuré dans infra/README.md §11.2).
 printf '%s\n' "# Généré par vigie-init.sh à chaque démarrage." "logcollector.queue_size=65536" \
+  "analysisd.event_threads=1" "analysisd.rule_matching_threads=1" \
   >/var/ossec/etc/local_internal_options.conf
 chown root:wazuh /var/ossec/etc/local_internal_options.conf
 chmod 640 /var/ossec/etc/local_internal_options.conf

@@ -35,10 +35,12 @@ import sys
 import yaml
 
 # Identifiants AdGuard fixes des listes gérées (les règles Wazuh s'en servent : 30 = menaces).
+# Le champ « category » de niveaux.json est lu par le collecteur ; ici il n'est que vérifié.
 LIST_IDS = {"vigie_base": 1, "vigie_strict": 2, "hagezi_pro": 10, "hagezi_pro_plus": 11,
             "hagezi_samsung": 20, "hagezi_tif": 30}
 PERSO = {"id": 90, "url": "/opt/adguardhome/work/userfilters/perso/regles-perso.txt", "name": "Règles personnelles"}
 LEVEL_ORDER = ("permissif", "equilibre", "strict")
+CATEGORIES = ("threat", "ads", "tracking", "mixed", "custom", "allowlist")
 MANAGED_USERS = ("admin", "vigie-collecteur")
 MANAGED_CLIENT = "Telephone (Vigie)"
 BLOCK_BEGIN = "! vigie:begin"
@@ -62,6 +64,17 @@ def load_levels(path):
     missing = set(lv["lists"]) - set(LIST_IDS)
     if missing:
         sys.exit("niveaux.json : listes sans identifiant AdGuard dans merge-config.py : " + ", ".join(sorted(missing)))
+    # « category » (v1.2) : seule « threat » change un comportement (detect.threat_domain du collecteur,
+    # qui refuse une valeur inconnue au démarrage) ; vérifiée ici pour échouer dès l'installation.
+    for key, d in lv["lists"].items():
+        c = d.get("category")
+        if c is not None and c not in CATEGORIES:
+            sys.exit(f"niveaux.json : catégorie inconnue « {c} » pour {key} ({', '.join(CATEGORIES)})")
+        if c == "threat" and d.get("allowlist", False):
+            sys.exit(f"niveaux.json : la liste d'autorisation {key} ne peut pas être de catégorie threat")
+    if not any(d.get("category") == "threat" for d in lv["lists"].values()):
+        print("niveaux.json : aucune liste de catégorie « threat » : detect.threat_domain restera muette",
+              file=sys.stderr)
     return lv["lists"], levels
 
 
