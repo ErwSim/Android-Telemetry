@@ -90,7 +90,7 @@ npm run build
 npm run verify        # Chromium walkthrough against the mock server serving dist/
 ```
 
-**Wazuh rules** (stack running, from `infra/`): `./wazuh/tests/run-tests.sh` (210 case files;
+**Wazuh rules** (stack running, from `infra/`): `./wazuh/tests/run-tests.sh` (210 cases;
 `./wazuh/tests/run-tests.sh 015 100181` filters by substring of the case name). The cases are regenerated with
 `wazuh/tests/generate-cases.py`.
 

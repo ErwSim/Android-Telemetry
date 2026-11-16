@@ -300,9 +300,8 @@ Must fail at the TLS handshake (a curl error, no HTTP code): without an enrolled
 ./wazuh/tests/run-tests.sh
 ```
 
-Must finish with 0 failures (exit code 0): more than 200 cases (209 in the last run documented in
-`infra/README.md`, 210 case files today: rules for version 1, for remote commands, for detections, for guards and
-for tracking). This is the proof that the rules are loaded in the manager.
+Must finish with 0 failures (exit code 0): 210 cases (rules for version 1, for remote commands, for detections, for
+guards and for tracking). This is the proof that the rules are loaded in the manager.
 
 **Port 853 from a mobile network**: some networks filter DNS over TLS. The decisive test is made with the phone, in
 [guide 03](03-phone.md) (stage 1, "private DNS only").
