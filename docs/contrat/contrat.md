@@ -631,8 +631,8 @@ Codes de `reasons` (liste fermée, chaque code documenté dans l'app) : `sideloa
 `mic_camera_background`, `old_target_sdk`, `debuggable`, `combo_banking_trojan` (accessibilité + superposition
 + SMS ou notifications), `combo_sms_fraud` (envoi de SMS + démarrage au boot sans être l'appli SMS),
 `combo_stalkerware` (pas d'icône + position ou micro + démarrage au boot). Les applications du système et
-l'agent Vigie lui-même sont notés mais plafonnés à `low` (score ≤ 29, raisons conservées). Niveaux : `low` 0 à 29,
-`medium` 30 à 59, `high` 60 à 100 ; la pondération est dans `android/README.md`. Le score mesure des
+l'agent Vigie lui-même sont notés mais plafonnés à `low` (score ≤ 29, raisons conservées). Niveaux (révisés avec le passage aux capacités déclarées, §11.4) : `low` 0 à 29,
+`medium` 30 à 69, `high` 70 à 100 ; la pondération est dans `android/README.md`. Le score mesure des
 **capacités déclarées**, pas des actes : contrôle parental, antivirus, automatisation et identification
 d'appelant légitimes sortent `high`, et un logiciel malveillant discret publié sur une boutique peut sortir `low`. Dans l'export Wazuh, `app.ops` est éclaté en
 `app.ops.app` (une ligne par élément), comme `net.usage`.
@@ -700,7 +700,9 @@ passent pas par le réseau IP. D'où les règles suivantes.
   le §11.2, et non sur les permissions accordées : le profil doit être utile au moment de l'installation et dans
   l'écran de quarantaine, avant tout octroi, et rester élevé quand une garde empêche l'octroi. Une raison peut
   porter le suffixe `:granted` dans une liste parallèle `granted` (codes des capacités effectivement accordées)
-  pour distinguer l'intention de l'état.
+  pour distinguer l'intention de l'état. Une capacité déclarée vaut ses points, plus un
+  bonus si elle est accordée ; toute application installée hors boutique est au moins `medium`. Le champ
+  `level` de l'événement fait foi : le collecteur et la console ne recalculent pas le niveau.
 - **Gardes `sms`, `calls`, `quarantine`** : seuls sont épargnés les applications du système et le détenteur du
   rôle **correspondant** (appli SMS pour `sms`, composeur pour `calls`) ; un clavier ou un écran d'accueil
   choisi par l'utilisateur n'est **pas** épargné. La liste d'une garde ne suit que son propre rôle ; quand le
