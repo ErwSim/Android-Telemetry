@@ -213,6 +213,17 @@ func TestTrackingWithAdGuard(t *testing.T) {
 	if d["override"] != "block" {
 		t.Fatalf("override not shown %v", d)
 	}
+	// AdGuard applies the rule: the next query is blocked by "Blocage manuel (Vigie)".
+	fake.AddQuery(time.Now(), "192.0.2.10", "s25", "graph.facebook.com")
+	e.srv.now = func() time.Time { return time.Now().Add(2 * time.Minute) }
+	if err := e.srv.tracking.pollOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	e.srv.now = time.Now
+	d = e.trackingGet(c, "domains", url.Values{"q": {"graph.facebook"}, "to": {model.FormatTS(time.Now().Add(time.Hour))}})["domains"].([]any)[0].(map[string]any)
+	if d["status"] != "mixed" || d["reason"] != "Blocage manuel (Vigie)" || num(d["blocked"]) != 1 {
+		t.Fatalf("after override %v", d)
+	}
 	for _, dom := range []string{"google.com", "graph.facebook.com", "mtalk.google.com"} {
 		if rec := e.put(c, "override", map[string]any{"domain": dom, "action": "default"}, true); rec.Code != http.StatusNoContent {
 			t.Fatal(rec.Code)
