@@ -423,11 +423,15 @@ deux relevés. **Le premier relevé n'est qu'une référence** (aucun événemen
   (les dates des instantanés de l'historique ne sont pas fiables : relatives à un « début d'époque »). Une somme
   qui baisse (anciens instantanés expirés) vaut 0 : c'est une borne basse. Un relevé espacé de plus de 24 h est
   une nouvelle référence.
-- **Ce qui est compté** : les accès autorisés (`access=`) : un envoi de SMS = une demande d'envoi, pas un nombre
-  de parties ; en mode d'historique « passif » ou désactivé le système ne compte rien (le collecteur s'en déclare
-  indisponible). Les refus (`reject=`, ce que produirait une garde `sms`
-  du module `:policy`) ne le sont pas : le contrat n'a pas de champ pour eux. Les apps qui partagent un même
-  UID apparaissent sous chacun de leurs paquets.
+- **Ce qui est compté** : `count` = accès autorisés (`access=`), `rejected_count` = accès **refusés** par le
+  système (`reject=`), `background_count` = part de `count` en arrière-plan. Une opération seulement refusée est
+  émise aussi (`count` 0) ; un envoi de SMS refusé est de sévérité 2. Honnêteté sur le refus : le système ne le
+  note que lorsque l'app-op est consultée et dit non (mode ignoré). Un envoi bloqué plus tôt, au contrôle de la
+  permission d'exécution (c'est ce que fait la garde `sms` de `:policy`, qui refuse la permission), peut ne jamais
+  atteindre l'app-op et donc ne jamais apparaître : **non vérifié** (sources de téléphonie introuvables), à
+  tester avec la garde active. Un envoi de SMS = une demande d'envoi, pas un nombre de parties ; en mode
+  d'historique « passif » ou désactivé le système ne compte rien (le collecteur s'en déclare indisponible). Les
+  apps qui partagent un même UID apparaissent sous chacun de leurs paquets.
 - **Échec propre** : permission refusée, option inconnue, sortie vide, historique absent (dont le magasin SQLite
   d'Android 16 derrière un indicateur, dont le dump n'imprime alors aucune section `History:`) ou désactivé, format non
   reconnu, sortie trop grosse, délai dépassé, `dumpService` refusé : si **aucune** des dix opérations n'est lisible,

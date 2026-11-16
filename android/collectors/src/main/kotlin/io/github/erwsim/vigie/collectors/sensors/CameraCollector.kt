@@ -36,6 +36,7 @@ class CameraCollector : Collector {
     override suspend fun start(ctx: CollectorContext) {
         tracker.reset()
         limiter.reset()
+        if (ctx.settings[ATTRIBUTION]) AppOpsDump.reportIfUnavailable(ctx, "camera attribution")
         val cm = ctx.appContext.getSystemService(CameraManager::class.java) ?: return
         val callback = object : CameraManager.AvailabilityCallback() {
             override fun onCameraAvailable(cameraId: String) = ctx.guard("camera") { on(ctx, cameraId, inUse = false) }

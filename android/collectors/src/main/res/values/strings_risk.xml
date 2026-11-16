@@ -61,4 +61,8 @@
     <string name="collector_app_ops_reason_truncated">La sortie de « dumpsys appops » dépasse la taille permise : relevé abandonné.</string>
     <string name="collector_app_ops_reason_timeout">« dumpsys appops » n\'a pas répondu à temps.</string>
     <string name="collector_app_ops_reason_dump_failed">Le système a refusé ou n\'a pas pu exécuter la lecture (Debug.dumpService a échoué : SELinux ?).</string>
+
+    <string name="sensor_attribution_reason_dump">Attribution caméra/micro impossible : permission DUMP non accordée (scripts/grant-adb-permissions.sh).</string>
+    <string name="sensor_attribution_reason_usage_stats">Attribution caméra/micro impossible : permission PACKAGE_USAGE_STATS non accordée (le service des opérations l\'exige en plus de DUMP ; scripts/grant-adb-permissions.sh).</string>
+    <string name="sensor_attribution_reason_denied">Attribution caméra/micro impossible : le système refuse la lecture de l\'état des opérations malgré les permissions (DUMP et PACKAGE_USAGE_STATS).</string>
 </resources>

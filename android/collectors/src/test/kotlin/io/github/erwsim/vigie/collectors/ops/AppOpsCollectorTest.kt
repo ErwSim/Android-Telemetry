@@ -36,7 +36,7 @@ private class FakeDump : AppOpsDumpSource {
 
     companion object {
         /** One snapshot, one `[state-s]` entry per (package, state): `counts[pkg] = fg to bg`. */
-        fun historyText(op: String, counts: Map<String, Pair<Long, Long>>): String = buildString {
+        fun historyText(op: String, counts: Map<String, Pair<Long, Long>>, rejected: Map<String, Long> = emptyMap()): String = buildString {
             appendLine("Current AppOps Service state:")
             appendLine()
             appendLine("  History:  mode=HISTORICAL_MODE_ENABLED_ACTIVE")
@@ -45,13 +45,15 @@ private class FakeDump : AppOpsDumpSource {
             appendLine("      begin = 1970-01-01 01:00:00.000  (-20408d4h30m10s500ms)")
             appendLine("      end = 1970-01-01 01:07:41.220  (-20408d4h22m29s280ms)")
             appendLine()
-            counts.entries.forEachIndexed { i, (pkg, c) ->
+            (counts.keys + rejected.keys).toList().forEachIndexed { i, pkg ->
+                val c = counts[pkg] ?: (0L to 0L)
                 appendLine("      Uid u0a${100 + i}:")
                 appendLine("        Package $pkg:")
                 appendLine("          Attribution null:")
                 appendLine("            $op:")
                 if (c.first > 0) appendLine("              [fg-s] = access=${c.first}")
                 if (c.second > 0) appendLine("              [bg-s] = access=${c.second}")
+                rejected[pkg]?.let { appendLine("              [bg-s] = reject=$it") }
             }
         }
 
@@ -151,6 +153,30 @@ class AppOpsCollectorTest {
             // Only the used op had a state dump.
             assertEquals(1, dump.calls.count { "--history" !in it })
             assertEquals(Severity.NOTABLE, e.sev) // SMS sending reported by the system is worth a glance.
+        }
+    }
+
+    @Test
+    fun anOpOnlyRefusedIsReportedWithItsRefusalCount() {
+        val dump = FakeDump()
+        harness(dump).use { h ->
+            h.collectOnce("app_ops") // Baseline, nothing refused yet.
+            h.clock.advance(3_600_000)
+            // A guard turns the app down 2000 times; not one SMS goes out.
+            dump.history["SEND_SMS"] = DumpResult.Text(FakeDump.historyText("SEND_SMS", emptyMap(), rejected = mapOf("com.example.fastsms" to 2000L)))
+            h.collectOnce("app_ops")
+            val e = h.eventsOf("app.ops").single()
+            Contract.check(e.type, e.data)
+            val item = items(e).single()
+            assertEquals("com.example.fastsms", item["package"]!!.jsonPrimitive.content)
+            assertEquals(0L, item["count"]!!.jsonPrimitive.content.toLong())
+            assertEquals(2000L, item["rejected_count"]!!.jsonPrimitive.content.toLong())
+            assertNull("no successful access: no last_ts", item["last_ts"])
+            assertEquals(Severity.WARNING, e.sev)
+            // Still refused, no new refusal: silence.
+            h.clock.advance(3_600_000)
+            h.collectOnce("app_ops")
+            assertEquals(1, h.eventsOf("app.ops").size)
         }
     }
 
@@ -285,10 +311,11 @@ class AppOpsCollectorTest {
     @Test
     fun deltasAreLowerBoundsAndBackgroundIsBoundedByTheTotal() {
         val op = AppOpsLogic.OPS.first()
-        val before = mapOf("a" to OpCounts(10, 4), "gone" to OpCounts(5, 0))
-        val now = mapOf("a" to OpCounts(15, 3), "new" to OpCounts(7, 7), "same" to OpCounts(2, 0))
+        val before = mapOf("a" to OpCounts(10, 4), "gone" to OpCounts(5, 0), "r" to OpCounts(0, 0, 4))
+        val now = mapOf("a" to OpCounts(15, 3), "new" to OpCounts(7, 7), "same" to OpCounts(2, 0), "r" to OpCounts(0, 0, 10), "quiet" to OpCounts(0, 0))
         val d = AppOpsLogic.deltas(op, before, now, mapOf("new" to 42L)).associateBy { it.pkg }
-        assertEquals(setOf("a", "new", "same"), d.keys) // "same" has no previous: counts in full.
+        assertEquals(setOf("a", "new", "same", "r"), d.keys) // "same" has no previous: counts in full; "r" only refused.
+        assertEquals(OpUsage("r", "send_sms", 0, 0, null, rejectedCount = 6), d["r"])
         assertEquals(OpUsage("a", "send_sms", 5, 0, null), d["a"]) // Background went down: 0, not negative.
         assertEquals(OpUsage("new", "send_sms", 7, 7, 42L), d["new"])
     }

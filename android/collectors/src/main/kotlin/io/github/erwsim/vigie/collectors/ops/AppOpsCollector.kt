@@ -19,7 +19,9 @@ class AppOpsUnavailableException(message: String) : Exception(message)
 /**
  * EXPERIMENTAL, off by default: counts, per app and per sensitive operation (send SMS, read SMS, calls,
  * contacts, microphone, camera, location…), how many times the system let the app perform it during the last
- * hour, and how many of those while the app was in the background. The SMS that left unseen from the owner's
+ * hour, how many of those while the app was in the background, and how many the system REFUSED
+ * (`rejected_count`, from `reject=` of the history: an app that tries to send SMS and is turned down is reported
+ * even if nothing went through). The SMS that left unseen from the owner's
  * previous phone would have shown up here.
  *
  * Source: the history of `dumpsys appops --history --op OP` read through `Debug.dumpService` with the `DUMP`
@@ -120,9 +122,12 @@ class AppOpsCollector(private val source: AppOpsDumpSource = DebugDumpSource) : 
             is DumpResult.Failed -> emptyMap()
         }
 
-    /** Reading SMS-sending or microphone use in the background deserves attention; the rest is information. */
-    private fun severity(items: List<OpUsage>): Int =
-        if (items.any { it.op == "send_sms" }) Severity.NOTABLE else Severity.INFO
+    /** A refused SMS sending is a warning (someone tried despite the guard); a sending that went through is notable. */
+    private fun severity(items: List<OpUsage>): Int = when {
+        items.any { it.op == "send_sms" && it.rejectedCount > 0 } -> Severity.WARNING
+        items.any { it.op == "send_sms" } -> Severity.NOTABLE
+        else -> Severity.INFO
+    }
 
     private fun markUnavailable(ctx: CollectorContext, failure: OpsFailure, detail: String?, now: Long) {
         val reason = ctx.str(reasonRes(failure))

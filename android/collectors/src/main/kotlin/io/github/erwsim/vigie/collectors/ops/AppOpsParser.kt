@@ -34,11 +34,14 @@ enum class OpsFailure(val code: String) {
     DUMP_FAILED("dump_failed"),
 }
 
-/** Accesses of one package for one op, summed over every snapshot of the history. */
-data class OpCounts(val total: Long, val background: Long)
+/**
+ * Accesses of one package for one op, summed over every snapshot of the history: [total] accesses allowed,
+ * [background] of them in the background, [rejected] accesses the system refused (`reject=`).
+ */
+data class OpCounts(val total: Long, val background: Long, val rejected: Long = 0)
 
 sealed interface HistoryResult {
-    /** [counts]: package → accesses (empty is legitimate: nobody used the op). [snapshots]: `snapshot:` blocks read. */
+    /** [counts]: package → accesses and refusals (empty is legitimate: nobody used the op). [snapshots]: `snapshot:` blocks read. */
     data class Ok(val counts: Map<String, OpCounts>, val snapshots: Int, val mode: String?) : HistoryResult
 
     data class Failed(val failure: OpsFailure, val detail: String? = null) : HistoryResult
@@ -66,7 +69,10 @@ sealed interface HistoryResult {
  * ```
  * The entry key is `[<uid state>-<flags>]` (`pers top fgsvcl fgsvc fg bg cch gone`; flags `s tp up tpd upd`
  * joined by `|`). Counts are summed over all snapshots, attributions and flags of a package; "background" =
- * the states `bg` and `cch`. A header at another indentation, an unknown line, a missing `Attribution` level
+ * the states `bg` and `cch`; `reject=N` (printed only when > 0, after `access=` or alone) counts the accesses the
+ * system refused. What a refusal covers is the system's choice, not ours: it is recorded when the app-op is
+ * consulted and says no (mode ignored or errored). A call refused earlier, at the permission check (a runtime
+ * permission denied by a policy guard), may never reach the app-op and so never appear (not verified). A header at another indentation, an unknown line, a missing `Attribution` level
  * are all tolerated: the parser tracks only the nearest `Package` line and `OP:` line above an entry.
  *
  * 2. Current state (`dumpsys appops --op SEND_SMS`), used only for the last access time:
@@ -90,6 +96,7 @@ object AppOpsParser {
     private val STATE_OP_LINE = Regex("^([A-Z][A-Z0-9_]*) \\([^)]*\\):$")
     private val ENTRY_LINE = Regex("^\\[([a-z]+)(?:-([a-z|]*))?]\\s*=\\s*(.*)$")
     private val ACCESS = Regex("(?:^|[ ,])access=(\\d+)")
+    private val REJECT = Regex("(?:^|[ ,])reject=(\\d+)")
     private val ACCESS_LINE = Regex("^Access:\\s*\\[([a-z]+)(?:-([a-z|]*))?]\\s*(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3})?\\s*(?:\\(([^)]*)\\))?")
     private val DURATION_TOKEN = Regex("(\\d+)(ms|d|h|m|s)")
 
@@ -109,6 +116,7 @@ object AppOpsParser {
             var currentOp: String? = null
             val total = LinkedHashMap<String, Long>()
             val background = HashMap<String, Long>()
+            val rejected = HashMap<String, Long>()
             for (raw in text.lineSequence()) {
                 val line = raw.trim()
                 if (line.isEmpty()) continue
@@ -137,8 +145,12 @@ object AppOpsParser {
                         val entry = ENTRY_LINE.matchEntire(line) ?: continue
                         val p = pkg ?: continue
                         if (currentOp != op) continue
-                        val n = ACCESS.find(entry.groupValues[3])?.groupValues?.get(1)?.toLongOrNull() ?: continue
+                        val n = ACCESS.find(entry.groupValues[3])?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                        val r = REJECT.find(entry.groupValues[3])?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                        if (n == 0L && r == 0L) continue
+                        // A package only refused is still listed (total 0): the refusal is the signal.
                         total[p] = (total[p] ?: 0L) + n
+                        if (r > 0) rejected[p] = (rejected[p] ?: 0L) + r
                         if (entry.groupValues[1] in BACKGROUND_STATES) background[p] = (background[p] ?: 0L) + n
                     }
                 }
@@ -148,7 +160,7 @@ object AppOpsParser {
             if (mode?.contains("DISABLED") == true || mode?.contains("PASSIVE") == true) return HistoryResult.Failed(OpsFailure.HISTORY_DISABLED, mode)
             // The service always prints the in-memory snapshot first: none at all means another layout.
             if (snapshots == 0) return HistoryResult.Failed(OpsFailure.UNRECOGNIZED, "History: sans snapshot")
-            return HistoryResult.Ok(total.mapValues { (p, t) -> OpCounts(t, background[p] ?: 0L) }, snapshots, mode)
+            return HistoryResult.Ok(total.mapValues { (p, t) -> OpCounts(t, background[p] ?: 0L, rejected[p] ?: 0L) }, snapshots, mode)
         } catch (e: Exception) {
             return HistoryResult.Failed(OpsFailure.UNRECOGNIZED, e.toString())
         }

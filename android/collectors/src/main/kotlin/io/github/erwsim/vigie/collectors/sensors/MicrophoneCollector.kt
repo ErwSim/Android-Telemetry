@@ -38,6 +38,7 @@ class MicrophoneCollector : Collector {
     override suspend fun start(ctx: CollectorContext) {
         last = MicState.IDLE
         limiter.reset()
+        if (ctx.settings[ATTRIBUTION]) AppOpsDump.reportIfUnavailable(ctx, "microphone attribution")
         val am = ctx.appContext.getSystemService(AudioManager::class.java) ?: return
         val callback = object : AudioManager.AudioRecordingCallback() {
             override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>?) =

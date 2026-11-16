@@ -16,7 +16,7 @@ import kotlinx.serialization.json.long
 data class OpSpec(val wire: String, val dumpName: String)
 
 /** One element of `app.ops.apps`. */
-data class OpUsage(val pkg: String, val op: String, val count: Long, val backgroundCount: Long, val lastTs: Long?)
+data class OpUsage(val pkg: String, val op: String, val count: Long, val backgroundCount: Long, val lastTs: Long?, val rejectedCount: Long = 0)
 
 /** What is remembered between two readings: the sums per op and the time of the reading that gave them. */
 data class OpsState(val sums: Map<String, Map<String, OpCounts>>, val atMs: Map<String, Long>)
@@ -54,20 +54,24 @@ object AppOpsLogic {
         now.mapNotNull { (pkg, c) ->
             val p = previous[pkg]
             val count = c.total - (p?.total ?: 0L)
-            if (count <= 0) return@mapNotNull null
-            val bg = (c.background - (p?.background ?: 0L)).coerceIn(0L, count)
-            OpUsage(pkg, op.wire, count, bg, lastAccess[pkg])
+            val rejected = c.rejected - (p?.rejected ?: 0L)
+            // An op only refused (no access) is reported too: a refused attempt is as telling as a successful one.
+            if (count <= 0 && rejected <= 0) return@mapNotNull null
+            val newCount = maxOf(count, 0L)
+            val bg = (c.background - (p?.background ?: 0L)).coerceIn(0L, newCount)
+            OpUsage(pkg, op.wire, newCount, bg, lastAccess[pkg], maxOf(rejected, 0L))
         }
 
-    /** Largest usage first (ties: package, op), cut to [MAX_ITEMS]. */
+    /** Largest usage (accesses + refusals) first (ties: package, op), cut to [MAX_ITEMS]. */
     fun sorted(items: List<OpUsage>): List<OpUsage> =
-        items.sortedWith(compareByDescending<OpUsage> { it.count }.thenBy { it.pkg }.thenBy { it.op }).take(MAX_ITEMS)
+        items.sortedWith(compareByDescending<OpUsage> { it.count + it.rejectedCount }.thenBy { it.pkg }.thenBy { it.op }).take(MAX_ITEMS)
 
     fun item(u: OpUsage): JsonObject = eventData {
         put("package", u.pkg)
         put("op", u.op)
         put("count", u.count)
         put("background_count", u.backgroundCount)
+        put("rejected_count", u.rejectedCount)
         put("last_ts", u.lastTs?.let(Rfc3339::format))
     }
 
@@ -89,7 +93,7 @@ object AppOpsLogic {
             "t" to JsonObject(s.atMs.mapValues { JsonPrimitive(it.value) }),
             "c" to JsonObject(
                 s.sums.mapValues { (_, byPkg) ->
-                    JsonObject(byPkg.toSortedMap().mapValues { JsonArray(listOf(JsonPrimitive(it.value.total), JsonPrimitive(it.value.background))) })
+                    JsonObject(byPkg.toSortedMap().mapValues { JsonArray(listOf(JsonPrimitive(it.value.total), JsonPrimitive(it.value.background), JsonPrimitive(it.value.rejected))) })
                 },
             ),
         ),
@@ -102,7 +106,7 @@ object AppOpsLogic {
             val o = Json.parseToJsonElement(text).jsonObject
             OpsState(
                 sums = o.getValue("c").jsonObject.mapValues { (_, byPkg) ->
-                    byPkg.jsonObject.mapValues { (_, v) -> OpCounts(v.jsonArray[0].jsonPrimitive.long, v.jsonArray[1].jsonPrimitive.long) }
+                    byPkg.jsonObject.mapValues { (_, v) -> OpCounts(v.jsonArray[0].jsonPrimitive.long, v.jsonArray[1].jsonPrimitive.long, v.jsonArray.getOrNull(2)?.jsonPrimitive?.long ?: 0L) }
                 },
                 atMs = o.getValue("t").jsonObject.mapValues { it.value.jsonPrimitive.long },
             )

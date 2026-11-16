@@ -18,8 +18,8 @@ class AppOpsParserTest {
         assertEquals(
             mapOf(
                 "com.android.phone" to OpCounts(4, 0),
-                // bg 37 + fg 2, then cch 120 + bg 11 (reject=3 and duration are not accesses).
-                "com.example.fastsms" to OpCounts(37 + 2 + 120 + 11, 37 + 120 + 11),
+                // bg 37 + fg 2, then cch 120 + bg 11 (duration is not an access; reject=3 is counted apart).
+                "com.example.fastsms" to OpCounts(37 + 2 + 120 + 11, 37 + 120 + 11, rejected = 3),
                 // Another attribution tag of another package of the same uid; fgsvc is not background.
                 "com.example.fastsms.helper" to OpCounts(5, 0),
                 // top-s 1 + top-tp 2 (proxied flags are accesses too).
@@ -69,9 +69,33 @@ class AppOpsParserTest {
             [gone-up] = access=1
         """.trimIndent()
         val r = ok(text, "SEND_SMS")
-        assertEquals(OpCounts(3, 2), r.counts["com.a"])
+        // 2 + 1 accesses; refusals 7 (with an access) + 4 (alone) = 11.
+        assertEquals(OpCounts(3, 2, rejected = 11), r.counts["com.a"])
         // Unknown and "gone" states count as accesses, not as background.
         assertEquals(OpCounts(10, 0), r.counts["com.b"])
+    }
+
+    @Test
+    fun aPackageOnlyRefusedIsListedWithNoAccess() {
+        val text = """
+            History:  mode=HISTORICAL_MODE_ENABLED_ACTIVE
+              snapshot:
+                Uid u0a77:
+                  Package com.example.blocked:
+                    Attribution null:
+                      SEND_SMS:
+                        [bg-s] = reject=2000
+                  Package com.example.mixed:
+                    Attribution null:
+                      SEND_SMS:
+                        [fg-s] = access=1, reject=5
+                      READ_SMS:
+                        [fg-s] = reject=9
+        """.trimIndent()
+        val r = ok(text, "SEND_SMS")
+        assertEquals(OpCounts(0, 0, 2000), r.counts["com.example.blocked"])
+        assertEquals(OpCounts(1, 0, 5), r.counts["com.example.mixed"])
+        assertEquals(OpCounts(0, 0, 9), ok(text, "READ_SMS").counts["com.example.mixed"])
     }
 
     @Test

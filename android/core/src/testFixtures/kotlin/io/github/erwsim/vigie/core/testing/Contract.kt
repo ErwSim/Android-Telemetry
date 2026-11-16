@@ -178,7 +178,7 @@ object Contract {
         "app.ops" to mapOf(
             "from" to T, "to" to T,
             "apps" to objs(
-                "package" to S, "op" to Field(Kind.STRING, OPS), "count" to I, "background_count" to I, "last_ts" to T,
+                "package" to S, "op" to Field(Kind.STRING, OPS), "count" to I, "background_count" to I, "rejected_count" to I, "last_ts" to T,
             ),
         ),
         // sensor.*

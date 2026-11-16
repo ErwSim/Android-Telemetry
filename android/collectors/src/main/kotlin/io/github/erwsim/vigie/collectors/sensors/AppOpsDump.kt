@@ -3,6 +3,8 @@ package io.github.erwsim.vigie.collectors.sensors
 import android.Manifest
 import android.os.Debug
 import android.os.ParcelFileDescriptor
+import io.github.erwsim.vigie.collectors.R
+import io.github.erwsim.vigie.collectors.common.str
 import io.github.erwsim.vigie.core.collector.CollectorContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
@@ -10,6 +12,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.InputStreamReader
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * EXPERIMENTAL attribution of camera/microphone use to an app, through the `DUMP` permission
@@ -21,12 +24,49 @@ import java.io.InputStreamReader
 object AppOpsDump {
     private const val MAX_BYTES = 2 * 1024 * 1024
 
-    fun available(ctx: CollectorContext): Boolean = ctx.capabilities.hasPermission(Manifest.permission.DUMP)
+    /** Carries the French reason into `agent.collector_error`. */
+    class UnavailableException(message: String) : Exception(message)
+
+    private val deniedReported = AtomicBoolean(false)
+
+    /**
+     * The system service demands BOTH `DUMP` and `PACKAGE_USAGE_STATS` from the caller
+     * (`DumpUtils.checkDumpAndUsageStatsPermission`, AOSP): the missing one, or null.
+     */
+    fun missingPermission(ctx: CollectorContext): String? = listOf(Manifest.permission.DUMP, Manifest.permission.PACKAGE_USAGE_STATS)
+        .firstOrNull { !ctx.capabilities.hasPermission(it) }
+
+    fun available(ctx: CollectorContext): Boolean = missingPermission(ctx) == null
+
+    /** French reason why the attribution cannot work, null if it can. */
+    fun unavailableReason(ctx: CollectorContext): String? = when (missingPermission(ctx)) {
+        null -> null
+        Manifest.permission.DUMP -> ctx.str(R.string.sensor_attribution_reason_dump)
+        else -> ctx.str(R.string.sensor_attribution_reason_usage_stats)
+    }
+
+    /**
+     * Call from `start` of a collector whose attribution setting is on: says so (one `agent.collector_error`
+     * per start) instead of silently never attributing.
+     */
+    fun reportIfUnavailable(ctx: CollectorContext, where: String) {
+        unavailableReason(ctx)?.let { ctx.reportError(UnavailableException(it), where) }
+    }
+
+    /** True if [text] is the service's refusal (`Permission Denial: can't dump appops …`). */
+    fun isDenied(text: String): Boolean = text.contains("Permission Denial")
 
     /** Package currently running [op] ("CAMERA", "RECORD_AUDIO"), only if exactly one is found. */
     suspend fun runningPackage(ctx: CollectorContext, op: String, timeoutMs: Long = 3_000): String? {
         if (!available(ctx)) return null
         val text = withTimeoutOrNull(timeoutMs) { dump(ctx.io, op) } ?: return null
+        if (isDenied(text)) {
+            // The permissions looked granted but the service refused: say it once, not at every event.
+            if (deniedReported.compareAndSet(false, true)) {
+                ctx.reportError(UnavailableException(ctx.str(R.string.sensor_attribution_reason_denied)), "attribution")
+            }
+            return null
+        }
         return parseRunning(text, op, exclude = ctx.appContext.packageName).singleOrNull()
     }
 

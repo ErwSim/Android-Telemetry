@@ -128,4 +128,29 @@ class SensorsUsbTest {
         assertFalse(l.tryAcquire(1_005))
         assertTrue(l.tryAcquire(2_100))
     }
+
+    @Test
+    fun attributionNeedsBothDumpAndUsageStatsAndSaysWhenItCannotWork() {
+        val dumpOnly = "android.permission.DUMP"
+        val usage = "android.permission.PACKAGE_USAGE_STATS"
+        fun errors(granted: Set<String>, enabled: Boolean, collector: io.github.erwsim.vigie.core.collector.Collector, key: io.github.erwsim.vigie.core.settings.SettingKey.BoolKey) =
+            io.github.erwsim.vigie.core.testing.CollectorHarness(collector).use { h ->
+                h.features += android.content.pm.PackageManager.FEATURE_CAMERA_ANY
+                h.features += android.content.pm.PackageManager.FEATURE_MICROPHONE
+                h.granted += granted
+                if (enabled) h.settings.set(key, true)
+                h.startAll()
+                h.settle()
+                h.events.count { it.type == io.github.erwsim.vigie.core.event.EventTypes.AGENT_COLLECTOR_ERROR }
+            }
+        for ((c, k) in listOf(CameraCollector() to CameraCollector.ATTRIBUTION, MicrophoneCollector() to MicrophoneCollector.ATTRIBUTION)) {
+            assertEquals("DUMP alone is refused by the service: say so", 1, errors(setOf(dumpOnly), true, c, k))
+            assertEquals(1, errors(setOf(usage), true, c, k))
+            assertEquals(1, errors(emptySet(), true, c, k))
+            assertEquals("both granted: nothing to report", 0, errors(setOf(dumpOnly, usage), true, c, k))
+            assertEquals("setting off: nothing to report", 0, errors(emptySet(), false, c, k))
+        }
+        assertTrue(AppOpsDump.isDenied("Permission Denial: can't dump appops from from pid=1, uid=2 due to missing android.permission.PACKAGE_USAGE_STATS permission"))
+        assertTrue(!AppOpsDump.isDenied("Current AppOps Service state:"))
+    }
 }
