@@ -20,6 +20,32 @@ sealed class SettingKey<T : Any>(val name: String, val default: T) {
             require(default in values) { "default $default not in $values" }
         }
     }
+
+    /**
+     * A set of Android package names (exception lists of the guards, exclusion lists…). Stored as one
+     * sorted, newline-separated string; a stored entry that is not a valid package name is dropped on
+     * read and never written; at most [maxSize] entries (the extra ones are refused, not truncated).
+     */
+    class PackageListKey(name: String, default: Set<String> = emptySet(), val maxSize: Int = 500) : SettingKey<Set<String>>(name, default) {
+        init {
+            require(default.all(PackageNames::isValid)) { "invalid package in default $default" }
+        }
+    }
+}
+
+/** Android package names (`applicationId` rules: at least two segments, each starting with a letter). */
+object PackageNames {
+    private val PATTERN = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
+    const val MAX_LENGTH = 255
+
+    fun isValid(name: String): Boolean = name.length <= MAX_LENGTH && PATTERN.matches(name)
+
+    /** Stored form: sorted, one per line (stable, so that `agent.config_changed` only reports real changes). */
+    fun encode(packages: Set<String>): String = packages.sorted().joinToString("\n")
+
+    /** Lenient: blank and invalid lines are dropped. */
+    fun decode(text: String?): Set<String> =
+        text?.split('\n', ',')?.map { it.trim() }?.filter { isValid(it) }?.toSortedSet() ?: emptySet()
 }
 
 /**
@@ -47,6 +73,21 @@ sealed class SettingSpec(
         override val key: SettingKey.BoolKey,
         @StringRes override val titleRes: Int,
         @StringRes override val summaryRes: Int? = null,
+        override val experimental: Boolean = false,
+    ) : SettingSpec(key, titleRes, summaryRes, experimental)
+
+    /**
+     * A set of installed applications, edited with a picker (name and icon). [candidates] narrows the
+     * picker (e.g. the packages that provide an accessibility service); null lists every installed app.
+     * Packages of the set that are no longer installed stay listed (marked absent) until removed.
+     */
+    data class PackageListSpec(
+        override val key: SettingKey.PackageListKey,
+        @StringRes override val titleRes: Int,
+        @StringRes override val summaryRes: Int? = null,
+        val candidates: ((android.content.Context) -> Collection<String>)? = null,
+        /** Packages that cannot be removed from the set here (always exempt anyway): shown as locked. */
+        val locked: ((android.content.Context) -> Collection<String>)? = null,
         override val experimental: Boolean = false,
     ) : SettingSpec(key, titleRes, summaryRes, experimental)
 
@@ -106,6 +147,26 @@ class AgentSettings(private val prefs: SharedPreferences) {
         if (old == value && prefs.contains(key.name)) return
         prefs.edit().putString(key.name, value).apply()
         changed(key.name, old, value, old != value)
+    }
+
+    operator fun get(key: SettingKey.PackageListKey): Set<String> =
+        if (prefs.contains(key.name)) PackageNames.decode(prefs.getString(key.name, null)).take(key.maxSize).toSortedSet() else key.default
+
+    /** Whether the owner ever saved this list (a never-saved list reads as its default). */
+    fun isSet(key: SettingKey<*>): Boolean = prefs.contains(key.name)
+
+    /**
+     * Replaces the list. Returns false (nothing written) if an entry is not a valid package name or
+     * the set is larger than [SettingKey.PackageListKey.maxSize].
+     */
+    fun set(key: SettingKey.PackageListKey, value: Set<String>): Boolean {
+        if (value.size > key.maxSize || !value.all(PackageNames::isValid)) return false
+        val old = get(key)
+        val new = value.toSortedSet()
+        if (old == new && prefs.contains(key.name)) return true
+        prefs.edit().putString(key.name, PackageNames.encode(new)).apply()
+        changed(key.name, old.sorted().joinToString(","), new.joinToString(","), old != new)
+        return true
     }
 
     fun collectorEnabledKey(collectorId: String, default: Boolean) =

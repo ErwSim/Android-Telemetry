@@ -30,8 +30,9 @@ import kotlinx.serialization.json.booleanOrNull
  * signature is verified. Five `bad_signature` within an hour lock sensitive commands out for an hour.
  *
  * Choices where the contract is silent (documented in `ARCHITECTURE-CODE.md`): an unknown top-level key
- * of the payload or an `expires_at` before `issued_at` is `malformed`; a validity above 30 days or an
- * `issued_at` more than 5 min in the future is `expired` (outside the validity the contract allows).
+ * of the payload or an `expires_at` before `issued_at` is `malformed`; a validity above 30 days (24 h for
+ * `wipe`, contract review of v1.1) or an `issued_at` more than 5 min in the future is `expired`.
+ * A sensitive command refused `disabled` or `no_code_configured` is consumed (unverified window).
  */
 class CommandVerifier(
     private val clock: AgentClock,
@@ -80,7 +81,10 @@ class CommandVerifier(
         fun refuse(reason: String, signed: Boolean = false) = Verification.Refused(reportId, reportType, reason, signed)
 
         // 1. Channel.
-        if (!env.channelEnabled) return refuse(Refusal.DISABLED)
+        if (!env.channelEnabled) {
+            consumeUnverified(root, outerId, env.deviceId, rawType)
+            return refuse(Refusal.DISABLED)
+        }
         // 2. Shape.
         if (outerId == null || root == null) return refuse(Refusal.MALFORMED)
         val v = root["v"] as? JsonPrimitive
@@ -95,7 +99,10 @@ class CommandVerifier(
 
         // 5. Signature, over the exact bytes, before the content is read.
         if (sensitive) {
-            val key = keys.key(deviceId) ?: return refuse(Refusal.NO_CODE_CONFIGURED)
+            val key = keys.key(deviceId) ?: run {
+                consumeUnverified(root, outerId, deviceId, type)
+                return refuse(Refusal.NO_CODE_CONFIGURED)
+            }
             try {
                 if (state.lockedOutUntil(clock.nowMillis()) > 0) return refuse(Refusal.LOCKED_OUT)
                 if (!CommandCrypto.verify(key, envelope.payload, envelope.sig)) {
@@ -119,9 +126,7 @@ class CommandVerifier(
         if (expiresAt < issuedAt) return refuse(Refusal.MALFORMED, signed)
 
         val now = clock.nowMillis()
-        val notExpired = now <= expiresAt + CLOCK_TOLERANCE_MS &&
-            issuedAt <= now + CLOCK_TOLERANCE_MS &&
-            expiresAt - issuedAt <= MAX_VALIDITY_MS
+        val notExpired = withinValidity(type, issuedAt, expiresAt, now)
 
         // 6. Wipe allowed on the phone.
         if (type == CommandTypes.WIPE && !env.wipeAllowed) {
@@ -156,10 +161,35 @@ class CommandVerifier(
         return Verification.Accepted(AcceptedCommand(outerId, type, params, issuedAt, expiresAt, signed, gate))
     }
 
+    /**
+     * Contract §8 (review of v1.1): a sensitive command refused `disabled` (channel off) or
+     * `no_code_configured` is consumed, so that it never runs once the channel is switched on or a code
+     * is set. Its signature cannot be checked here, so it goes to the separate unverified window
+     * ([CommandStateStore.consumeUnverified]), and only when its routing fields are this device's and
+     * its (unauthenticated) dates are still valid: an expired command can no longer run anyway.
+     */
+    private fun consumeUnverified(root: JsonObject?, outerId: String?, deviceId: String?, type: String?) {
+        if (root == null || outerId == null || deviceId == null || type == null || !CommandTypes.isSensitive(type)) return
+        if (type !in CommandTypes.ALL || root.string("id") != outerId || root.string("device_id") != deviceId) return
+        val issuedAt = root.string("issued_at")?.let(Rfc3339::parseOrNull) ?: return
+        val expiresAt = root.string("expires_at")?.let(Rfc3339::parseOrNull) ?: return
+        if (expiresAt < issuedAt || !withinValidity(type, issuedAt, expiresAt, clock.nowMillis())) return
+        state.consumeUnverified(outerId)
+    }
+
     companion object {
         const val INVALID_ID = "invalid"
         const val CLOCK_TOLERANCE_MS = 5 * 60_000L
         const val MAX_VALIDITY_MS = 30 * 86_400_000L
+
+        /** `wipe`: 24 h at most (contract §8, review of v1.1), whatever the server and the console allowed. */
+        const val MAX_WIPE_VALIDITY_MS = 86_400_000L
+
+        /** Not expired (5 min clock tolerance), not issued in the future, validity within the type's maximum. */
+        fun withinValidity(type: String, issuedAt: Long, expiresAt: Long, now: Long): Boolean =
+            now <= expiresAt + CLOCK_TOLERANCE_MS &&
+                issuedAt <= now + CLOCK_TOLERANCE_MS &&
+                expiresAt - issuedAt <= (if (type == CommandTypes.WIPE) MAX_WIPE_VALIDITY_MS else MAX_VALIDITY_MS)
         const val MAX_PAYLOAD_CHARS = 8 * 1024
         const val LOCK_MESSAGE_MAX = 200
         val ULID = Regex("^[0-9A-HJKMNP-TV-Z]{26}$")
@@ -207,7 +237,8 @@ class CommandVerifier(
                         // "200 caractères" = 200 UTF-16 units; no control character except the line feed (contract §8,
                         // checked here too: the server is not trusted).
                         if (prim.content.length > LOCK_MESSAGE_MAX) return null
-                        if (prim.content.any { it.isISOControl() && it != '\n' }) return null
+                        // U+2028/U+2029 (line/paragraph separators) are refused like control characters (review of v1.1).
+                        if (prim.content.any { (it.isISOControl() && it != '\n') || it == '\u2028' || it == '\u2029' }) return null
                         prim.content.trim().ifEmpty { null }
                     }
                     CommandParams.Lock(message)

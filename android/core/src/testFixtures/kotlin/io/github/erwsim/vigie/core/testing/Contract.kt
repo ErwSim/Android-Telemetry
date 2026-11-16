@@ -53,6 +53,8 @@ object Contract {
         "network_logging", "security_logging",
         "permission_granted", "force_stop_protection", "always_on_vpn", "backup_service", "policy_reverted", "device_owner_cleared",
         "permission_restored", "setting_changed", "setting_restored",
+        // §11.1 (guards, v1.2).
+        "guard_enabled", "guard_disabled", "quarantined", "released",
     )
 
     private val appChange = mapOf("package" to S, "version_name" to S, "version_code" to I, "installer" to S, "signer_sha256" to SHA)
@@ -170,6 +172,8 @@ object Contract {
         "security.ca_cert" to mapOf("event" to oneOf("added", "removed"), "sha256" to SHA, "subject" to S),
         "security.policy" to mapOf(
             "action" to Field(Kind.STRING, POLICY_ACTIONS), "target" to S, "profile" to S, "ok" to B, "error" to S,
+            // §11.1: the runtime permission concerned, when the target is a package.
+            "permission" to S,
         ),
         // command.* (contract §8; `type` = the closed list, or "unknown" when the payload's type is unreadable or not in it)
         "command.result" to mapOf(

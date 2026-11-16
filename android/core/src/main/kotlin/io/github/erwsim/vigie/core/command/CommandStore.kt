@@ -92,9 +92,11 @@ data class PendingResult(
 /**
  * Persistent state of the command channel (SharedPreferences, written with `commit()` so that what
  * guards an execution is on disk before the execution):
- * - two anti-replay windows of [REPLAY_WINDOW] ids each, one for commands whose signature was verified
- *   and one for simple commands: unsigned traffic (which a compromised server can generate at will)
- *   can never push a signed id out of its window;
+ * - three anti-replay windows of [REPLAY_WINDOW] ids each, one for commands whose signature was verified,
+ *   one for simple commands, and one for sensitive commands consumed without a verifiable signature
+ *   (refused `no_code_configured`, or `disabled` because the channel was off — contract §8, review of
+ *   v1.1): unverified traffic (which a compromised server can generate at will) can never push a
+ *   verified signed id out of its window;
  * - the recent `bad_signature` times and the lock-out deadline;
  * - the local history and the results not yet acknowledged by the server.
  */
@@ -109,17 +111,30 @@ class CommandStateStore(private val prefs: SharedPreferences) {
      * atomic and persisted before returning.
      */
     fun markSeen(id: String, signed: Boolean): Boolean = synchronized(lock) {
-        val key = if (signed) K_SEEN_SIGNED else K_SEEN_SIMPLE
+        record(if (signed) K_SEEN_SIGNED else K_SEEN_SIMPLE, id)
+    }
+
+    /**
+     * A sensitive command refused before its signature could be verified (`no_code_configured`, channel
+     * off) is consumed for good (contract §8, review of v1.1): it will be a `replay` even once a code is
+     * set or the channel is on again. Kept in its own window so that a flood of forged commands only
+     * evicts other unverified ids, never a verified signed one.
+     */
+    fun consumeUnverified(id: String): Boolean = synchronized(lock) { record(K_SEEN_UNVERIFIED, id) }
+
+    private fun record(key: String, id: String): Boolean {
+        // Every window is checked: an id first seen unsigned and replayed signed (or the reverse) is a replay too.
+        if (wasSeenLocked(id)) return false
         val seen = ids(key)
-        // Both windows are checked: an id first seen unsigned and replayed signed (or the reverse) is a replay too.
-        if (id in seen || id in ids(if (signed) K_SEEN_SIMPLE else K_SEEN_SIGNED)) return false
         seen += id
         while (seen.size > REPLAY_WINDOW) seen.removeAt(0)
         prefs.edit().putString(key, seen.joinToString(",")).commit()
-        true
+        return true
     }
 
-    fun wasSeen(id: String): Boolean = synchronized(lock) { id in ids(K_SEEN_SIGNED) || id in ids(K_SEEN_SIMPLE) }
+    fun wasSeen(id: String): Boolean = synchronized(lock) { wasSeenLocked(id) }
+
+    private fun wasSeenLocked(id: String): Boolean = id in ids(K_SEEN_SIGNED) || id in ids(K_SEEN_SIMPLE) || id in ids(K_SEEN_UNVERIFIED)
 
     private fun ids(key: String): MutableList<String> =
         prefs.getString(key, null)?.split(',')?.filter { it.isNotEmpty() }?.toMutableList() ?: ArrayList()
@@ -210,6 +225,7 @@ class CommandStateStore(private val prefs: SharedPreferences) {
         private const val K_RESULT_MEMORY = "result_memory"
         private const val K_SEEN_SIGNED = "seen_signed"
         private const val K_SEEN_SIMPLE = "seen_simple"
+        private const val K_SEEN_UNVERIFIED = "seen_unverified"
         private const val K_BAD_SIGS = "bad_signature_times"
         private const val K_LOCKED_UNTIL = "locked_out_until_ms"
         private const val K_HISTORY = "history"
