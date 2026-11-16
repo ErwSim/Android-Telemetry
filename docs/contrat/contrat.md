@@ -216,6 +216,9 @@ Réponse `200` :
 - `400` (enveloppe du lot illisible ou invalide) : l'agent coupe le lot en deux et renvoie chaque moitié ; un
   événement qui, envoyé seul, reçoit encore `400` est supprimé et compté dans `dropped_total`. Le serveur ne
   répond jamais `400` pour un défaut propre à un événement (il le met dans `rejected`).
+  Un lot sans événement (`"events": []`) est valide et reçoit `200` : au premier `400` d'un passage, l'agent
+  s'en sert comme sonde — si la sonde reçoit aussi `400`, la faute est dans l'enveloppe ou le serveur et rien
+  n'est supprimé.
 
 ### `GET /api/v1/ping`
 
