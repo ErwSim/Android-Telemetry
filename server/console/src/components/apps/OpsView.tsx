@@ -65,16 +65,24 @@ export function OpsView({ rows, from, to, device }: { rows: AppOpsRow[]; from?: 
   const byOp = useMemo(() => groupByOp(rows), [rows]);
   const byApp = useMemo(() => groupByApp(rows), [rows]);
   const flat = useMemo(() => {
-    const out: { package: string; label?: string; op: string; count: number; background: number; lastTs?: string }[] = [];
+    const out: { package: string; label?: string; op: string; count: number; background: number; rejected: number; lastTs?: string }[] = [];
     for (const a of byApp) for (const o of a.ops) if (!opFilter || o.op === opFilter) out.push({ package: a.package, ...(a.label ? { label: a.label } : {}), ...o });
     return out.sort((x, y) => y.count - x.count || x.package.localeCompare(y.package));
   }, [byApp, opFilter]);
+  const hasRejected = flat.some((r) => r.rejected > 0);
   const present = new Map(byOp.map((o) => [o.op, o]));
   const headline = HEADLINE_OPS.map((op) => present.get(op) ?? { op, count: 0, background: 0, apps: [] });
 
   if (rows.length === 0) return <OpsEmpty device={device} reason="empty" />;
   return (
     <>
+      {byApp.some((a) => a.rejected > 0) && (
+        <div className="callout callout-info" role="note">
+          <p>
+            <strong>« Refusés »</strong> : usages que le système a empêchés (par exemple par la garde SMS de l'application Vigie). L'application a essayé : la tentative reste un signal, même sans effet.
+          </p>
+        </div>
+      )}
       <p className="hint">
         Données <strong>expérimentales</strong>{from && to ? ` du ${fmtDateTime(from)} au ${fmtDateTime(to)}` : ''} : compteurs d'opérations d'Android relevés toutes les heures. Un usage « en arrière-plan »
         est fait alors que l'application n'est pas à l'écran.
@@ -130,6 +138,7 @@ export function OpsView({ rows, from, to, device }: { rows: AppOpsRow[]; from?: 
                     <th scope="col">Opération</th>
                     <th scope="col" className="right">Usages</th>
                     <th scope="col" className="right">En arrière-plan</th>
+                    {hasRejected && <th scope="col" className="right">Refusés</th>}
                     <th scope="col" className="hide-sm">Dernier usage</th>
                   </tr>
                 </thead>
@@ -154,6 +163,7 @@ export function OpsView({ rows, from, to, device }: { rows: AppOpsRow[]; from?: 
                             <span className="muted">0</span>
                           )}
                         </td>
+                        {hasRejected && <td className="right">{r.rejected > 0 ? <strong>{fmtNumber(r.rejected)}</strong> : <span className="muted">0</span>}</td>}
                         <td className="hide-sm nowrap">{r.lastTs ? fmtDateTime(r.lastTs) : '—'}</td>
                       </tr>
                     );

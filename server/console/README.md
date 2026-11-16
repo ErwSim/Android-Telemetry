@@ -88,6 +88,12 @@ enrôlé et alimenté par `sim --command-code 'correct horse battery staple' --f
 AdGuard Home du simulateur : voir `server/collector/README.md`). Avec AdGuard joignable, le script rejoue aussi le blocage
 d'un domaine, le `409` d'un domaine indispensable et un changement de niveau ; sans AdGuard, il contrôle le mode dégradé.
 
+`scripts/verify-real-v12.cjs` rejoue la version 1.2 contre un vrai collecteur alimenté par `sim --scenario tout` (ou `sain`) : détections
+par type (phrases construites à partir des vraies preuves), filtre par type, fiche d'application ouverte depuis une détection puis rechargée,
+profil de risque (tri, combinaisons, aucune raison non traduite), opérations sensibles, rôles, dans les quatre configurations
+(`REAL_URL`, `REAL_PASSWORD`, `SCENARIO`, `OUT`). Dernier passage : le collecteur a produit sept des huit types (`upload_spike` n'est pas
+sorti du simulateur dans l'essai : voir le rapport) ; tout ce qui est sorti s'affiche, sans erreur console, violation CSP ni requête tierce.
+
 ## Déploiement
 
 `dist/` est servi à la racine du même hôte que l'API (chemins absolus `/assets/…`, API en `/api/console/…`).

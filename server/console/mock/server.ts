@@ -50,7 +50,7 @@ const SCENARIO = parseScenario(argVal('--scenario') ?? process.env['MOCK_SCENARI
 const NOW = Date.now();
 const gen = generate(NOW);
 const events: MockEvent[] = gen.events;
-ALL_APPS.push(...applyScenario(events, SCENARIO, NOW, DEVICE_MAIN.device_id));
+ALL_APPS.push(...applyScenario(events, SCENARIO, NOW, DEVICE_MAIN.device_id, gen.silent));
 const byId = new Map(events.map((e) => [e.id, e]));
 /** `app.ops` : « normal » (selon le scénario), « empty » (collecteur actif, rien d'utilisé) ou « 404 » (route absente). */
 let opsMode: 'normal' | 'empty' | '404' = 'normal';

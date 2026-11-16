@@ -308,6 +308,8 @@ export interface AppOpsRow {
   op: string;
   count: number;
   background_count?: number;
+  /** usages refusés par le système (garde de l'agent) : contrat non fixé, fourni par le collecteur */
+  rejected_count?: number;
   last_ts?: string;
 }
 

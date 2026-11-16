@@ -49,6 +49,8 @@ function row(raw: unknown, pkg?: string, label?: string): AppOpsRow | undefined 
   if (l) out.label = l;
   const bg = nonNeg(raw['background_count']);
   if (bg !== undefined) out.background_count = bg;
+  const rej = nonNeg(raw['rejected_count']);
+  if (rej !== undefined && rej > 0) out.rejected_count = rej;
   if (typeof raw['last_ts'] === 'string') out.last_ts = raw['last_ts'];
   return out;
 }
@@ -85,9 +87,10 @@ export interface AppOps {
   package: string;
   label?: string;
   /** par opération, dans l'ordre du contrat */
-  ops: { op: string; count: number; background: number; lastTs?: string }[];
+  ops: { op: string; count: number; background: number; rejected: number; lastTs?: string }[];
   total: number;
   background: number;
+  rejected: number;
 }
 
 /** Regroupe par application (additionne si une paire application/opération apparaît plusieurs fois). */
@@ -96,17 +99,19 @@ export function groupByApp(rows: readonly AppOpsRow[]): AppOps[] {
   for (const r of rows) {
     let a = m.get(r.package);
     if (!a) {
-      a = { package: r.package, ops: [], total: 0, background: 0 };
+      a = { package: r.package, ops: [], total: 0, background: 0, rejected: 0 };
       m.set(r.package, a);
     }
     if (r.label && !a.label) a.label = r.label;
     let o = a.ops.find((x) => x.op === r.op);
     if (!o) {
-      o = { op: r.op, count: 0, background: 0 };
+      o = { op: r.op, count: 0, background: 0, rejected: 0 };
       a.ops.push(o);
     }
     o.count += r.count;
     o.background += Math.min(r.background_count ?? 0, r.count);
+    o.rejected += r.rejected_count ?? 0;
+    a.rejected += r.rejected_count ?? 0;
     if (r.last_ts && (!o.lastTs || r.last_ts > o.lastTs)) o.lastTs = r.last_ts;
     a.total += r.count;
     a.background += Math.min(r.background_count ?? 0, r.count);

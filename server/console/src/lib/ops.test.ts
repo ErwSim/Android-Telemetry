@@ -46,6 +46,15 @@ describe('opérations sensibles', () => {
     expect(ops[0]?.apps.map((a) => a.package)).toEqual(['a', 'b']);
   });
 
+  it('lit et additionne les usages refusés par le système (rejected_count du collecteur)', () => {
+    const r = parseOpsResponse({ apps: [{ package: 'a', ops: [{ op: 'send_sms', count: 10, background_count: 10, rejected_count: 4 }, { op: 'read_contacts', count: 2, rejected_count: 0 }] }] });
+    expect(r.rows[0]?.rejected_count).toBe(4);
+    expect(r.rows[1]?.rejected_count).toBeUndefined();
+    const a = groupByApp(r.rows)[0];
+    expect(a?.rejected).toBe(4);
+    expect(a?.ops.map((o) => o.rejected)).toEqual([4, 0]);
+  });
+
   it('part en arrière-plan', () => {
     expect(backgroundShare(10, 5)).toBe(0.5);
     expect(backgroundShare(0, 5)).toBe(0);

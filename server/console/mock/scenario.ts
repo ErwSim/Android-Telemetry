@@ -62,10 +62,12 @@ interface Ctx {
   now: number;
   device: string;
   horizon: number;
+  /** fenêtres sans aucun événement (téléphone éteint) : le scénario n'y ajoute rien */
+  silent: { start: number; end: number }[];
 }
 
 function mk(c: Ctx, t: number, type: string, sev: number, data: Record<string, unknown>): MockEvent | undefined {
-  if (t > c.horizon) return undefined;
+  if (t > c.horizon || c.silent.some((w) => t >= w.start && t < w.end)) return undefined;
   const e: MockEvent = {
     id: ulid(c.rng, t),
     ts: new Date(t).toISOString(),
@@ -205,8 +207,8 @@ function benignOps(c: Ctx, from: number, to: number): void {
  * Applique un scénario aux événements générés : ajoute ou retire des événements, et renumérote `seq`.
  * Renvoie les applications ajoutées (le catalogue sert aux libellés du pistage).
  */
-export function applyScenario(events: MockEvent[], scenario: Scenario, now: number, device: string): MockApp[] {
-  const c: Ctx = { events, rng: makeRng(1202), now, device, horizon: now - 20_000 };
+export function applyScenario(events: MockEvent[], scenario: Scenario, now: number, device: string, silent: { start: number; end: number }[]): MockApp[] {
+  const c: Ctx = { events, rng: makeRng(1202), now, device, horizon: now - 20_000, silent };
   const todayStart = Math.floor(now / DAY) * DAY;
   const t0 = todayStart - 6 * DAY;
   const extra: MockApp[] = [];

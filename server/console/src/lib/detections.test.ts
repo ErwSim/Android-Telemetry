@@ -236,6 +236,7 @@ describe('preuves au format du collecteur (internal/detect)', () => {
       "Appli a envoyé 40 SMS, dont 40 en arrière-plan alors que ce n'est pas l'application SMS par défaut",
     );
     expect(observation(det('detect.sms_abuse', { reason: 'volume', sent: 900, background: 0 }))).toBe('Appli a envoyé 900 SMS : un volume anormal');
+    expect(observation(det('detect.sms_abuse', { reason: 'not_default_sms_app', sent: 1136, background: 1136, rejected: 354 }))).toMatch(/, et a tenté d'en envoyer 354 de plus, refusés par le système alors que/);
     expect(evidenceItems(det('detect.sms_abuse', { reason: 'volume', sent: 9 }))).toContainEqual({ label: 'Motif', value: 'volume quotidien dépassé' });
   });
   it('new_app_risky : profil à risque ou capacité (clé du collecteur traduite)', () => {

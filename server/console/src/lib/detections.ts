@@ -390,7 +390,8 @@ export function observation(d: Detection): string {
       const bg = pickNum(ev, ['background', 'background_count']);
       const notDefault = ev['reason'] === 'not_default_sms_app' || pickBool(ev, ['default_sms_app', 'is_default_sms', 'is_default']) === false;
       const volume = ev['reason'] === 'volume';
-      return `${who} a envoyé ${fmtNumber(n)} ${plural(n, 'SMS', 'SMS')}${bg !== undefined && bg > 0 ? `, dont ${fmtNumber(bg)} en arrière-plan` : ''}${notDefault ? " alors que ce n'est pas l'application SMS par défaut" : volume ? ' : un volume anormal' : ''}`;
+      const rej = pickNum(ev, ['rejected']);
+      return `${who} a envoyé ${fmtNumber(n)} ${plural(n, 'SMS', 'SMS')}${bg !== undefined && bg > 0 ? `, dont ${fmtNumber(bg)} en arrière-plan` : ''}${rej ? `, et a tenté d'en envoyer ${fmtNumber(rej)} de plus, refusés par le système` : ''}${notDefault ? " alors que ce n'est pas l'application SMS par défaut" : volume ? ' : un volume anormal' : ''}`;
     }
     case 'detect.sensor_background': {
       const op = typeof ev['op'] === 'string' ? ev['op'] : undefined;
@@ -458,6 +459,7 @@ const EVIDENCE_LABELS: Record<string, string> = {
   addresses: 'Adresses distinctes',
   providers: 'Fournisseurs',
   sent: 'SMS envoyés',
+  rejected: 'Refusés par le système',
   background: 'Dont en arrière-plan',
   read_contacts: 'Lectures de contacts',
   history_hours: "Heures d'historique",
