@@ -1,4 +1,7 @@
 ﻿# Shared helpers for the Vigie ADB scripts (dot-sourced: . "$PSScriptRoot\Common.ps1").
+# The scripts are not signed: Windows refuses them with the default execution policy. Run them with
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\<script>.ps1 [options]
+# which changes nothing in the configuration of the machine (the policy only applies to that process).
 # Device selection: if several devices are connected, set $env:ANDROID_SERIAL = '<serial>' (see "adb devices").
 # Encoding: this file is UTF-8 with BOM so that Windows PowerShell 5.1 reads the French text correctly.
 

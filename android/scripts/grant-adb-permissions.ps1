@@ -6,6 +6,9 @@
 # « pm grant » ne marche que pour une permission déclarée par l'APK installé : les autres sont
 # signalées et ignorées.
 # Usage : .\grant-adb-permissions.ps1
+#
+# Lancement (scripts non signés, sans modifier la politique d'exécution de Windows) :
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\grant-adb-permissions.ps1
 . "$PSScriptRoot\Common.ps1"
 
 Assert-Adb

@@ -13,6 +13,9 @@
 #    admin_disabled / device_owner_lost au prochain démarrage) : c'est attendu.
 #
 # Usage : .\remove-device-owner.ps1 [-Uninstall]
+#
+# Lancement (scripts non signés, sans modifier la politique d'exécution de Windows) :
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\remove-device-owner.ps1 [options]
 param([switch]$Uninstall)
 . "$PSScriptRoot\Common.ps1"
 

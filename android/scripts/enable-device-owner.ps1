@@ -1,6 +1,9 @@
 ﻿# Makes Vigie the Device Owner of the phone (ADB provisioning, no factory reset).
 # Preconditions checked here: no other user/profile, no account, no existing owner.
 # Usage: .\enable-device-owner.ps1
+#
+# Lancement (scripts non signés, sans modifier la politique d'exécution de Windows) :
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\enable-device-owner.ps1
 . "$PSScriptRoot\Common.ps1"
 
 Assert-Adb

@@ -5,10 +5,12 @@
 # "-t" is required for a testOnly APK (default build); "-r" keeps the data on update.
 # An update must be signed with the SAME key as the installed app (mandatory for a Device Owner).
 set -euo pipefail
+# The APK path is the caller's: made absolute BEFORE moving to the scripts directory.
+APK="${1:-}"
+case "$APK" in ""|/*|[A-Za-z]:[\\/]*) ;; *) APK="$PWD/$APK" ;; esac
 cd "$(dirname "$0")"
 . ./common.sh
 
-APK="${1:-}"
 if [ -z "$APK" ]; then
     for candidate in ../app/build/outputs/apk/release/app-release.apk ../app/build/outputs/apk/debug/app-debug.apk; do
         if [ -f "$candidate" ]; then APK="$candidate"; break; fi

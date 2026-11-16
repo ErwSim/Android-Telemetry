@@ -13,6 +13,9 @@
 # Ne fonctionne qu'après le premier déverrouillage qui suit un redémarrage.
 # Codes de sortie : 0 tout rétabli, 2 partiel, 3 Vigie n'est plus Device Owner, 4 délai dépassé,
 # 5 aucune réponse exploitable de Vigie, 1 autre erreur.
+#
+# Lancement (scripts non signés, sans modifier la politique d'exécution de Windows) :
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\rescue-revert.ps1 [options]
 param([switch]$RemoveOwner, [switch]$Sweep)
 . "$PSScriptRoot\Common.ps1"
 

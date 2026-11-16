@@ -3,6 +3,9 @@
 # Default: the release APK, else the debug APK, from android\app\build\outputs\apk\.
 # "-t" is required for a testOnly APK (default build); "-r" keeps the data on update.
 # An update must be signed with the SAME key as the installed app (mandatory for a Device Owner).
+#
+# Lancement (scripts non signés, sans modifier la politique d'exécution de Windows) :
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\install-apk.ps1 [options]
 param([string]$Apk)
 . "$PSScriptRoot\Common.ps1"
 
@@ -13,9 +16,11 @@ if (-not $Apk) {
         if (Test-Path $candidate) { $Apk = $candidate; break }
     }
 }
-if (-not $Apk -or -not (Test-Path $Apk)) {
+if (-not $Apk -or -not (Test-Path -LiteralPath $Apk)) {
     Fail 'APK introuvable. Construisez-le (.\gradlew.bat assembleRelease) ou passez son chemin avec -Apk.'
 }
+# Absolute path: adb must not depend on the directory it is started from.
+$Apk = (Resolve-Path -LiteralPath $Apk).Path
 
 if ((Split-Path -Leaf $Apk) -like '*debug*.apk') {
     Warn "APK de débogage : signé avec la clé de débogage (une mise à jour vers l'APK release sera refusée tant que Vigie est Device Owner) et « débogable » (adb run-as peut lire les données de l'app)."

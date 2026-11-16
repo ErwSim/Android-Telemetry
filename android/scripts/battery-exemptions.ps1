@@ -1,5 +1,8 @@
 ﻿# Exempts Vigie from battery restrictions that could stop the collection.
 # Usage: .\battery-exemptions.ps1
+#
+# Lancement (scripts non signés, sans modifier la politique d'exécution de Windows) :
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\battery-exemptions.ps1
 . "$PSScriptRoot\Common.ps1"
 
 Assert-Adb

@@ -3,6 +3,9 @@
 # key, and the only way back would be removing the Device Owner (or a factory reset).
 # Back up android\keystore\ and android\keystore.properties offline (encrypted).
 # Usage: .\generate-keystore.ps1        (password from $env:VIGIE_KEYSTORE_PASSWORD, else random)
+#
+# Lancement (scripts non signés, sans modifier la politique d'exécution de Windows) :
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\generate-keystore.ps1
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $store = Join-Path $root 'keystore\vigie-release.jks'
