@@ -518,6 +518,14 @@ Sans AdGuard configuré ou joignable : `"adguard": false`, la vue est construite
 FCM, test de connectivité, mises à jour) ne peuvent pas être bloqués depuis la console sans confirmation
 explicite (`"force": true`), la réponse `409` expliquant ce que le blocage casserait.
 
+### Précisions (ajoutées après le développement de la console)
+
+- Clés d'éditeur : `google`, `samsung`, `meta`, `microsoft`, `amazon`, `bytedance`, `ads`, `other` (fichier
+  `server/collector/internal/tracking/publishers.txt`). `reason` est un texte libre lisible.
+- `409 essential_domain` : `{ "error": "essential_domain", "message": "…", "breaks": [ { "domain", "breaks" } ] }`.
+- `/tracking/domains` et `/tracking/apps` portent aussi `adguard` (bool).
+- Une commande sans paramètre a `"params": {}`.
+
 ## 10. Notifications (APK compagnon) et modes de localisation
 
 - **APK compagnon** `io.github.erwsim.vigie.notifier` : contient le seul `NotificationListenerService`, n'a
