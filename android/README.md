@@ -1062,6 +1062,12 @@ Vérifié dans l'environnement de développement (Linux, sans émulateur ni appa
 
 - `./gradlew lint test assembleDebug assembleRelease` réussit (lint : 0 erreur, avertissements de style
   `UseKtx`/versions seulement).
+- Décompte du 16/11/2026 après les gardes de capacités et les collecteurs de risque (v1.2) : 378 tests JVM,
+  0 échec, 4 ignorés (essais croisés) — `:core` 142 (dont listes de paquets et précisions §8 de la revue v1.1),
+  `:collectors` 142, `:policy` 85 (dont 18 pour les gardes : application, exceptions, nouvel arrivant, mise à
+  jour, changement de rôle, échec partiel, garde-fous, « Tout rétablir » après les 32 combinaisons de gardes,
+  plantage à chacun des 8 premiers changements, plantage pendant « Tout rétablir », état illisible, quarantaine
+  puis libération), `:app` 9 ; lint : 0 erreur. Décompte précédent :
 - 299 tests JVM, dont 4 ignorés sans leurs variables d'environnement (les essais croisés contre le vrai
   collecteur : `CrossServerTest` et les trois de `CrossCommandsTest`, exécutés à part le 16/11/2026) —
   décompte du 16/11/2026 après la revue de sécurité de la v1.1 : `:core` 131 (dont les commandes à

@@ -96,7 +96,8 @@ class ContractConformanceTest {
         // Harness, public data builders, log processors and policy engine: see [ApkSamples].
         val samples = ApkSamples(all).produce()
         samples.forEach { sample(it.producer, it.type, it.data) }
-        assertEquals(4, samples.count { it.producer == "policy_engine" })
+        assertEquals(9, samples.count { it.producer == "policy_engine" }) // 4 policy actions + 5 guard actions (contract §11.1)
+        assertTrue("guard events carry the permission", samples.any { it.producer == "policy_engine" && it.data["permission"] != null })
         assertTrue("several inventory parts", samples.count { it.type == "app.inventory" } > 1)
         // Events read after the fact carry their time of origin.
         samples.filter { it.type in setOf("app.foreground", "net.dns", "net.connect", "security.log") }.forEach {
