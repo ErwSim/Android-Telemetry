@@ -525,6 +525,11 @@ explicite (`"force": true`), la réponse `409` expliquant ce que le blocage cass
 - `409 essential_domain` : `{ "error": "essential_domain", "message": "…", "breaks": [ { "domain", "breaks" } ] }`.
 - `/tracking/domains` et `/tracking/apps` portent aussi `adguard` (bool).
 - Une commande sans paramètre a `"params": {}`.
+- Événements produits par le serveur pour le pistage (`vigie.source = "server"`) : `tracking.level_changed`
+  (`old`, `new`) et `tracking.override` (`domain`, `action`, `forced`).
+- Le fichier de niveaux est `infra/adguard/niveaux.json` (source unique, lue par l'installation et par le
+  collecteur). Le niveau en service est l'état des listes activées dans AdGuard, rien d'autre : la console le
+  change, `install.sh` et `update.sh` le conservent, `install.sh --profile` l'applique sans le mémoriser.
 
 ## 10. Notifications (APK compagnon) et modes de localisation
 
