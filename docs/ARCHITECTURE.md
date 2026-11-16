@@ -1,116 +1,123 @@
-# Vigie — architecture
+# Watchpost architecture
 
-Vigie est une chaîne personnelle de télémétrie de sécurité et de réduction du pistage pour **un téléphone
-Android dont l'utilisateur est le propriétaire** (cible : Samsung Galaxy S25+, ROM stock, non rooté).
+Watchpost is a self-hosted security-telemetry and anti-tracking toolchain for a personal Android phone. It
+targets Android 16 and later (`minSdk 36`) on recent Samsung Galaxy devices running One UI 8 or 9, with the
+stock ROM and no root. An app installed on the phone, the Watchpost Agent, observes what the phone does and
+sends it to a server that its user administers; the user chooses the local policy, and the server can send the
+phone only a small closed list of commands.
 
-## Décisions du propriétaire (15/11/2026)
+## Design decisions
 
-| Sujet | Décision |
+| Subject | Decision |
 |---|---|
-| Mode d'administration | **Device Owner** (activé par ADB après retrait temporaire des comptes). Mode dégradé tant que ce n'est pas fait. |
-| Serveur | **VPS ou dédié, 8 Go+ de RAM**, IP publique, Docker Compose. |
-| SIEM/XDR | **Wazuh** single-node (manager + indexer + dashboard). |
-| Dé-googlisation par défaut | Profil **équilibré** (Play Services, Play Store, push FCM et apps bancaires restent fonctionnels). Profil strict disponible. |
-| Build APK | Compilation locale (domaines Google à autoriser dans l'environnement cloud, ou sur le PC). |
+| Administration mode | **Device Owner**, activated through ADB after temporarily removing the accounts. The agent runs in a degraded mode until that is done. |
+| Server | A VPS or dedicated machine with **8 GB of RAM or more**, a public IP address, Docker Compose. |
+| SIEM/XDR | **Wazuh**, single node (manager + indexer + dashboard). |
+| Default de-Googling | **Balanced** profile: Google Play Services, the Play Store, FCM push and banking apps keep working. A strict profile is available. |
+| APK build | Local build, with Gradle and the Android SDK, on the user's own machine. |
 
-## Principes non négociables
+## Non-negotiable principles
 
-1. **Aucune furtivité.** L'agent affiche une notification permanente, garde son icône, et l'écran d'accueil de
-   l'app montre ce qui est collecté. Aucune fonction de masquage. Ce n'est pas un outil de surveillance d'autrui.
-2. **Le serveur ne décide de rien d'important.** Le téléphone pousse ses événements vers le serveur. Dans
-   l'autre sens, le serveur ne peut transmettre que des **commandes d'une liste fermée** (sonner, vibrer,
-   localiser, verrouiller avec message, effacer), jamais de configuration ni de politique : toute la politique
-   (DNS, paquets désactivés, restrictions) se règle dans l'app, localement. Les commandes sensibles
-   (verrouiller, effacer) portent une signature calculée dans le navigateur du propriétaire à partir d'un
-   **code que le serveur ne connaît pas** : un serveur compromis peut au pire faire sonner le téléphone ou lui
-   demander sa position. L'effacement à distance est en plus désactivé par défaut dans l'app. Le canal de
-   commandes se coupe par un interrupteur. (Décision du propriétaire du 16/11/2026 ; la v1 initiale était à
-   sens unique strict.)
-3. **Zéro dépendance Google dans l'agent** : pas de Play Services, Firebase, ML Kit. Localisation par
-   `LocationManager`, GPS seul par défaut ; les fournisseurs « réseau » et « fusionné » (qui passent par les
-   Services Google Play) sont un réglage explicite, l'app disant ce qui part alors chez Google.
-4. **Contenu privé de tiers réduit au minimum** : ni contenu de SMS, ni journal d'appels, ni frappe clavier,
-   ni capture d'écran, ni service d'accessibilité. La lecture des notifications vit dans un **APK compagnon
-   séparé et optionnel** (jamais dans l'APK Device Owner) ; le titre et le texte ne sont collectés que si le
-   propriétaire l'active, avec masquage des codes numériques et liste d'apps exclues.
-5. **Tout collecteur est désactivable** individuellement dans l'app.
-6. **Tout ce que l'agent change est réversible** (paquets désactivés, restrictions, DNS) depuis l'app, et une
-   procédure de retrait complet du Device Owner est documentée.
+1. **No stealth.** The agent shows a permanent notification, keeps its launcher icon, and its home screen shows
+   what is collected. There is no hiding function. This is not a tool for monitoring other people.
+2. **The server decides nothing important.** The phone pushes its events to the server. In the other direction,
+   the server can send only **commands from a closed list** (ring, vibrate, locate, lock with a message, erase),
+   never configuration or policy: all policy (DNS, disabled packages, restrictions) is set in the app, locally.
+   The sensitive commands (lock, erase) carry a signature computed in the user's browser from a **passphrase the
+   server does not know**: a compromised server can at worst make the phone ring or ask it for its position
+   (and, if it obtains the passphrase, lock or erase it, see contract §8). Remote erase is also off by default
+   in the app. The command channel can be turned off with a switch.
+3. **Zero Google dependency in the agent**: no Play Services, Firebase or ML Kit. Location uses
+   `LocationManager`, GPS only by default; the "network" and "fused" providers (which go through Google Play
+   Services) are an explicit setting, and the app says what then goes to Google.
+4. **Third parties' private content reduced to the minimum**: no SMS content, no call log, no keystrokes, no
+   screenshots, no accessibility service. Notification reading lives in a **separate, optional companion
+   APK** (never in the Device Owner APK); title and text are collected only if the user turns that on, with
+   masking of numeric codes and a list of excluded apps.
+5. **Every collector can be turned off** individually in the app.
+6. **Everything the agent changes is reversible** (disabled packages, restrictions, DNS) from the app, and a
+   procedure to remove the Device Owner entirely is documented.
 
-## Vue d'ensemble
+## Overview
 
 ```
- Galaxy S25+                                   VPS (Docker Compose)
+ Samsung Galaxy phone                           Server (Docker Compose)
 ┌───────────────────────────┐               ┌────────────────────────────────────────────┐
-│ Vigie Agent (Device Owner)│  HTTPS mTLS   │ Caddy (TLS, mTLS sur ingest.*)             │
-│  collecteurs ─► tampon    │──────────────►│   └► vigie-collector (Go, SQLite)          │
-│  (Room/SQLite) ─► envoi   │  lots gzip    │         ├► console web (carte, tableaux)   │
-│                           │               │         └► events.ndjson ─► Wazuh manager  │
-│ politique locale :        │               │ Wazuh indexer + dashboard (SIEM/XDR)       │
-│  DNS privé imposé,        │  DoT :853     │ AdGuard Home (DNS filtrant, DoT)           │
-│  paquets désactivés,      │──────────────►│   └► querylog ─► Wazuh                     │
-│  restrictions             │               │ (option) WireGuard                         │
+│ Watchpost Agent           │  HTTPS mTLS   │ Caddy (TLS, mTLS on ingest.*)              │
+│ (Device Owner)            │──────────────►│   └► watchpost-collector (Go, SQLite)      │
+│  collectors ─► buffer     │  gzip batches │         ├► web console (map, tables)       │
+│  (Room/SQLite) ─► upload  │               │         └► events.ndjson ─► Wazuh manager  │
+│                           │               │ Wazuh indexer + dashboard (SIEM/XDR)       │
+│ local policy:             │  DoT :853     │ AdGuard Home (filtering DNS, DoT)          │
+│  enforced private DNS,    │──────────────►│   └► query log ─► Wazuh                    │
+│  disabled packages,       │               │ (optional) WireGuard                       │
+│  restrictions, guards     │               │                                            │
 └───────────────────────────┘               └────────────────────────────────────────────┘
 ```
 
-## Composants et répertoires
+## Components and directories
 
-| Répertoire | Composant | Techno |
+| Directory | Component | Technology |
 |---|---|---|
-| `android/` | **Vigie Agent** : app Device Owner, collecteurs, tampon hors-ligne, envoi, politique vie privée/sécurité | Kotlin, Gradle, Room, WorkManager, OkHttp. Package `io.github.erwsim.vigie` |
-| `server/collector/` | **vigie-collector** : API d'ingestion, stockage, API console, export NDJSON vers Wazuh, CLI d'enrôlement, simulateur | Go, SQLite (pur Go) |
-| `server/console/` | **Console web** : carte des positions, chronologie, réseau par app, inventaire, posture, alertes | TypeScript, React, Vite, MapLibre |
-| `infra/` | Déploiement : `docker-compose.yml`, Caddy, AdGuard Home, Wazuh (règles/décodeurs Vigie), PKI, script d'installation, option WireGuard | Docker Compose, shell |
-| `docs/` | Architecture, contrat, recherches, guides d'installation et d'exploitation | Markdown (français) |
+| `android/` | **Watchpost Agent**: Device Owner app, collectors, offline buffer, upload, privacy/security policy; **Watchpost Notifications**: optional companion APK (`:notifier`) | Kotlin, Gradle, Room, WorkManager, OkHttp. Package `io.github.erwsim.watchpost` |
+| `server/collector/` | **watchpost-collector**: ingestion API, storage, console API, NDJSON export to Wazuh, enrollment CLI, simulator | Go, SQLite (pure Go) |
+| `server/console/` | **Web console**: map of positions, timeline, per-app network, inventory, posture, Tracking page, remote commands, detections, alerts | TypeScript, React, Vite, MapLibre |
+| `infra/` | Deployment: `docker-compose.yml`, Caddy, AdGuard Home, Wazuh (Watchpost rules and decoders), PKI, installation script, optional WireGuard | Docker Compose, shell |
+| `docs/` | Architecture, contract, research, installation and operations guides | Markdown (English) |
 
-## Agent Android
+## Android agent
 
-- **Service de premier plan** permanent (démarré au boot) qui héberge les collecteurs « temps réel »
-  (localisation, écran, connectivité, capteurs, notifications) ; **WorkManager** pour les collectes périodiques
-  (inventaire, posture, usage réseau) et pour l'envoi.
-- **Collecteurs** : une interface commune `Collector` (id, permissions/capacités requises, `start/stop` ou
-  `collectOnce`), chacun dans son fichier, activable par réglage. Un collecteur dont la capacité manque
-  (pas Device Owner, permission absente) se déclare « indisponible » sans planter.
-- **Tampon hors-ligne** : table Room `outbox` ; chaque événement reçoit un identifiant unique et un numéro de
-  séquence. Plafond configurable (défaut 200 Mo / 30 jours) ; en cas de dépassement on purge d'abord les
-  événements les plus anciens de plus faible sévérité et on émet `agent.buffer_overflow`.
-- **Envoi** : lots gzip sur HTTPS avec certificat client (clé dans l'Android Keystore) + jeton d'appareil ;
-  idempotent (le serveur déduplique par `id`), suppression locale seulement après accusé de réception ;
-  reprise avec backoff exponentiel ; option « gros volumes en Wi-Fi seulement ».
-- **Politique locale (Device Owner)** : DNS privé imposé vers le serveur AdGuard, profils de désactivation de
-  paquets Google/Samsung (équilibré / strict), refus de permissions à des apps, restrictions utilisateur de
-  sécurité, journalisation réseau et sécurité du système. Chaque action est journalisée (`security.policy`).
-- **Enrôlement** : import d'un fichier `.vigie` produit par le serveur (URL, identifiant d'appareil, jeton,
-  certificat client PKCS#12, hôte DNS privé).
+- A permanent **foreground service** (started at boot) hosts the "real-time" collectors (location, screen,
+  connectivity, sensors); **WorkManager** runs the periodic collections (inventory, posture, network usage)
+  and the upload.
+- **Collectors**: a common `Collector` interface (id, required permissions/capabilities, `start/stop` or
+  `collectOnce`), each in its own file and enabled by a setting. A collector whose capability is missing (not
+  Device Owner, permission absent) declares itself "unavailable" without crashing.
+- **Offline buffer**: Room table `outbox`; every event receives a unique identifier and a sequence number. The cap
+  is configurable (default 200 MB / 30 days); on overflow, the oldest events of lowest severity are purged first
+  and `agent.buffer_overflow` is emitted.
+- **Upload**: gzip batches over HTTPS with a client certificate (key in the Android Keystore) plus a device
+  token; idempotent (the server deduplicates on `id`); local deletion only after acknowledgement; retry with
+  exponential backoff; option "large volumes on Wi-Fi only".
+- **Local policy (Device Owner)**: enforced private DNS towards the AdGuard server, profiles for disabling
+  Google/Samsung packages (balanced / strict), permission denials for apps, security user restrictions, network
+  and security logging, and optional capability guards (SMS, calls, accessibility, keyboards, quarantine of new
+  apps). Every action is logged (`security.policy`).
+- **Enrollment**: import of a `.watchpost` file produced by the server (URL, device identifier, token, PKCS#12
+  client certificate, private DNS host).
+- **Remote commands**: a closed list received over a channel that is off by default; sensitive commands are
+  verified against a signature before they run (contract §8).
 
-### Décisions issues de la recherche plateforme (`docs/research/android-plateforme.md`)
+### Decisions from the platform research (`docs/research/android-platform.md`)
 
-- Cible : Android 16/17 (One UI 8/9), `minSdk 36`. Activation Device Owner par ADB uniquement.
-- L'APK principal (Device Owner) ne contient **ni** service d'écoute des notifications (il est dans l'APK
-  compagnon `:notifier`), **ni** accessibilité, **ni** SMS, **ni**
-  superposition (déclencheurs Play Protect). Pas de Knox SDK en v1.
-- Journaux réseau du Device Owner = DNS + `connect()` TCP par app, remontés par lots (~1 h 30) ; UDP/QUIC y
-  échappent. On complète par le journal AdGuard côté serveur (tout le DNS, en direct) et par les volumes par app
-  (`NetworkStatsManager`). **Pas de VPN local en v1** (complexité, batterie, conflit avec WireGuard) : piste v2.
-- Localisation : GPS + fournisseur passif par défaut ; modes « GPS + réseau » et « fusionné » au choix du
-  propriétaire (ils passent par Play Services).
-- Désactivation de paquets : liste de refus embarquée (jamais `kgclient`, paquets OTA, `rkpdapp`, lanceur,
-  composeur, Play Store en profil équilibré…) car `setApplicationHidden` n'a pas de garde-fou.
-- Jamais `DISALLOW_DEBUGGING_FEATURES` ni coupure du signal USB : ADB reste la porte de secours.
-- Variante de build `testOnly` par défaut pour pouvoir retirer le Device Owner par ADB
-  (`dpm remove-active-admin`) ; l'app sait aussi tout défaire puis `clearDeviceOwnerApp`.
+- Target: Android 16/17 (One UI 8/9), `minSdk 36`. Device Owner activation through ADB only.
+- The main APK (Device Owner) contains **no** notification-listener service (it lives in the companion APK
+  `:notifier`), **no** accessibility service, **no** SMS permissions and **no** overlay (Play Protect triggers).
+  No Knox SDK.
+- Device Owner network logs = DNS + TCP `connect()` per app, delivered in batches (about 1 h 30); UDP/QUIC
+  escape them. They are complemented on the server side by the AdGuard log (all DNS, live) and by per-app
+  volumes (`NetworkStatsManager`). **No local VPN** (complexity, battery, conflict with WireGuard): a possible
+  later addition.
+- Location: GPS + passive provider by default; "GPS + network" and "fused" modes are the user's choice (they go
+  through Play Services).
+- Package disabling: an embedded deny list (never `kgclient`, OTA packages, `rkpdapp`, the launcher, the dialer,
+  the Play Store in the balanced profile…) because `setApplicationHidden` has no safeguard of its own.
+- Never `DISALLOW_DEBUGGING_FEATURES` and never cutting USB signalling: ADB remains the escape hatch.
+- A `testOnly` build variant by default so that the Device Owner can be removed through ADB
+  (`dpm remove-active-admin`); the app can also undo everything and then call `clearDeviceOwnerApp`.
 
-## Serveur
+## Server
 
-- **vigie-collector** valide (mTLS vérifié par Caddy + jeton), déduplique, stocke en SQLite, alimente la
-  console et écrit chaque événement dans un fichier NDJSON lu par le manager Wazuh (`<localfile>` JSON).
-- **Wazuh** applique les règles Vigie (`infra/wazuh/`) → alertes ; tous les événements sont aussi archivés.
-- **AdGuard Home** sert le DNS privé du téléphone en DoT avec listes de blocage (télémétrie Google/Samsung,
-  publicité, traqueurs) ; son journal de requêtes part aussi dans Wazuh.
-- **Console** protégée par authentification locale ; l'enrôlement et la révocation d'appareils ne se font
-  qu'en ligne de commande sur le serveur.
+- **watchpost-collector** validates (mTLS verified by Caddy + token), deduplicates, stores in SQLite, feeds the
+  console, and writes every event into an NDJSON file read by the Wazuh manager (`<localfile>` JSON).
+- **Wazuh** applies the Watchpost rules (`infra/wazuh/`) and raises alerts; all events are also archived.
+- **AdGuard Home** serves the phone's private DNS over DoT with blocking lists (Google/Samsung telemetry,
+  advertising, trackers); its query log also goes to Wazuh. The collector can read it and change the blocking
+  level (Tracking page).
+- **Console** protected by local authentication; enrollment and revocation of devices are done only on the
+  command line on the server.
 
-## Contrat
+## Contract
 
-Le format des événements et les API sont définis dans [`docs/contrat/contrat.md`](contrat/contrat.md).
-C'est la référence commune : toute évolution se fait d'abord dans ce fichier.
+The event format and the APIs are defined in [`docs/contract/contract.md`](contract/contract.md). It is the common
+reference: every change is made in that file first.
