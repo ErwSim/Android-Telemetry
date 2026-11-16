@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPayload,
   channelState,
+  badSignatureCount,
   codeProblem,
   defaultValidityMs,
   deriveKeyBytes,
@@ -168,5 +169,23 @@ describe('états, motifs de refus et canal', () => {
     expect(paramsSummary('lock', { message: 'Rendez-moi' })).toContain('Rendez-moi');
     expect(paramsSummary('lock', {})).toBe('sans message');
     expect(paramsSummary('wipe', undefined)).toBe('');
+  });
+});
+
+describe('signatures invalides récentes', () => {
+  const now = new Date('2026-11-16T12:00:00.000Z');
+  it('ne compte que les bad_signature de la dernière heure', () => {
+    const n = badSignatureCount(
+      [
+        { status: 'refused', detail: 'bad_signature', result_at: '2026-11-16T11:30:00.000Z' },
+        { status: 'refused', detail: 'bad_signature', result_at: '2026-11-16T10:30:00.000Z' },
+        { status: 'refused', detail: 'expired', result_at: '2026-11-16T11:59:00.000Z' },
+        { status: 'executed', result_at: '2026-11-16T11:59:00.000Z' },
+        { status: 'refused', detail: 'bad_signature', created_at: '2026-11-16T11:59:00.000Z' },
+        { status: 'refused', detail: 'bad_signature' },
+      ],
+      now,
+    );
+    expect(n).toBe(2);
   });
 });

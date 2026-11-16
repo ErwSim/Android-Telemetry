@@ -338,3 +338,16 @@ export function prepareCommand(deviceId: string, type: CommandType, params: Comm
   const id = ulid(now.getTime());
   return { id, payload: buildPayload({ id, deviceId, type, params, issuedAt: now, validityMs }), issuedAt: now };
 }
+
+/**
+ * Commandes refusées pour signature invalide dans la dernière heure (le téléphone bloque les commandes sensibles
+ * à la cinquième). Se base sur l'heure du résultat, sinon de la création.
+ */
+export function badSignatureCount(cmds: { status: string; detail?: string | undefined; result_at?: string | undefined; created_at?: string | undefined }[], now: Date = new Date()): number {
+  const since = now.getTime() - HOUR_MS;
+  return cmds.filter((c) => {
+    if (c.status !== 'refused' || c.detail !== 'bad_signature') return false;
+    const t = Date.parse(c.result_at ?? c.created_at ?? '');
+    return Number.isFinite(t) && t >= since;
+  }).length;
+}

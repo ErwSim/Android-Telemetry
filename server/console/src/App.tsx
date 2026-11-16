@@ -15,6 +15,8 @@ const Network = lazy(() => import('./pages/Network.tsx'));
 const Apps = lazy(() => import('./pages/Apps.tsx'));
 const Security = lazy(() => import('./pages/Security.tsx'));
 const Alerts = lazy(() => import('./pages/Alerts.tsx'));
+const Commands = lazy(() => import('./pages/Commands.tsx'));
+const Tracking = lazy(() => import('./pages/Tracking.tsx'));
 
 function Protected() {
   const { status } = useAuth();
@@ -53,9 +55,11 @@ export default function App() {
           <Route path="evenements" element={<Events />} />
           <Route path="evenements/:id" element={<EventDetail />} />
           <Route path="reseau" element={<Network />} />
+          <Route path="pistage" element={<Tracking />} />
           <Route path="applications" element={<Apps />} />
           <Route path="securite" element={<Security />} />
           <Route path="alertes" element={<Alerts />} />
+          <Route path="commandes" element={<Commands />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

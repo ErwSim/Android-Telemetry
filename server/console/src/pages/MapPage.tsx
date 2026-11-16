@@ -1,7 +1,8 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/endpoints.ts';
 import { useApi } from '../api/useApi.ts';
-import type { LocationPoint } from '../api/types.ts';
+import { useEventStream } from '../api/useEventStream.ts';
+import type { LocationPoint, VigieEvent } from '../api/types.ts';
 import { PeriodPicker, usePeriod } from '../components/PeriodPicker.tsx';
 import { Async, Badge, Card, Empty, KV, Loading } from '../components/ui.tsx';
 import type { MapPoint } from '../components/MapView.tsx';
@@ -14,7 +15,10 @@ import {
   splitSegments,
   type Activity,
 } from '../lib/gaps.ts';
-import { fmtDateTime, fmtDateTimeShort, fmtDistance, fmtDuration, fmtNumber, fmtSpeedKmh } from '../lib/format.ts';
+import { fmtDateTime, fmtDateTimeShort, fmtDistance, fmtDuration, fmtNumber, fmtSpeedKmh, fmtTime } from '../lib/format.ts';
+import { num, str } from '../lib/data.ts';
+import { countProviders, providerInfo } from '../lib/provider.ts';
+import { ProviderDot, ProviderLegend } from '../components/Provider.tsx';
 import { isValidLatLon, pathLength } from '../lib/geo.ts';
 import { periodRange } from '../lib/period.ts';
 import { useDevice } from '../state/device.tsx';
@@ -53,6 +57,38 @@ export default function MapPage() {
     api.timeline({ device_id: deviceId, ...range, bucket, by: 'domain' }, s),
   );
 
+  // Suivi en direct : les `location.fix` reçus par le flux s'ajoutent à la trace (par exemple après « Localiser
+  // maintenant »). Désactivé pour une période personnalisée, qui ne se termine pas « maintenant ».
+  const [follow, setFollow] = useState(true);
+  const liveKey = `${deviceId ?? ''}|${range.from}|${range.to}`;
+  const [extra, setExtra] = useState<{ key: string; pts: LocationPoint[] }>({ key: liveKey, pts: [] });
+  const onEvent = useCallback(
+    (ev: VigieEvent) => {
+      if (ev.type !== 'location.fix') return;
+      const lat = num(ev.data, 'lat');
+      const lon = num(ev.data, 'lon');
+      if (lat === undefined || lon === undefined) return;
+      const acc = num(ev.data, 'acc_m');
+      const spd = num(ev.data, 'speed_mps');
+      const provider = str(ev.data, 'provider');
+      const p: LocationPoint = { ts: ev.ts, lat, lon, ...(acc !== undefined ? { acc_m: acc } : {}), ...(spd !== undefined ? { speed_mps: spd } : {}), ...(provider ? { provider } : {}) };
+      setExtra((prev) => {
+        const base = prev.key === liveKey ? prev.pts : [];
+        return base.some((x) => x.ts === p.ts) ? prev : { key: liveKey, pts: [...base, p] };
+      });
+    },
+    [liveKey],
+  );
+  const streamOn = follow && ctl.key !== 'custom' && !!deviceId;
+  const stream = useEventStream(streamOn, deviceId, onEvent);
+  const livePts = useMemo(() => (extra.key === liveKey ? extra.pts : []), [extra, liveKey]);
+  const merged = useMemo(() => {
+    if (!loc.data) return undefined;
+    const seen = new Set(loc.data.points.map((p) => p.ts));
+    return { points: [...loc.data.points, ...livePts.filter((p) => !seen.has(p.ts))] };
+  }, [loc.data, livePts]);
+  const lastLive = livePts[livePts.length - 1];
+
   const activity: Activity | undefined = useMemo(() => {
     if (!act.data) return undefined;
     const { starts, totals } = timelineTotals(act.data);
@@ -79,9 +115,17 @@ export default function MapPage() {
         <button type="button" className="btn" onClick={() => { ctl.refresh(); loc.reload(); act.reload(); }}>
           Actualiser
         </button>
+        <label className="check">
+          <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} disabled={ctl.key === 'custom'} />
+          <span className={`live-dot${streamOn && stream === 'open' ? '' : ' is-off'}`} aria-hidden="true" />
+          Suivi en direct
+          <span className="hint" role="status" data-testid="live-status">
+            {streamOn ? (stream === 'open' ? (lastLive ? ` · dernière position reçue à ${fmtTime(lastLive.ts)}` : ' · connecté') : stream === 'error' ? ' · connexion perdue, nouvelle tentative…' : ' · connexion…') : ''}
+          </span>
+        </label>
       </div>
       <Async
-        state={loc}
+        state={{ ...loc, data: merged }}
         isEmpty={(d) => d.points.filter((p) => isValidLatLon(p.lat, p.lon)).length === 0}
         empty="Aucune position enregistrée sur cette période."
         loadingLabel="Chargement de la trace…"
@@ -121,7 +165,7 @@ function TrackView({
   const [speed, setSpeed] = useState(2);
 
   const mapPoints: MapPoint[] = useMemo(
-    () => track.pts.map((p) => ({ lat: p.lat, lon: p.lon, t: p.t, ...(p.acc_m !== undefined ? { acc: p.acc_m } : {}) })),
+    () => track.pts.map((p) => ({ lat: p.lat, lon: p.lon, t: p.t, ...(p.acc_m !== undefined ? { acc: p.acc_m } : {}), ...(p.provider ? { provider: p.provider } : {}) })),
     [track],
   );
   const threshold = useMemo(() => effectiveThreshold(track.pts, thresholdMin * 60_000), [track, thresholdMin]);
@@ -152,6 +196,7 @@ function TrackView({
   const silent = gapInfo.filter((g) => g.kind === 'silent').reduce((a, g) => a + g.durationMs, 0);
   const speeds = track.pts.map((p) => p.speed_mps ?? 0);
   const vmax = speeds.length ? Math.max(...speeds) : 0;
+  const providerCounts = useMemo(() => countProviders(track.pts), [track]);
 
   return (
     <div className="grid grid-start">
@@ -181,8 +226,13 @@ function TrackView({
         </div>
         <p className="hint map-legend">
           <span className="legend-line" aria-hidden="true" /> trajet · <span className="legend-dash" aria-hidden="true" /> trou de données (aucune position)
-          · points orange : précision supérieure à 100 m. Cliquez un point pour le sélectionner.
+          · contour orange : précision supérieure à 100 m. Cliquez un point pour le sélectionner.
           {truncated ? ' Trace sous-échantillonnée par le serveur (2 000 points maximum).' : ''}
+        </p>
+        <ProviderLegend />
+        <p className="hint">
+          Le fournisseur de chaque position est celui qui l'a calculée : <em>GPS</em> (satellites seuls), <em>Réseau</em> et <em>Fusionné</em> passent par les Services
+          Google Play.
         </p>
         <div className="replay">
           <div className="replay-btns">
@@ -260,7 +310,25 @@ function TrackView({
                   ),
                 },
                 { k: 'Vitesse', v: fmtSpeedKmh(cur.speed_mps) },
-                { k: 'Fournisseur', v: cur.provider ?? '—' },
+                {
+                  k: 'Fournisseur',
+                  v: cur.provider ? (
+                    <>
+                      <ProviderDot provider={cur.provider} />
+                      {providerInfo(cur.provider).label}
+                      {providerInfo(cur.provider).google && (
+                        <>
+                          {' '}
+                          <Badge tone="warn" title={providerInfo(cur.provider).note}>
+                            via Google
+                          </Badge>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    '—'
+                  ),
+                },
               ]}
             />
           ) : (
@@ -273,6 +341,10 @@ function TrackView({
               { k: 'Distance parcourue', v: fmtDistance(distance) },
               { k: 'Durée couverte', v: first && last ? fmtDuration(last.t - first.t) : '—' },
               { k: 'Vitesse maximale', v: fmtSpeedKmh(vmax) },
+              {
+                k: 'Fournisseurs',
+                v: providerCounts.map((c) => `${c.label} ${fmtNumber(c.count)}`).join(' · ') || '—',
+              },
               { k: 'Trous de données', v: `${gaps.length}${silent ? ` (dont ${fmtDuration(silent)} sans aucun événement)` : ''}` },
             ]}
           />

@@ -178,3 +178,24 @@ export function parseConflict(e: Pick<ApiError, 'message' | 'body'>): Conflict {
   }
   return { message: e.message, impacts };
 }
+
+// ------------------------------------------------------------------------------------------- actions
+
+export type TrackAction = 'block' | 'allow' | 'default';
+
+/**
+ * Actions proposées pour un domaine, d'après son statut sur la période et la règle manuelle en vigueur.
+ * « Bloquer » n'a pas de sens pour un domaine déjà bloqué sans règle contraire, « Autoriser » pour un domaine
+ * déjà autorisé ; « Remettre par défaut » n'existe que s'il y a une règle manuelle à retirer.
+ */
+export function availableActions(status: string | undefined, override: 'block' | 'allow' | undefined): TrackAction[] {
+  const out: TrackAction[] = [];
+  if (override !== 'block' && status !== 'blocked') out.push('block');
+  if (override !== 'allow' && status !== 'allowed') out.push('allow');
+  if (override) out.push('default');
+  // Statut inconnu et aucune règle : on propose quand même les deux choix.
+  if (out.length === 0) out.push('block', 'allow');
+  return out;
+}
+
+export const ACTION_LABELS: Record<TrackAction, string> = { block: 'Bloquer', allow: 'Autoriser', default: 'Remettre par défaut' };

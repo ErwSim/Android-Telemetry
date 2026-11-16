@@ -11,8 +11,10 @@ const NAV = [
   { to: '/carte', label: 'Carte', icon: 'M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.500z' },
   { to: '/evenements', label: 'Événements', icon: 'M4 5h16v2H4zm0 6h16v2H4zm0 6h10v2H4z' },
   { to: '/reseau', label: 'Réseau', icon: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2c1 1.500 1.700 3.300 1.900 5h-3.800C10.300 8.300 11 6.500 12 5zM5.300 11h3c.1 1 .3 2 .6 3H6.200a7 7 0 0 1-.9-3zm3.600 5c.4 1.200.9 2.200 1.500 3a7 7 0 0 1-3.300-3zm6.200 0h1.800a7 7 0 0 1-3.300 3c.6-.8 1.100-1.800 1.500-3z' },
+  { to: '/pistage', label: 'Pistage', icon: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm-1-6v3.100A7 7 0 0 0 5.100 11H2v2h3.100A7 7 0 0 0 11 18.900V22h2v-3.100a7 7 0 0 0 5.900-5.900H22v-2h-3.100A7 7 0 0 0 13 5.100V2z' },
   { to: '/applications', label: 'Applications', icon: 'M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z' },
   { to: '/securite', label: 'Sécurité', icon: 'M12 2 4 5v6c0 5 3.400 9.300 8 11 4.600-1.700 8-6 8-11V5z' },
+  { to: '/commandes', label: 'Commandes', icon: 'M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 3v12h10V5zm5 14.500a1 1 0 1 0 0 2 1 1 0 0 0 0-2z' },
   { to: '/alertes', label: 'Alertes', icon: 'M12 22a2.500 2.500 0 0 0 2.500-2.500h-5A2.500 2.500 0 0 0 12 22zm7-6V11a7 7 0 0 0-5.500-6.800V3a1.500 1.500 0 0 0-3 0v1.200A7 7 0 0 0 5 11v5l-2 2v1h18v-1z' },
 ];
 

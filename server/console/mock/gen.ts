@@ -70,7 +70,7 @@ function along(path: LatLon[], f: number): LatLon {
   return { lat: lerp(a.lat, b.lat, x - i), lon: lerp(a.lon, b.lon, x - i) };
 }
 
-export const COLLECTORS = { location: 'running', connectivity: 'running', dns: 'running', connect: 'running', usage: 'running', apps: 'running', posture: 'running', security_log: 'running', ble_tracker: 'unavailable', notifications: 'disabled' };
+export const COLLECTORS = { location: 'running', connectivity: 'running', dns: 'running', connect: 'running', usage: 'running', apps: 'running', posture: 'running', security_log: 'running', ble_tracker: 'unavailable', notifications: 'running' };
 
 export function generate(now: number, seed = 20261115): Generated {
   const rng = makeRng(seed);
@@ -378,11 +378,44 @@ export function generate(now: number, seed = 20261115): Generated {
     const app = pick(rng, APPS);
     push(t, 'app.foreground', 0, { package: app.package, class: `${app.package}.MainActivity`, event: pick(rng, ['resumed', 'paused']) });
   }
-  for (let i = 0; i < 90; i++) {
+  // Notifications (APK compagnon) : le contenu n'est collecté que depuis J-3 (option activée par le propriétaire).
+  const NOTIF_APPS = ['com.whatsapp', 'org.thoughtcrime.securesms', 'com.google.android.gm', 'com.facebook.katana', 'com.spotify.music', 'com.boursorama.android.clients'];
+  const NOTIF_TEXTS: Record<string, [string, string][]> = {
+    'com.whatsapp': [['Alice', 'On se retrouve à 19 h ?'], ['Groupe famille', 'Maman : photos de dimanche'], ['Julien', '👍']],
+    'org.thoughtcrime.securesms': [['Camille', 'Message chiffré reçu'], ['Thomas', 'Je t’appelle dans 5 min']],
+    'com.google.android.gm': [['Impots.gouv', 'Votre avis est disponible'], ['SNCF Connect', 'Votre train de 7 h 12 est à l’heure']],
+    'com.facebook.katana': [['Quelqu’un a commenté votre publication', '<b>Marc</b> : Bravo !']],
+    'com.spotify.music': [['Nouveautés', 'Découvrez les nouveautés de la semaine']],
+  };
+  const notifApps = NOTIF_APPS.map((pkg) => APPS.find((a) => a.package === pkg)).filter((a): a is MockApp => !!a);
+  for (let i = 0; i < 130; i++) {
     const t = t0 + rng() * (horizon - t0);
-    const app = pick(rng, APPS.filter((a) => ['com.whatsapp', 'org.thoughtcrime.securesms', 'com.google.android.gm', 'com.facebook.katana', 'com.spotify.music'].includes(a.package)));
-    push(t, 'app.notification', 0, { package: app.package, event: pick(rng, ['posted', 'removed']), category: pick(rng, ['msg', 'email', 'social', 'transport']), channel: 'default', ongoing: false });
+    const app = pick(rng, notifApps);
+    const withContent = t > todayStart - 3 * DAY;
+    const data: Record<string, unknown> = {
+      package: app.package,
+      event: weighted(rng, [['posted', 3], ['removed', 2]] as const),
+      category: pick(rng, ['msg', 'email', 'social', 'transport']),
+      channel: 'default',
+      ongoing: false,
+      importance: pick(rng, [2, 3, 3, 4]),
+    };
+    if (withContent && data['event'] === 'posted') {
+      if (app.package === 'com.boursorama.android.clients') {
+        data['title'] = 'Code de validation';
+        data['text'] = 'Votre code de connexion est ●●●●●● (ne le communiquez jamais)';
+        data['redacted'] = true;
+      } else {
+        const [title, text] = pick(rng, NOTIF_TEXTS[app.package] ?? [['Notification', '']]);
+        data['title'] = title;
+        if (text) data['text'] = text;
+      }
+    }
+    push(t, 'app.notification', 0, data);
   }
+  // Cas limites : texte hostile (balisage, caractère de réordonnancement bidirectionnel) et texte très long.
+  push(horizon - 3 * HOUR, 'app.notification', 0, { package: 'com.facebook.katana', event: 'posted', category: 'social', channel: 'default', ongoing: false, importance: 3, title: '<img src=x onerror=alert(1)> Gagnez un iPhone', text: 'Cliquez ici \u202Egpj.exe — **gras** [lien](javascript:alert(1))' });
+  push(horizon - 3 * HOUR + 5 * MIN, 'app.notification', 0, { package: 'com.whatsapp', event: 'posted', category: 'msg', channel: 'default', ongoing: false, importance: 4, title: 'Message très long', text: 'Lorem ipsum dolor sit amet, '.repeat(30) });
 
   // ---------- Capteurs ----------
   const sensorSession = (t: number, kind: 'camera' | 'mic', pkg: string, durMs: number, sev = 0) => {

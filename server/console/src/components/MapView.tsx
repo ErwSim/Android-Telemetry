@@ -15,6 +15,8 @@ export interface MapPoint {
   /** epoch ms */
   t: number;
   acc?: number;
+  /** `gps`, `network`, `fused` (contrat §2) : fournisseur de la position */
+  provider?: string;
 }
 
 export interface MapViewProps {
@@ -79,8 +81,13 @@ function applyColors(map: maplibregl.Map) {
   set('route', 'line-color', accent);
   set('trail', 'line-color', accent);
   set('gaps', 'line-color', warn);
-  set('points', 'circle-stroke-color', surface);
-  set('points', 'circle-color', ['case', ['>', ['get', 'acc'], 100], warn, accent]);
+  // Fournisseur : GPS = disque plein (couleur d'accent), réseau = anneau creux, fusionné = disque plein violet.
+  // Une précision supérieure à 100 m ajoute un contour orange.
+  const gps = cssVar('--prov-gps', accent);
+  const network = cssVar('--prov-network', '#0f766e');
+  const fused = cssVar('--prov-fused', '#9333ea');
+  set('points', 'circle-color', ['match', ['get', 'prov'], 'network', surface, 'fused', fused, gps]);
+  set('points', 'circle-stroke-color', ['case', ['>', ['get', 'acc'], 100], warn, ['==', ['get', 'prov'], 'network'], network, surface]);
   set('accuracy-fill', 'fill-color', accent);
   set('accuracy-line', 'line-color', accent);
   set('selected', 'circle-color', accent);
@@ -192,7 +199,7 @@ export default function MapView({
           source: 'points',
           paint: {
             'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 2.5, 16, 5],
-            'circle-stroke-width': 1,
+            'circle-stroke-width': ['case', ['>', ['get', 'acc'], 100], 2.5, ['==', ['get', 'prov'], 'network'], 2, 1],
             'circle-opacity': 0.9,
           },
         });
@@ -261,7 +268,7 @@ export default function MapView({
       type: 'FeatureCollection',
       features: points.map((p, i) => ({
         type: 'Feature' as const,
-        properties: { i, acc: p.acc ?? 0 },
+        properties: { i, acc: p.acc ?? 0, prov: (p.provider ?? '').toLowerCase() },
         geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
       })),
     });

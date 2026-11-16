@@ -2,13 +2,18 @@
 //   --port 8787        port d'écoute (défaut 8787, ou MOCK_PORT)
 //   --static dist      sert aussi la console construite, avec une CSP stricte et le repli SPA
 // Identifiants : admin / vigie (MOCK_USER, MOCK_PASSWORD).
-// Contrôle de test : POST /__mock/control { wazuh?, expire?, fail?, latency_ms? }
+// Contrôle de test : POST /__mock/control { wazuh?, expire?, fail?, latency_ms?,
+//   adguard?, channel?: "stream"|"poll"|"offline", agent?: { disabled, wipe_allowed, code_configured, device_owner,
+//   locate_fail, deliver_ms, exec_ms }, reset_lockout? } ; GET /__mock/requests : corps des requêtes modifiantes reçues.
+// Code de commande du mock (celui de l'« app » simulée) : MOCK_COMMAND_CODE, défaut « correct horse battery staple ».
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { DEVICE_MAIN, DEVICE_OLD, generate, liveEvent, type MockEvent } from './gen.ts';
-import { makeRng } from './rng.ts';
+import { makeRng, ulid } from './rng.ts';
+import * as cmd from './commands.ts';
+import * as trk from './tracking.ts';
 
 const args = process.argv.slice(2);
 const argVal = (name: string): string | undefined => {
@@ -54,6 +59,10 @@ const lastLoc = (() => {
   const l = [...events].reverse().find((e) => e.type === 'location.fix' && typeof e.data['lat'] === 'number' && typeof e.data['lon'] === 'number');
   return { lat: Number(l?.data['lat'] ?? 48.8603), lon: Number(l?.data['lon'] ?? 2.379) };
 })();
+
+const track = trk.initialTrackState(NOW);
+/** Journal des requêtes modifiantes reçues (vérifier côté serveur ce qui a, ou non, été envoyé). */
+const requestLog: { method: string; path: string; headers: Record<string, string | string[] | undefined>; body: string }[] = [];
 
 // ---------------------------------------------------------------- utilitaires
 type Res = http.ServerResponse;
@@ -290,13 +299,36 @@ function devices() {
         ...(hb ? { last_heartbeat: hb.data } : {}),
         ...(loc ? { last_location: { ts: loc.ts, lat: loc.data['lat'], lon: loc.data['lon'], acc_m: loc.data['acc_m'] } } : {}),
         ...(post ? { last_posture: post.data } : {}),
+        command_channel: cmd.channel(),
       },
-      { ...DEVICE_OLD, last_seen: new Date(NOW - 41 * 86_400_000).toISOString() },
+      { ...DEVICE_OLD, last_seen: new Date(NOW - 41 * 86_400_000).toISOString(), command_channel: { connected: false, mode: 'unknown' } },
     ],
   };
 }
 
 // ---------------------------------------------------------------- SSE
+/** Événement produit par l'agent simulé (résultat de commande, position) : journal + flux SSE. */
+function emitAgentEvent(type: string, sev: number, data: Record<string, unknown>): void {
+  const t = Date.now();
+  const e: MockEvent = { id: ulid(liveRng, t), ts: new Date(t).toISOString(), seq: seqCounter++, boot_id: liveBoot, elapsed_ms: 123456789, type, sev, data, received_at: new Date(t + 250).toISOString(), device_id: DEVICE_MAIN.device_id, t };
+  events.push(e);
+  byId.set(e.id, e);
+  broadcast(e);
+}
+function liveFix(): void {
+  lastLoc.lat += 0.00035;
+  lastLoc.lon += 0.0005;
+  emitAgentEvent('location.fix', 0, { lat: +lastLoc.lat.toFixed(6), lon: +lastLoc.lon.toFixed(6), acc_m: 6.5, alt_m: 41.2, speed_mps: 0, provider: 'gps', mock: false, fix_ts: new Date().toISOString() });
+}
+cmd.init(
+  {
+    emit: emitAgentEvent,
+    liveFix,
+    deviceKnown: (id) => (id === DEVICE_MAIN.device_id ? 'ok' : id === DEVICE_OLD.device_id ? 'revoked' : 'unknown'),
+  },
+  NOW,
+);
+
 const streams = new Set<{ res: Res; deviceId: string | null }>();
 function broadcast(e: MockEvent): void {
   const msg = `id: ${e.id}\ndata: ${JSON.stringify(toEvent(e))}\n\n`;
@@ -364,12 +396,28 @@ const server = http.createServer((req, res) => {
       return;
     }
     if (p === '/__mock/control' && method === 'POST') {
-      const b = JSON.parse((await readBody(req)) || '{}') as { wazuh?: boolean; expire?: boolean; fail?: string[]; latency_ms?: number };
+      const b = JSON.parse((await readBody(req)) || '{}') as {
+        wazuh?: boolean;
+        expire?: boolean;
+        fail?: string[];
+        latency_ms?: number;
+        adguard?: boolean;
+        channel?: cmd.AgentSim['channel'];
+        agent?: Partial<cmd.AgentSim>;
+        reset_lockout?: boolean;
+      };
+      if (typeof b.adguard === 'boolean') track.adguard = b.adguard;
+      if (b.channel) cmd.agent.channel = b.channel;
+      if (b.agent) Object.assign(cmd.agent, b.agent);
       if (typeof b.wazuh === 'boolean') control.wazuh = b.wazuh;
       if (b.expire) sessions.clear();
       if (Array.isArray(b.fail)) control.fail = b.fail;
       if (typeof b.latency_ms === 'number') control.latency_ms = b.latency_ms;
-      sendJson(res, 200, control);
+      sendJson(res, 200, { ...control, adguard: track.adguard, agent: cmd.agent });
+      return;
+    }
+    if (p === '/__mock/requests' && method === 'GET') {
+      sendJson(res, 200, requestLog);
       return;
     }
     if (!p.startsWith('/api/console/')) {
@@ -383,6 +431,9 @@ const server = http.createServer((req, res) => {
     if (method !== 'GET' && method !== 'HEAD' && req.headers['x-requested-with'] !== 'vigie') {
       err(res, 403, 'csrf', 'En-tête X-Requested-With manquant');
       return;
+    }
+    if (method !== 'GET' && method !== 'HEAD' && route !== '/login') {
+      requestLog.push({ method, path: route, headers: { 'content-type': req.headers['content-type'], 'x-requested-with': req.headers['x-requested-with'] }, body: '' });
     }
     if (route === '/login' && method === 'POST') {
       let b: { username?: string; password?: string } = {};
@@ -432,6 +483,75 @@ const server = http.createServer((req, res) => {
     if (route === '/apps') return sendJson(res, 200, apps(u.searchParams.get('device_id')));
     if (route === '/posture') return sendJson(res, 200, postureHistory(u.searchParams.get('device_id')));
     if (route === '/alerts') return sendJson(res, 200, alerts(u));
+    if (route === '/commands' && method === 'GET') {
+      return sendJson(res, 200, cmd.list(u.searchParams.get('device_id'), Math.min(200, Number(u.searchParams.get('limit') ?? 50) || 50)));
+    }
+    if (route === '/commands' && method === 'POST') {
+      const raw = await readBody(req);
+      const last = requestLog[requestLog.length - 1];
+      if (last) last.body = raw;
+      let body: unknown;
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        return err(res, 400, 'bad_request', 'JSON invalide');
+      }
+      const r = cmd.create(body, user);
+      if ('error' in r) return err(res, r.status, r.error, r.message);
+      return sendJson(res, 201, r);
+    }
+    const cancelM = /^\/commands\/([^/]+)\/cancel$/.exec(route);
+    if (cancelM && method === 'POST') {
+      const r = cmd.cancel(decodeURIComponent(cancelM[1] as string));
+      if (r === 'notfound') return err(res, 404, 'not_found', 'Commande introuvable');
+      if (r === 'conflict') return err(res, 409, 'not_pending', 'La commande n’est plus en attente : elle ne peut pas être annulée');
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    if (route.startsWith('/tracking/')) {
+      const sp = u.searchParams;
+      const range = { from: parseTime(sp.get('from'), NOW - 86_400_000), to: parseTime(sp.get('to'), Date.now()) };
+      const evs = deviceEvents(sp.get('device_id'));
+      if (route === '/tracking/summary') return sendJson(res, 200, trk.summary(evs, track, range));
+      if (route === '/tracking/domains') {
+        const limit = Math.min(200, Math.max(1, Number(sp.get('limit') ?? 50) || 50));
+        const cur = sp.get('cursor');
+        const offset = cur && /^c\d+$/.test(cur) ? Number(cur.slice(1)) : 0;
+        return sendJson(res, 200, trk.domains(evs, track, range, { publisher: sp.get('publisher'), status: sp.get('status'), q: sp.get('q'), limit, offset }));
+      }
+      if (route === '/tracking/apps') return sendJson(res, 200, trk.appsView(evs, track, range, sp.get('publisher')));
+      if (route === '/tracking/level' && method === 'GET') return sendJson(res, 200, { level: trk.currentLevel(track) });
+      if (method === 'PUT') {
+        if (!track.adguard) return err(res, 503, 'adguard_unavailable', 'AdGuard Home n’est pas configuré ou pas joignable');
+        let b: { domain?: unknown; action?: unknown; force?: unknown; level?: unknown } = {};
+        try {
+          b = JSON.parse((await readBody(req)) || '{}') as typeof b;
+        } catch {
+          return err(res, 400, 'bad_request', 'JSON invalide');
+        }
+        if (route === '/tracking/level') {
+          if (typeof b.level !== 'string' || !trk.LEVELS.some((l) => l.key === b.level)) return err(res, 400, 'bad_level', 'Niveau inconnu');
+          track.levelChanges.push({ t: Date.now(), level: b.level as trk.Level });
+          res.writeHead(204);
+          res.end();
+          return;
+        }
+        if (route === '/tracking/override') {
+          const domain = typeof b.domain === 'string' ? b.domain.trim().toLowerCase() : '';
+          if (!/^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/.test(domain)) return err(res, 400, 'bad_domain', 'Nom de domaine invalide');
+          if (b.action !== 'block' && b.action !== 'allow' && b.action !== 'default') return err(res, 400, 'bad_action', 'action : block, allow ou default');
+          const essential = trk.ESSENTIAL[domain];
+          if (b.action === 'block' && essential && b.force !== true) {
+            return sendJson(res, 409, { error: 'essential_domain', message: `« ${domain} » est un domaine indispensable au téléphone : le bloquer le casserait.`, impacts: essential });
+          }
+          track.overrides.push({ t: Date.now(), domain, action: b.action });
+          res.writeHead(204);
+          res.end();
+          return;
+        }
+      }
+    }
     if (route === '/stream') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
       res.write('retry: 3000\n\n');

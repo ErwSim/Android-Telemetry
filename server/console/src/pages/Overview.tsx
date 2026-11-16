@@ -6,6 +6,8 @@ import { usePagedEvents } from '../api/usePagedEvents.ts';
 import type { Device } from '../api/types.ts';
 import { Async, Badge, Card, Empty, LevelBadge, Loading, Stat, StatusPill } from '../components/ui.tsx';
 import { EventList } from '../components/EventList.tsx';
+import { channelState } from '../lib/commands.ts';
+import { blockedPct, totalsOf } from '../lib/tracking.ts';
 import { attentionPoints, evaluatePosture, overallStatus } from '../lib/posture.ts';
 import { fmtBytes, fmtDateTime, fmtNumber, fmtPct, fmtRelative, fmtDuration } from '../lib/format.ts';
 import { useNow } from '../lib/useNow.ts';
@@ -30,6 +32,7 @@ export default function Overview() {
   const alerts = useApi(`alerts:${Math.floor(minute / 5)}`, (s) =>
     api.alerts({ from: new Date(minute * 60_000 - 7 * 24 * 3600_000).toISOString(), to, limit: 5 }, s),
   );
+  const tracking = useApi(id ? `ov-trk:${id}:${minute}` : null, (s) => api.trackingSummary({ device_id: id, from: from24, to }, s));
   const sevEvents = usePagedEvents(id ? { device_id: id, sev_min: 2, from: new Date(minute * 60_000 - 7 * 24 * 3600_000).toISOString(), to } : null, 8);
 
   if (!device) return null;
@@ -84,6 +87,53 @@ export default function Overview() {
 
       <div className="grid">
         <Card
+          title="Commandes à distance"
+          className="span-5"
+          actions={
+            <Link to="/commandes" className="btn btn-sm">
+              Commandes
+            </Link>
+          }
+        >
+          <CommandsSummary device={device} now={now} />
+        </Card>
+        <Card
+          title="Pistage des dernières 24 h"
+          className="span-7"
+          actions={
+            <Link to="/pistage" className="btn btn-sm">
+              Détails
+            </Link>
+          }
+        >
+          {tracking.error ? (
+            <Empty>Vue pistage indisponible sur ce collecteur.</Empty>
+          ) : (
+            <Async state={tracking} isEmpty={(t) => t.publishers.length === 0} empty="Aucune requête DNS sur les dernières 24 h.">
+              {(t) => {
+                const totals = totalsOf(t.totals, t.publishers);
+                const pct = blockedPct(totals);
+                return (
+                  <>
+                    <div className="stats">
+                      <Stat label="Requêtes DNS" value={fmtNumber(totals.queries)} />
+                      {t.adguard ? (
+                        <Stat label="Bloquées" value={fmtNumber(totals.blocked)} sub={pct === undefined ? undefined : fmtPct(pct, 1)} tone="ok" />
+                      ) : (
+                        <Stat label="Blocage" value="Inconnu" sub="AdGuard Home injoignable" tone="warn" />
+                      )}
+                    </div>
+                    <p className="hint">Vigie voit à qui le téléphone parle, pas le contenu des échanges (chiffré).</p>
+                  </>
+                );
+              }}
+            </Async>
+          )}
+        </Card>
+      </div>
+
+      <div className="grid">
+        <Card
           title="Derniers événements (sévérité ≥ 2, 7 jours)"
           className="span-7"
           actions={
@@ -131,6 +181,20 @@ export default function Overview() {
           </Async>
         </Card>
       </div>
+    </>
+  );
+}
+
+function CommandsSummary({ device, now }: { device: Device; now: Date }) {
+  const ch = device.command_channel;
+  const st = channelState(ch);
+  return (
+    <>
+      <div className="stats">
+        <Stat label="Canal" value={st.label} tone={st.tone === 'neutral' ? undefined : st.tone} />
+        <Stat label="Dernier contact" value={ch?.last_contact ? fmtRelative(ch.last_contact, now) : '—'} sub={ch?.last_contact ? fmtDateTime(ch.last_contact) : undefined} />
+      </div>
+      <p className="hint">{st.hint} Sonner, faire vibrer, localiser, verrouiller ou effacer : page Commandes.</p>
     </>
   );
 }

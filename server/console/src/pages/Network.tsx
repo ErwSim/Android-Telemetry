@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/endpoints.ts';
 import { useApi } from '../api/useApi.ts';
 import type { TopItem, TopKind } from '../api/types.ts';
@@ -30,7 +31,8 @@ export default function Network() {
   const ctl = usePeriod('24h');
   const range = periodRange(ctl.period);
   const labelOf = useAppLabels();
-  const [pkg, setPkg] = useState<string | undefined>();
+  const [sp] = useSearchParams();
+  const [pkg, setPkg] = useState<string | undefined>(sp.get('app') || undefined);
   const detailRef = useRef<HTMLDivElement>(null);
   const [filter, setFilter] = useState('');
 
@@ -65,6 +67,10 @@ export default function Network() {
       <div className="page-head">
         <h1>Réseau</h1>
       </div>
+      <p className="hint net-intro">
+        Cette page décrit le trafic observé sur le téléphone : noms demandés, destinations, volumes, chronologie. Pour savoir ce qui est <strong>bloqué ou autorisé</strong>,
+        par éditeur, et pour agir (bloquer un domaine, changer le niveau), ouvrez <Link to="/pistage">Pistage</Link>.
+      </p>
       <div className="toolbar">
         <PeriodPicker ctl={ctl} />
         <button type="button" className="btn" onClick={() => ctl.refresh()}>

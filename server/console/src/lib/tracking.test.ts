@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Publisher, TrackingApp, TrackingDomain } from '../api/types.ts';
 import {
+  availableActions,
   blockedPct,
   domainStatus,
   effectiveOverride,
@@ -110,5 +111,23 @@ describe('409 domaine indispensable', () => {
     expect(parseConflict({ message: 'm', body: { breaks: 'Les notifications' } }).impacts).toEqual(['Les notifications']);
     expect(parseConflict({ message: 'm', body: { impacts: [1, { a: 1 }] } }).impacts).toEqual([]);
     expect(parseConflict({ message: 'm', body: undefined }).impacts).toEqual([]);
+  });
+});
+
+describe('actions proposées pour un domaine', () => {
+  it('domaine autorisé : bloquer ; avec règle : remettre par défaut', () => {
+    expect(availableActions('allowed', undefined)).toEqual(['block']);
+    expect(availableActions('allowed', 'block')).toEqual(['default']);
+    expect(availableActions('allowed', 'allow')).toEqual(['default']);
+  });
+  it('domaine bloqué : autoriser', () => {
+    expect(availableActions('blocked', undefined)).toEqual(['allow']);
+    expect(availableActions('blocked', 'block')).toEqual(['default']);
+    expect(availableActions('blocked', 'allow')).toEqual(['default']);
+  });
+  it('domaine mixte ou sans statut : les deux choix', () => {
+    expect(availableActions('mixed', undefined)).toEqual(['block', 'allow']);
+    expect(availableActions(undefined, undefined)).toEqual(['block', 'allow']);
+    expect(availableActions('mixed', 'block')).toEqual(['allow', 'default']);
   });
 });

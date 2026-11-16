@@ -7,6 +7,8 @@ import { AppName } from '../components/AppName.tsx';
 import { EventList } from '../components/EventList.tsx';
 import { PeriodPicker, usePeriod } from '../components/PeriodPicker.tsx';
 import { Async, Badge, Card, Empty, KV, Stat, Tabs } from '../components/ui.tsx';
+import { Ranking } from '../components/Ranking.tsx';
+import { summarizeNotifications } from '../lib/notifications.ts';
 import { countByInstaller, groupPermissions } from '../lib/agg.ts';
 import { isRecord, list, str } from '../lib/data.ts';
 import { describeEvent, installerLabel, isSideloaded, permissionLabel, shortPermission } from '../lib/events.ts';
@@ -15,7 +17,7 @@ import { periodRange } from '../lib/period.ts';
 import { useNow } from '../lib/useNow.ts';
 import { useDevice } from '../state/device.tsx';
 
-type Tab = 'inventory' | 'permissions' | 'special' | 'history';
+type Tab = 'inventory' | 'permissions' | 'special' | 'notifications' | 'history';
 
 export default function Apps() {
   const { deviceId } = useDevice();
@@ -41,6 +43,7 @@ export default function Apps() {
           { key: 'inventory', label: 'Inventaire' },
           { key: 'permissions', label: 'Permissions dangereuses' },
           { key: 'special', label: 'Accès spéciaux' },
+          { key: 'notifications', label: 'Notifications' },
           { key: 'history', label: 'Historique' },
         ]}
       />
@@ -55,6 +58,7 @@ export default function Apps() {
         </Async>
       )}
       {tab === 'special' && <SpecialAccess labelOf={(p) => labelMap.get(p)} />}
+      {tab === 'notifications' && <Notifications labelOf={(p) => labelMap.get(p)} />}
       {tab === 'history' && <History labelOf={(p) => labelMap.get(p)} />}
     </>
   );
@@ -383,6 +387,79 @@ function SpecialAccess({ labelOf }: { labelOf: (pkg: string) => string | undefin
 }
 
 const HISTORY_TYPES = 'app.installed,app.updated,app.removed,app.permission_changed';
+
+const NOTIF_COLLECTOR: Record<string, string> = {
+  running: 'en marche',
+  disabled: 'désactivé dans l’application',
+  unavailable: 'indisponible : l’APK compagnon « notifier » n’est pas installé ou pas autorisé',
+};
+
+/** Quelles applications notifient, et (si l'option est active sur le téléphone) ce que disent leurs notifications. */
+function Notifications({ labelOf }: { labelOf: (pkg: string) => string | undefined }) {
+  const { deviceId, device } = useDevice();
+  const ctl = usePeriod('7d');
+  const range = periodRange(ctl.period);
+  const [pkg, setPkg] = useState<string | undefined>();
+  const top = useApi(deviceId ? `notif-top:${deviceId}:${range.from}:${range.to}` : null, (s) =>
+    api.top({ device_id: deviceId, kind: 'notification_package', ...range, limit: 50 }, s),
+  );
+  const paged = usePagedEvents(deviceId ? { device_id: deviceId, type: 'app.notification', q: pkg, ...range } : null, 50);
+  const sum = useMemo(() => summarizeNotifications(paged.events), [paged.events]);
+  const collector = device?.last_heartbeat?.collectors?.['notifications'];
+  const total = (top.data?.items ?? []).reduce((a, i) => a + i.count, 0);
+  const describe = (ev: VigieEvent) => {
+    const p = str(ev.data, 'package');
+    const label = p ? labelOf(p) : undefined;
+    const base = describeEvent(ev);
+    return label && p ? base.replace(p, `${label} (${p})`) : base;
+  };
+  return (
+    <>
+      <div className="toolbar">
+        <PeriodPicker ctl={ctl} />
+      </div>
+      <p className="hint">
+        Collecteur de notifications : {collector ? (NOTIF_COLLECTOR[collector] ?? collector) : 'état inconnu (aucune pulsation reçue)'}. Il est fourni par l'APK
+        compagnon, séparé de l'agent. Par défaut on ne voit que <em>quelle application</em> notifie ; le titre et le texte ne remontent que si l'option « Contenu
+        des notifications » est activée dans l'application (les codes numériques de 4 à 8 chiffres sont alors masqués). Ils viennent des applications : ils sont
+        affichés comme du simple texte.
+      </p>
+      <div className="grid grid-start">
+        <Card title={`Applications qui notifient le plus${total ? ` · ${fmtNumber(total)} notifications` : ''}`} className="span-5">
+          <Async state={top} isEmpty={(d) => d.items.length === 0} empty="Aucune notification enregistrée sur cette période (collecteur désactivé ou indisponible ?).">
+            {(d) => (
+              <>
+                <Ranking items={d.items} kind="package" labelOf={labelOf} selected={pkg} onSelect={(k) => setPkg(pkg === k ? undefined : k)} limit={20} />
+                <p className="hint">Notifications publiées (pas les retraits). Cliquez une application pour filtrer la liste.</p>
+              </>
+            )}
+          </Async>
+        </Card>
+        <Card
+          title={pkg ? `Notifications de ${labelOf(pkg) ?? pkg}` : 'Dernières notifications'}
+          className="span-7"
+          actions={
+            pkg ? (
+              <button type="button" className="btn btn-sm" onClick={() => setPkg(undefined)}>
+                Toutes les applications
+              </button>
+            ) : undefined
+          }
+        >
+          {paged.events.length > 0 && (
+            <p className="hint notif-sum">
+              Sur les {fmtNumber(paged.events.length)} dernières : {fmtNumber(sum.posted)} publiées, {fmtNumber(sum.removed)} retirées, {fmtNumber(sum.withContent)} avec
+              contenu{sum.redacted ? `, ${fmtNumber(sum.redacted)} au contenu masqué` : ''}.
+            </p>
+          )}
+          <div className="flush">
+            <EventList paged={paged} describe={describe} empty="Aucune notification sur cette période." />
+          </div>
+        </Card>
+      </div>
+    </>
+  );
+}
 
 function History({ labelOf }: { labelOf: (pkg: string) => string | undefined }) {
   const { deviceId } = useDevice();
