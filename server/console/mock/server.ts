@@ -427,7 +427,7 @@ const server = http.createServer((req, res) => {
         clock_skew_ms?: number;
         ops_mode?: typeof opsMode;
         more_detections?: number;
-        emit_detection?: { type: string; package?: string; label?: string; severity?: number; evidence?: Record<string, unknown>; summary?: string };
+        emit_detection?: { type: string; package?: string; label?: string; severity?: number; evidence?: Record<string, unknown>; summary?: string; update?: boolean; detection_id?: string; recurring?: boolean };
       };
       if (b.ops_mode === 'normal' || b.ops_mode === 'empty' || b.ops_mode === '404') opsMode = b.ops_mode;
       if (typeof b.more_detections === 'number' && b.more_detections > 0) {
@@ -441,7 +441,7 @@ const server = http.createServer((req, res) => {
       if (b.emit_detection) {
         const d = b.emit_detection;
         const now = Date.now();
-        emitAgentEvent(d.type, d.severity ?? 3, detectionData({ ...(d.package ? { package: d.package } : {}), ...(d.label ? { label: d.label } : {}) }, now - 60_000, 3_600_000, d.evidence ?? {}, d.summary ?? 'Détection simulée'));
+        emitAgentEvent(d.type, d.severity ?? 3, { ...detectionData({ ...(d.package ? { package: d.package } : {}), ...(d.label ? { label: d.label } : {}) }, now - 60_000, 3_600_000, d.evidence ?? {}, d.summary ?? 'Détection simulée'), ...(d.update ? { update: true, detection_id: d.detection_id } : {}), ...(d.recurring ? { recurring: true } : {}) });
       }
       if (typeof b.clock_skew_ms === 'number') cmd.clock.skew_ms = b.clock_skew_ms;
       if (typeof b.quiet === 'boolean') control.quiet = b.quiet;

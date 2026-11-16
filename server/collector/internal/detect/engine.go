@@ -691,8 +691,10 @@ func contains(list []string, x string) bool {
 	return false
 }
 
-// smsPermission: applications holding SEND_SMS (latest inventory, then app.permission_changed, which is more
-// recent), one detection per holding (contract §11.4).
+// smsPermission: the holdings of SEND_SMS (contract §11.4), from app.permission_changed and the latest
+// inventory: one detection per holding — the first observation, then each grant that follows a revocation —,
+// including a holding that has ended since (an application that held the permission for a day was able to
+// send for a day).
 func (e *Engine) smsPermission(ctx context.Context, dev string, dc *deviceCtx) ([]Finding, error) {
 	if !e.t.Enabled(TypeSMSPermission) {
 		return nil, nil
@@ -701,92 +703,85 @@ func (e *Engine) smsPermission(ctx context.Context, dev string, dc *deviceCtx) (
 	if err != nil {
 		return nil, err
 	}
+	type episode struct {
+		start, after, end int64 // end 0: still held
+		source            string
+	}
 	type state struct {
-		holds              bool
-		lastTS, revokedTS  int64
-		grantAfterRevoke   int64
-		firstGrant, events int64
+		holding    bool
+		lastTS     int64
+		lastRevoke int64
+		episodes   []episode
 	}
 	st := map[string]*state{}
+	get := func(p string) *state {
+		if st[p] == nil {
+			st[p] = &state{}
+		}
+		return st[p]
+	}
 	for i := len(evs) - 1; i >= 0; i-- { // oldest first
 		m := decodeData(evs[i].Data)
 		perm, _ := model.Str(m, "permission")
-		if perm != "android.permission.SEND_SMS" && perm != "SEND_SMS" {
-			continue
-		}
 		p, _ := model.Str(m, "package")
+		if p == "" || (perm != "android.permission.SEND_SMS" && perm != "SEND_SMS") {
+			continue
+		}
 		g, _ := model.Bool(m, "granted")
-		if p == "" {
-			continue
-		}
-		s := st[p]
-		if s == nil {
-			s = &state{}
-			st[p] = s
-		}
-		ts := evs[i].TSms
-		s.lastTS, s.holds = ts, g
-		if g {
-			if s.firstGrant == 0 {
-				s.firstGrant = ts
-			}
-			if s.revokedTS > 0 && s.grantAfterRevoke == 0 {
-				s.grantAfterRevoke = ts
-			}
-		} else {
-			s.revokedTS, s.grantAfterRevoke = ts, 0
-		}
-	}
-	var holders []SMSHolder
-	seen := map[string]bool{}
-	for p, s := range st {
-		holds := s.holds
-		if dc.invTS > s.lastTS { // a newer inventory is the reference
-			holds = dc.sendSMS[p]
-		}
-		if !holds {
-			continue
-		}
-		seen[p] = true
-		h := SMSHolder{Package: p, Source: "permission_changed", Installer: dc.installer[p], SinceMS: s.firstGrant}
+		s, ts := get(p), evs[i].TSms
+		s.lastTS = ts
 		switch {
-		case s.revokedTS > 0 && s.grantAfterRevoke > 0:
-			h.SinceMS = s.grantAfterRevoke
-		case s.revokedTS > 0: // revoked, then seen holding by an inventory
-			h.SinceMS, h.Source = max(dc.invTS, s.revokedTS), "inventory"
-		case s.firstGrant == 0:
-			h.SinceMS, h.Source = dc.invTS, "inventory"
-		}
-		holders = append(holders, h)
-	}
-	for p := range dc.sendSMS {
-		if !seen[p] && st[p] == nil {
-			holders = append(holders, SMSHolder{Package: p, Source: "inventory", Installer: dc.installer[p], SinceMS: dc.invTS})
+		case g && !s.holding:
+			s.holding = true
+			s.episodes = append(s.episodes, episode{start: ts, after: s.lastRevoke, source: "permission_changed"})
+		case !g && s.holding:
+			s.holding = false
+			s.episodes[len(s.episodes)-1].end = ts
+			s.lastRevoke = ts
+		case !g:
+			s.lastRevoke = ts
 		}
 	}
-	if len(holders) == 0 {
-		return nil, nil
+	// The latest inventory, when newer than the last event of a package, tells the current state.
+	if dc.invTS >= 0 {
+		for p := range dc.sendSMS {
+			s := get(p)
+			if !s.holding && dc.invTS > s.lastTS {
+				s.holding = true
+				s.episodes = append(s.episodes, episode{start: dc.invTS, after: s.lastRevoke, source: "inventory"})
+			}
+		}
 	}
-	sms := map[string]bool{}
 	var smsApps map[string]bool
 	if p := dc.roles["sms"]; p != "" {
-		sms[p] = true
-		smsApps = sms
+		smsApps = map[string]bool{p: true}
 	}
-	found := SMSPermission(SMSPermissionInput{Holders: holders, SMSApps: smsApps, System: dc.system, Risks: dc.risks, Labels: dc.labels})
+	pkgs := make([]string, 0, len(st))
+	for p := range st {
+		pkgs = append(pkgs, p)
+	}
+	sort.Strings(pkgs)
 	var out []Finding
-	for _, f := range found {
-		// One per holding: a holding already reported (window at or after its last revocation) is not again.
-		since := int64(0)
-		if s := st[f.Package]; s != nil {
-			since = s.revokedTS
-		}
-		done, err := e.st.DetectionSince(ctx, dev, TypeSMSPermission, f.Subject, since)
-		if err != nil {
-			return nil, err
-		}
-		if !done {
-			out = append(out, f)
+	for _, p := range pkgs {
+		for _, ep := range st[p].episodes {
+			found := SMSPermission(SMSPermissionInput{Holders: []SMSHolder{{Package: p, SinceMS: ep.start, Source: ep.source, Installer: dc.installer[p]}},
+				SMSApps: smsApps, System: dc.system, Risks: dc.risks, Labels: dc.labels})
+			if len(found) == 0 {
+				continue
+			}
+			end := int64(1 << 62)
+			if ep.end > 0 {
+				end = ep.end
+				found[0].Evidence["until"] = fmtMS(ep.end)
+			}
+			// Already reported for this holding (a window between the revocation before it and its end)?
+			done, err := e.st.DetectionIn(ctx, dev, TypeSMSPermission, p, ep.after, end)
+			if err != nil {
+				return nil, err
+			}
+			if !done {
+				out = append(out, found[0])
+			}
 		}
 	}
 	return out, nil

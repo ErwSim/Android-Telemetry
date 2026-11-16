@@ -10,6 +10,7 @@
 import type { MockApp } from './catalog.ts';
 import { ALL_APPS } from './catalog.ts';
 import type { MockEvent } from './gen.ts';
+import { COLLECTORS } from './gen.ts';
 import { profileOf } from './risk.ts';
 import { hex, makeRng, pick, ulid, type Rng } from './rng.ts';
 
@@ -213,6 +214,8 @@ export function applyScenario(events: MockEvent[], scenario: Scenario, now: numb
   const todayStart = Math.floor(now / DAY) * DAY;
   const t0 = todayStart - 6 * DAY;
   const extra: MockApp[] = [];
+  // Le battement de cœur dit si le collecteur expérimental d'opérations tourne : la console le répète sous le verdict (§11.4).
+  (COLLECTORS as Record<string, string>)['app_ops'] = scenario === 'healthy' ? 'disabled' : 'running';
 
   // « Sain » et « fraude » : l'application « Fast Cleaner Pro » du jeu de base (cheval de Troie bancaire) n'existe pas.
   if (scenario !== 'mixed') stripApp(events, 'com.fastcleaner.pro');

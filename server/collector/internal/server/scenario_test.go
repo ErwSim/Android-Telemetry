@@ -19,7 +19,7 @@ import (
 func (e *env) simulate(span time.Duration, opts sim.Options, fake *adguard.Fake) int {
 	e.t.Helper()
 	now := time.Now().UTC()
-	opts.Start, opts.SeqBase, opts.LateBatches, opts.AppOps = now.Add(-span), 1, true, true
+	opts.Start, opts.SeqBase, opts.LateBatches = now.Add(-span), 1, true
 	if opts.Rate == 0 {
 		opts.Rate = 1
 	}
@@ -94,7 +94,7 @@ func TestScenarioHealthyPhoneNoDetection(t *testing.T) {
 		days = 3
 	}
 	e, fake, _ := newTrackingEnv(t)
-	n := e.simulate(time.Duration(days)*24*time.Hour, sim.Options{Seed: 20261116, Rate: 0.5}, fake)
+	n := e.simulate(time.Duration(days)*24*time.Hour, sim.Options{Seed: 20261116, Rate: 0.5, AppOps: true}, fake)
 	for range 10 {
 		if err := e.srv.tracking.pollOnce(context.Background()); err != nil {
 			t.Fatal(err)
@@ -115,7 +115,7 @@ func TestScenarioAttacks(t *testing.T) {
 	e, fake, _ := newTrackingEnv(t)
 	now := time.Now().UTC()
 	all, _ := sim.ParseScenarios(sim.ScenarioAll)
-	e.simulate(72*time.Hour, sim.Options{Seed: 7, Rate: 0.3, Scenarios: all, ScenarioStart: now.Add(-40 * time.Hour), ScenarioEnd: now}, fake)
+	e.simulate(72*time.Hour, sim.Options{Seed: 7, Rate: 0.3, AppOps: true, Scenarios: all, ScenarioStart: now.Add(-40 * time.Hour), ScenarioEnd: now}, fake)
 	for range 10 {
 		if err := e.srv.tracking.pollOnce(context.Background()); err != nil {
 			t.Fatal(err)
@@ -129,8 +129,9 @@ func TestScenarioAttacks(t *testing.T) {
 		got[d.Package][d.Type]++
 	}
 	want := map[string][]string{
-		"com.flashlight.pro.tools":         {"detect.new_app_risky", "detect.sms_abuse", "detect.threat_domain"},
-		"com.android.systemupdate.service": {"detect.new_app_risky", "detect.threat_domain"},
+		"com.flashlight.pro.tools":         {"detect.new_app_risky", "detect.sms_abuse", "detect.threat_domain", "detect.sms_permission"},
+		"com.android.systemupdate.service": {"detect.new_app_risky", "detect.threat_domain", "detect.default_app_changed"},
+		"com.coupons.promo.deals":          {"detect.new_app_risky", "detect.sms_permission", "detect.sms_abuse"},
 		"com.puzzle.relax.free":            {"detect.fanout"},
 		"com.cleaner.boost.free":           {"detect.mail_ports"},
 		"com.gallery.vault.hide":           {"detect.upload_spike"},
@@ -154,8 +155,8 @@ func TestScenarioAttacks(t *testing.T) {
 			}
 		}
 	}
-	if total > 25 {
-		t.Errorf("%d detections for 7 attacks over 40 hours", total)
+	if total > 30 {
+		t.Errorf("%d detections for 8 attacks over 40 hours", total)
 	}
 	var others []string
 	for pkg := range got {
@@ -177,4 +178,23 @@ func TestScenarioAttacks(t *testing.T) {
 
 func storeQuery() store.DetectionQuery {
 	return store.DetectionQuery{FromMS: 0, ToMS: time.Now().Add(time.Hour).UnixMilli(), Limit: 500}
+}
+
+// The owner's attack without app.ops (contract §11.4): the application is reported when it obtains SEND_SMS
+// (detect.sms_permission), after having been reported at its installation (declared capabilities: high).
+func TestScenarioOwnerAttackWithoutAppOps(t *testing.T) {
+	e := newEnv(t, nil)
+	now := time.Now().UTC()
+	e.simulate(72*time.Hour, sim.Options{Seed: 3, Rate: 0.3, AppOps: false, Scenarios: []string{sim.ScenarioSMSQuiet},
+		ScenarioStart: now.Add(-60 * time.Hour), ScenarioEnd: now}, nil)
+	got := map[string]int{}
+	for _, d := range e.allDetections() {
+		if d.Package != "com.coupons.promo.deals" {
+			t.Errorf("unexpected %s %s", d.Type, d.Package)
+		}
+		got[d.Type]++
+	}
+	if len(got) != 2 || got["detect.new_app_risky"] != 1 || got["detect.sms_permission"] != 1 {
+		t.Fatalf("detections %v", got)
+	}
 }

@@ -536,12 +536,12 @@ func (s *Store) ListMutes(ctx context.Context, deviceID string) ([]Mute, error) 
 	return out, rows.Err()
 }
 
-// DetectionSince reports whether a detection (device, type, subject) exists whose window starts at or after
-// sinceMS (detect.sms_permission: one per holding of the permission).
-func (s *Store) DetectionSince(ctx context.Context, deviceID, typ, subject string, sinceMS int64) (bool, error) {
+// DetectionIn reports whether a detection (device, type, subject) exists whose window starts in
+// [fromMS, toMS) (detect.sms_permission: one per holding of the permission).
+func (s *Store) DetectionIn(ctx context.Context, deviceID, typ, subject string, fromMS, toMS int64) (bool, error) {
 	var n int
-	err := s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM detections WHERE device_id = ? AND type = ? AND subject = ? AND window_from_ms >= ?`,
-		deviceID, typ, subject, sinceMS).Scan(&n)
+	err := s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM detections WHERE device_id = ? AND type = ? AND subject = ? AND window_from_ms >= ?
+		AND window_from_ms < ?`, deviceID, typ, subject, fromMS, toMS).Scan(&n)
 	return n > 0, err
 }
 

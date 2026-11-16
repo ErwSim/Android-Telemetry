@@ -41,7 +41,7 @@ export function DetectionCard({
   const guard = info.guard ? guardInfo(info.guard) : undefined;
   const enc = pkg ? encodeURIComponent(pkg) : '';
   return (
-    <li className={`det det-sev-${sev}${isNew ? ' is-new' : ''}${d.muted ? ' is-muted' : ''}`} data-testid="detection" data-type={d.type} data-muted={d.muted ? 'true' : undefined}>
+    <li className={`det det-sev-${sev}${isNew ? ' is-new' : ''}${d.muted ? ' is-muted' : ''}`} data-testid="detection" data-id={d.id} data-type={d.type} data-muted={d.muted ? 'true' : undefined}>
       <div className="det-head">
         <SevBadge sev={sev} />
         <Badge tone="info">{detectionLabel(d.type)}</Badge>
