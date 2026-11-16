@@ -134,7 +134,7 @@ class SpecialAccessCollector : Collector {
             val holders = requesting(permission).filter { p ->
                 val uid = p.applicationInfo?.uid ?: return@filter false
                 val mode = try {
-                    ops.checkOpNoThrow(op, uid, p.packageName)
+                    ops.unsafeCheckOpNoThrow(op, uid, p.packageName)
                 } catch (_: Exception) {
                     refused = true
                     return@filter false

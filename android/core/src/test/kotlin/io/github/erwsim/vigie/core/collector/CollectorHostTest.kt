@@ -32,7 +32,7 @@ class CollectorHostTest {
     private val dispatcher = executor.asCoroutineDispatcher()
     private val events = CopyOnWriteArrayList<Pair<String, JsonObject>>()
     private val sink = object : EventSink {
-        override fun emit(type: String, sev: Int, data: JsonObject) {
+        override fun emit(type: String, sev: Int, data: JsonObject, originTsMs: Long?) {
             events += type to data
         }
     }

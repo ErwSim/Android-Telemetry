@@ -44,9 +44,9 @@ MSG
 fi
 
 if ashell dumpsys package "$PKG" | grep -q 'TEST_ONLY'; then
-    info "APK testOnly : le Device Owner pourra être retiré par ADB (remove-device-owner.sh)."
+    info "APK testOnly : en plus du retrait par l'app ou par remove-device-owner.sh, « dpm remove-active-admin » restera possible en dernier recours."
 else
-    warn "APK NON testOnly : le retrait par ADB sera impossible ; seul l'app (ou une réinitialisation) pourra le retirer."
+    warn "APK NON testOnly : le retrait passera forcément par Vigie (écran Politique ou remove-device-owner.sh) ; si l'app ne démarre plus, seule une réinitialisation le retirera."
     read -r -p "Continuer quand même ? (oui/non) " answer
     [ "$answer" = "oui" ] || die "Abandon."
 fi

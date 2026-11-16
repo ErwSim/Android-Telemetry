@@ -56,13 +56,14 @@ class OwnerResolver(
     }
 }
 
-data class NetOutput(val type: String, val data: JsonObject)
+/** [tsMs]: time of the (first) request, the event's `ts` (contract §2 "Précisions"). */
+data class NetOutput(val type: String, val data: JsonObject, val tsMs: Long)
 
 /**
  * Turns a retrieved batch into `net.dns` / `net.connect` data (contract §2), optionally aggregated:
  * identical requests (same app and host, or same app, IP and port) in the same window become one
- * event with `count` and `last_event_ts`. `event_ts` is the time of the (first) request: the event's
- * own `ts` is the retrieval time, up to 1 h 30 later.
+ * event with `count` and `last_event_ts`. The event's `ts` is the time of the (first) request given
+ * by the system ([NetOutput.tsMs]), not the retrieval time (up to 1 h 30 later).
  */
 object NetworkLogProcessor {
     const val MAX_ADDRESSES = 16
@@ -98,6 +99,7 @@ object NetworkLogProcessor {
                     put("address_count", maxOf(total, addresses.size))
                     timing(g)
                 },
+                g.firstMs,
             )
         }
         is NetRecord.Connect -> NetOutput(
@@ -109,11 +111,11 @@ object NetworkLogProcessor {
                 put("port", r.port)
                 timing(g)
             },
+            g.firstMs,
         )
     }
 
     private fun io.github.erwsim.vigie.core.event.EventDataBuilder.timing(g: Aggregated<NetRecord>) {
-        put("event_ts", Rfc3339.format(g.firstMs))
         if (g.count > 1) {
             put("count", g.count)
             put("last_event_ts", Rfc3339.format(g.lastMs))

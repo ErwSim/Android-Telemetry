@@ -22,6 +22,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.builtins.serializer
 
 /**
@@ -94,10 +95,7 @@ class PostureCollector : Collector {
             (failedAttempts ?: 0) >= 3 -> Severity.WARNING
             else -> Severity.NOTABLE
         }
-        c.emit("security.keyguard", sev) {
-            put("event", if (succeeded) "unlock_succeeded" else "unlock_failed")
-            put("failed_attempts", failedAttempts)
-        }
+        c.sink.emit("security.keyguard", sev, keyguardData(succeeded, failedAttempts))
     }
 
     private suspend fun collect(ctx: CollectorContext, always: Boolean) = mutex.withLock {
@@ -109,11 +107,7 @@ class PostureCollector : Collector {
         // CA additions/removals.
         val previousCas = ctx.prefs.getString(K_CAS, null)?.let { decode(it) }
         for (change in CaCertDiff.diff(previousCas, cas)) {
-            ctx.emit("security.ca_cert", Severity.WARNING) {
-                put("event", change.event)
-                put("sha256", change.cert.sha256)
-                put("subject", change.cert.subject)
-            }
+            ctx.sink.emit("security.ca_cert", Severity.WARNING, caCertData(change))
         }
         ctx.prefs.edit { putString(K_CAS, encode(cas.associate { it.sha256 to it.subject })) }
 
@@ -128,25 +122,9 @@ class PostureCollector : Collector {
         val sev = changes.maxOfOrNull { it.sev } ?: Severity.INFO
         ctx.sink.emit("security.posture", sev, postureData(posture))
         for (c in changes) {
-            ctx.emit("security.posture_change", c.sev) {
-                put("field", c.field)
-                put("old", c.old)
-                put("new", c.new)
-            }
+            ctx.sink.emit("security.posture_change", c.sev, changeData(c))
         }
         ctx.prefs.edit { putString(K_POSTURE, encode(current)) }
-    }
-
-    private fun postureData(p: Map<String, Any?>) = eventData {
-        for ((k, v) in p) {
-            when (v) {
-                null -> Unit
-                is Boolean -> put(k, v)
-                is Number -> put(k, v)
-                is Collection<*> -> putStrings(k, v.map { it.toString() })
-                else -> put(k, v.toString())
-            }
-        }
     }
 
     private fun encode(map: Map<String, String>) = VigieJson.encodeToString(MAP, map)
@@ -159,6 +137,37 @@ class PostureCollector : Collector {
 
     companion object {
         const val ID = "posture"
+
+        /** `security.posture` data from [PostureReader.read] (null: unreadable, absent). */
+        fun postureData(p: Map<String, Any?>): JsonObject = eventData {
+            for ((k, v) in p) {
+                when (v) {
+                    null -> Unit
+                    is Boolean -> put(k, v)
+                    is Number -> put(k, v)
+                    is Collection<*> -> putStrings(k, v.map { it.toString() })
+                    else -> put(k, v.toString())
+                }
+            }
+        }
+
+        fun changeData(c: PostureChange): JsonObject = eventData {
+            put("field", c.field)
+            put("old", c.old)
+            put("new", c.new)
+        }
+
+        fun caCertData(change: CaChange): JsonObject = eventData {
+            put("event", change.event)
+            put("sha256", change.cert.sha256)
+            put("subject", change.cert.subject)
+        }
+
+        fun keyguardData(succeeded: Boolean, failedAttempts: Int?): JsonObject = eventData {
+            put("event", if (succeeded) "unlock_succeeded" else "unlock_failed")
+            put("failed_attempts", failedAttempts)
+        }
+
         private const val K_POSTURE = "last_posture"
         private const val K_CAS = "user_cas"
         private const val DEBOUNCE_MS = 3_000L

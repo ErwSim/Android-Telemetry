@@ -1,6 +1,7 @@
 package io.github.erwsim.vigie.policy
 
 import io.github.erwsim.vigie.core.event.Rfc3339
+import io.github.erwsim.vigie.core.testing.Contract
 import io.github.erwsim.vigie.policy.logs.NetRecord
 import io.github.erwsim.vigie.policy.logs.NetworkLogProcessor
 import io.github.erwsim.vigie.policy.logs.OwnerResolver
@@ -52,8 +53,12 @@ class NetworkLogTest {
         assertEquals("app-measurement.com", dns.s("hostname"))
         assertEquals(listOf("142.250.1.1"), dns["addresses"]!!.jsonArray.map { it.jsonPrimitive.content })
         assertEquals("1", dns.s("address_count"))
-        assertEquals(Rfc3339.format(t0 + 1_000), dns.s("event_ts"))
+        // ts = time of the request (origin), no event_ts field.
+        assertEquals(t0 + 1_000, out[0].tsMs)
+        assertEquals(t0 + 2_000, out[1].tsMs)
+        assertNull(dns["event_ts"])
         assertNull(dns["count"])
+        out.forEach { Contract.check(it.type, it.data) }
         val connect = out[1].data
         assertEquals("android.uid.system", connect.s("package"))
         assertEquals("1000", connect.s("uid"))
@@ -79,9 +84,10 @@ class NetworkLogTest {
         assertEquals(4, dns.size)
         val main = dns.first()
         assertEquals("30", main.data.s("count"))
-        assertEquals(Rfc3339.format(t0), main.data.s("event_ts"))
+        assertEquals(t0, main.tsMs)
         assertEquals(Rfc3339.format(t0 + 290_000L), main.data.s("last_event_ts"))
         assertEquals(3, main.data["addresses"]!!.jsonArray.size)
+        out.forEach { Contract.check(it.type, it.data) }
         val connects = out.filter { it.type == "net.connect" }
         assertEquals(listOf("4", null), connects.map { it.data.s("count") })
         // Without aggregation every entry is emitted; DNS only when connect is off.

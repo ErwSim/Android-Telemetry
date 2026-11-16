@@ -1,5 +1,6 @@
 package io.github.erwsim.vigie.policy
 
+import io.github.erwsim.vigie.core.testing.Contract
 import io.github.erwsim.vigie.core.testing.FakeClock
 import io.github.erwsim.vigie.core.testing.MemoryPrefs
 import io.github.erwsim.vigie.policy.dns.ProbeResult
@@ -60,8 +61,10 @@ class PolicyEngineTest {
     private val events = ArrayList<Pair<Int, JsonObject>>()
     private var probeOk = true
     private val sink = object : EventSink {
-        override fun emit(type: String, sev: Int, data: JsonObject) {
+        override fun emit(type: String, sev: Int, data: JsonObject, originTsMs: Long?) {
             assertEquals("security.policy", type)
+            assertNull(originTsMs)
+            Contract.check(type, data)
             events += sev to data
         }
     }
@@ -335,6 +338,26 @@ class PolicyEngineTest {
         assertEquals("clear owner", gw.calls.last())
         val actions = events.map { it.second.str("action") }
         assertTrue(actions.indexOf("device_owner_cleared") > actions.indexOf("policy_reverted"))
+    }
+
+    @Test
+    fun `voluntary removal is announced before clearing and confirmed after`() {
+        val hooks = ArrayList<String>()
+        val e = PolicyEngine(
+            gateway = gw,
+            store = PolicyStore(prefs),
+            catalog = PolicyCatalog.parse(catalogJson),
+            probe = { _, _ -> ProbeResult(true, listOf("203.0.113.5")) },
+            clock = clock,
+            sink = { sink },
+            dnsHost = { null },
+            beforeClearOwner = { hooks += "before owner=${gw.owner} calls=${gw.calls.count { it == "clear owner" }}" },
+            afterClearOwner = { cleared -> hooks += "after cleared=$cleared" },
+        )
+        e.removeDeviceOwner(force = false)
+        assertEquals(listOf("before owner=true calls=0", "after cleared=true"), hooks)
+        // device_owner_cleared (security.policy) is logged before the role disappears.
+        assertTrue(events.any { it.second.str("action") == "device_owner_cleared" && it.second.str("ok") == "true" })
     }
 
     @Test

@@ -44,7 +44,7 @@ fun sha256Hex(bytes: ByteArray): String =
  */
 fun CollectorContext.hasUsageAccess(): Boolean = try {
     val ops = appContext.getSystemService(AppOpsManager::class.java)
-    when (ops?.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), appContext.packageName)) {
+    when (ops?.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), appContext.packageName)) {
         AppOpsManager.MODE_ALLOWED -> true
         AppOpsManager.MODE_DEFAULT -> capabilities.hasPermission(Manifest.permission.PACKAGE_USAGE_STATS)
         else -> false

@@ -16,7 +16,8 @@ data class SecurityLogFilter(
     val radio: Boolean = true,
 )
 
-data class SecurityOutput(val sev: Int, val data: JsonObject)
+/** [tsMs]: time of the (first) log entry, the event's `ts` (contract §2 "Précisions"). */
+data class SecurityOutput(val sev: Int, val data: JsonObject, val tsMs: Long)
 
 /** Batch → `security.log` data (contract §2). Pure (tested on the JVM). */
 object SecurityLogProcessor {
@@ -38,30 +39,30 @@ object SecurityLogProcessor {
             .toList()
         val window = if (filter.aggregateAppProcess) filter.windowMs else 0L
         val (processes, others) = translated.partition { it.tag == APP_PROCESS_START }
-        val outputs = ArrayList<Pair<Long, SecurityOutput>>()
-        others.forEach { outputs += it.timeMs to output(it, 1, it.timeMs, preReboot) }
+        val outputs = ArrayList<SecurityOutput>()
+        others.forEach { outputs += output(it, 1, it.timeMs, it.timeMs, preReboot) }
         aggregateByWindow(processes, window, { it.timeMs }) { t ->
             listOf(str(t, "process"), str(t, "uid"), str(t, "apk_sha256"))
-        }.forEach { g -> outputs += g.firstMs to output(g.first, g.count, g.lastMs, preReboot) }
-        return outputs.sortedBy { it.first }.map { it.second }
+        }.forEach { g -> outputs += output(g.first, g.count, g.firstMs, g.lastMs, preReboot) }
+        return outputs.sortedBy { it.tsMs }
     }
 
     private fun str(t: TranslatedSecurityEvent, key: String): String? = (t.fields[key] as? JsonPrimitive)?.content
 
-    private fun output(t: TranslatedSecurityEvent, count: Int, lastMs: Long, preReboot: Boolean) = SecurityOutput(
+    private fun output(t: TranslatedSecurityEvent, count: Int, firstMs: Long, lastMs: Long, preReboot: Boolean) = SecurityOutput(
         t.sev,
         eventData {
             put("tag", t.tag)
             put("level", t.level)
             put("log_id", t.logId)
             put("fields", t.fields)
-            put("event_ts", Rfc3339.format(t.timeMs))
             if (count > 1) {
                 put("count", count)
                 put("last_event_ts", Rfc3339.format(lastMs))
             }
             if (preReboot) put("pre_reboot", true)
         },
+        firstMs,
     )
 
     /** CA tags trigger an immediate user CA check (security.ca_cert). */

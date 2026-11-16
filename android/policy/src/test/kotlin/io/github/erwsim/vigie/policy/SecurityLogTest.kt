@@ -2,6 +2,7 @@ package io.github.erwsim.vigie.policy
 
 import android.app.admin.SecurityLog
 import io.github.erwsim.vigie.core.event.Severity
+import io.github.erwsim.vigie.core.testing.Contract
 import io.github.erwsim.vigie.policy.logs.RawSecurityEvent
 import io.github.erwsim.vigie.policy.logs.SecurityLogFilter
 import io.github.erwsim.vigie.policy.logs.SecurityLogProcessor
@@ -72,15 +73,9 @@ class SecurityLogTest {
             Triple(SecurityLog.TAG_BACKUP_SERVICE_TOGGLED, arrayOf<Any>("io.github.erwsim.vigie", 0, 1), mapOf("arg0" to "io.github.erwsim.vigie", "arg1" to "0", "arg2" to "1")),
             Triple(SecurityLog.TAG_CAMERA_POLICY_SET, arrayOf<Any>("com.admin", 0, 0, 1), mapOf("arg0" to "com.admin", "arg1" to "0", "arg2" to "0", "arg3" to "1")),
         )
-        // The table covers every tag named by the contract.
-        val contractTags = setOf(
-            "adb_shell_interactive", "adb_shell_cmd", "sync_recv_file", "sync_send_file", "app_process_start", "keyguard_dismissed",
-            "keyguard_secured", "keyguard_dismiss_auth_attempt", "os_startup", "os_shutdown", "logging_started", "logging_stopped",
-            "log_buffer_size_critical", "media_mount", "media_unmount", "crypto_self_test_completed", "key_generated", "key_import",
-            "key_destruction", "key_integrity_violation", "cert_authority_installed", "cert_authority_removed", "cert_validation_failure",
-            "user_restriction_added", "user_restriction_removed", "password_changed", "wifi_connection", "wifi_disconnection",
-            "bluetooth_connection", "bluetooth_disconnection", "package_installed", "package_updated", "package_uninstalled",
-        )
+        // The table covers every tag named by the contract (shared reference of the contract).
+        val contractTags = Contract.SECURITY_LOG_FIELDS.keys
+        Contract.SECURITY_LOG_FIELDS.forEach { (tag, names) -> assertEquals(tag, names, SecurityLogTranslator.FIELD_TABLE.getValue(tag).toSet()) }
         assertEquals(contractTags, SecurityLogTranslator.FIELD_TABLE.keys)
         assertTrue(cases.map { SecurityLogTranslator.tagName(it.first) }.toSet().containsAll(contractTags + setOf("wipe_failure", "remote_lock", "backup_service_toggled")))
         for ((tag, data, expected) in cases) {
@@ -136,9 +131,12 @@ class SecurityLogTest {
         assertNull(byTag.getValue("app_process_start").single { it.data["fields"]!!.jsonObject.s("process") == "com.signal" }.data["count"])
         assertEquals(1, byTag.getValue("wifi_connection").size)
         assertEquals(Severity.NOTABLE, byTag.getValue("adb_shell_interactive").single().sev)
-        // Output is in time order.
-        val times = out.map { it.data.s("event_ts")!! }
+        // Output is in time order; ts = first occurrence, no event_ts field.
+        val times = out.map { it.tsMs }
         assertEquals(times.sorted(), times)
+        assertEquals(1_763_000_000_000L, whatsapp.tsMs)
+        assertTrue(out.none { it.data.containsKey("event_ts") })
+        out.forEach { Contract.check(SecurityLogProcessor.TYPE, it.data) }
 
         val quiet = SecurityLogProcessor.process(starts + wifi + adb, SecurityLogFilter(appProcessStart = false, radio = false))
         assertEquals(listOf("adb_shell_interactive"), quiet.map { it.data.s("tag") })

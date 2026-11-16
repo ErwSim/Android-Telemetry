@@ -112,7 +112,7 @@ class NetworkLogCollector : Collector {
         val window = if (ctx.settings[AGGREGATE]) ctx.settings[WINDOW_MIN] * 60_000L else 0L
         val outputs = NetworkLogProcessor.process(records, resolver, window, ctx.settings[CONNECT])
         for (chunk in outputs.chunked(CHUNK)) {
-            chunk.forEach { ctx.sink.emit(it.type, Severity.INFO, it.data) }
+            chunk.forEach { ctx.sink.emit(it.type, Severity.INFO, it.data, originTsMs = it.tsMs.takeIf { t -> t > 0 }) }
             delay(CHUNK_PAUSE_MS)
         }
     }

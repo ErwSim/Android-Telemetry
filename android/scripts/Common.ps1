@@ -66,3 +66,60 @@ function Test-IsTestOnly {
     $dump = Invoke-AdbShell dumpsys package $script:Pkg
     return (@($dump | Where-Object { $_ -match 'TEST_ONLY' }).Count -gt 0)
 }
+
+# ---- Issue de secours : ordre envoyé à io.github.erwsim.vigie.policy.rescue.RescueReceiver ----
+# Le récepteur exige que l'expéditeur détienne android.permission.FORCE_STOP_PACKAGES
+# (signature|privileged, jamais accordable à une app tierce) : seuls le shell ADB et le système
+# peuvent l'envoyer. Il ne fait que DÉFAIRE ce que Vigie a appliqué.
+$script:RescueReceiver = "$($script:Pkg)/io.github.erwsim.vigie.policy.rescue.RescueReceiver"
+$script:RescueAction = 'io.github.erwsim.vigie.action.RESCUE_REVERT_ALL'
+
+# Envoie l'ordre (jusqu'à une minute) et renvoie Out (sortie brute), Code (1 tout rétabli,
+# 2 partiel, 3 plus Device Owner, 4 délai dépassé, $null si aucune réponse exploitable) et Data (résumé).
+function Invoke-Rescue([switch]$RemoveOwner) {
+    $extra = @()
+    if ($RemoveOwner) { $extra = @('--ez', 'remove_owner', 'true') }
+    # Appel natif (pas Invoke-AdbShell) : « -a »/« -n » doivent arriver tels quels à adb.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $out = @(& adb shell am broadcast --include-stopped-packages -a $script:RescueAction -n $script:RescueReceiver @extra 2>&1 | ForEach-Object { "$_".TrimEnd("`r") })
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    $line = @($out | Where-Object { $_ -match 'Broadcast completed: result=' }) | Select-Object -Last 1
+    $code = $null
+    $data = ''
+    if ($line -match 'result=(-?\d+)') { $code = [int]$Matches[1] }
+    if ($line -match 'data="(.*)"$') { $data = $Matches[1] }
+    if ($code -notin 1, 2, 3, 4) { $code = $null }
+    return [pscustomobject]@{ Out = $out; Code = $code; Data = $data }
+}
+
+# Extrait « clé=a,b,c » du résumé, en tableau.
+function Get-RescueField([string]$Data, [string]$Key) {
+    foreach ($token in $Data -split ' ') {
+        if ($token.StartsWith("$Key=")) { return @($token.Substring($Key.Length + 1) -split ',' | Where-Object { $_ }) }
+    }
+    return @()
+}
+
+# Après la perte du rôle, Vigie ne peut plus rien défaire : propose pm unhide / pm unsuspend pour
+# les paquets qu'elle avait masqués ou suspendus (liste tirée du résumé de l'issue de secours).
+function Restore-Leftovers([string]$Data) {
+    $hidden = Get-RescueField $Data 'hidden'
+    $suspended = Get-RescueField $Data 'suspended'
+    if ($hidden.Count + $suspended.Count -eq 0) {
+        Info 'Aucun paquet masqué ou suspendu à rétablir.'
+    } else {
+        $answer = Read-Host 'Réafficher/réactiver ces paquets par ADB (pm unhide / pm unsuspend) ? (oui/non)'
+        if ($answer -eq 'oui') {
+            foreach ($p in $hidden) { Info "pm unhide $p : $((Invoke-AdbShell pm unhide $p) -join ' ')" }
+            foreach ($p in $suspended) { Info "pm unsuspend $p : $((Invoke-AdbShell pm unsuspend $p) -join ' ')" }
+            Warn 'Vérifiez dans Paramètres > Applications que ces apps sont de nouveau utilisables.'
+        }
+    }
+    if ((Get-RescueField $Data 'other_items').Count -gt 0) {
+        Warn "Restrictions, permissions ou DNS privé posés par Vigie ont normalement été levés par Android au retrait du Device Owner ; vérifiez le DNS privé dans Paramètres > Connexions."
+    }
+}

@@ -30,9 +30,9 @@ import kotlinx.serialization.json.JsonObject
  * `UsageStatsManager.queryEvents` (needs "usage access"). Only app switches are reported (not
  * activity changes inside an app); the class is the first activity shown.
  *
- * Polling, screen on only: one query every [POLL_SECONDS] seconds while the screen is on (the
- * event time is the poll time, ≤ 60 s late), one at screen off, plus a WorkManager safety net every
- * 15 min. Typically 100 to 400 events per day.
+ * Polling, screen on only: one query every [POLL_SECONDS] seconds while the screen is on, one at
+ * screen off, plus a WorkManager safety net every 15 min. `ts` is the time of the usage event given
+ * by the system (contract §2 "Précisions"), not the poll time. Typically 100 to 400 events per day.
  */
 class ForegroundAppCollector : Collector {
     override val id = "foreground"
@@ -88,7 +88,8 @@ class ForegroundAppCollector : Collector {
         val watermark = ctx.prefs.getLong(K_WATERMARK, 0)
         val from = if (watermark in (now - MAX_WINDOW_MS)..now) watermark else now - POLL_SECONDS * 1000L
         val tracker = ForegroundTracker(ctx.prefs.getString(K_PACKAGE, null), ctx.prefs.getString(K_CLASS, null))
-        val changes = ArrayList<ForegroundTracker.Change>()
+        // Each change with the time of the usage event that caused it (becomes the event's `ts`).
+        val changes = ArrayList<Pair<ForegroundTracker.Change, Long>>()
         var lastTs = watermark
         withContext(ctx.io) {
             val events = usm.queryEvents(from, now) ?: return@withContext
@@ -96,10 +97,11 @@ class ForegroundAppCollector : Collector {
             while (events.hasNextEvent() && events.getNextEvent(e)) {
                 if (e.timeStamp <= watermark) continue
                 lastTs = maxOf(lastTs, e.timeStamp)
-                changes += tracker.onEvent(kindOf(e.eventType), e.packageName, e.className)
+                val at = e.timeStamp
+                tracker.onEvent(kindOf(e.eventType), e.packageName, e.className).forEach { changes += it to at }
             }
         }
-        changes.takeLast(MAX_PER_POLL).forEach { c -> ctx.sink.emit(TYPE, Severity.INFO, data(c)) }
+        changes.takeLast(MAX_PER_POLL).forEach { (c, at) -> ctx.sink.emit(TYPE, Severity.INFO, data(c), originTsMs = at.takeIf { it > 0 }) }
         ctx.prefs.edit {
             putLong(K_WATERMARK, if (lastTs > 0) lastTs else from)
             putString(K_PACKAGE, tracker.currentPackage)

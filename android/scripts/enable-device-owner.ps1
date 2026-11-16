@@ -40,9 +40,9 @@ authentification avant de retirer un compte Google ou Samsung.
 }
 
 if (Test-IsTestOnly) {
-    Info 'APK testOnly : le Device Owner pourra être retiré par ADB (remove-device-owner.ps1).'
+    Info "APK testOnly : en plus du retrait par l'app ou par remove-device-owner.ps1, « dpm remove-active-admin » restera possible en dernier recours."
 } else {
-    Warn "APK NON testOnly : le retrait par ADB sera impossible ; seul l'app (ou une réinitialisation) pourra le retirer."
+    Warn "APK NON testOnly : le retrait passera forcément par Vigie (écran Politique ou remove-device-owner.ps1) ; si l'app ne démarre plus, seule une réinitialisation le retirera."
     $answer = Read-Host 'Continuer quand même ? (oui/non)'
     if ($answer -ne 'oui') { Fail 'Abandon.' }
 }

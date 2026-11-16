@@ -1,5 +1,6 @@
 package io.github.erwsim.vigie.collectors
 
+import io.github.erwsim.vigie.core.testing.Contract
 import android.Manifest
 import io.github.erwsim.vigie.collectors.apps.AppsCollector
 import io.github.erwsim.vigie.collectors.apps.ForegroundAppCollector
@@ -33,7 +34,7 @@ class CollectorsWiringTest {
             c.eventTypes.forEach { t ->
                 assertTrue(t, EventTypes.isValid(t))
                 // Every new type is in the contract catalogue (the reference collectors are checked elsewhere).
-                if (c.id !in setOf("heartbeat", "device", "location")) assertTrue("$t not in contract", t in Contract.FIELDS)
+                if (c.id !in setOf("heartbeat", "device", "location")) assertTrue("$t not in contract", t in Contract.TYPES)
             }
             c.periodic?.let { assertTrue(c.id, it.intervalMinutes >= 15) }
             c.settings.forEach { s -> assertTrue("${c.id}: ${s.key.name}", s.key.name.startsWith(c.id.substringBefore('_')) || s.key.name.startsWith(c.id)) }

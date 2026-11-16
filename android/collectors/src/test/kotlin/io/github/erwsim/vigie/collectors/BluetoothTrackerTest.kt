@@ -1,5 +1,6 @@
 package io.github.erwsim.vigie.collectors
 
+import io.github.erwsim.vigie.core.testing.Contract
 import io.github.erwsim.vigie.collectors.bluetooth.BleTrackerCollector
 import io.github.erwsim.vigie.collectors.bluetooth.BluetoothCollector
 import io.github.erwsim.vigie.collectors.bluetooth.TrackerDetector

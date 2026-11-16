@@ -95,7 +95,24 @@ object PolicyModule {
             clock = AgentClock.System,
             sink = { Agent.getOrNull()?.sink },
             dnsHost = { Agent.getOrNull()?.enrollment?.state?.value?.privateDnsHost },
-            beforeClearOwner = { Agent.getOrNull()?.sink?.flushBlocking(2_000) },
+            // Voluntary removal (screen or ADB rescue): announced to the integrity monitor so that the
+            // loss is not reported as agent.tamper; device_owner_cleared (security.policy) reports it.
+            beforeClearOwner = {
+                Agent.getOrNull()?.let { agent ->
+                    agent.integrity.expectOwnershipLoss()
+                    agent.sink.flushBlocking(2_000)
+                }
+            },
+            afterClearOwner = { cleared ->
+                Agent.getOrNull()?.let { agent ->
+                    if (cleared) {
+                        agent.integrity.checkPermissionsAndOwnership()
+                        agent.host.reconcile()
+                    } else {
+                        agent.integrity.cancelOwnershipLossExpectation()
+                    }
+                }
+            },
         )
     }
 

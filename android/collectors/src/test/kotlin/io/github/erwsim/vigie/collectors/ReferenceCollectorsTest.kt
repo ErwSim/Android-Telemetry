@@ -101,13 +101,7 @@ class HeartbeatHarnessTest {
         ).use { h ->
             h.startAll()
             assertTrue(h.scheduled.contains("+heartbeat"))
-            // collectOnce hops to Dispatchers.IO: on a cold JVM (first test class) it may finish after
-            // the harness's settle(); wait for the event instead of racing it.
-            val deadline = System.currentTimeMillis() + 5_000
-            while (h.eventsOf("agent.heartbeat").isEmpty() && System.currentTimeMillis() < deadline) {
-                Thread.sleep(10)
-                h.settle()
-            }
+            // collectOnce hops to ctx.io: the harness's settle() waits for it (no race).
             val beat = h.eventsOf("agent.heartbeat").single().data
             listOf("uptime_ms", "queue_depth", "queue_bytes", "dropped_total", "device_owner", "collectors").forEach {
                 assertTrue("missing $it in $beat", beat.containsKey(it))
@@ -115,6 +109,7 @@ class HeartbeatHarnessTest {
             // No battery service on the JVM and no upload yet: absent, never null.
             assertTrue(!beat.containsKey("battery_pct") && !beat.containsKey("last_upload_ts"))
             assertEquals("\"running\"", beat["collectors"]!!.let { (it as kotlinx.serialization.json.JsonObject)["heartbeat"].toString() })
+            io.github.erwsim.vigie.core.testing.Contract.check("agent.heartbeat", beat)
         }
     }
 

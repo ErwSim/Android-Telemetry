@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -35,7 +36,11 @@ import io.github.erwsim.vigie.core.collector.CollectorRunState
 import io.github.erwsim.vigie.core.collector.Requirement
 import io.github.erwsim.vigie.service.AgentService
 
-/** Every collector with its switch, its state (and why) and what it collects. */
+/**
+ * Every collector of every module (`:collectors` then `:policy`, in their entry-point order) with
+ * its switch, its state (and why it is unavailable), what it collects, its own settings, and marks
+ * for "off by default", "Device Owner required" and experimental settings.
+ */
 @Composable
 fun CollectorsScreen(agent: Agent, resumeTick: Int, modifier: Modifier) {
     val context = LocalContext.current
@@ -67,6 +72,14 @@ fun CollectorsScreen(agent: Agent, resumeTick: Int, modifier: Modifier) {
                     .filterNot(agent.capabilities::hasPermission)
             }
             SectionCard(stringResource(collector.titleRes)) {
+                val marks = buildList {
+                    if (!collector.defaultEnabled) add(stringResource(R.string.collectors_default_off))
+                    if (collector.requirements.any { it is Requirement.DeviceOwner }) add(stringResource(R.string.collectors_requires_owner))
+                    if (collector.settings.any { it.experimental }) add(stringResource(R.string.collectors_has_experimental))
+                }
+                if (marks.isNotEmpty()) {
+                    Text(marks.joinToString(" · "), color = toneColor(Tone.WARN), style = MaterialTheme.typography.labelMedium)
+                }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     val (label, tone) = when (status?.state) {
                         CollectorRunState.RUNNING -> stringResource(R.string.state_running) to Tone.OK
@@ -102,6 +115,12 @@ fun CollectorsScreen(agent: Agent, resumeTick: Int, modifier: Modifier) {
                 }
                 status?.lastError?.let {
                     Text(stringResource(R.string.collectors_last_error, it), style = MaterialTheme.typography.bodySmall, color = toneColor(Tone.WARN))
+                }
+                if (collector.settings.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text(stringResource(R.string.collectors_settings), style = MaterialTheme.typography.labelMedium)
+                    // A change restarts the collector (CollectorHost) and emits agent.config_changed.
+                    collector.settings.forEach { SettingRow(agent.settings, it, tick) }
                 }
             }
         }

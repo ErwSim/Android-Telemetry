@@ -1,5 +1,6 @@
 package io.github.erwsim.vigie.collectors
 
+import io.github.erwsim.vigie.core.testing.Contract
 import io.github.erwsim.vigie.collectors.apps.AppDetails
 import io.github.erwsim.vigie.collectors.apps.AppInventoryLogic
 import io.github.erwsim.vigie.collectors.apps.AppRecord

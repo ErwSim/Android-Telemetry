@@ -1,5 +1,6 @@
 package io.github.erwsim.vigie.collectors
 
+import io.github.erwsim.vigie.core.testing.Contract
 import android.media.MediaRecorder
 import io.github.erwsim.vigie.collectors.common.RateLimiter
 import io.github.erwsim.vigie.collectors.common.ScreenState

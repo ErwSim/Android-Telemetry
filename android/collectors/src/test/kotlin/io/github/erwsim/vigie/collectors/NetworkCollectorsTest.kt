@@ -1,5 +1,6 @@
 package io.github.erwsim.vigie.collectors
 
+import io.github.erwsim.vigie.core.testing.Contract
 import android.net.wifi.ScanResult
 import android.net.wifi.WifiInfo
 import io.github.erwsim.vigie.collectors.network.ConnectivityCollector

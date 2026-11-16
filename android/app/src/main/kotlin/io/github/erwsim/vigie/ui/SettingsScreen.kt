@@ -63,10 +63,9 @@ fun SettingsScreen(agent: Agent, resumeTick: Int, modifier: Modifier, navigate: 
         SectionCard(stringResource(R.string.settings_buffer_title)) {
             coreSpecs.forEach { SettingRow(agent.settings, it, tick) }
         }
-        agent.host.collectors.filter { it.settings.isNotEmpty() }.forEach { collector ->
-            SectionCard(stringResource(collector.titleRes)) {
-                collector.settings.forEach { SettingRow(agent.settings, it, tick) }
-            }
+        SectionCard(stringResource(R.string.nav_collectors)) {
+            Text(stringResource(R.string.settings_collectors_hint), style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick = { navigate(Screen.Collectors) }) { Text(stringResource(R.string.action_open)) }
         }
         SectionCard(stringResource(R.string.settings_owner_title)) {
             PolicyModule.settings.forEach { SettingRow(agent.settings, it, tick) }
@@ -127,6 +126,9 @@ fun SettingRow(settings: AgentSettings, spec: SettingSpec, tick: Int) {
 private fun SettingTexts(spec: SettingSpec, modifier: Modifier) {
     Column(modifier.padding(end = 8.dp)) {
         Text(stringResource(spec.titleRes), style = MaterialTheme.typography.bodyLarge)
+        if (spec.experimental) {
+            Text(stringResource(R.string.setting_experimental), color = toneColor(Tone.WARN), style = MaterialTheme.typography.labelMedium)
+        }
         spec.summaryRes?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall) }
     }
 }

@@ -75,6 +75,11 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        // Plain JVM unit tests (contract conformance of every module): Android stubs return default values.
+        unitTests.isReturnDefaultValues = true
+    }
+
     lint {
         abortOnError = true
         checkDependencies = true
@@ -99,5 +104,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.runtime)
 
+    testImplementation(testFixtures(project(":core")))
     testImplementation(libs.junit)
 }

@@ -107,7 +107,7 @@ class SecurityLogCollector : Collector {
         val newest = raw.maxOf { it.timeNanos }
         if (newest > ctx.prefs.getLong(K_LAST_NANOS, Long.MIN_VALUE)) ctx.prefs.edit { putLong(K_LAST_NANOS, newest) }
         for (chunk in outputs.chunked(CHUNK)) {
-            chunk.forEach { ctx.sink.emit(SecurityLogProcessor.TYPE, it.sev, it.data) }
+            chunk.forEach { ctx.sink.emit(SecurityLogProcessor.TYPE, it.sev, it.data, originTsMs = it.tsMs.takeIf { t -> t > 0 }) }
             delay(CHUNK_PAUSE_MS)
         }
         onBatch?.invoke(outputs)

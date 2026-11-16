@@ -1,5 +1,6 @@
 package io.github.erwsim.vigie.collectors
 
+import io.github.erwsim.vigie.core.testing.Contract
 import android.telephony.TelephonyManager
 import io.github.erwsim.vigie.collectors.cell.CellLogic
 import io.github.erwsim.vigie.collectors.cell.CellLogic.Registration

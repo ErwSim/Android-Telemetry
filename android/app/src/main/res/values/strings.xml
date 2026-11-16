@@ -83,6 +83,11 @@
     <string name="collectors_event_types">Événements produits</string>
     <string name="collectors_missing">Permissions non accordées : %1$s</string>
     <string name="collectors_last_error">Dernière erreur : %1$s</string>
+    <string name="collectors_settings">Réglages du collecteur</string>
+    <string name="collectors_default_off">Désactivé par défaut</string>
+    <string name="collectors_requires_owner">Device Owner requis</string>
+    <string name="collectors_has_experimental">Réglage expérimental</string>
+    <string name="setting_experimental">Expérimental : fonctionnement non garanti par Android</string>
 
     <!-- Journal -->
     <string name="journal_tab_recent">Émis récemment</string>
@@ -105,12 +110,13 @@
     <string name="setting_large_threshold_summary">Volume en attente au-delà duquel l\'option Wi-Fi s\'applique.</string>
     <string name="setting_range">Entre %1$d et %2$d</string>
     <string name="settings_owner_title">Device Owner</string>
+    <string name="settings_collectors_hint">Les réglages propres à chaque collecteur (cadences, filtres, options) sont dans l\'onglet Collecteurs, avec leur interrupteur.</string>
     <string name="settings_enrollment_summary">Serveur de destination, test de connexion, désenrôlement.</string>
     <string name="settings_about_title">À propos</string>
     <string name="settings_version">Version</string>
     <string name="settings_build_type">Variante</string>
     <string name="settings_test_only">APK « testOnly »</string>
-    <string name="settings_test_only_summary">Un APK testOnly peut perdre son rôle de Device Owner par « adb shell dpm remove-active-admin » : c\'est la porte de sortie par ADB.</string>
+    <string name="settings_test_only_summary">Le retrait du Device Owner se fait depuis l\'écran Politique, ou par ADB avec « scripts/remove-device-owner.sh ». Un APK testOnly permet en plus un dernier recours par « adb shell dpm remove-active-admin » si Vigie ne répond plus.</string>
 
     <!-- Enrollment -->
     <string name="enroll_new_title">Enrôler cet appareil</string>

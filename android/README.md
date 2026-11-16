@@ -12,16 +12,20 @@ Développeurs (ajout de collecteurs, module Device Owner) : lire **`ARCHITECTURE
 
 ## Contenu de cette version
 
+« Testé » signifie ici : tests JVM dans l'environnement de développement. **Rien n'a été exécuté sur un
+téléphone ni sur un émulateur** (voir la dernière section).
+
 | Élément | État |
 |---|---|
-| Tampon Room (`seq` transactionnel, plafond 200 Mio / 30 j, purge « plus anciens de plus faible sévérité » + `agent.buffer_overflow`) | fait, testé (JVM) |
+| Tampon Room (`seq` transactionnel, plafond 200 Mio / 30 j, purge « plus anciens de plus faible sévérité » + `agent.buffer_overflow`) | fait, testé |
+| Horodatage d'origine des événements relevés après coup (`app.foreground`, `net.dns`, `net.connect`, `security.log`) | fait, testé |
 | Envoi : lots ≤ 500 événements et ≤ 1 Mio gzip, suppression après accusé, 401/413/429/5xx, `Retry-After`, backoff avec gigue, « gros volumes en Wi-Fi seulement », reprise au retour du réseau | fait, testé (MockWebServer) |
-| Enrôlement `.vigie` : clé dans l'Android Keystore, jeton chiffré, mTLS, épinglage de l'AC serveur, test `GET /api/v1/ping`, désenrôlement | fait ; analyse et mTLS testés sur JVM, Keystore Android **non testé** |
+| Enrôlement `.vigie` : clé dans l'Android Keystore, jeton chiffré, mTLS, épinglage de l'AC serveur, test `GET /api/v1/ping`, désenrôlement | fait ; analyse et mTLS testés, Keystore Android **non testé** |
 | Service de premier plan (`specialUse` + `location`), démarrage au boot et après mise à jour, redémarrage (sticky + maintenance 15 min), `agent.started/stopped/heartbeat/collector_error/config_changed` | fait, non testé sur appareil |
-| Collecteurs `location` (GPS + passif, cadence adaptative, `mock`), `device` (écran, batterie, économie d'énergie, boot/arrêt, inventaire, stockage, heure/fuseau, mode avion, thermique), `heartbeat` | faits ; logique testée sur JVM |
-| Device Owner minimal : récepteur d'administration, auto-attribution des permissions, protection contre l'arrêt forcé, `agent.tamper` | fait, non testé sur appareil |
-| Interface Material 3 (Accueil, Collecteurs, Journal local, Réglages, Enrôlement, emplacement « Politique ») | faite, non testée sur appareil |
-| Moteur de politique (DNS privé, paquets, restrictions), journaux réseau/sécurité, autres collecteurs | **pas dans ce lot** |
+| 21 collecteurs : 18 sans privilège (`:collectors`) et 3 Device Owner (`:policy`), voir « Collecteurs » | faits ; logique et conformité au contrat testées, comportement réel non testé |
+| Device Owner : récepteur d'administration, auto-attribution des permissions et protection contre l'arrêt forcé (avec `security.policy`), `agent.tamper`, retrait volontaire sans fausse alerte | fait ; logique testée, non testé sur appareil |
+| Politique Device Owner : profils, DNS privé imposé et repli, paquets, permissions, restrictions, réglages, VPN permanent, « Tout rétablir », retrait du Device Owner, issue de secours ADB | fait ; moteur testé contre une passerelle factice, non testé sur appareil |
+| Interface Material 3 (Accueil, Collecteurs avec réglages par collecteur, Journal local, Réglages, Enrôlement, Politique) | faite, non testée sur appareil |
 
 ## Versions et outillage
 
@@ -65,7 +69,7 @@ git). On peut aussi fournir `VIGIE_KEYSTORE_FILE`, `VIGIE_KEYSTORE_PASSWORD`, `V
 
 | Paramètre | Défaut | Rôle |
 |---|---|---|
-| `-Pvigie.testOnly=true\|false` | `true` | `android:testOnly`. `true` permet de retirer le Device Owner par `adb shell dpm remove-active-admin` et impose `adb install -t` (les scripts le font). `false` : seul l'app pourra retirer le rôle. |
+| `-Pvigie.testOnly=true\|false` | `true` | `android:testOnly`. Impose `adb install -t` (les scripts le font). `true` garde un dernier recours si l'app ne démarre plus : `adb shell dpm remove-active-admin` (voir « Retirer le Device Owner »). `false` : seul Vigie (écran Politique ou issue de secours ADB) pourra retirer le rôle, ou une réinitialisation. |
 | `-Pvigie.versionCode=N` | `1` | À **augmenter** à chaque mise à jour. |
 | `-Pvigie.versionName=x.y.z` | `0.1.0` | Version affichée et envoyée (`agent_version`). |
 
@@ -84,9 +88,14 @@ Avec plusieurs appareils connectés : `export ANDROID_SERIAL=…` / `$env:ANDROI
    (Google, Samsung, messageries…), activez, puis rajoutez-les : le Device Owner ne l'interdit pas.
    Effets connus du mode Device Owner : sauvegarde Android coupée (réactivable), Dossier sécurisé, Dual
    Messenger et espace privé indisponibles, mention « appareil géré ».
-4. **Ouvrir Vigie** : en Device Owner, l'app s'accorde ses permissions (localisation, notifications…) et
-   active la protection contre l'arrêt forcé. Sans Device Owner (mode dégradé), accorder les permissions
-   depuis l'onglet Collecteurs, ou `./scripts/grant-adb-permissions.sh`.
+4. **Ouvrir Vigie** : en Device Owner, l'app s'accorde ses permissions d'exécution (localisation,
+   notifications, Bluetooth, téléphone…) et active la protection contre l'arrêt forcé (chaque action émet
+   `security.policy`). Sans Device Owner (mode dégradé), accorder les permissions depuis l'onglet
+   Collecteurs. Dans les deux cas, `./scripts/grant-adb-permissions.sh` accorde aussi celles qui ne
+   s'obtiennent que par ADB : accès à l'utilisation (`PACKAGE_USAGE_STATS` + app-op : `net_usage`,
+   `foreground`), `WRITE_SECURE_SETTINGS` (réglage anti-pistage de la politique), `DUMP` (attribution
+   expérimentale caméra/micro, désactivée par défaut). En mode dégradé il accorde aussi les permissions
+   d'exécution (`BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, `READ_PHONE_STATE`, localisation…).
 5. **Batterie** : `./scripts/battery-exemptions.sh`, puis à la main sur Samsung : Paramètres › Batterie ›
    Limites d'utilisation en arrière-plan › Applications jamais en veille › Vigie.
 6. **Réactiver** le Blocage automatique si souhaité (son interaction avec un Device Owner tiers n'est pas
@@ -118,11 +127,23 @@ Même clé de signature obligatoire, `versionCode` strictement croissant. L'agen
 
 ## Retirer le Device Owner et désinstaller
 
-1. (Lots suivants) défaire la politique depuis l'écran « Politique » de l'app.
-2. `./scripts/remove-device-owner.sh [--uninstall]` (`-Uninstall` en PowerShell) : `dpm remove-active-admin`,
-   possible **uniquement** avec un APK `testOnly`. Avec un APK non testOnly, seule l'app pourra retirer le
-   rôle (fonction prévue avec le moteur de politique) ou une réinitialisation.
-3. La sauvegarde Android peut ensuite être réactivée dans les Paramètres.
+**Chemin recommandé** : dans l'app, écran **Politique › Retirer le Device Owner** (confirmation). Vigie défait
+toute sa politique, coupe les journaux réseau et sécurité, retire la protection contre l'arrêt forcé, émet
+`security.policy` `device_owner_cleared`, puis abandonne le rôle (`clearDeviceOwnerApp`). Le retrait étant
+annoncé, il n'est **pas** signalé comme `agent.tamper`. Fonctionne avec tout APK, testOnly ou non. On peut
+ensuite désinstaller Vigie normalement et réactiver la sauvegarde Android dans les Paramètres.
+
+Replis, du plus au moins recommandé :
+
+1. **Sans l'interface, par ADB** : `./scripts/remove-device-owner.sh [--uninstall]` (`-Uninstall` en
+   PowerShell). Il envoie à Vigie le même ordre que l'écran, par l'issue de secours (voir « Issue de secours
+   sans interface »), puis vérifie que le rôle a disparu. `rescue-revert.sh --remove-owner` y renvoie.
+2. **Si Vigie ne répond plus** (app qui ne démarre pas) et que l'APK est **testOnly** : le même script
+   propose alors `adb shell dpm remove-active-admin`. Vigie ne défait rien elle-même dans ce cas : le script
+   liste les paquets qu'elle avait masqués ou suspendus et propose `pm unhide` / `pm unsuspend` ; le retrait
+   est signalé par `agent.tamper` (`admin_disabled`, `device_owner_lost`), ce qui est attendu.
+3. APK non testOnly et app inutilisable : mettre à jour l'app (même clé de signature) pour la réparer, sinon
+   réinitialisation du téléphone.
 
 ## Fonctionnement (résumé)
 
@@ -141,13 +162,23 @@ Même clé de signature obligatoire, `versionCode` strictement croissant. L'agen
   `network_security_config.xml` : une AC serveur privée n'a pas de SCT. L'app ne contacte que l'hôte enrôlé
   et, en mode AC privée, l'épinglage est plus strict que la CT.
 - **`agent.tamper`** : demande ou désactivation de l'administrateur, permission retirée, arrêt forcé détecté
-  (`ApplicationExitInfo`), perte du rôle Device Owner.
+  (`ApplicationExitInfo`), perte du rôle Device Owner. Un retrait volontaire par l'app (écran Politique ou
+  issue de secours ADB) est annoncé au préalable : il produit `security.policy` `device_owner_cleared` et
+  aucun `agent.tamper`.
+- **Horodatage** : `ts` est l'heure de l'événement. Pour les événements que le système livre après coup
+  (`app.foreground`, `net.dns`, `net.connect`, `security.log`), c'est l'heure d'origine donnée par le système
+  (pour un regroupement, la première occurrence ; `count` et `last_event_ts` dans `data`), et `elapsed_ms`
+  est estimé pour cet instant (0 si l'événement précède le démarrage en cours). `seq` reste l'ordre
+  d'émission : `ts` n'est donc pas forcément croissant avec `seq`.
 
 ## Collecteurs
 
-Chaque collecteur est désactivable dans l'onglet Collecteurs ; s'il lui manque une capacité, il s'affiche
-« indisponible » avec la raison. Permissions « ADB » : `./scripts/grant-adb-permissions.sh`. Noms de types et
-de champs : `docs/contrat/contrat.md` §2 (vérifiés par les tests JVM de `:collectors`).
+L'onglet Collecteurs liste les 21 collecteurs (18 de `:collectors` puis les 3 de `:policy`) : interrupteur,
+état (actif, désactivé, activé mais agent arrêté, indisponible avec la raison), permissions manquantes,
+types émis et **réglages propres** au collecteur. Y sont signalés « Désactivé par défaut » (`wifi_scan`),
+« Device Owner requis » (journaux) et « Réglage expérimental » (attribution caméra/micro). Permissions « ADB » :
+`./scripts/grant-adb-permissions.sh`. Noms de types, de champs et types des valeurs : `docs/contrat/contrat.md`
+§2 et ses précisions, vérifiés par les tests JVM (référence unique `Contract` du banc de test partagé).
 
 | Collecteur (id) | Émet | Capacité requise | Coût |
 |---|---|---|---|
@@ -189,8 +220,8 @@ Détails et limites :
   installation d'apps inconnues, accès à l'utilisation (app-op de chaque app qui demande la permission) ;
   `vpn_apps` = apps qui **déclarent** un VpnService (le propriétaire du VPN actif n'est pas visible) ;
   `default_apps` : navigateur, accueil, téléphone, SMS, clavier, assistant et saisie automatique si lisibles.
-- **`app.foreground`** : l'horodatage est celui du relevé (≤ 60 s de retard), le contrat n'ayant pas de champ
-  pour l'heure d'origine.
+- **`app.foreground`** : `ts` est l'heure de l'événement d'usage donnée par le système, pas celle du relevé
+  (qui peut avoir jusqu'à 60 s de retard).
 - **Attribution expérimentale** (réglage « Attribution expérimentale (DUMP) » des collecteurs Caméra et
   Microphone, désactivé par défaut) : avec `DUMP` accordée par ADB, `Debug.dumpService("appops", --op …)` est
   analysé pour remplir `package` quand une seule app utilise la caméra ou le micro. Format texte non garanti,
@@ -221,8 +252,9 @@ l'erreur et n'empêche pas les autres éléments. Aucune politique ne vient du s
 
 Ces trois collecteurs sont actifs par défaut (comme tout collecteur). Couper `network_log` ou `security_log`
 dans l'onglet Collecteurs coupe aussi la journalisation du système (`security.policy` `network_logging` /
-`security_logging`). Le journal réseau fait afficher par Android la mention « réseau surveillé ». `event_ts`
-porte l'heure d'origine d'une entrée de journal (le `ts` de l'événement est l'heure de récupération).
+`security_logging`). Le journal réseau fait afficher par Android la mention « réseau surveillé ». Le `ts` d'un
+`net.dns`, `net.connect` ou `security.log` est l'heure d'origine de l'entrée (première occurrence s'il y a
+regroupement), pas l'heure de récupération.
 
 ### Profils
 
@@ -289,14 +321,14 @@ un VPN fiable).
 - **Retirer le Device Owner** (confirmation + case « J'ai compris ») : tout rétablir, couper journaux réseau
   et sécurité, retirer la protection contre l'arrêt forcé, `device_owner_cleared`, puis
   `clearDeviceOwnerApp`. S'arrête avant le retrait si quelque chose n'a pas pu être rétabli (« Retirer quand
-  même » possible). Fonctionne aussi avec un APK non testOnly. `agent.tamper` `device_owner_lost` suit
-  (attendu).
+  même » possible). Fonctionne aussi avec un APK non testOnly. Le retrait est annoncé à l'agent : pas
+  d'`agent.tamper` (voir « Retirer le Device Owner et désinstaller »).
 
 ### Issue de secours sans interface (ADB)
 
 ```bash
-./scripts/rescue-revert.sh                  # « Tout rétablir »   (PowerShell : .\scripts\rescue-revert.ps1)
-./scripts/rescue-revert.sh --remove-owner   # + retirer le Device Owner (-RemoveOwner)
+./scripts/rescue-revert.sh          # « Tout rétablir », Vigie reste Device Owner (PowerShell : .\scripts\rescue-revert.ps1)
+./scripts/remove-device-owner.sh    # + retirer le Device Owner (= rescue-revert.sh --remove-owner)
 ```
 
 Le script envoie une diffusion explicite à `…policy.rescue.RescueReceiver`. Ce récepteur exige que
@@ -306,8 +338,9 @@ peut l'obtenir, même par `pm grant` ; seuls le shell ADB (qui la détient pour 
 peuvent déclencher l'ordre. Le récepteur ne peut que **défaire**. Résultat rendu à `am broadcast` : 1 tout
 rétabli, 2 partiel (détail), 3 Vigie n'est plus Device Owner (le script propose alors `pm unhide` /
 `pm unsuspend` pour les paquets qu'elle avait désactivés), 4 délai dépassé (l'opération continue).
-Dernier recours si l'app ne démarre plus du tout : `adb shell pm unhide <paquet>` pour chaque paquet de
-l'écran (liste dans le catalogue), puis `remove-device-owner.sh` (APK testOnly).
+Codes de sortie de `rescue-revert` : ceux ci-dessus, et 5 si Vigie ne répond pas. Si l'app ne démarre plus du
+tout, `remove-device-owner.sh` propose le repli `dpm remove-active-admin` (APK testOnly), puis les
+`pm unhide` / `pm unsuspend` nécessaires.
 
 ### À vérifier sur le téléphone avant d'appliquer un profil
 
@@ -322,18 +355,36 @@ l'écran (liste dans le catalogue), puis `remove-device-owner.sh` (APK testOnly)
 ## Ce qui est vérifié, ce qui ne l'est pas
 
 Vérifié dans l'environnement de développement (Linux, sans émulateur ni appareil) :
-`./gradlew lint test assembleDebug assembleRelease` réussit ; 73 tests JVM (tampon Room sur SQLite JVM :
-séquence après redémarrage, transaction interrompue, purge par sévérité/âge ; envoi contre MockWebServer :
-tous les codes du contrat, gzip, lots, 1 Mio, Wi-Fi, reprise ; sérialisation exacte du §1 ; analyse des
-fichiers `.vigie` et mTLS avec épinglage ; isolation des pannes des collecteurs) ; APK release signé (schéma v3, vérifié par `apksigner`)
-et manifeste fusionné inspectés (aucun service d'écoute des notifications, d'accessibilité, SMS, journal
-d'appels ni superposition).
+
+- `./gradlew lint test assembleDebug assembleRelease` réussit (lint : 0 erreur, avertissements de style
+  `UseKtx`/versions seulement).
+- 180 tests JVM : `:core` 73 (tampon Room sur SQLite JVM : séquence après redémarrage, transaction
+  interrompue, purge par sévérité/âge, horodatage d'origine non monotone ; envoi contre MockWebServer : tous
+  les codes du contrat, gzip, lots, 1 Mio, Wi-Fi, reprise ; sérialisation exacte du §1 ; fichiers `.vigie` et
+  mTLS avec épinglage ; isolation des pannes des collecteurs ; annonce du retrait du Device Owner ; banc de
+  test), `:collectors` 57 (logique de chaque collecteur, conformité au contrat), `:policy` 46 (traduction du
+  journal de sécurité, journaux réseau, posture, moteur de politique contre une passerelle factice,
+  catalogue, DNS), `:app` 4 (conformité au contrat de bout en bout des 21 collecteurs, y compris
+  `agent.heartbeat.collectors`).
+- APK release : signé en schéma v3 (`apksigner verify`) ; après R8, classes du manifeste, base Room
+  (`OutboxDatabase_Impl`), workers et sérialiseurs générés de toutes les classes `@Serializable` présents
+  sous leur nom (`apkanalyzer dex packages`) ; catalogue `raw/policy_catalog` et `xml/device_admin` conservés
+  par la réduction des ressources (`aapt2 dump resources`). Le code R8 lui-même n'a pas été exécuté.
+- Manifeste fusionné (`aapt2 dump permissions`) : aucune permission ni service d'écoute des notifications,
+  d'accessibilité, de SMS, de journal d'appels ou de superposition ; chaque permission déclarée est utilisée
+  par un module (les trois accordables seulement par ADB : `PACKAGE_USAGE_STATS`, `WRITE_SECURE_SETTINGS`,
+  `DUMP`).
+- Scripts bash : syntaxe vérifiée (`bash -n`), relus contre le code (paquet, composants, action de l'issue de
+  secours, option `-t`).
 
 **Non vérifié** (aucun appareil) : tout le comportement sur téléphone — activation Device Owner sur S25+,
-auto-attribution des permissions, `setUserControlDisabledPackages`, démarrage au boot et survie du service
-24 h, import réel dans l'Android Keystore et handshake TLS avec une clé Keystore (Conscrypt), réception des
-diffusions, GPS et capteur de mouvement significatif, consommation batterie, rendu de l'interface,
-désactivation de la CT par `network_security_config`, scripts ADB (relus, non exécutés ; les scripts
-PowerShell n'ont pas été exécutés du tout). Robolectric n'a pas pu être utilisé (ses jars Android sont servis
-par un miroir inaccessible depuis l'environnement de développement) : les classes Android sont remplacées par
-des stubs dans les tests.
+auto-attribution des permissions, `setUserControlDisabledPackages`, retrait du Device Owner et absence de
+fausse alerte, démarrage au boot et survie du service 24 h, import réel dans l'Android Keystore et handshake
+TLS avec une clé Keystore (Conscrypt), réception des diffusions, journaux réseau et sécurité réels, GPS et
+capteur de mouvement significatif, consommation batterie, rendu de l'interface, désactivation de la CT par
+`network_security_config`, politique (profils, DNS privé, repli), issue de secours ADB. Scripts ADB relus,
+non exécutés ; les scripts PowerShell n'ont été ni exécutés ni analysés (pas de PowerShell dans
+l'environnement). Robolectric n'a pas pu être utilisé (ses jars Android sont servis par un miroir
+inaccessible depuis l'environnement de développement) : les classes Android sont remplacées par des stubs
+dans les tests ; les types produits uniquement depuis un rappel Android (écran, batterie, localisation…) sont
+vérifiés par relecture, pas par test.

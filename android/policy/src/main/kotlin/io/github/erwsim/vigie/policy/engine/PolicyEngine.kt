@@ -70,8 +70,10 @@ class PolicyEngine(
     private val sink: () -> EventSink?,
     /** Private DNS host from the enrollment (`private_dns_host`), null if none. */
     private val dnsHost: () -> String?,
-    /** Called right before `clearDeviceOwnerApp` (flush pending events). */
+    /** Called right before `clearDeviceOwnerApp`: announce the voluntary removal, flush pending events. */
     private val beforeClearOwner: () -> Unit = {},
+    /** Called right after `clearDeviceOwnerApp` with its outcome (true: no longer Device Owner). */
+    private val afterClearOwner: (cleared: Boolean) -> Unit = {},
 ) {
     private val lock = Any()
 
@@ -585,6 +587,7 @@ class PolicyEngine(
         safe { beforeClearOwner() }
         val error = attempt { gateway.clearDeviceOwner(); null }
         val cleared = !isDeviceOwner()
+        safe { afterClearOwner(cleared) }
         if (!cleared) report += outcome("device_owner_cleared", OWNER_TARGET, null, false, error ?: "toujours Device Owner")
         report
     }

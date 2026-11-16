@@ -31,7 +31,8 @@ class VigieAdminReceiver : DeviceAdminReceiver() {
 
     override fun onDisabled(context: Context, intent: Intent) {
         Agent.getOrNull()?.let { agent ->
-            agent.integrity.tamper("admin_disabled", context.packageName)
+            // Not tampering when the app removed its own role (announced by PolicyEngine.removeDeviceOwner).
+            agent.integrity.onAdminDisabled(context.packageName)
             agent.sink.flushBlocking(1_000)
             agent.host.reconcile()
         }

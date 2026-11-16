@@ -40,7 +40,7 @@ open class Capabilities(private val context: Context) {
         context.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(context.packageName) == true
 
     /** Runtime ("dangerous") permissions requested by the merged manifest of the APK. */
-    fun declaredRuntimePermissions(): List<String> {
+    open fun declaredRuntimePermissions(): List<String> {
         val pm = context.packageManager
         val requested = try {
             pm.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong()))
