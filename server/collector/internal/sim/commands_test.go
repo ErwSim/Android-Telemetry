@@ -64,6 +64,20 @@ func TestAgentChecks(t *testing.T) {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)
 		}
 	}
+	// Validity bounds of the agent: 24 hours for wipe, 30 days otherwise ("expired" beyond).
+	wiper, err := NewCommandAgent(nil, AgentOptions{DeviceID: dev, Code: testCode, AllowWipe: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		typ  string
+		ttl  time.Duration
+		want string
+	}{{"wipe", 24 * time.Hour, ""}, {"wipe", 25 * time.Hour, "expired"}, {"lock", 30 * 24 * time.Hour, ""}, {"lock", 31 * 24 * time.Hour, "expired"}} {
+		if _, got := wiper.Check(signedCmd(t, wiper.key, dev, c.typ, `{}`, now, now.Add(c.ttl))); got != c.want {
+			t.Errorf("%s valid %s: %q, want %q", c.typ, c.ttl, got, c.want)
+		}
+	}
 	a.seen = append(a.seen, good.ID)
 	if _, got := a.Check(good); got != "replay" {
 		t.Fatalf("replay: %q", got)

@@ -200,6 +200,8 @@ func TestCommandValidation(t *testing.T) {
 	_, lock := mk("lock", `{"message":"Perdu"}`, now, now.Add(7*24*time.Hour))
 	_, ring := mk("ring", `{}`, now, now.Add(time.Hour))
 	_, wipe := mk("wipe", `{}`, now, now.Add(time.Hour))
+	_, wipeLong := mk("wipe", `{}`, now, now.Add(24*time.Hour+time.Second))
+	_, lockSep := mk("lock", `{"message":"a\u2028b"}`, now, now.Add(time.Hour))
 	_, late := mk("ring", `{}`, now.Add(-2*time.Hour), now.Add(-time.Hour))
 	_, old := mk("ring", `{}`, now.Add(-time.Hour), now.Add(time.Hour))
 	_, long := mk("ring", `{}`, now, now.Add(31*24*time.Hour))
@@ -219,6 +221,8 @@ func TestCommandValidation(t *testing.T) {
 		{"expired", map[string]any{"device_id": dev, "payload": late}, 400, "expired"},
 		{"issued long ago", map[string]any{"device_id": dev, "payload": old}, 400, "invalid_validity"},
 		{"validity > 30 days", map[string]any{"device_id": dev, "payload": long}, 400, "invalid_validity"},
+		{"wipe valid > 24 h", map[string]any{"device_id": dev, "payload": wipeLong, "sig": sig}, 400, "invalid_validity"},
+		{"lock message with U+2028", map[string]any{"device_id": dev, "payload": lockSep, "sig": sig}, 400, "bad_params"},
 		{"bad params", map[string]any{"device_id": dev, "payload": bad}, 400, "bad_params"},
 		{"unknown type", map[string]any{"device_id": dev, "payload": unknown}, 400, "unknown_type"},
 		{"device mismatch", map[string]any{"device_id": "dev_autre", "payload": ring}, 400, "wrong_device"},
@@ -244,6 +248,11 @@ func TestCommandValidation(t *testing.T) {
 	got := e.poll(nil)
 	if len(got) != 1 || got[0].Payload != lock2 || got[0].Sig != sig {
 		t.Fatalf("relayed %+v", got)
+	}
+	// wipe: 24 hours of validity at most (security review of v1.1), accepted at the bound.
+	_, wipeDay := mk("wipe", `{}`, now, now.Add(24*time.Hour))
+	if rec := e.createCommand(c, map[string]any{"device_id": dev, "payload": wipeDay, "sig": sig}); rec.Code != http.StatusCreated {
+		t.Fatalf("wipe valid 24 h: %d %s", rec.Code, rec.Body)
 	}
 	// CSRF header and session.
 	b, _ := json.Marshal(map[string]any{"device_id": dev, "payload": ring})
@@ -697,6 +706,14 @@ func TestCommandSignatureErasedOnceFinal(t *testing.T) {
 	}
 	if got := stored(cancelled); got != store.SigErased {
 		t.Fatalf("signature kept after cancellation: %q", got)
+	}
+	// A result arriving after the cancellation still updates the state (the phone is the truth), and the
+	// signature stays erased.
+	if code := e.result(cancelled, "executed", "", nil); code != http.StatusNoContent || e.commands(c)[cancelled].Status != "executed" {
+		t.Fatalf("late result after cancellation: %d %s", code, e.commands(c)[cancelled].Status)
+	}
+	if got := stored(cancelled); got != store.SigErased {
+		t.Fatalf("signature back after a late result: %q", got)
 	}
 
 	// Expired.

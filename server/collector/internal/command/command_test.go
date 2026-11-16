@@ -89,6 +89,10 @@ func TestParseRejects(t *testing.T) {
 		"replacement char":    payload(`"type":"lock","params":{"message":"` + "�" + `"}`),
 		"expires before":      strings.Replace(payload(`"type":"ring","params":{}`), `2026-11-16T11:00:00.000Z`, `2026-11-16T09:00:00.000Z`, 1),
 		"validity > 30 days":  strings.Replace(payload(`"type":"ring","params":{}`), `2026-11-16T11:00:00.000Z`, `2026-12-17T11:00:00.000Z`, 1),
+		"wipe > 24 hours":     strings.Replace(payload(`"type":"wipe","params":{}`), `2026-11-16T11:00:00.000Z`, `2026-11-17T10:00:00.001Z`, 1),
+		"line separator":      payload(`"type":"lock","params":{"message":"a\u2028b"}`),
+		"paragraph separator": payload(`"type":"lock","params":{"message":"a` + "\u2029" + `b"}`),
+		"raw line separator":  payload(`"type":"lock","params":{"message":"a` + "\u2028" + `b"}`),
 		"bad date":            strings.Replace(payload(`"type":"ring","params":{}`), `2026-11-16T11:00:00.000Z`, `demain`, 1),
 		"missing expires":     `{"v":1,"id":"01JCQ8Z3K4M5N6P7Q8R9S0T1V2","device_id":"d","type":"ring","issued_at":"2026-11-16T10:00:00.000Z"}`,
 		"too large":           payload(`"type":"lock","params":{"message":"` + strings.Repeat(" ", MaxPayloadBytes) + `"}`),
@@ -114,6 +118,8 @@ func TestParseAccepts(t *testing.T) {
 		payload(`"type":"lock","params":{}`),
 		payload(`"type":"clear_lock_message","params":{}`),
 		payload(`"type":"wipe","params":{}`),
+		strings.Replace(payload(`"type":"wipe","params":{}`), `2026-11-16T11:00:00.000Z`, `2026-11-17T10:00:00.000Z`, 1), // 24 h exactly
+		strings.Replace(payload(`"type":"lock","params":{}`), `2026-11-16T11:00:00.000Z`, `2026-12-16T10:00:00.000Z`, 1),  // 30 days
 		" " + payload(`"type":"ring","params":{}`) + "\n",
 	}
 	for _, p := range ok {

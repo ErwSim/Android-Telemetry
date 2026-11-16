@@ -259,6 +259,12 @@ func (a *CommandAgent) Check(cmd AgentCommand) (typ, reason string) {
 	if now.After(exp.Add(5 * time.Minute)) {
 		return p.Type, "expired"
 	}
+	// Validity bounds checked by the agent (contract §8): 30 days at most, 24 hours for wipe.
+	if iss, err := time.Parse(time.RFC3339Nano, p.IssuedAt); err == nil {
+		if v := exp.Sub(iss); v > command.MaxValidity || (p.Type == command.TypeWipe && v > command.MaxWipeValidity) {
+			return p.Type, "expired"
+		}
+	}
 	a.mu.Lock()
 	for _, id := range a.seen {
 		if id == cmd.ID {
