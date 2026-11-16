@@ -139,8 +139,8 @@ Note : `app.notification` est produit par l'**APK compagnon** `:notifier` (sépa
   précède le démarrage en cours de l'appareil.
 - Types fixés : `net.cell.mcc` et `mnc` sont des chaînes, `ci` un entier ; `sensor.microphone.source` une
   chaîne ; `security.posture.always_on_vpn` un booléen ; `vendor_id`/`product_id` USB des entiers.
-- L'agent compte 21 collecteurs (18 dans `:collectors`, 3 dans `:policy`), tous présents dans
-  `agent.heartbeat.collectors`.
+- L'agent compte 22 collecteurs (19 dans `:collectors`, dont `notifications` qui dépend de l'APK compagnon,
+  et 3 dans `:policy`), tous présents dans `agent.heartbeat.collectors`.
 - Agrégation : `net.dns`, `net.connect` et `security.log` peuvent porter `count` (entier ≥ 1, défaut 1 :
   nombre d'occurrences identiques regroupées sur la fenêtre) et `last_event_ts` (heure de la dernière
   occurrence) ; `ts` est alors l'heure de la première. Les statistiques du collecteur (`/stats/top`) pondèrent
@@ -484,6 +484,10 @@ explicite (`"force": true`), la réponse `409` expliquant ce que le blocage cass
   (512 caractères au plus chacun), avec `redacted` (bool) quand un code numérique de 4 à 8 chiffres a été
   masqué (masquage activé par défaut). Une liste d'apps exclues du contenu est réglable. Les notifications
   de l'agent lui-même et les notifications permanentes (`ongoing`) répétitives ne sont pas émises.
+  `importance` est une chaîne parmi `none`/`min`/`low`/`default`/`high`/`max`. `redacted` n'est présent que
+  lorsqu'il y a du contenu et que le masquage est actif. Un événement `removed` ne porte jamais de titre ni de
+  texte. Le contenu des apps de SMS et de téléphone est exclu par défaut. Le filtrage du contenu se fait dans
+  le compagnon, avant le canal local : contenu éteint, titre et texte ne quittent pas son processus.
 - **Localisation** : réglage `mode` du collecteur `location` ∈ `gps` (défaut : GPS + passif), `gps_network`
   (ajoute le fournisseur réseau), `fused` (fournisseur fusionné). `location.fix.provider` dit le fournisseur
   réel de chaque position. L'app affiche pour chaque mode ce qui est transmis à Google.
