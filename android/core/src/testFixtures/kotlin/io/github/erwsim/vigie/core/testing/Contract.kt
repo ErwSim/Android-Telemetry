@@ -40,6 +40,13 @@ object Contract {
 
     val COLLECTOR_STATES = setOf("running", "disabled", "unavailable")
 
+    /** Contract §8: the closed list of commands and the refusal reasons (`command.result.detail` when refused). */
+    val COMMAND_TYPES = setOf("ring", "vibrate", "stop_ring", "locate", "lock", "clear_lock_message", "wipe")
+    val COMMAND_REFUSALS = setOf(
+        "disabled", "malformed", "wrong_device", "unknown_type", "no_code_configured", "bad_signature", "expired", "replay",
+        "bad_params", "not_device_owner", "locked_out",
+    )
+
     /** `security.policy.action`: §2 plus the three lists of "Précisions". */
     val POLICY_ACTIONS = setOf(
         "private_dns_set", "package_disabled", "package_enabled", "permission_denied", "restriction_set", "restriction_cleared",
@@ -163,6 +170,14 @@ object Contract {
         "security.policy" to mapOf(
             "action" to Field(Kind.STRING, POLICY_ACTIONS), "target" to S, "profile" to S, "ok" to B, "error" to S,
         ),
+        // command.* (contract §8; `type` = the closed list, or "unknown" when the payload's type is unreadable or not in it)
+        "command.result" to mapOf(
+            "command_id" to S,
+            "type" to Field(Kind.STRING, COMMAND_TYPES + "unknown"),
+            "status" to oneOf("executed", "failed", "refused"),
+            "detail" to S,
+            "signed" to B,
+        ),
     )
 
     /** `security.log.fields` per tag (contract table); a tag not listed uses `arg0`, `arg1`… */
@@ -221,6 +236,10 @@ object Contract {
             assertTrue("security.posture_change.field '$field' is not a posture field", field in fields("security.posture"))
         }
         if ("count" in data) assertTrue("$type.count must be >= 1", (data["count"] as JsonPrimitive).content.toLong() >= 1)
+        if (type == "command.result" && (data["status"] as? JsonPrimitive)?.content == "refused") {
+            val detail = (data["detail"] as? JsonPrimitive)?.content
+            assertTrue("command.result.detail '$detail' is not a refusal reason of §8", detail in COMMAND_REFUSALS)
+        }
     }
 
     private fun checkObject(path: String, data: JsonObject, spec: Map<String, Field>) {

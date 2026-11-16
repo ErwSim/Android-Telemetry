@@ -75,6 +75,10 @@ fun SettingsScreen(agent: Agent, resumeTick: Int, modifier: Modifier, navigate: 
             PolicyModule.settings.forEach { SettingRow(agent.settings, it, tick) }
             OutlinedButton(onClick = { navigate(Screen.Policy) }) { Text(stringResource(R.string.screen_policy)) }
         }
+        SectionCard(stringResource(R.string.screen_commands)) {
+            Text(stringResource(R.string.cmd_intro), style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick = { navigate(Screen.Commands) }) { Text(stringResource(R.string.action_open)) }
+        }
         SectionCard(stringResource(R.string.screen_enrollment)) {
             Text(stringResource(R.string.settings_enrollment_summary), style = MaterialTheme.typography.bodySmall)
             OutlinedButton(onClick = { navigate(Screen.Enrollment) }) { Text(stringResource(R.string.action_open)) }

@@ -4,10 +4,12 @@ import android.app.Application
 import android.util.Log
 import io.github.erwsim.vigie.collectors.CollectorsModule
 import io.github.erwsim.vigie.core.Agent
+import io.github.erwsim.vigie.core.command.CommandTypes
 import io.github.erwsim.vigie.core.settings.CoreSettings
 import io.github.erwsim.vigie.policy.PolicyModule
 import io.github.erwsim.vigie.service.AgentNotifications
 import io.github.erwsim.vigie.service.AgentService
+import io.github.erwsim.vigie.service.RemoteAlerts
 
 /**
  * Wires the modules together: every collector comes from a module entry point, so adding a
@@ -26,6 +28,13 @@ class VigieApplication : Application() {
         } ?: return
         step("policy") { PolicyModule.install(agent) }
         step("notification channel") { AgentNotifications.createChannel(this) }
+        step("remote commands") {
+            // ring / vibrate / stop_ring need no Device Owner; lock / wipe are registered by PolicyModule.install.
+            agent.commands.register(CommandTypes.RING, RemoteAlerts.ring(this))
+            agent.commands.register(CommandTypes.VIBRATE, RemoteAlerts.vibrate(this))
+            agent.commands.register(CommandTypes.STOP_RING, RemoteAlerts.stopRing(this))
+            agent.onCommandProcessed = { entry -> AgentNotifications.commandProcessed(this, entry) }
+        }
         agent.maintenanceHook = {
             PolicyModule.onAgentStarted(agent)
             if (agent.settings[CoreSettings.AGENT_ENABLED] && !AgentService.running.value) {

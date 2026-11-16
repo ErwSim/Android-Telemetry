@@ -36,6 +36,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.erwsim.vigie.R
 import io.github.erwsim.vigie.core.Agent
 import io.github.erwsim.vigie.core.collector.CollectorRunState
+import io.github.erwsim.vigie.core.command.ChannelPhase
+import io.github.erwsim.vigie.core.command.CommandSettings
 import io.github.erwsim.vigie.core.settings.CoreSettings
 import io.github.erwsim.vigie.policy.PolicyModule
 import io.github.erwsim.vigie.service.AgentService
@@ -50,6 +52,7 @@ fun HomeScreen(agent: Agent, resumeTick: Int, modifier: Modifier, navigate: (Scr
     val enrollment by agent.enrollment.state.collectAsStateWithLifecycle()
     val statuses by agent.host.statuses.collectAsStateWithLifecycle()
     val writeError by agent.sink.lastWriteError.collectAsStateWithLifecycle()
+    val channel by agent.commands.channel.channelState.collectAsStateWithLifecycle()
     var localTick by remember { mutableIntStateOf(0) }
     val tick = resumeTick + localTick
     var enabled by remember(tick) { mutableStateOf(agent.settings[CoreSettings.AGENT_ENABLED]) }
@@ -113,6 +116,21 @@ fun HomeScreen(agent: Agent, resumeTick: Int, modifier: Modifier, navigate: (Scr
                     OutlinedButton(onClick = { navigate(Screen.Enrollment) }) { Text(stringResource(R.string.action_details)) }
                 }
             }
+        }
+
+        SectionCard(stringResource(R.string.home_commands_title)) {
+            val commandsOn = remember(tick, channel) { agent.settings[CommandSettings.ENABLED] }
+            val listening = channel.phase == ChannelPhase.CONNECTED || channel.phase == ChannelPhase.POLL_IDLE
+            StatusLine(
+                stringResource(R.string.cmd_state),
+                stringResource(CommandLabels.phase(if (commandsOn) channel.phase else ChannelPhase.OFF)),
+                when {
+                    !commandsOn -> Tone.NEUTRAL
+                    listening -> Tone.OK
+                    else -> Tone.WARN
+                },
+            )
+            OutlinedButton(onClick = { navigate(Screen.Commands) }) { Text(stringResource(R.string.action_details)) }
         }
 
         SectionCard(stringResource(R.string.home_owner_title)) {

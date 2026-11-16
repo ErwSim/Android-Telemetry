@@ -14,6 +14,8 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Android 17 (targetSdk 37): needed only if the ingest server is on a private network (LAN, WireGuard). -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+    <!-- Remote commands "ring" and "vibrate" (contract §8). Normal permission. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:name=".VigieApplication"
@@ -46,6 +48,11 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Personal security telemetry agent installed by the device owner: continuously records device security events (screen, battery, connectivity, security logs) and uploads them to the owner's own server. A persistent notification shows what is collected." />
         </service>
+
+        <!-- "Arrêter" of the remote ringing notification. Not exported: only this app's PendingIntent reaches it. -->
+        <receiver
+            android:name=".service.RingStopReceiver"
+            android:exported="false" />
 
         <receiver
             android:name=".service.BootReceiver"

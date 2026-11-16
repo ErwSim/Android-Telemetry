@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Remote commands (contract §8). -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="fr">
+    <string name="screen_commands">Commandes à distance</string>
+
+    <!-- Permanent notification and notification channels -->
+    <string name="notif_commands">commandes à distance : %1$s</string>
+    <string name="notif_commands_listening">à l\'écoute</string>
+    <string name="cmd_channel_alert_name">Sonnerie à distance</string>
+    <string name="cmd_channel_alert_description">Affichée pendant qu\'une commande à distance fait sonner ou vibrer le téléphone, avec un bouton pour l\'arrêter.</string>
+    <string name="cmd_channel_name">Commandes à distance reçues</string>
+    <string name="cmd_channel_description">Une notification pour chaque commande à distance reçue, exécutée ou refusée.</string>
+    <string name="cmd_notif_ringing_title">Vigie fait sonner ce téléphone</string>
+    <string name="cmd_notif_ringing_text">Demandé à distance par le propriétaire. Touchez pour arrêter.</string>
+    <string name="cmd_notif_stop">Arrêter</string>
+    <string name="cmd_notif_processed_title">Commande à distance</string>
+    <string name="cmd_notif_processed_text">%1$s : %2$s à %3$s</string>
+
+    <!-- Types, outcomes, reasons -->
+    <string name="cmd_type_ring">Sonner</string>
+    <string name="cmd_type_vibrate">Vibrer</string>
+    <string name="cmd_type_stop_ring">Arrêter la sonnerie</string>
+    <string name="cmd_type_locate">Localiser</string>
+    <string name="cmd_type_lock">Verrouiller</string>
+    <string name="cmd_type_clear_lock_message">Effacer le message de verrouillage</string>
+    <string name="cmd_type_wipe">Effacer le téléphone</string>
+    <string name="cmd_type_unknown">Commande inconnue</string>
+    <string name="cmd_status_executed">exécutée</string>
+    <string name="cmd_status_failed">échouée</string>
+    <string name="cmd_status_refused">refusée</string>
+    <string name="cmd_refusal_disabled">canal coupé, ou effacement à distance non autorisé sur le téléphone</string>
+    <string name="cmd_refusal_malformed">commande mal formée</string>
+    <string name="cmd_refusal_wrong_device">destinée à un autre appareil</string>
+    <string name="cmd_refusal_unknown_type">type de commande inconnu</string>
+    <string name="cmd_refusal_no_code">aucun code de commande défini sur le téléphone</string>
+    <string name="cmd_refusal_bad_signature">signature invalide (mauvais code, ou commande non émise par vous)</string>
+    <string name="cmd_refusal_expired">expirée</string>
+    <string name="cmd_refusal_replay">déjà reçue (rejeu)</string>
+    <string name="cmd_refusal_bad_params">paramètres hors bornes</string>
+    <string name="cmd_refusal_not_device_owner">Vigie n\'est pas Device Owner</string>
+    <string name="cmd_refusal_locked_out">commandes sensibles bloquées une heure après 5 signatures invalides</string>
+    <string name="cmd_detail_dnd">« Ne pas déranger » coupe les alarmes : vibration et notification seulement</string>
+    <string name="cmd_detail_no_fix">aucune position en 60 s</string>
+    <string name="cmd_detail_location_unavailable">collecteur de localisation désactivé ou sans permission</string>
+
+    <!-- Channel states -->
+    <string name="cmd_phase_off">désactivé</string>
+    <string name="cmd_phase_not_enrolled">non enrôlé</string>
+    <string name="cmd_phase_waiting_network">en attente de réseau</string>
+    <string name="cmd_phase_connecting">connexion…</string>
+    <string name="cmd_phase_connected">connecté (connexion permanente)</string>
+    <string name="cmd_phase_poll_idle">interrogation périodique</string>
+    <string name="cmd_phase_backoff">nouvel essai plus tard</string>
+    <string name="cmd_phase_refused">refusé par le serveur : réenrôler ou « Reconnecter »</string>
+    <string name="cmd_phase_unsupported">serveur sans canal de commandes</string>
+
+    <!-- Screen -->
+    <string name="cmd_intro">Votre serveur peut demander à ce téléphone de sonner, vibrer, se localiser, se verrouiller avec un message ou s\'effacer — rien d\'autre : aucune commande ne peut changer un réglage, la politique ou l\'enrôlement. Chaque commande reçue est affichée en notification et dans l\'historique ci-dessous.</string>
+    <string name="cmd_section_channel">Canal</string>
+    <string name="cmd_enabled">Recevoir les commandes à distance</string>
+    <string name="cmd_enabled_summary">Coupé : le téléphone ne contacte plus le serveur pour les commandes.</string>
+    <string name="cmd_mode">Mode</string>
+    <string name="cmd_mode_summary">À mesurer sur votre téléphone : la connexion permanente réveille la radio à chaque message de maintien du serveur (toutes les 2 min).</string>
+    <string name="cmd_mode_stream">Connexion permanente (par défaut)</string>
+    <string name="cmd_mode_stream_desc">Commande reçue en quelques secondes. Consommation : une connexion ouverte en continu.</string>
+    <string name="cmd_mode_poll">Interrogation périodique</string>
+    <string name="cmd_mode_poll_desc">Le téléphone demande s\'il y a des commandes à l\'intervalle choisi (et à chaque envoi d\'événements). En veille profonde, l\'intervalle réel peut s\'allonger.</string>
+    <string name="cmd_poll_interval">Intervalle d\'interrogation</string>
+    <string name="cmd_state">État</string>
+    <string name="cmd_last_contact">Dernier contact</string>
+    <string name="cmd_last_error">Dernière erreur</string>
+    <string name="cmd_next_attempt">Prochain essai</string>
+    <string name="cmd_reconnect">Reconnecter</string>
+
+    <string name="cmd_section_code">Code de commande</string>
+    <string name="cmd_code_explain">Ce code n\'est connu que de ce téléphone et de vous : le serveur ne le reçoit jamais et ne peut donc ni verrouiller ni effacer ce téléphone sans lui. Il vous sera demandé dans la console à chaque commande sensible (verrouiller, effacer le message, effacer). Le téléphone n\'en garde qu\'une clé dérivée, chiffrée. 12 caractères au moins ; une phrase de passe est idéale.</string>
+    <string name="cmd_code_set">Défini le %1$s</string>
+    <string name="cmd_code_unset">Non défini : verrouiller et effacer sont refusés</string>
+    <string name="cmd_code_stale">À ressaisir : l\'identifiant de l\'appareil a changé depuis</string>
+    <string name="cmd_code_not_enrolled">Enrôlez d\'abord l\'appareil : le code dépend de son identifiant.</string>
+    <string name="cmd_code_field">Nouveau code</string>
+    <string name="cmd_code_confirm">Confirmer le code</string>
+    <string name="cmd_code_save">Enregistrer le code</string>
+    <string name="cmd_code_change">Changer le code</string>
+    <string name="cmd_code_saving">Calcul de la clé…</string>
+    <string name="cmd_code_saved">Code enregistré. Saisissez exactement le même dans la console.</string>
+    <string name="cmd_code_too_short">12 caractères au moins.</string>
+    <string name="cmd_code_mismatch">Les deux saisies diffèrent.</string>
+    <string name="cmd_code_delete">Supprimer le code</string>
+    <string name="cmd_code_deleted">Code supprimé ; l\'effacement à distance est de nouveau interdit.</string>
+
+    <string name="cmd_section_wipe">Effacement à distance</string>
+    <string name="cmd_wipe_allow">Autoriser l\'effacement à distance</string>
+    <string name="cmd_wipe_summary">Désactivé par défaut. Activé, une commande « effacer » signée avec votre code remet le téléphone à zéro : toutes les données sont perdues, définitivement. La protection contre la réinitialisation (compte Google) et les eSIM sont conservées.</string>
+    <string name="cmd_wipe_needs_code">Définissez d\'abord un code de commande.</string>
+    <string name="cmd_wipe_confirm_title">Autoriser l\'effacement à distance ?</string>
+    <string name="cmd_wipe_confirm_text">Une commande signée avec votre code de commande pourra réinitialiser ce téléphone aux paramètres d\'usine, sans autre confirmation sur le téléphone. C\'est irréversible : photos, messages et applications seront perdus s\'ils ne sont pas sauvegardés ailleurs.\n\nPour confirmer, tapez EFFACER.</string>
+    <string name="cmd_wipe_confirm_word">EFFACER</string>
+    <string name="cmd_wipe_confirm_action">Autoriser</string>
+
+    <string name="cmd_section_lock_message">Message de l\'écran de verrouillage</string>
+    <string name="cmd_lock_message_none">Aucun message posé par une commande.</string>
+    <string name="cmd_lock_message_clear">Effacer le message</string>
+    <string name="cmd_lock_message_needs_owner">Verrouiller et afficher un message exigent que Vigie soit Device Owner.</string>
+
+    <string name="cmd_section_history">Commandes reçues</string>
+    <string name="cmd_history_empty">Aucune commande reçue.</string>
+    <string name="cmd_history_signed">signée</string>
+
+    <string name="home_commands_title">Commandes à distance</string>
+</resources>

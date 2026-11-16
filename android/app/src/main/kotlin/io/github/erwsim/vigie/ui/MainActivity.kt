@@ -44,6 +44,7 @@ enum class Screen(val titleRes: Int, val topLevel: Boolean) {
     Settings(R.string.nav_settings, true),
     Enrollment(R.string.screen_enrollment, false),
     Policy(R.string.screen_policy, false),
+    Commands(R.string.screen_commands, false),
 }
 
 class MainActivity : ComponentActivity() {
@@ -130,6 +131,7 @@ fun VigieApp() {
             Screen.Settings -> SettingsScreen(agent, resumeTick, modifier, ::navigate)
             Screen.Enrollment -> EnrollmentScreen(agent, modifier)
             Screen.Policy -> PolicyScreen(agent, resumeTick, modifier)
+            Screen.Commands -> CommandsScreen(agent, resumeTick, modifier)
         }
     }
 }

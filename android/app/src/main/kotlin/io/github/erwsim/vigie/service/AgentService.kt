@@ -81,12 +81,15 @@ class AgentService : Service() {
         agent.host.startAll()
         agent.startNetworkWatch()
         agent.ensureBackgroundWork()
+        // Remote commands: the loop idles while the channel is switched off (no connection at all).
+        agent.commands.channel.start()
         scope.launch {
             while (isActive) {
                 updateNotification(agent)
                 delay(NOTIFICATION_REFRESH_MS)
             }
         }
+        scope.launch { agent.commands.channel.channelState.collect { updateNotification(agent) } }
     }
 
     private fun updateNotification(agent: Agent) {
@@ -137,6 +140,7 @@ class AgentService : Service() {
                 put("agent_version", agent.agentVersion)
             }
             agent.host.stopAll()
+            agent.commands.channel.stop()
             agent.stopNetworkWatch()
             agent.sink.flushBlocking(2_000)
         }
