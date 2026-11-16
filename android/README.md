@@ -491,8 +491,9 @@ bloquent les commandes sensibles une heure (persistant). Anti-rejeu persistant :
 peut pas faire sortir un `id` signé de sa fenêtre). Précisions retenues là où le contrat se tait : clé inconnue
 au premier niveau de `payload` ou `expires_at` antérieur à `issued_at` → `malformed` ; validité de plus de
 30 jours ou `issued_at` à plus de 5 min dans le futur → `expired` ; `sig` sur une commande simple →
-`malformed` ; contrôle de longueur du message en unités UTF-16 (comme la console) ; caractères de contrôle
-du message affichés comme des espaces. Le vecteur de test du §8 est reproduit à l'octet près
+`malformed` ; `payload` avec une clé en double (même cachée derrière un échappement `\u`) → `malformed` ;
+message de `lock` : 200 unités UTF-16 au plus, aucun caractère de contrôle sauf le saut de ligne
+(`bad_params`, revérifié par l'agent : le serveur n'est pas de confiance). Le vecteur de test du §8 est reproduit à l'octet près
 (`CommandVerifierTest`).
 
 ### Effacement à distance : garde-fous
@@ -549,8 +550,11 @@ combinaisons des six conditions (une seule efface) et, dans les sources, qu'aucu
   6 h) ; un flux qui meurt aussitôt ouvert compte comme un échec ; un flux qui a vécu est rouvert après 2 à 10 s.
   **`401`/`403` arrête tout** et l'écran l'affiche (« refusé par le serveur ») jusqu'à un réenrôlement, un
   changement de réglage ou « Reconnecter ». Changement de réseau (Wi-Fi ↔ mobile) : le flux est rouvert aussitôt.
-- Une commande livrée deux fois (flux puis interrogation, ou nouvelle livraison par le serveur) dont le
-  résultat n'est pas encore acquitté n'est pas exécutée deux fois.
+- **Renvoi** (contrat §8) : le serveur livre de nouveau une commande dont le résultat n'est pas arrivé (après
+  5 min, 3 fois au plus), et le flux puis l'interrogation peuvent livrer la même. Une commande déjà traitée
+  n'est **jamais réexécutée** (ni `wipe`, ni `lock`, ni `ring`) : l'agent renvoie son **résultat d'origine**,
+  conservé avec l'`id` (1000 derniers), sans nouvel événement ni nouvelle ligne d'historique ; il ne répond
+  `refused`/`replay` que pour un `id` encore dans la fenêtre anti-rejeu dont il n'a plus le résultat.
 
 ### Ce qui est vérifié, ce qui ne l'est pas
 
@@ -558,7 +562,15 @@ combinaisons des six conditions (une seule efface) et, dans les sources, qu'aucu
   l'ordre des vérifications, anti-rejeu après redémarrage, verrouillage après 5 signatures invalides, matrice
   des garde-fous de `wipe`, revérification avant l'effacement, client du canal contre MockWebServer (flux SSE,
   coupure, reconnexion, surveillance du flux, `401`, absence de réseau, bascule vers l'interrogation, résultat
-  renvoyé après coupure, livraison en double), conformité de `command.result` au contrat (`CommandResultContractTest`).
+  renvoyé après coupure, livraison en double, renvoi du résultat d'origine sans réexécution — `wipe`, `lock`,
+  `ring`), conformité de `command.result` au contrat (`CommandResultContractTest`).
+- **Essai croisé contre le vrai collecteur** (`CrossCommandsTest`, ignoré sans les variables `VIGIE_CROSS_*`,
+  mode d'emploi en tête du fichier ; exécuté le 16/11/2026 contre `vigie-collector serve` en `http://` local) :
+  commandes créées par l'API console avec un `payload` et une signature construits comme la console
+  (`ring`, `lock` signé avec un message accentué sur deux lignes, `wipe` signé, `lock` signé avec un autre
+  code), livrées par le vrai flux SSE puis par l'interrogation, vérifiées par le vrai client ; le serveur a
+  enregistré `executed` pour les commandes légitimes et `refused`/`bad_signature` pour la fausse. Non couvert
+  par cet essai : le renvoi du serveur après 5 min (testé seulement contre MockWebServer et le processeur).
 - **Rien n'a été exécuté sur un téléphone.** À vérifier sur le S25+, par ordre de risque :
   1. **`wipe`** : avec un téléphone de test ou une sauvegarde complète, vérifier que `wipeDevice(0)` réinitialise
      bien (et qu'il ne se passe rien tant que l'interrupteur est coupé) ;
