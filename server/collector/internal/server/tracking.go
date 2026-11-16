@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,7 +28,7 @@ import (
 const (
 	agPageSize       = 500
 	agPagesPerPoll   = 40             // 20 000 entries per poll at most; the rest is read at the next ones
-	agLag            = time.Minute    // entries are logged when their processing ends: read behind real time
+	agLag            = time.Minute    // an entry is counted once it is this old (the newest ones are left to the next poll)
 	agInitialHistory = 24 * time.Hour // history read at the very first poll
 	agMaxGaps        = 16             // unread ranges kept (after a long outage or the first poll)
 	agStateKey       = "adguard_querylog"
@@ -170,13 +171,24 @@ func (t *trackingService) setStatus(st *adguard.FilterStatus) {
 	t.names, t.filters, t.overrides, t.overErr = names, filters, ov, oerr
 }
 
+// logGap is a range of the query log still to read: the entries older than the record at Hi, down to Lo.
 type logGap struct {
-	Hi string `json:"hi"` // read entries strictly older than this
-	Lo string `json:"lo"` // down to this one (excluded)
+	// Hi is the exact time of the oldest record already read above the gap. It is the cursor given to
+	// AdGuard Home (older_than), which only finds the time of an existing record (see readLog).
+	Hi string `json:"hi"`
+	// Lo: the entries at or before this time are counted already (or belong to an older gap).
+	Lo string `json:"lo"`
+	// Up: the entries after this time belong to a later reading (the "top" when the gap was opened).
+	Up string `json:"up,omitempty"`
+	// Alt are the times of the records read just before Hi (newer ones, nearest first): cursors to
+	// fall back on when AdGuard Home does not find the record at Hi.
+	Alt []string `json:"alt,omitempty"`
+	// Tried counts the cursors (Hi, then Alt in order) that already brought nothing new.
+	Tried int `json:"tried,omitempty"`
 }
 
 type logState struct {
-	Top  string   `json:"top"`            // entries up to here have been read
+	Top  string   `json:"top"`            // entries up to this time have been read (or are in a gap)
 	Gaps []logGap `json:"gaps,omitempty"` // ranges below top still to read, newest first
 }
 
@@ -196,9 +208,21 @@ func (t *trackingService) loadState(ctx context.Context) (logState, error) {
 	return logState{Top: fmtNano(t.s.now().Add(-agInitialHistory))}, nil
 }
 
-// readLog reads the query log entries not read yet, newest first, committing each page with the new
-// position. New entries (above top) are read first; what the page budget leaves unread is kept as a gap
-// and read at the next polls, so that a long outage or a busy period loses nothing (within agMaxGaps).
+// readLog counts the query log entries not counted yet. Each entry is counted exactly once: an entry is
+// counted by the poll whose window (previous top, now - agLag] holds its time, and each page is committed
+// in one transaction with the position reached, so that a restart resumes without loss or double count.
+//
+// How the log is read matters. AdGuard Home (checked in the sources of v0.107.80, internal/querylog, and
+// against a real instance) answers "older_than=T" by looking in its log files for a record whose time is
+// EXACTLY T; when T falls between two records it returns nothing from the files, and when T is later than
+// the newest record it silently skips that record. A reading that asked for "older than now - 60 s" lost
+// entries at every poll. So the newest page is requested without older_than, the following ones with the
+// exact time of the oldest record of the previous page (the "oldest" AdGuard Home returned), and the time
+// window is applied here. When a cursor gets a short answer before the lower limit is reached, the log
+// may really end there, or the cursor's record may be missing from the files (it was only in memory, or
+// rotated away): the times of the records read just before it are tried as cursors before concluding.
+//
+// What the page budget leaves unread is kept as a gap and read by the next polls (agMaxGaps at most).
 func (t *trackingService) readLog(ctx context.Context, budget int) error {
 	state, err := t.loadState(ctx)
 	if err != nil {
@@ -209,10 +233,10 @@ func (t *trackingService) readLog(ctx context.Context, budget int) error {
 	if cutoff.After(top) {
 		oldTop, oldGaps := state.Top, state.Gaps
 		newTop := fmtNano(cutoff)
-		_, err := t.walk(ctx, newTop, oldTop, &budget, func(cur string, done bool) logState {
+		err := t.walk(ctx, logGap{Lo: oldTop, Up: newTop}, &budget, func(g logGap, done bool) logState {
 			gaps := oldGaps
 			if !done {
-				gaps = append([]logGap{{Hi: cur, Lo: oldTop}}, oldGaps...)
+				gaps = append([]logGap{g}, oldGaps...)
 				if len(gaps) > agMaxGaps {
 					t.s.log.Warn("vue pistage : trop de plages non lues, la plus ancienne est abandonnée", "from", gaps[len(gaps)-1].Lo, "to", gaps[len(gaps)-1].Hi)
 					gaps = gaps[:agMaxGaps]
@@ -226,57 +250,107 @@ func (t *trackingService) readLog(ctx context.Context, budget int) error {
 		}
 	}
 	for len(state.Gaps) > 0 && budget > 0 {
-		g := state.Gaps[0]
-		_, err := t.walk(ctx, g.Hi, g.Lo, &budget, func(cur string, done bool) logState {
-			rest := state.Gaps[1:]
+		before := state.Gaps[0]
+		rest := append([]logGap{}, state.Gaps[1:]...)
+		err := t.walk(ctx, before, &budget, func(g logGap, done bool) logState {
 			if done {
-				state = logState{Top: state.Top, Gaps: append([]logGap{}, rest...)}
+				state = logState{Top: state.Top, Gaps: rest}
 			} else {
-				state = logState{Top: state.Top, Gaps: append([]logGap{{Hi: cur, Lo: g.Lo}}, rest...)}
+				state = logState{Top: state.Top, Gaps: append([]logGap{g}, rest...)}
 			}
 			return state
 		})
 		if err != nil {
 			return err
 		}
-		if len(state.Gaps) > 0 && state.Gaps[0] == g {
-			break // no progress
+	}
+	return nil
+}
+
+const agAltCursors = 3 // records read just before the cursor, kept as fallback cursors
+
+// walk reads one range of the log, newest first, within the page budget: the entries older than the
+// record at g.Hi (from the newest entry when g.Hi is empty) whose time is in (g.Lo, g.Up]. Each page is
+// committed with the state built by next(what remains of the range, range finished).
+func (t *trackingService) walk(ctx context.Context, g logGap, budget *int, next func(g logGap, done bool) logState) error {
+	lo, err := time.Parse(time.RFC3339Nano, g.Lo)
+	if err != nil {
+		return t.s.st.ApplyTrackingPage(ctx, nil, agStateKey, stateJSON(next(g, true))) // unreadable range: dropped
+	}
+	var up, bound time.Time // zero: no limit
+	if g.Up != "" {
+		up, _ = time.Parse(time.RFC3339Nano, g.Up)
+	}
+	// recent holds the times of the last distinct records read, newest first; its last element is the
+	// cursor (the oldest record read), the ones before it are the fallback cursors.
+	var recent []string
+	if g.Hi != "" {
+		if bound, err = time.Parse(time.RFC3339Nano, g.Hi); err != nil {
+			return t.s.st.ApplyTrackingPage(ctx, nil, agStateKey, stateJSON(next(g, true)))
+		}
+		for i := len(g.Alt) - 1; i >= 0; i-- {
+			recent = append(recent, g.Alt[i])
+		}
+		recent = append(recent, g.Hi)
+	}
+	tries := min(max(g.Tried, 0), max(len(recent)-1, 0)) // cursors tried in a row that brought nothing new
+	remaining := func() logGap {
+		r := logGap{Lo: g.Lo, Up: g.Up, Tried: tries}
+		if n := len(recent); n > 0 {
+			r.Hi = recent[n-1]
+			for i := n - 2; i >= 0; i-- {
+				r.Alt = append(r.Alt, recent[i])
+			}
+		}
+		return r
+	}
+	for *budget > 0 {
+		cursor := ""
+		if n := len(recent); n > 0 {
+			cursor = recent[n-1-tries]
+		}
+		page, err := t.client.QueryLog(ctx, cursor, agPageSize)
+		if err != nil {
+			return err
+		}
+		*budget--
+		res := t.aggregate(page.Data, lo, up, bound)
+		short := len(page.Data) < agPageSize // "oldest" is not used: the cursor is taken from the entries themselves
+		if len(res.times) > 0 {
+			// New records below the previous cursor: they become the cursor and its fallbacks.
+			recent = append(recent, res.times...)
+			if len(recent) > agAltCursors+1 {
+				recent = recent[len(recent)-agAltCursors-1:]
+			}
+			bound = res.oldest
+			tries = 0
+		} else if cursor != "" {
+			tries++
+		}
+		// The range is finished when the lower limit is reached, when the newest page (asked without a
+		// cursor) is not full — it is the whole log —, or when the cursor and then each of its fallbacks
+		// brought nothing new. A short answer that brought something is not yet the end: the next turn
+		// asks again from its oldest record.
+		done := res.reached
+		if cursor == "" {
+			done = done || short || len(res.times) == 0
+		} else if len(res.times) == 0 && tries >= len(recent) {
+			done = true
+			t.s.log.Debug("vue pistage : fin du journal d'AdGuard Home atteinte avant la limite basse de la plage", "cursor", recent[len(recent)-1], "lo", g.Lo)
+		}
+		if err := t.s.st.ApplyTrackingPage(ctx, res.rows, agStateKey, stateJSON(next(remaining(), done))); err != nil {
+			return err
+		}
+		if done {
+			return nil
 		}
 	}
 	return nil
 }
 
-// walk reads the entries strictly older than hi and newer than lo, page by page (within the budget),
-// committing each page with the state built by next(oldest time read, range finished).
-func (t *trackingService) walk(ctx context.Context, hi, lo string, budget *int, next func(cur string, done bool) logState) (bool, error) {
-	loT, err := time.Parse(time.RFC3339Nano, lo)
-	if err != nil {
-		return true, nil
-	}
-	older := hi
-	for *budget > 0 {
-		page, err := t.client.QueryLog(ctx, older, agPageSize)
-		if err != nil {
-			return false, err
-		}
-		*budget--
-		rows, reached := t.aggregate(page.Data, loT)
-		cur := older
-		if len(page.Data) > 0 && page.Oldest != "" {
-			cur = page.Oldest
-		}
-		done := reached || len(page.Data) < agPageSize || page.Oldest == "" || cur == older
-		st := next(cur, done)
-		b, _ := json.Marshal(st)
-		if err := t.s.st.ApplyTrackingPage(ctx, rows, agStateKey, string(b)); err != nil {
-			return false, err
-		}
-		if done {
-			return true, nil
-		}
-		older = cur
-	}
-	return false, nil
+func stateJSON(st logState) string {
+	b, _ := json.Marshal(st)
+	return string(b)
 }
 
 type trackKey struct {
@@ -284,24 +358,44 @@ type trackKey struct {
 	client, domain string
 }
 
-// aggregate turns query log entries (newest first) into hourly rows, stopping at the first entry at or
-// before lo; it reports whether that limit was reached.
-func (t *trackingService) aggregate(items []adguard.QueryLogItem, lo time.Time) ([]store.TrackingRow, bool) {
+type pageResult struct {
+	rows    []store.TrackingRow
+	reached bool      // an entry at or before the lower limit was seen
+	oldest  time.Time // time of the oldest new record of the page
+	times   []string  // times of the new records, newest first, as AdGuard Home wrote them (distinct)
+}
+
+// aggregate turns the entries of a page into hourly rows. Only the records older than bound (those not
+// read yet in this walk; zero: all) are considered, and among them the entries whose time is in (lo, up]
+// are counted (up zero: no upper limit).
+func (t *trackingService) aggregate(items []adguard.QueryLogItem, lo, up, bound time.Time) pageResult {
 	t.mu.Lock()
 	names := t.names
 	t.mu.Unlock()
 	acc := map[trackKey]*store.TrackingRow{}
 	var order []trackKey
-	reached := false
+	var res pageResult
+	type seen struct {
+		ts  time.Time
+		raw string
+	}
+	var fresh []seen
 	for i := range items {
 		it := &items[i]
 		ts, err := time.Parse(time.RFC3339Nano, it.Time)
 		if err != nil {
 			continue
 		}
+		if !bound.IsZero() && !ts.Before(bound) {
+			continue // already read in this walk (answer to a fallback cursor)
+		}
+		fresh = append(fresh, seen{ts, it.Time})
 		if !ts.After(lo) {
-			reached = true
-			break
+			res.reached = true
+			continue
+		}
+		if !up.IsZero() && ts.After(up) {
+			continue // too recent: counted by a later poll
 		}
 		d := tracking.Normalize(it.Question.Name)
 		if d == "" || len(d) > 253 || strings.ContainsAny(d, " \t\r\n") {
@@ -331,11 +425,19 @@ func (t *trackingService) aggregate(items []adguard.QueryLogItem, lo time.Time) 
 			r.Reason = reason
 		}
 	}
-	out := make([]store.TrackingRow, 0, len(order))
-	for _, k := range order {
-		out = append(out, *acc[k])
+	// AdGuard Home sorts its answer, newest first; do not depend on it for the cursor.
+	sort.SliceStable(fresh, func(i, j int) bool { return fresh[i].ts.After(fresh[j].ts) })
+	for i, f := range fresh {
+		if i == 0 || !f.ts.Equal(fresh[i-1].ts) {
+			res.times = append(res.times, f.raw)
+		}
+		res.oldest = f.ts
 	}
-	return out, reached
+	res.rows = make([]store.TrackingRow, 0, len(order))
+	for _, k := range order {
+		res.rows = append(res.rows, *acc[k])
+	}
+	return res
 }
 
 // classifyReason tells whether an entry was blocked and gives a readable reason: the filter list name or

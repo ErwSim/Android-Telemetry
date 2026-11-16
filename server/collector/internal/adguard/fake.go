@@ -20,8 +20,13 @@ import (
 type Fake struct {
 	User, Password string
 
-	mu        sync.Mutex
-	log       []fakeEntry // sorted by time, oldest first
+	mu  sync.Mutex
+	log []fakeEntry // sorted by time, oldest first
+	// The query log of AdGuard Home is two files (the rotated "querylog.json.1" and the current
+	// "querylog.json") plus a memory buffer of the newest records (querylog.size_memory): log[:rot] is
+	// the rotated file, log[rot:len(log)-mem] the current one, the rest is in memory. With
+	// size_memory: 1, as Vigie configures it, every record is written at once: mem is 0 (the default).
+	rot, mem  int
 	filters   []fakeFilter
 	userRules []string
 	nextID    int64
@@ -188,9 +193,107 @@ func (f *Fake) AddQuery(t time.Time, client, clientID, domain string) {
 	f.log = append(f.log, fakeEntry{})
 	copy(f.log[i+1:], f.log[i:])
 	f.log[i] = e
-	if len(f.log) > f.maxLog {
-		f.log = f.log[len(f.log)-f.maxLog:]
+	if i < f.rot {
+		f.rot++ // a record dated before the rotation belongs to the rotated file
 	}
+	if len(f.log) > f.maxLog {
+		drop := len(f.log) - f.maxLog
+		f.log = f.log[drop:]
+		f.rot = max(f.rot-drop, 0)
+	}
+}
+
+// Rotate does what AdGuard Home does when the current log file is older than querylog.interval: the
+// rotated file is deleted and the current one takes its place. Records still in memory stay there.
+func (f *Fake) Rotate() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.log = f.log[f.rot:]
+	f.rot = max(len(f.log)-f.mem, 0)
+}
+
+// SetMemory keeps the n newest records in the memory buffer instead of the files (querylog.size_memory).
+func (f *Fake) SetMemory(n int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.mem = max(n, 0)
+}
+
+// Forget removes the record made at t, as if AdGuard Home had lost it between its memory buffer and its
+// file (it reports whether a record was removed).
+func (f *Fake) Forget(t time.Time) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, e := range f.log {
+		if e.t.Equal(t) {
+			f.log = append(f.log[:i], f.log[i+1:]...)
+			if i < f.rot {
+				f.rot--
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// Times returns the times of the records, oldest first.
+func (f *Fake) Times() []time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]time.Time, len(f.log))
+	for i, e := range f.log {
+		out[i] = e.t
+	}
+	return out
+}
+
+// search returns the records AdGuard Home v0.107.80 returns for older_than and limit, newest first
+// (caller holds the lock). The behaviour of older_than is the real one (internal/querylog: seekTS,
+// seekRecord, searchMemory; checked against a real instance):
+//   - the records in memory are simply filtered by time;
+//   - in the files, a record whose time is EXACTLY older_than is looked up, newest file first, and the
+//     reading starts just before it. A time later than every record of a file starts from the newest
+//     record of the newest file — and skips that record. A time earlier than every record of a file
+//     moves on to the older file. A time that falls between two records of a file is "not found":
+//     nothing is read from the files at all.
+func (f *Fake) search(older time.Time, limit int) []fakeEntry {
+	fileEnd := max(len(f.log)-f.mem, 0)
+	rot := min(f.rot, fileEnd)
+	var out []fakeEntry
+	for i := len(f.log) - 1; i >= fileEnd && len(out) < limit; i-- {
+		if older.IsZero() || f.log[i].t.Before(older) {
+			out = append(out, f.log[i])
+		}
+	}
+	pos := fileEnd - 1 // next record to read, going back in time
+	if !older.IsZero() {
+		pos = -1
+		for _, file := range [][2]int{{rot, fileEnd}, {0, rot}} {
+			lo, hi := file[0], file[1]
+			if lo == hi {
+				continue // no such file
+			}
+			i := lo + sort.Search(hi-lo, func(k int) bool { return !f.log[lo+k].t.Before(older) })
+			if i < hi && f.log[i].t.Equal(older) {
+				pos = i - 1 // found: the record itself is skipped
+				break
+			}
+			if i == hi {
+				pos = fileEnd - 2 // "too late": from the start, minus the one record read after any seek
+				break
+			}
+			if i > lo {
+				return out // between two records of this file: "not found"
+			}
+			// "too early" for this file: look in the older one.
+		}
+	}
+	for i := pos; i >= 0 && len(out) < limit; i-- {
+		if older.IsZero() || f.log[i].t.Before(older) {
+			out = append(out, f.log[i])
+		}
+	}
+	return out
 }
 
 // Len returns the number of entries of the query log.
@@ -309,14 +412,17 @@ func (f *Fake) serveQueryLog(w http.ResponseWriter, r *http.Request) {
 		}
 		older = t
 	}
+	offset := 0
+	if n, err := strconv.Atoi(q.Get("offset")); err == nil && n > 0 {
+		offset = n
+	}
 	f.mu.Lock()
-	end := len(f.log)
-	if !older.IsZero() {
-		end = sort.Search(len(f.log), func(i int) bool { return !f.log[i].t.Before(older) })
+	found := f.search(older, offset+limit)
+	if offset > 0 {
+		found = found[min(offset, len(found)):]
 	}
 	data := []map[string]any{}
-	for i := end - 1; i >= 0 && len(data) < limit; i-- {
-		e := f.log[i]
+	for _, e := range found {
 		item := map[string]any{
 			"time": e.t.Format(time.RFC3339Nano), "client": e.client, "client_proto": "dot", "cached": false,
 			"elapsedMs": "1.25", "status": "NOERROR", "reason": e.reason, "upstream": "https://dns10.quad9.net/dns-query",
