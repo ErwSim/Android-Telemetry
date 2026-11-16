@@ -90,7 +90,10 @@ Avec plusieurs appareils connectés : `export ANDROID_SERIAL=…` / `$env:ANDROI
    Messenger et espace privé indisponibles, mention « appareil géré ».
 4. **Ouvrir Vigie** : en Device Owner, l'app s'accorde ses permissions d'exécution (localisation,
    notifications, Bluetooth, téléphone…) et active la protection contre l'arrêt forcé (chaque action émet
-   `security.policy`). Sans Device Owner (mode dégradé), accorder les permissions depuis l'onglet
+   `security.policy`). Chaque permission n'est auto-accordée qu'**une fois** par activation du Device Owner :
+   si vous en retirez une ensuite dans les Paramètres, Vigie ne la reprend pas d'elle-même (le collecteur
+   passe « indisponible », `agent.tamper` `permission_revoked` est émis, l'onglet Collecteurs propose de la
+   redonner). Sans Device Owner (mode dégradé), accorder les permissions depuis l'onglet
    Collecteurs. Dans les deux cas, `./scripts/grant-adb-permissions.sh` accorde aussi celles qui ne
    s'obtiennent que par ADB : accès à l'utilisation (`PACKAGE_USAGE_STATS` + app-op : `net_usage`,
    `foreground`), `WRITE_SECURE_SETTINGS` (réglage anti-pistage de la politique), `DUMP` (attribution
@@ -138,10 +141,17 @@ Replis, du plus au moins recommandé :
 1. **Sans l'interface, par ADB** : `./scripts/remove-device-owner.sh [--uninstall]` (`-Uninstall` en
    PowerShell). Il envoie à Vigie le même ordre que l'écran, par l'issue de secours (voir « Issue de secours
    sans interface »), puis vérifie que le rôle a disparu. `rescue-revert.sh --remove-owner` y renvoie.
+   Si un élément ne peut pas être défait, Vigie **garde le rôle** (elle seule peut réessayer) et le script
+   demande s'il faut forcer le retrait.
 2. **Si Vigie ne répond plus** (app qui ne démarre pas) et que l'APK est **testOnly** : le même script
-   propose alors `adb shell dpm remove-active-admin`. Vigie ne défait rien elle-même dans ce cas : le script
-   liste les paquets qu'elle avait masqués ou suspendus et propose `pm unhide` / `pm unsuspend` ; le retrait
-   est signalé par `agent.tamper` (`admin_disabled`, `device_owner_lost`), ce qui est attendu.
+   propose alors `adb shell dpm remove-active-admin`. Vigie ne défait rien elle-même dans ce cas. D'après le
+   code AOSP (branche principale), Android lève lui-même les politiques de l'administrateur retiré, paquets
+   masqués compris ; le script vérifie l'état réel de chaque paquet que Vigie avait masqué ou suspendu
+   (`dumpsys package`) et ne tente `pm unhide` / `pm unsuspend` que pour ceux qui le sont encore. Ces deux
+   commandes peuvent être refusées au shell ADB (`MANAGE_USERS` n'est pas dans le manifeste AOSP du shell ;
+   un paquet suspendu par un administrateur ne l'est pas par le shell) : le recours est alors de redonner
+   le rôle à Vigie (`enable-device-owner`) et de relancer `rescue-revert`, l'état appliqué étant conservé.
+   Le retrait est signalé par `agent.tamper` (`admin_disabled`, `device_owner_lost`), ce qui est attendu.
 3. APK non testOnly et app inutilisable : mettre à jour l'app (même clé de signature) pour la réparer, sinon
    réinitialisation du téléphone.
 
@@ -262,7 +272,7 @@ regroupement), pas l'heure de récupération.
 |---|---|---|
 | Paquets | 35 (28 cochés) : Customization Service, Knox Analytics, DSMS, Device Quality Agent, diagnostics réseau et journaux Samsung, Device ID Service (OAID), AdServices / On-Device Personalization / Federated Compute de Google, Market Feedback, Partner Setup, apps Meta préinstallées… ; optionnels : Bixby, Samsung Free, Android System Intelligence, Gemini | 22 (8 cochés) : compte Samsung, Samsung Cloud, Experience Service, Samsung Push, Update Center, OMC Agent, KLMS, Appli Google ; optionnels : Find My Mobile, Samsung Wallet/Pay/Pass, Galaxy Store, Entretien de l'appareil, Services Google Play, GSF, Play Store |
 | Permissions refusées | localisation de l'Appli Google (+ optionnel : Samsung Internet, Météo) | micro/caméra/contacts de l'Appli Google, Bixby ; optionnel : localisation d'arrière-plan et appareils à proximité des Services Google Play, capteurs de Samsung Health |
-| Restrictions | pas d'ajout d'utilisateur, pas de 2G, pas de sources inconnues, pas de capture ni de suggestions de contenu | + pas d'ajout de certificats, pas de mode sans échec, pas de contenu envoyé à l'assistant, UWB, Thread, partage Bluetooth, nouveaux administrateurs ; optionnel : eSIM, transfert USB, NFC |
+| Restrictions | pas d'ajout d'utilisateur, pas de 2G, pas de sources inconnues, pas de capture ni de suggestions de contenu | + pas d'ajout de certificats, pas de mode sans échec, pas de contenu envoyé à l'assistant, UWB, Thread, partage Bluetooth ; optionnel : eSIM, transfert USB, NFC |
 | Réglages | recherche Bluetooth permanente coupée (`ble_scan_always_enabled=0`, si WRITE_SECURE_SETTINGS) ; sauvegarde Android réactivée | sauvegarde laissée coupée |
 | DNS privé | imposé vers l'hôte de l'enrôlement (`private_dns_host`), verrouillé | idem |
 
@@ -285,9 +295,18 @@ Méthode : **masquer** (`setApplicationHidden`, services arrêtés) pour les age
   installeurs, Paramètres, SystemUI, `com.android.shell` (ADB), fournisseurs de contenu, Vigie ; plus, lus à
   l'exécution : lanceur(s), composeur, app SMS, claviers activés, installeurs, administrateurs actifs, VPN
   permanent. Vérifiée à l'aperçu **et** au moment d'appliquer.
-- **Restrictions jamais posées** : `no_debugging_features` (couperait ADB), `no_share_location`,
-  `no_factory_reset`, comptes, installation d'apps, réseau mobile, Wi-Fi, VPN… ; le signal de données USB
-  n'est jamais coupé (aucun appel à `setUsbDataSignalingEnabled(false)`).
+- **Restrictions** (`RestrictionGuard`) : seules les clés d'une **liste vérifiée** peuvent être posées (2G,
+  sources inconnues, ajout d'utilisateur, capture de contenu, certificats, mode sans échec, eSIM, UWB,
+  Thread, NFC, partage Bluetooth, transfert de fichiers USB, saisie automatique). Toute autre clé est
+  refusée, même si un catalogue la liste ; sont en outre nommément interdites `no_debugging_features`
+  (couperait ADB), `no_share_location`, `no_factory_reset`, comptes, installation d'apps, réseau mobile,
+  Wi-Fi, VPN… Le signal de données USB n'est jamais coupé (aucun appel à
+  `setUsbDataSignalingEnabled(false)`).
+- **Réglages** (`SettingGuard`) : `WRITE_SECURE_SETTINGS` permet d'écrire n'importe quelle clé
+  (`adb_enabled`, `user_setup_complete`, `private_dns_mode`…) ; seules `global:ble_scan_always_enabled` et
+  `global:wifi_scan_always_enabled` sont admises.
+- Un élément appliqué qu'une version plus récente des garde-fous refuse (ou un paquet devenu lanceur,
+  clavier…) est **défait** à l'application suivante.
 - Un élément déjà en place sans Vigie (paquet déjà masqué, restriction déjà posée, permission déjà refusée)
   n'est ni touché ni enregistré : « Tout rétablir » ne le défait donc pas.
 
@@ -307,6 +326,12 @@ Méthode : **masquer** (`setApplicationHidden`, services arrêtés) pour les age
    répond pas : « Tout rétablir » ou l'issue de secours ADB le défait).
 5. Rétablir remet le mode d'avant (`off` par `setGlobalSetting(private_dns_mode)`, automatique ou hôte
    précédent).
+6. Si un utilisateur non affilié existe (invité, utilisateur secondaire, mode maintenance Samsung), Android
+   refuse les API DNS dédiées (`checkAllUsersAreAffiliatedWithDevice`) : le repli et le retour au mode
+   automatique passent alors par `setGlobalSetting(private_dns_mode)`, qui n'a pas cette condition.
+
+Le repli ne tourne que si le processus de Vigie vit (service de premier plan, ou passage de maintenance
+toutes les 15 min, sans contrainte réseau). Pendant le délai de repli, le téléphone est **sans Internet**.
 
 Recherche Wi-Fi permanente, diagnostics Samsung et identifiant publicitaire Google n'ont pas de clé de
 réglage dont l'effet soit établi (stockés hors des Paramètres depuis Android 11, ou propres à Samsung/GMS) :
@@ -318,6 +343,15 @@ un VPN fiable).
 
 - **Tout rétablir** (écran Politique, confirmation) : défait tout ce que Vigie a appliqué, du plus récent au
   plus ancien ; un élément qui résiste reste listé avec son erreur (réessayer). Les journaux restent actifs.
+  Chaque élément est traité isolément : un échec (y compris l'impossibilité d'écrire l'état, stockage
+  plein) n'arrête pas les suivants. Une permission refusée juste avant un plantage, donc jamais confirmée
+  dans l'état, est rétablie aussi.
+- **État illisible** : l'état appliqué est relu enregistrement par enregistrement (un enregistrement
+  inconnu d'une autre version ne fait pas perdre les autres). S'il a été illisible, même en partie, « Tout
+  rétablir » ajoute un **balayage du catalogue** : paquets du catalogue masqués ou suspendus réaffichés,
+  restrictions du catalogue et verrou DNS levés, permissions du catalogue refusées rendues à l'utilisateur,
+  DNS privé sorti de l'hôte enrôlé. Rien hors du catalogue n'est touché ; un réglage dont la valeur
+  d'origine est inconnue est signalé, à rétablir à la main.
 - **Retirer le Device Owner** (confirmation + case « J'ai compris ») : tout rétablir, couper journaux réseau
   et sécurité, retirer la protection contre l'arrêt forcé, `device_owner_cleared`, puis
   `clearDeviceOwnerApp`. S'arrête avant le retrait si quelque chose n'a pas pu être rétabli (« Retirer quand
@@ -328,19 +362,27 @@ un VPN fiable).
 
 ```bash
 ./scripts/rescue-revert.sh          # « Tout rétablir », Vigie reste Device Owner (PowerShell : .\scripts\rescue-revert.ps1)
+./scripts/rescue-revert.sh --sweep  # + balayage du catalogue, si l'état de Vigie est douteux (PowerShell : -Sweep)
 ./scripts/remove-device-owner.sh    # + retirer le Device Owner (= rescue-revert.sh --remove-owner)
 ```
 
 Le script envoie une diffusion explicite à `…policy.rescue.RescueReceiver`. Ce récepteur exige que
 l'expéditeur détienne `android.permission.FORCE_STOP_PACKAGES`, de niveau `signature|privileged` sans
 drapeau `development` ni `appop` (vérifié dans le manifeste du framework android-37) : aucune app tierce ne
-peut l'obtenir, même par `pm grant` ; seuls le shell ADB (qui la détient pour `am force-stop`) et le système
-peuvent déclencher l'ordre. Le récepteur ne peut que **défaire**. Résultat rendu à `am broadcast` : 1 tout
-rétabli, 2 partiel (détail), 3 Vigie n'est plus Device Owner (le script propose alors `pm unhide` /
-`pm unsuspend` pour les paquets qu'elle avait désactivés), 4 délai dépassé (l'opération continue).
-Codes de sortie de `rescue-revert` : ceux ci-dessus, et 5 si Vigie ne répond pas. Si l'app ne démarre plus du
-tout, `remove-device-owner.sh` propose le repli `dpm remove-active-admin` (APK testOnly), puis les
-`pm unhide` / `pm unsuspend` nécessaires.
+peut l'obtenir, même par `pm grant`. La détiennent : le shell ADB (`packages/Shell/AndroidManifest.xml`
+d'AOSP, pour `am force-stop`), le système, et les apps signées par la clé de la plateforme ou privilégiées
+et autorisées par le constructeur (donc des apps Samsung préinstallées, jamais une app installée par
+l'utilisateur). Le récepteur ne peut que **défaire**. Résultat rendu à `am broadcast` : 1 tout rétabli,
+2 partiel (détail), 3 Vigie n'est plus Device Owner (le script vérifie alors l'état des paquets qu'elle
+avait désactivés), 4 délai dépassé (l'opération continue).
+Codes de sortie de `rescue-revert` : ceux ci-dessus, et 5 si Vigie ne répond pas. Avec `remove_owner`, le rôle
+n'est abandonné que si tout a été défait (`force` pour passer outre, proposé par le script).
+
+Limites : l'app n'est pas « direct boot aware » (son état est en stockage chiffré par l'identifiant) : après
+un redémarrage, l'issue de secours ne répond qu'**après le premier déverrouillage**. Elle a besoin que le
+processus de l'app démarre : `VigieApplication` tolère pour cela un agent qui ne s'initialise pas (l'écran
+affiche l'erreur, l'issue de secours reste utilisable). Si l'app ne démarre plus du tout,
+`remove-device-owner.sh` propose le repli `dpm remove-active-admin` (APK testOnly uniquement).
 
 ### À vérifier sur le téléphone avant d'appliquer un profil
 

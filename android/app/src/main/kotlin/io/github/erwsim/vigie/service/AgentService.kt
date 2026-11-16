@@ -36,14 +36,24 @@ class AgentService : Service() {
     private var started = false
     private var lastText: String? = null
 
+    /** False when the system refused the foreground state: the service then stops itself. */
+    private var foreground = false
+
     override fun onCreate() {
         super.onCreate()
-        goForeground(Agent.get())
-        _running.value = true
+        val agent = Agent.getOrNull() ?: return
+        foreground = goForeground(agent)
+        _running.value = foreground
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val agent = Agent.get()
+        val agent = Agent.getOrNull()
+        if (agent == null || !foreground) {
+            // No agent (broken start-up) or foreground start refused (sticky restart from the
+            // background without exemption): never crash-loop, the 15-minute maintenance retries.
+            stopSelf()
+            return START_NOT_STICKY
+        }
         when (intent?.action) {
             ACTION_REFRESH -> {
                 goForeground(agent)
@@ -87,29 +97,41 @@ class AgentService : Service() {
             ?.notify(AgentNotifications.NOTIFICATION_ID, AgentNotifications.build(this, text))
     }
 
-    private fun goForeground(agent: Agent) {
+    /**
+     * Enters the foreground state. Returns false if the system refuses it: `startForeground` throws
+     * `ForegroundServiceStartNotAllowedException` (an IllegalStateException, not a
+     * SecurityException) when the service is (re)started from the background without an exemption,
+     * e.g. a START_STICKY restart of a build that is neither Device Owner nor exempt from battery
+     * optimizations. An uncaught exception here would crash the process at every restart attempt.
+     */
+    private fun goForeground(agent: Agent): Boolean {
         val text = AgentNotifications.text(this, agent)
         lastText = text
         val notification = AgentNotifications.build(this, text)
         val hasLocation = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         val special = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-        try {
-            startForeground(
-                AgentNotifications.NOTIFICATION_ID,
-                notification,
-                if (hasLocation) special or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else special,
-            )
-        } catch (e: SecurityException) {
-            // Location type refused (e.g. started from background without the right): degrade.
-            Log.w(TAG, "location FGS type refused, using specialUse only", e)
+        if (hasLocation) {
+            try {
+                startForeground(AgentNotifications.NOTIFICATION_ID, notification, special or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+                return true
+            } catch (e: Exception) {
+                // Location type refused (e.g. started from background without the right): degrade.
+                Log.w(TAG, "location FGS type refused, using specialUse only", e)
+            }
+        }
+        return try {
             startForeground(AgentNotifications.NOTIFICATION_ID, notification, special)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "foreground start refused by the system", e)
+            false
         }
     }
 
     override fun onDestroy() {
-        val agent = Agent.get()
-        if (started) {
+        val agent = Agent.getOrNull()
+        if (started && agent != null) {
             agent.sink.emit(EventTypes.AGENT_STOPPED) {
                 put("reason", pendingStopReason ?: "system")
                 put("agent_version", agent.agentVersion)

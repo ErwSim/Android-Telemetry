@@ -16,7 +16,7 @@ class VigieAdminReceiver : DeviceAdminReceiver() {
     override fun onEnabled(context: Context, intent: Intent) {
         Agent.getOrNull()?.let { agent ->
             agent.integrity.checkPermissionsAndOwnership()
-            PolicyModule.onAgentStarted(agent)
+            PolicyModule.onOwnerEnabled(agent)
             agent.host.reconcile()
         }
     }

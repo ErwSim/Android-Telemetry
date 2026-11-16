@@ -31,7 +31,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.compose.ui.unit.dp
 import io.github.erwsim.vigie.R
+import io.github.erwsim.vigie.VigieApplication
 import io.github.erwsim.vigie.core.Agent
 
 /** Top-level destinations; [Policy] is the slot reserved for the `:policy` module's screen. */
@@ -48,6 +50,21 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        if (Agent.getOrNull() == null) {
+            // The agent could not be built (see VigieApplication): say so instead of crashing, the ADB
+            // rescue stays available.
+            setContent {
+                VigieTheme {
+                    Scaffold { padding ->
+                        Text(
+                            stringResource(R.string.startup_failed, VigieApplication.startupError.orEmpty()),
+                            Modifier.padding(padding).padding(24.dp),
+                        )
+                    }
+                }
+            }
+            return
+        }
         setContent { VigieTheme { VigieApp() } }
     }
 }

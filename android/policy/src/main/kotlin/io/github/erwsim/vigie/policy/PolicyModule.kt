@@ -20,6 +20,7 @@ import io.github.erwsim.vigie.policy.logs.SecurityLogCollector
 import io.github.erwsim.vigie.policy.logs.SecurityLogProcessor
 import io.github.erwsim.vigie.policy.posture.PostureCollector
 import io.github.erwsim.vigie.policy.ui.PolicyController
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -39,6 +40,8 @@ object PolicyModule {
     private const val TAG = "VigiePolicy"
     private const val PREFS_POLICY = "vigie_policy"
     private const val PREFS_DNS_GUARD = "vigie_policy_dns_guard"
+    private const val PREFS_SELF_GRANT = "vigie_policy_self_grant"
+    private const val K_GRANTED_ONCE = "granted_once"
 
     val FORCE_STOP_PROTECTION = SettingKey.BoolKey("policy.force_stop_protection", true)
     val DNS_FALLBACK = SettingKey.BoolKey("policy.dns_fallback", true)
@@ -56,7 +59,10 @@ object PolicyModule {
     val networkLog = NetworkLogCollector()
     val posture = PostureCollector()
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // Nothing launched here may crash the process (the ADB rescue runs in it): failures are logged.
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e(TAG, "policy background task failed", e) },
+    )
     private val reportedGrantFailures = java.util.Collections.synchronizedSet(HashSet<String>())
 
     @SuppressLint("StaticFieldLeak") // application context only
@@ -159,11 +165,26 @@ object PolicyModule {
         }
     }
 
+    /**
+     * Device Owner (re)activated: the self-granted permissions are granted afresh (a new activation
+     * is an explicit act of the owner).
+     */
+    fun onOwnerEnabled(agent: Agent) {
+        agent.context.getSharedPreferences(PREFS_SELF_GRANT, Context.MODE_PRIVATE).edit().clear().apply()
+        onAgentStarted(agent)
+    }
+
     /** Called at each agent (service) start, on Device Owner activation and by the maintenance worker (15 min). */
     fun onAgentStarted(agent: Agent) {
         val manager = deviceOwner(agent)
         if (!manager.isDeviceOwner()) return
-        val results = manager.selfGrantRuntimePermissions()
+        // Each permission is self-granted once: a later revocation by the owner is respected.
+        val grantPrefs = agent.context.getSharedPreferences(PREFS_SELF_GRANT, Context.MODE_PRIVATE)
+        val grantedOnce = grantPrefs.getStringSet(K_GRANTED_ONCE, emptySet()).orEmpty().toSet()
+        val results = manager.selfGrantRuntimePermissions(grantedOnce)
+        results.filter { it.granted }.map { it.permission }.takeIf { it.isNotEmpty() }?.let { newly ->
+            grantPrefs.edit().putStringSet(K_GRANTED_ONCE, grantedOnce + newly).apply()
+        }
         for (r in results) {
             if (r.granted) {
                 logAction(agent.context, "permission_granted", r.permission, true, null)

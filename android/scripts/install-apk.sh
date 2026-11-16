@@ -16,6 +16,15 @@ if [ -z "$APK" ]; then
 fi
 [ -n "$APK" ] && [ -f "$APK" ] || die "APK introuvable. Construisez-le (./gradlew assembleRelease) ou passez son chemin en argument."
 
+case "$APK" in
+    *debug*.apk)
+        warn "APK de débogage : signé avec la clé de débogage (une mise à jour vers l'APK release sera refusée tant que Vigie est Device Owner) et « débogable » (adb run-as peut lire les données de l'app)."
+        warn "Sur le téléphone de tous les jours, installez l'APK release (./gradlew assembleRelease)."
+        read -r -p "Installer quand même l'APK de débogage ? (oui/non) " answer
+        [ "$answer" = "oui" ] || die "Abandon."
+        ;;
+esac
+
 require_adb
 info "Installation de $APK"
 if ! adb install -r -t "$APK"; then

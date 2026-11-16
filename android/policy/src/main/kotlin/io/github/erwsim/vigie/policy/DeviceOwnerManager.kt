@@ -25,13 +25,16 @@ class DeviceOwnerManager(
      * location is granted before background location. The grant state is then put back to
      * DEFAULT: the permission stays granted but remains under the user's control (reversible);
      * a later revocation is reported as `agent.tamper`.
+     *
+     * [alreadyGrantedOnce]: permissions this app already granted to itself. They are not granted
+     * again: if the owner revokes one in the Settings, that choice holds (the collector shows
+     * "indisponible" and the Collecteurs screen offers to grant it back). Without this, the
+     * 15-minute maintenance pass would silently undo the revocation.
      */
-    fun selfGrantRuntimePermissions(): List<GrantResult> {
+    fun selfGrantRuntimePermissions(alreadyGrantedOnce: Set<String> = emptySet()): List<GrantResult> {
         val dpm = dpm ?: return emptyList()
         if (!isDeviceOwner()) return emptyList()
-        val pending = capabilities.declaredRuntimePermissions()
-            .filterNot(capabilities::hasPermission)
-            .sortedBy { if (it == Manifest.permission.ACCESS_BACKGROUND_LOCATION) 1 else 0 }
+        val pending = pendingSelfGrants(capabilities.declaredRuntimePermissions(), capabilities::hasPermission, alreadyGrantedOnce)
         return pending.map { permission ->
             try {
                 val ok = dpm.setPermissionGrantState(
@@ -59,6 +62,14 @@ class DeviceOwnerManager(
         } catch (_: Exception) {
             false
         }
+    }
+
+    companion object {
+        /** Pure: what to self-grant now, foreground location before background location. */
+        fun pendingSelfGrants(declared: List<String>, isGranted: (String) -> Boolean, alreadyGrantedOnce: Set<String>): List<String> =
+            declared.filterNot(isGranted)
+                .filterNot { it in alreadyGrantedOnce }
+                .sortedBy { if (it == Manifest.permission.ACCESS_BACKGROUND_LOCATION) 1 else 0 }
     }
 
     fun isForceStopProtected(): Boolean = try {

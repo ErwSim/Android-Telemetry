@@ -78,6 +78,19 @@ class EnrollmentTest {
     }
 
     @Test
+    fun aTokenOrDeviceIdThatCannotBeSentIsRefusedAtImport() {
+        // The token goes into an HTTP header, the device id into every batch: a value OkHttp would
+        // refuse to send must be rejected when the file is read, not at every upload.
+        expectError(EnrollmentError.BAD_TOKEN, file(token = "tok\nInjected: 1"))
+        expectError(EnrollmentError.BAD_TOKEN, file(token = "tok é"))
+        expectError(EnrollmentError.BAD_TOKEN, file(token = "x".repeat(513)))
+        expectError(EnrollmentError.BAD_DEVICE_ID, file(deviceId = "dev\u0000x"))
+        expectError(EnrollmentError.BAD_DEVICE_ID, file(deviceId = "d".repeat(200)))
+        // What the collector really issues (base64url token, dev_<hex>) passes.
+        EnrollmentParser.parse(file(token = "Zm9vYmFyLV9hYmM", deviceId = "dev_8f3a"), now)
+    }
+
+    @Test
     fun parsesAValidFile() {
         val parsed = EnrollmentParser.parse(file(caPem = serverCa.certificatePem()), now)
         assertEquals("https://ingest.exemple.fr/", parsed.ingestUrl)

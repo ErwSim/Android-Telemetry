@@ -43,7 +43,8 @@ class BluetoothCollector : Collector {
         limiter.reset()
         val adapter = ctx.appContext.getSystemService(BluetoothManager::class.java)?.adapter ?: return
         reportState(ctx, adapter.isEnabled)
-        ctx.registerReceiver(IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)) { intent ->
+        // Bluetooth broadcasts may come from the Bluetooth stack's own uid: exported (protected broadcast).
+        ctx.registerReceiver(IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED), exported = true) { intent ->
             when (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)) {
                 BluetoothAdapter.STATE_ON -> reportState(ctx, true)
                 BluetoothAdapter.STATE_OFF -> {
@@ -53,11 +54,14 @@ class BluetoothCollector : Collector {
             }
         }
         if (ctx.capabilities.hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
+            // Sent by the Bluetooth app (uid bluetooth, not the system server): a non-exported receiver
+            // never gets them. Both actions are protected broadcasts, no other app can forge them.
             ctx.registerReceiver(
                 IntentFilter().apply {
                     addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
                     addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
                 },
+                exported = true,
             ) { intent -> onAcl(ctx, intent) }
         }
     }

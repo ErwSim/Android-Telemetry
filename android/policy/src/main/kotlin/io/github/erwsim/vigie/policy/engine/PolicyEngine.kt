@@ -81,6 +81,9 @@ class PolicyEngine(
 
     fun journal(): List<JournalEntry> = store.journal()
 
+    /** The persisted state could not be read entirely: "Tout rétablir" then also sweeps the catalog. */
+    fun stateWasUnreadable(): Boolean = store.stateWasUnreadable()
+
     fun selection(): PolicySelection = store.selection()
 
     fun saveSelection(selection: PolicySelection) = store.saveSelection(selection)
@@ -98,6 +101,9 @@ class PolicyEngine(
             val wanted = selection.isSelected(item)
             val record = applied[item.id]
             when {
+                // Applied by an earlier version (or before the app became launcher, keyboard…) and now
+                // refused by the guards: undone, never kept.
+                record != null && isRefused(item, protected) -> out += change(item, ChangeOp.REVERT, "désormais refusé par les garde-fous")
                 record != null && wanted -> out += change(item, ChangeOp.UNCHANGED)
                 record != null -> out += change(item, ChangeOp.REVERT)
                 wanted -> out += planItem(item, protected)
@@ -142,6 +148,14 @@ class PolicyEngine(
     private fun change(item: CatalogItem, op: ChangeOp, detail: String? = null) =
         PlannedChange(item.id, kindOf(item), targetOf(item), labelOf(item), op, item.risk, detail)
 
+    /** Hard-coded guards: [PackageDenyList], [RestrictionGuard], [SettingGuard]. */
+    private fun isRefused(item: CatalogItem, protected: Set<String>): Boolean = when (item) {
+        is PackageEntry -> PackageDenyList.isDenied(item.pkg, protected)
+        is PermissionEntry -> PackageDenyList.isDenied(item.pkg, protected)
+        is RestrictionEntry -> RestrictionGuard.isForbidden(item.key)
+        is SettingEntry -> SettingGuard.isForbidden(item.namespace, item.key)
+    }
+
     private fun planItem(item: CatalogItem, protected: Set<String>): PlannedChange = when (item) {
         is PackageEntry -> when {
             PackageDenyList.isDenied(item.pkg, protected) -> change(item, ChangeOp.SKIP_DENIED, DENY_REASON)
@@ -165,11 +179,12 @@ class PolicyEngine(
             }
         }
         is RestrictionEntry -> when {
-            RestrictionGuard.isForbidden(item.key) -> change(item, ChangeOp.SKIP_DENIED, "restriction interdite (porte de secours ou fonctions vitales)")
+            RestrictionGuard.isForbidden(item.key) -> change(item, ChangeOp.SKIP_DENIED, "restriction interdite (porte de secours, fonctions vitales, ou hors de la liste vérifiée)")
             safe { gateway.hasRestriction(item.key) } == true -> change(item, ChangeOp.SKIP_ALREADY, "déjà posée hors de Vigie")
             else -> change(item, ChangeOp.APPLY)
         }
         is SettingEntry -> when {
+            SettingGuard.isForbidden(item.namespace, item.key) -> change(item, ChangeOp.SKIP_DENIED, "réglage hors de la liste vérifiée")
             safe { gateway.canWriteSecureSettings() } != true ->
                 change(item, ChangeOp.SKIP_UNSUPPORTED, "WRITE_SECURE_SETTINGS non accordée (script grant-adb-permissions)")
             else -> when (val current = readSettingOrError(item)) {
@@ -197,12 +212,14 @@ class PolicyEngine(
         var report = EngineReport()
         val plan = preview(selection)
         // Undo first (frees restrictions/packages), then apply.
-        for (c in plan.filter { it.op == ChangeOp.REVERT }) report += revertLocked(c.id)
+        for (c in plan.filter { it.op == ChangeOp.REVERT }) report += isolated(c.id) { revertLocked(c.id) }
         for (c in plan.filter { it.op == ChangeOp.APPLY }) {
-            report += when (c.kind) {
-                ItemKind.PRIVATE_DNS -> applyDns(dnsHost() ?: continue, selection.privateDnsLock, profile)
-                ItemKind.BACKUP -> applyBackup(profile)
-                else -> applyCatalogItem(catalog.item(c.id) ?: continue, profile)
+            report += isolated(c.id) {
+                when (c.kind) {
+                    ItemKind.PRIVATE_DNS -> dnsHost()?.let { applyDns(it, selection.privateDnsLock, profile) } ?: EngineReport()
+                    ItemKind.BACKUP -> applyBackup(profile)
+                    else -> catalog.item(c.id)?.let { applyCatalogItem(it, profile) } ?: EngineReport()
+                }
             }
         }
         report
@@ -291,6 +308,7 @@ class PolicyEngine(
 
     private fun applySetting(e: SettingEntry, profile: String): EngineReport {
         val target = "${e.key}=${e.value}"
+        if (SettingGuard.isForbidden(e.namespace, e.key)) return refused("setting_changed", target, profile, "réglage hors de la liste vérifiée")
         val prev = when (val r = readSettingOrError(e)) {
             is Result.Failure -> return outcome("setting_changed", target, profile, false, "lecture préalable impossible : ${r.error}")
             is Result.Value -> r.value
@@ -432,10 +450,71 @@ class PolicyEngine(
     /** "Tout rétablir": undoes every recorded change, newest first. Failed items stay recorded (retry). */
     fun revertAll(): EngineReport = synchronized(lock) {
         var report = EngineReport()
-        for (record in store.state().records.reversed()) report += revertLocked(record.id)
+        for (record in store.state().records.reversed()) report += isolated(record.id) { revertLocked(record.id) }
+        if (store.stateWasUnreadable()) report += isolated("sweep") { sweepLocked() }
         val ok = report.allOk
         logAction("policy_reverted", "all", null, ok, if (ok) null else report.failed.joinToString("; ").take(MAX_ERROR), if (ok) Severity.NOTABLE else Severity.WARNING)
         report
+    }
+
+    /**
+     * Safety net when the applied state cannot be trusted (unreadable preferences, or on request from
+     * the ADB rescue): restores everything the catalog can have changed, without knowing what Vigie
+     * really applied. Catalog packages hidden or suspended are shown again, catalog restrictions set
+     * by this admin (and the private DNS lock) are cleared, catalog permissions denied by policy go
+     * back to the user's control, and the private DNS stops being imposed on the enrolled host
+     * (automatic mode). Nothing outside the catalog is touched. What cannot be restored blindly (a
+     * setting whose previous value is unknown) is reported as a failure, to be fixed by hand.
+     */
+    fun sweepCatalog(): EngineReport = synchronized(lock) { sweepLocked() }
+
+    private fun sweepLocked(): EngineReport {
+        if (!isDeviceOwner()) return EngineReport(failed = listOf("Vigie n'est pas Device Owner"))
+        var report = EngineReport()
+        for (e in catalog.packages) {
+            if (safe { gateway.isInstalled(e.pkg) } != true) continue
+            val hidden = safe { gateway.isHidden(e.pkg) } == true
+            val suspended = safe { gateway.isSuspended(e.pkg) } == true
+            if (!hidden && !suspended) continue
+            val error = attempt {
+                var failure: String? = null
+                if (hidden && !gateway.setHidden(e.pkg, false)) failure = "refusé par le système"
+                if (suspended && !gateway.setSuspended(e.pkg, false)) failure = "refusé par le système"
+                failure
+            }
+            val restored = safe { !gateway.isHidden(e.pkg) && !gateway.isSuspended(e.pkg) } == true
+            report += outcome("package_enabled", e.pkg, null, restored, if (restored) null else error ?: "état non restauré")
+        }
+        for (key in catalog.restrictions.map { it.key }.distinct() + RestrictionGuard.DNS_LOCK) {
+            if (safe { gateway.hasRestriction(key) } != true) continue
+            val error = attempt { gateway.clearRestriction(key); null }
+            val cleared = safe { gateway.hasRestriction(key) } == false
+            report += outcome("restriction_cleared", key, null, cleared, if (cleared) null else error ?: "aucun effet constaté")
+        }
+        for (e in catalog.permissions) {
+            if (safe { gateway.isInstalled(e.pkg) } != true) continue
+            for (p in e.permissions.distinct()) {
+                if (safe { gateway.permissionGrantState(e.pkg, p) } != Dpm.GRANT_DENIED) continue
+                val error = attempt { if (!gateway.setPermissionGrantState(e.pkg, p, Dpm.GRANT_DEFAULT)) "refusé par le système" else null }
+                val freed = safe { gateway.permissionGrantState(e.pkg, p) } == Dpm.GRANT_DEFAULT
+                report += outcome("permission_restored", "${e.pkg}/$p", null, freed, if (freed) null else error ?: "état non restauré")
+            }
+        }
+        val host = dnsHost()
+        if (host != null && safe { gateway.privateDnsMode() == Dpm.DNS_MODE_HOSTNAME && gateway.privateDnsHost() == host } == true) {
+            val error = attempt { Dpm.dnsSetError(gateway.setPrivateDnsOpportunistic()) }
+            val ok = safe { gateway.privateDnsMode() } == Dpm.DNS_MODE_OPPORTUNISTIC
+            report += outcome("private_dns_set", "opportunistic", null, ok, if (ok) null else error ?: "aucun effet constaté")
+        }
+        for (e in catalog.settings) {
+            val now = (readSettingOrError(e) as? Result.Value)?.value
+            if (now == e.value) {
+                report += outcome("setting_restored", "${e.key}=?", null, false, "valeur d'origine inconnue (état perdu) : à rétablir à la main si besoin")
+            }
+        }
+        // The unreadable text has served: everything reachable was restored (failures stay in the journal).
+        if (report.failed.none { !it.startsWith("setting_restored") }) store.clearUnreadableMarker()
+        return report
     }
 
     private fun revertLocked(id: String): EngineReport {
@@ -481,11 +560,17 @@ class PolicyEngine(
     private fun revertPermissions(record: AppliedRecord): EngineReport {
         var report = EngineReport()
         var remaining = record.permissions
+        val pkg = record.target
+        // A record still pending means the process died while denying: a permission may be denied on the
+        // device without having been confirmed in the record. Whatever is denied now and was not before
+        // is restored too (otherwise it would stay denied and locked in the Settings for ever).
+        val pending = record.status == RecordStatus.PENDING
+        fun deniedByTheCrash(p: PermissionPrev) = pending && p.prevState != Dpm.GRANT_DENIED &&
+            safe { gateway.permissionGrantState(pkg, p.permission) } == Dpm.GRANT_DENIED
         // Foreground location before background location when granting back.
-        val order = record.permissions.filter { it.applied }
+        val order = record.permissions.filter { it.applied || deniedByTheCrash(it) }
             .sortedBy { if (it.permission.endsWith("ACCESS_BACKGROUND_LOCATION")) 1 else 0 }
         for (prev in order) {
-            val pkg = record.target
             val error = attempt {
                 when {
                     prev.prevState != Dpm.GRANT_DEFAULT -> gateway.setPermissionGrantState(pkg, prev.permission, prev.prevState)
@@ -504,11 +589,18 @@ class PolicyEngine(
                         gateway.isPermissionGranted(pkg, prev.permission) == prev.prevGranted
                     )
             } == true
-            if (restored) remaining = remaining.map { if (it.permission == prev.permission) it.copy(applied = false) else it }
+            // Kept (marked applied) until it is really restored, so that a retry finds it.
+            remaining = remaining.map { if (it.permission == prev.permission) it.copy(applied = !restored) else it }
             val action = if (prev.prevGranted) "permission_granted" else "permission_restored"
             report += outcome(action, "$pkg/${prev.permission}", record.profile, restored, if (restored) null else error ?: "état non restauré")
         }
-        if (remaining.none { it.applied }) removeRecord(record.id) else putRecord(record.copy(permissions = remaining, lastError = report.failed.lastOrNull()))
+        report += bookkeeping(record.id) {
+            if (remaining.none { it.applied }) {
+                removeRecord(record.id)
+            } else {
+                putRecord(record.copy(status = RecordStatus.APPLIED, permissions = remaining, lastError = report.failed.lastOrNull()))
+            }
+        }
         return report
     }
 
@@ -518,7 +610,7 @@ class PolicyEngine(
             val error = attempt { gateway.clearRestriction(RestrictionGuard.DNS_LOCK); null }
             val cleared = safe { gateway.hasRestriction(RestrictionGuard.DNS_LOCK) } == false
             report += outcome("restriction_cleared", RestrictionGuard.DNS_LOCK, record.profile, cleared, if (cleared) null else error ?: "aucun effet constaté")
-            if (cleared) putRecord(record.copy(dnsLockedByUs = false))
+            if (cleared) report += bookkeeping(record.id) { putRecord(record.copy(dnsLockedByUs = false)) }
         }
         val prevMode = record.prevDnsMode ?: Dpm.DNS_MODE_UNKNOWN
         val prevHost = record.prevDnsHost
@@ -550,14 +642,31 @@ class PolicyEngine(
             if (safe { gateway.privateDnsMode() } == Dpm.DNS_MODE_OPPORTUNISTIC) failure += " ; mode automatique appliqué à la place"
         }
         report += outcome("private_dns_set", target, record.profile, restored, failure)
-        val current = store.state().records.firstOrNull { it.id == record.id } ?: record
-        if (restored && !current.dnsLockedByUs) removeRecord(record.id) else putRecord(current.copy(lastError = report.failed.lastOrNull()))
+        val lockStillSet = record.dnsLockedByUs && safe { gateway.hasRestriction(RestrictionGuard.DNS_LOCK) } != false
+        report += bookkeeping(record.id) {
+            val current = store.state().records.firstOrNull { it.id == record.id } ?: record
+            if (restored && !lockStillSet) removeRecord(record.id) else putRecord(current.copy(dnsLockedByUs = lockStillSet, lastError = report.failed.lastOrNull()))
+        }
         return report
     }
 
     private fun finish(record: AppliedRecord, restored: Boolean, action: String, target: String, profile: String?, error: String?): EngineReport {
-        if (restored) removeRecord(record.id) else putRecord(record.copy(lastError = error ?: "état non restauré"))
-        return outcome(action, target, profile, restored, if (restored) null else error ?: "état non restauré")
+        val written = bookkeeping(record.id) {
+            if (restored) removeRecord(record.id) else putRecord(record.copy(lastError = error ?: "état non restauré"))
+        }
+        return outcome(action, target, profile, restored, if (restored) null else error ?: "état non restauré") + written
+    }
+
+    /**
+     * State writes while undoing: the device is what matters. If the state cannot be written (storage
+     * full), the undo of this item and of the following ones still goes on; the stale record is
+     * reported and cleared by a later "Tout rétablir".
+     */
+    private inline fun bookkeeping(id: String, block: () -> Unit): EngineReport = try {
+        block()
+        EngineReport()
+    } catch (e: Exception) {
+        EngineReport(failed = listOf("$id : état non enregistré (${describe(e)})"))
     }
 
     // ---------------------------------------------------------------- leaving Device Owner
@@ -594,7 +703,8 @@ class PolicyEngine(
 
     private fun revertAllLockedForRemoval(): EngineReport {
         var report = EngineReport()
-        for (record in store.state().records.reversed()) report += revertLocked(record.id)
+        for (record in store.state().records.reversed()) report += isolated(record.id) { revertLocked(record.id) }
+        if (store.stateWasUnreadable()) report += isolated("sweep") { sweepLocked() }
         logAction("policy_reverted", "all", null, report.allOk, if (report.allOk) null else report.failed.joinToString("; ").take(MAX_ERROR), Severity.NOTABLE)
         return report
     }
@@ -603,7 +713,11 @@ class PolicyEngine(
 
     /** Records a policy action that is not an item of the state (logging switches, self-grant…). */
     fun logAction(action: String, target: String, profile: String?, ok: Boolean, error: String?, sev: Int = if (ok) Severity.INFO else Severity.NOTABLE) {
-        store.appendJournal(JournalEntry(clock.nowMillis(), action, target, profile, ok, error))
+        try {
+            store.appendJournal(JournalEntry(clock.nowMillis(), action, target, profile, ok, error))
+        } catch (_: Exception) {
+            // Storage full: the action itself matters more than its trace.
+        }
         try {
             sink()?.emit(EVENT_TYPE, sev) {
                 put("action", action)
@@ -617,13 +731,23 @@ class PolicyEngine(
         }
     }
 
+    /**
+     * One item failing in an unexpected way (typically the state that cannot be written: storage
+     * full) never stops the others: "Tout rétablir" must go through every item it can.
+     */
+    private inline fun isolated(id: String, block: () -> EngineReport): EngineReport = try {
+        block()
+    } catch (e: Exception) {
+        EngineReport(failed = listOf("$id : ${describe(e)}"))
+    }
+
     private fun outcome(action: String, target: String, profile: String?, ok: Boolean, error: String?, sev: Int? = null): EngineReport {
         logAction(action, target, profile, ok, error?.take(MAX_ERROR), sev ?: if (ok) Severity.INFO else Severity.NOTABLE)
         return if (ok) EngineReport(succeeded = listOf("$action $target")) else EngineReport(failed = listOf("$action $target : ${error.orEmpty()}"))
     }
 
-    private fun refused(action: String, target: String, profile: String?) =
-        outcome(action, target, profile, false, "refusé : $DENY_REASON")
+    private fun refused(action: String, target: String, profile: String?, reason: String = DENY_REASON) =
+        outcome(action, target, profile, false, "refusé : $reason")
 
     private fun putRecord(record: AppliedRecord) {
         val state = store.state()

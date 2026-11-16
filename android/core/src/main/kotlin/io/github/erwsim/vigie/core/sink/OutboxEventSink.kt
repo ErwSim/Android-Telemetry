@@ -8,6 +8,7 @@ import io.github.erwsim.vigie.core.event.UlidGenerator
 import io.github.erwsim.vigie.core.event.stripNulls
 import io.github.erwsim.vigie.core.outbox.Outbox
 import io.github.erwsim.vigie.core.outbox.PendingEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -132,21 +133,41 @@ class OutboxEventSink(
             droppedInMemory = 0
         }
         if (batch.isEmpty() && droppedNow == 0L) return@withLock true
-        try {
-            if (droppedNow > 0) outbox.addDropped(droppedNow)
-            val events = outbox.append(batch)
-            _lastWriteError.value = null
-            recent.addAll(events)
-            listener?.onFlushed(events)
-            true
+        var droppedCounted = droppedNow == 0L
+        val events = try {
+            if (!droppedCounted) {
+                outbox.addDropped(droppedNow)
+                droppedCounted = true
+            }
+            outbox.append(batch)
+        } catch (e: CancellationException) {
+            requeue(batch, if (droppedCounted) 0 else droppedNow)
+            throw e
         } catch (e: Exception) {
             _lastWriteError.value = e.toString()
-            synchronized(lock) {
-                droppedInMemory += droppedNow
-                pending.addAll(0, batch)
-                while (pending.size > MAX_IN_MEMORY) dropOneInMemory()
-            }
-            false
+            requeue(batch, if (droppedCounted) 0 else droppedNow)
+            return@withLock false
+        }
+        _lastWriteError.value = null
+        recent.addAll(events)
+        // From here the events are on disk with their seq: whatever the listener does (buffer limits,
+        // upload request) must never put them back in the pending list, they would be written twice.
+        try {
+            listener?.onFlushed(events)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _lastWriteError.value = "listener: $e"
+        }
+        true
+    }
+
+    /** Nothing was written: the events go back in front of the pending list, in order. */
+    private fun requeue(batch: List<PendingEvent>, dropped: Long) {
+        synchronized(lock) {
+            droppedInMemory += dropped
+            pending.addAll(0, batch)
+            while (pending.size > MAX_IN_MEMORY) dropOneInMemory()
         }
     }
 

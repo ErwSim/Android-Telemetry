@@ -71,7 +71,9 @@ object DnsGuardLogic {
         if (!i.networkAvailable) return DnsGuardDecision.Unknown
         if (i.validated) return DnsGuardDecision.Healthy
         if (i.probeOk != false) return DnsGuardDecision.Healthy // the host answers: the problem is elsewhere
-        val since = i.failingSinceMs ?: i.nowMs
+        // A start "in the future" was written by a clock that has moved back since: start again from now
+        // (otherwise the fallback would wait until the clock catches up, the phone staying without DNS).
+        val since = i.failingSinceMs?.takeIf { it <= i.nowMs } ?: i.nowMs
         return if (i.fallbackEnabled && i.nowMs - since >= i.fallbackAfterMs) {
             DnsGuardDecision.Fallback(since)
         } else {

@@ -41,6 +41,8 @@ import io.github.erwsim.vigie.core.upload.Uploader
 import io.github.erwsim.vigie.core.work.MaintenanceWorker
 import io.github.erwsim.vigie.core.work.UploadScheduler
 import io.github.erwsim.vigie.core.work.WorkPeriodicScheduler
+import android.util.Log
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -66,7 +68,11 @@ class Agent private constructor(
     private val bootIdentity = BootIdentity(prefs(PREFS_BOOT), clock, ::readBootCount)
     val boot = BootInfo(bootIdentity.bootId, bootIdentity.isNewBoot, bootIdentity.isFirstRun)
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // A failing background task (database that cannot be opened, storage full…) must not crash the
+    // process at every start: the app stays usable to see the error and for the ADB rescue.
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e(TAG, "agent background task failed", e) },
+    )
 
     val database: OutboxDatabase = Room.databaseBuilder(context, OutboxDatabase::class.java, OutboxDatabase.NAME).build()
     val outbox = Outbox(database)
@@ -244,6 +250,7 @@ class Agent private constructor(
     override fun lastUploadMs(): Long? = uploadStatus.status.value.lastSuccessMs.takeIf { it > 0 }
 
     companion object {
+        private const val TAG = "VigieAgent"
         private const val PREFS_SETTINGS = "vigie_settings"
         private const val PREFS_BOOT = "vigie_boot"
         private const val PREFS_UPLOAD = "vigie_upload"

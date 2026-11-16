@@ -92,11 +92,19 @@ object PackageDenyList {
 }
 
 /**
- * Restrictions Vigie must never set: they would cut the ADB rescue path or the location the agent
- * relies on. USB data signaling is never disabled either (no code path calls
- * `setUsbDataSignalingEnabled(false)`).
+ * Restrictions Vigie may set. Two lists, both hard-coded:
+ * - [FORBIDDEN]: restrictions that would cut the ADB rescue path, the location the agent relies on,
+ *   or a vital function of the phone. Listed explicitly so that the reason stays written down;
+ * - [ALLOWED]: the only keys ever passed to `addUserRestriction`, each reviewed against the
+ *   `UserManager` documentation (docs/research/android-plateforme.md §3.8). A catalog (or a future
+ *   edit of it) naming any other key is refused: an unreviewed restriction such as
+ *   `no_unmute_microphone` or `no_create_windows` can make the phone unusable just as well.
+ * USB data signaling is never disabled either (no code path calls `setUsbDataSignalingEnabled(false)`).
+ * Undoing (`clearUserRestriction`) is never filtered.
  */
 object RestrictionGuard {
+    const val DNS_LOCK = "disallow_config_private_dns"
+
     val FORBIDDEN: Set<String> = setOf(
         "no_debugging_features", // cuts ADB: the rescue path.
         "no_config_date_time",
@@ -105,7 +113,7 @@ object RestrictionGuard {
         "no_usb_signaling", // defensive: not a public restriction, never set.
         "no_factory_reset", // the user's last resort stays available.
         "no_modify_accounts",
-        "no_install_apps",
+        "no_install_apps", // would also block "adb install" (updates of Vigie itself).
         "no_uninstall_apps",
         "no_control_apps",
         "no_outgoing_calls",
@@ -120,7 +128,40 @@ object RestrictionGuard {
         DNS_LOCK,
     )
 
-    const val DNS_LOCK = "disallow_config_private_dns"
+    /** Reviewed keys: privacy/security restrictions that leave calls, network, ADB and settings usable. */
+    val ALLOWED: Set<String> = setOf(
+        "no_add_user",
+        "no_cellular_2g",
+        "no_install_unknown_sources_globally",
+        "no_install_unknown_sources",
+        "no_content_capture",
+        "no_content_suggestions",
+        "no_assist_content",
+        "no_config_credentials",
+        "no_safe_boot",
+        "no_sim_globally",
+        "no_ultra_wideband_radio",
+        "no_thread_network",
+        "no_near_field_communication_radio",
+        "no_bluetooth_sharing",
+        "no_usb_file_transfer", // MTP/PTP only: ADB is not a "file transfer" function.
+        "no_autofill",
+    )
 
-    fun isForbidden(key: String): Boolean = key in FORBIDDEN
+    fun isForbidden(key: String): Boolean = key in FORBIDDEN || key !in ALLOWED
+}
+
+/**
+ * `Settings.Global` / `Settings.Secure` keys Vigie may write with WRITE_SECURE_SETTINGS. That
+ * permission can write anything (`adb_enabled`, `user_setup_complete`, `private_dns_mode`,
+ * `default_input_method`…): only the keys reviewed here ever reach `Settings.*.putString`, whatever
+ * the catalog says. Undoing (writing back the recorded previous value) is never filtered.
+ */
+object SettingGuard {
+    val ALLOWED: Set<String> = setOf(
+        "global:ble_scan_always_enabled",
+        "global:wifi_scan_always_enabled",
+    )
+
+    fun isForbidden(namespace: String, key: String): Boolean = "$namespace:$key" !in ALLOWED
 }

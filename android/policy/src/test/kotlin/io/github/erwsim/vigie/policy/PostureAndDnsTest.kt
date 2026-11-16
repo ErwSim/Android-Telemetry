@@ -122,6 +122,29 @@ class PostureAndDnsTest {
     }
 
     @Test
+    fun `DNS guard - a failure start left in the future by a clock that moved back does not delay the fallback for ever`() {
+        val now = 1_000_000L
+        // Recorded one year "ahead": the wait starts again from now instead of lasting a year.
+        val decision = DnsGuardLogic.decide(input(since = now + 365L * 86_400_000, now = now))
+        assertEquals(DnsGuardDecision.Failing(now, now + 15 * 60_000L), decision)
+    }
+
+    @Test
+    fun `self-granted permissions are granted once, foreground location first`() {
+        val declared = listOf("android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.ACCESS_FINE_LOCATION", "android.permission.BLUETOOTH_SCAN")
+        assertEquals(
+            listOf("android.permission.ACCESS_FINE_LOCATION", "android.permission.BLUETOOTH_SCAN", "android.permission.ACCESS_BACKGROUND_LOCATION"),
+            DeviceOwnerManager.pendingSelfGrants(declared, { false }, emptySet()),
+        )
+        // Revoked by the owner after the first automatic grant: not granted again behind his back.
+        assertEquals(
+            listOf("android.permission.BLUETOOTH_SCAN"),
+            DeviceOwnerManager.pendingSelfGrants(declared, { false }, setOf("android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_BACKGROUND_LOCATION")),
+        )
+        assertEquals(emptyList<String>(), DeviceOwnerManager.pendingSelfGrants(declared, { true }, emptySet()))
+    }
+
+    @Test
     fun `DNS guard - re-imposes after a fallback only when the host answers and auto-restore is on`() {
         val fallen = record.copy(dnsFallback = true)
         assertEquals(DnsGuardDecision.Reapply, DnsGuardLogic.decide(input(record = fallen, probe = true)))

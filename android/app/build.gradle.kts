@@ -106,4 +106,7 @@ dependencies {
 
     testImplementation(testFixtures(project(":core")))
     testImplementation(libs.junit)
+    // CrossServerTest drives the real uploader against the real collector (skipped unless VIGIE_CROSS_ENROLL is set).
+    testImplementation(libs.okhttp)
+    testImplementation(libs.room.runtime)
 }

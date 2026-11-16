@@ -41,12 +41,20 @@ is_test_only() { ashell dumpsys package "$PKG" | grep -q 'TEST_ONLY'; }
 RESCUE_RECEIVER="$PKG/io.github.erwsim.vigie.policy.rescue.RescueReceiver"
 RESCUE_ACTION="io.github.erwsim.vigie.action.RESCUE_REVERT_ALL"
 
-# rescue_broadcast [remove_owner] : envoie l'ordre (jusqu'à une minute) et renseigne
+# rescue_broadcast [remove_owner] [force] [sweep] : envoie l'ordre (jusqu'à une minute) et renseigne
 # RESCUE_OUT (sortie brute), RESCUE_CODE (1 tout rétabli, 2 partiel, 3 plus Device Owner,
 # 4 délai dépassé, vide si aucune réponse exploitable) et RESCUE_DATA (résumé).
+#   remove_owner : abandonne ensuite le rôle, seulement si tout a pu être défait ;
+#   force        : avec remove_owner, abandonne le rôle même si un élément n'a pas pu être défait ;
+#   sweep        : rétablit en plus tout ce que le catalogue a pu modifier (état douteux ou perdu).
 rescue_broadcast() {
-    local extra=()
-    if [ "${1:-}" = "remove_owner" ]; then extra=(--ez remove_owner true); fi
+    local extra=() flag
+    for flag in "$@"; do
+        case "$flag" in
+            remove_owner|force|sweep) extra+=(--ez "$flag" true) ;;
+            *) die "rescue_broadcast : option inconnue $flag" ;;
+        esac
+    done
     RESCUE_OUT="$(ashell am broadcast --include-stopped-packages -a "$RESCUE_ACTION" -n "$RESCUE_RECEIVER" ${extra[@]+"${extra[@]}"} 2>&1 || true)"
     RESCUE_CODE="$(printf '%s\n' "$RESCUE_OUT" | sed -n 's/.*Broadcast completed: result=\(-\{0,1\}[0-9]*\).*/\1/p' | tail -n 1)"
     RESCUE_DATA="$(printf '%s\n' "$RESCUE_OUT" | sed -n 's/.*Broadcast completed: result=[-0-9]*, data="\(.*\)"$/\1/p' | tail -n 1)"
@@ -56,23 +64,37 @@ rescue_broadcast() {
 # Extrait « clé=a,b,c » du résumé, en liste séparée par des espaces.
 rescue_field() { printf '%s\n' "$RESCUE_DATA" | tr ' ' '\n' | sed -n "s/^$1=//p" | tr ',' ' '; }
 
-# Après la perte du rôle, Vigie ne peut plus rien défaire : propose pm unhide / pm unsuspend pour
-# les paquets qu'elle avait masqués ou suspendus (liste tirée du résumé de l'issue de secours).
+# État d'un paquet pour l'utilisateur 0, lu dans « dumpsys package » (ligne « User 0: … hidden=… suspended=… »).
+pkg_flag() { ashell dumpsys package "$1" 2>/dev/null | grep -m1 -E '^[[:space:]]*User 0:' | grep -q "$2=true"; }
+
+# Après la perte du rôle, Vigie ne peut plus rien défaire. Android lève en principe lui-même les
+# politiques du Device Owner retiré (paquets masqués ou suspendus compris) : on vérifie l'état réel
+# de chaque paquet que Vigie avait masqué ou suspendu, et on ne tente « pm unhide » / « pm unsuspend »
+# que pour ceux qui le sont encore. Ces commandes peuvent être refusées au shell ADB (permission
+# MANAGE_USERS, paquets suspendus par un administrateur) : le seul recours est alors de redonner le
+# rôle à Vigie (enable-device-owner) puis de relancer rescue-revert, l'état appliqué étant conservé.
 restore_leftovers() {
-    local hidden suspended answer p
+    local hidden suspended p stuck=""
     hidden="$(rescue_field hidden)"
     suspended="$(rescue_field suspended)"
     if [ -z "$hidden$suspended" ]; then
         info "Aucun paquet masqué ou suspendu à rétablir."
-    else
-        read -r -p "Réafficher/réactiver ces paquets par ADB (pm unhide / pm unsuspend) ? (oui/non) " answer
-        if [ "$answer" = "oui" ]; then
-            for p in $hidden; do info "pm unhide $p : $(ashell pm unhide "$p" 2>&1 | tr '\n' ' ')"; done
-            for p in $suspended; do info "pm unsuspend $p : $(ashell pm unsuspend "$p" 2>&1 | tr '\n' ' ')"; done
-            warn "Vérifiez dans Paramètres › Applications que ces apps sont de nouveau utilisables."
-        fi
+    fi
+    for p in $hidden; do
+        if ! pkg_flag "$p" hidden; then ok "$p : visible."; continue; fi
+        info "pm unhide $p : $(ashell pm unhide "$p" 2>&1 | tr '\n' ' ')"
+        if pkg_flag "$p" hidden; then stuck="$stuck $p"; else ok "$p : réaffiché."; fi
+    done
+    for p in $suspended; do
+        if ! pkg_flag "$p" suspended; then ok "$p : actif."; continue; fi
+        info "pm unsuspend $p : $(ashell pm unsuspend "$p" 2>&1 | tr '\n' ' ')"
+        if pkg_flag "$p" suspended; then stuck="$stuck $p"; else ok "$p : réactivé."; fi
+    done
+    if [ -n "$stuck" ]; then
+        warn "Toujours masqués ou suspendus :$stuck"
+        warn "Android réserve leur rétablissement au Device Owner. Redonnez le rôle à Vigie (./enable-device-owner.sh, sans comptes sur le téléphone), puis lancez ./rescue-revert.sh : Vigie a gardé la liste de ce qu'elle avait appliqué."
     fi
     if [ -n "$(rescue_field other_items)" ]; then
-        warn "Restrictions, permissions ou DNS privé posés par Vigie ont normalement été levés par Android au retrait du Device Owner ; vérifiez le DNS privé dans Paramètres › Connexions."
+        warn "Restrictions, permissions ou DNS privé posés par Vigie ont normalement été levés par Android au retrait du Device Owner ; vérifiez le DNS privé dans Paramètres › Connexions › Plus de paramètres de connexion."
     fi
 }

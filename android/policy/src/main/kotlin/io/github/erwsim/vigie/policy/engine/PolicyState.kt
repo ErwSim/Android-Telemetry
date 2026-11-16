@@ -5,6 +5,8 @@ import android.content.SharedPreferences
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 
 /** Kind of an applied policy item. */
 @Serializable
@@ -119,15 +121,41 @@ data class JournalEntry(
 class PolicyStore(private val prefs: SharedPreferences) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false; explicitNulls = false }
 
-    fun state(): AppliedState = prefs.getString(K_STATE, null)?.let {
+    /**
+     * The applied state. A text that cannot be read as a whole is read record by record (a record
+     * written by another version with a kind or a method this one does not know must not make
+     * every other record disappear); what is unreadable is kept aside under [K_STATE_CORRUPT] and
+     * reported by [stateWasUnreadable], so that "Tout rétablir" falls back on a catalog sweep
+     * ([PolicyEngine.sweepCatalog]) instead of silently forgetting what was applied.
+     */
+    fun state(): AppliedState {
+        val text = prefs.getString(K_STATE, null) ?: return AppliedState()
         try {
-            json.decodeFromString(AppliedState.serializer(), it)
+            return json.decodeFromString(AppliedState.serializer(), text)
         } catch (_: Exception) {
-            // Never lose track silently: keep the raw text aside for a manual recovery.
-            prefs.edit().putString(K_STATE_CORRUPT, it).commit()
-            null
+            // Fall through: salvage what can be read.
         }
-    } ?: AppliedState()
+        if (prefs.getString(K_STATE_CORRUPT, null) != text) prefs.edit().putString(K_STATE_CORRUPT, text).commit()
+        val records = try {
+            (json.parseToJsonElement(text) as? JsonObject)?.get("records").let { it as? JsonArray }.orEmpty().mapNotNull { element ->
+                try {
+                    json.decodeFromJsonElement(AppliedRecord.serializer(), element)
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+        return AppliedState(records = records)
+    }
+
+    /** True once a persisted state could not be read entirely, until [clearUnreadableMarker]. */
+    fun stateWasUnreadable(): Boolean = prefs.contains(K_STATE_CORRUPT)
+
+    fun clearUnreadableMarker() {
+        prefs.edit().remove(K_STATE_CORRUPT).commit()
+    }
 
     fun saveState(state: AppliedState) {
         check(prefs.edit().putString(K_STATE, json.encodeToString(AppliedState.serializer(), state)).commit()) {

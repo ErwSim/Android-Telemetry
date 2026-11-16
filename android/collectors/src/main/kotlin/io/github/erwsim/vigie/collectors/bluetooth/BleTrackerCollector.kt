@@ -106,7 +106,8 @@ class BleTrackerCollector : Collector {
             }
         }
 
-        ctx.registerReceiver(IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)) { intent ->
+        // Bluetooth broadcasts may come from the Bluetooth stack's own uid: exported (protected broadcast).
+        ctx.registerReceiver(IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED), exported = true) { intent ->
             when (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)) {
                 BluetoothAdapter.STATE_ON -> startScan()
                 BluetoothAdapter.STATE_TURNING_OFF, BluetoothAdapter.STATE_OFF -> stopScan()

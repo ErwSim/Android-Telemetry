@@ -18,7 +18,7 @@ class BootReceiver : BroadcastReceiver() {
             Intent.ACTION_MY_PACKAGE_REPLACED -> AgentService.REASON_UPDATE
             else -> return
         }
-        val agent = Agent.get()
+        val agent = Agent.getOrNull() ?: return
         agent.ensureBackgroundWork()
         if (agent.settings[CoreSettings.AGENT_ENABLED]) AgentService.start(context, reason)
     }

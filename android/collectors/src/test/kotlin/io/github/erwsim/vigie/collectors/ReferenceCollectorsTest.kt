@@ -57,6 +57,31 @@ class ReferenceCollectorsTest {
     }
 
     @Test
+    fun withoutAnyFixTheFastCadenceIsGivenUp() {
+        // Indoors: no GPS fix ever comes. The fast cadence (GNSS searching every minute) must not last.
+        val t = MotionTracker(startedAtElapsedMs = 10_000)
+        assertEquals(MotionTracker.Mode.MOVING, t.onNoFix(10_000 + 4 * 60_000))
+        assertEquals(MotionTracker.Mode.STATIONARY, t.onNoFix(10_000 + 5 * 60_000))
+        // The phone moves: fast cadence again, for five minutes at most if there is still no fix.
+        assertEquals(MotionTracker.Mode.MOVING, t.onSignificantMotion(20 * 60_000))
+        assertEquals(MotionTracker.Mode.MOVING, t.onNoFix(24 * 60_000))
+        assertEquals(MotionTracker.Mode.STATIONARY, t.onNoFix(25 * 60_000 + 1))
+    }
+
+    @Test
+    fun fixesKeepTheFastCadenceWhileMoving() {
+        val t = MotionTracker()
+        var now = 0L
+        var lat = 48.0
+        repeat(10) {
+            now += 60_000
+            lat += 0.001 // ~111 m per minute
+            assertEquals(MotionTracker.Mode.MOVING, t.onFix(lat, 2.0, 10f, 1.8f, now))
+            assertEquals(MotionTracker.Mode.MOVING, t.onNoFix(now + 30_000))
+        }
+    }
+
+    @Test
     fun haversineDistance() {
         val d = MotionTracker.distanceM(48.8566, 2.3522, 45.7640, 4.8357) // Paris → Lyon
         assertTrue("$d", d in 390_000.0..393_000.0)

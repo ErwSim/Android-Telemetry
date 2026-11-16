@@ -6,6 +6,8 @@
 #    les journaux réseau et sécurité, retire la protection contre l'arrêt forcé, émet
 #    security.policy « device_owner_cleared » puis appelle clearDeviceOwnerApp. Le retrait étant
 #    annoncé, il n'est pas signalé comme agent.tamper. Fonctionne avec tout APK (testOnly ou non).
+#    Si un élément ne peut pas être défait, Vigie GARDE le rôle (elle seule peut réessayer) et ce
+#    script propose de forcer le retrait.
 # 2. Repli, seulement si Vigie ne répond pas (app qui ne démarre plus) : « dpm remove-active-admin »,
 #    possible uniquement avec un APK testOnly. Vigie ne défait alors rien elle-même (paquets masqués
 #    à réafficher, proposé ensuite) et le retrait est vu comme une désactivation (agent.tamper
@@ -40,7 +42,22 @@ MSG
     info "Envoi de l'ordre de retrait à Vigie (jusqu'à une minute)…"
     rescue_broadcast remove_owner
     case "$RESCUE_CODE" in
-        1|2) [ "$RESCUE_CODE" = 1 ] && ok "Politique rétablie ($RESCUE_DATA)." || warn "Rétablissement partiel, retrait forcé : $RESCUE_DATA" ;;
+        1) ok "Politique rétablie ($RESCUE_DATA)." ;;
+        2)
+            warn "Rétablissement partiel : $RESCUE_DATA"
+            if is_owner; then
+                cat <<'MSG'
+Vigie n'a pas pu tout défaire et a donc gardé le rôle de Device Owner : elle seule peut réessayer
+(./rescue-revert.sh, puis ./rescue-revert.sh --sweep). Forcer le retrait laisse ces éléments en
+l'état ; selon la version d'Android, un paquet resté masqué ou suspendu ne peut ensuite plus être
+rétabli que par un Device Owner.
+MSG
+                read -r -p "Forcer quand même le retrait ? (oui/non) " answer
+                [ "$answer" = "oui" ] || die "Abandon : Vigie reste Device Owner."
+                rescue_broadcast remove_owner force
+                [ -n "$RESCUE_CODE" ] || { printf '%s\n' "$RESCUE_OUT" >&2; die "Pas de réponse de Vigie au retrait forcé."; }
+            fi
+            ;;
         3) info "Vigie n'était déjà plus Device Owner ($RESCUE_DATA)." ;;
         4) warn "Vigie n'a pas fini dans le délai ; vérification du rôle dans 30 s…"; sleep 30 ;;
         *)
@@ -49,7 +66,7 @@ MSG
             is_test_only || die "APK non testOnly : Android refuse « dpm remove-active-admin ». Réparez/mettez à jour l'app (même clé de signature) puis relancez ce script, ou réinitialisez le téléphone."
             cat <<'MSG'
 Repli : « dpm remove-active-admin » (APK testOnly). Vigie ne défera pas sa politique elle-même :
-les paquets qu'elle avait masqués ou suspendus vous seront proposés ensuite (pm unhide / unsuspend).
+l'état des paquets qu'elle avait masqués ou suspendus est vérifié ensuite.
 Le retrait sera signalé par agent.tamper (admin_disabled, device_owner_lost) : c'est attendu.
 MSG
             read -r -p "Utiliser ce repli ? (oui/non) " answer

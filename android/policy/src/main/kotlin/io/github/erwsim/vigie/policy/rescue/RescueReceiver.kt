@@ -16,24 +16,40 @@ import kotlin.concurrent.thread
  * triggered from ADB by `scripts/rescue-revert.sh` / `.ps1`:
  *
  *     adb shell am broadcast --include-stopped-packages -a io.github.erwsim.vigie.action.RESCUE_REVERT_ALL \
- *         -n io.github.erwsim.vigie/io.github.erwsim.vigie.policy.rescue.RescueReceiver [--ez remove_owner true]
+ *         -n io.github.erwsim.vigie/io.github.erwsim.vigie.policy.rescue.RescueReceiver \
+ *         [--ez sweep true] [--ez remove_owner true [--ez force true]]
+ *
+ * - `sweep`: besides the recorded changes, restores everything the catalog can have changed
+ *   ([PolicyEngine.sweepCatalog]): for a state that cannot be trusted any more. Done automatically
+ *   when the persisted state was unreadable.
+ * - `remove_owner`: then gives up the Device Owner role, but only if everything was undone. `force`
+ *   gives it up even if something could not be undone (what remains is listed in the answer).
  *
  * Protection: the receiver is exported but requires the sender to hold
  * `android.permission.FORCE_STOP_PACKAGES` (manifest `android:permission`). Its protection level is
- * `signature|privileged` (checked in the android-37 framework manifest), without the `development`
- * or `appop` flags: no third-party app can ever obtain it, not even through `pm grant`. Only the
- * system and the ADB shell (`com.android.shell` holds it for `am force-stop`) can deliver this
- * broadcast. The only effect is undoing Vigie's own changes; it never applies anything.
+ * `signature|privileged` (0x12 in the android-37 framework manifest), without the `development`,
+ * `appop` or `role` flags: no third-party app can obtain it, not even through `pm grant`. It is
+ * held by apps signed with the platform key or privileged and allow-listed by the manufacturer, and
+ * by the ADB shell (`com.android.shell` declares it for `am force-stop`; AOSP
+ * `packages/Shell/AndroidManifest.xml`). The only effect is undoing Vigie's own changes; it never
+ * applies anything.
+ *
+ * Limits: the app is not direct-boot aware (its state is in credential-encrypted storage), so the
+ * rescue only works after the first unlock following a reboot; and it needs the app process to
+ * start (`Application.onCreate` tolerates a broken agent for that reason). If the app cannot start
+ * at all, the last resort is `dpm remove-active-admin` (testOnly builds only).
  *
  * The result is returned to `am broadcast` (ordered broadcast result): code [RESULT_OK],
  * [RESULT_PARTIAL], [RESULT_NOT_OWNER] or [RESULT_TIMEOUT], and a one-line summary. When Vigie is no
  * longer Device Owner it cannot undo anything itself: the summary then lists the packages it had
- * hidden or suspended so that the script can restore them with `pm unhide` / `pm unsuspend`.
+ * hidden or suspended so that the script can check them.
  */
 class RescueReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION) return
         val removeOwner = intent.getBooleanExtra(EXTRA_REMOVE_OWNER, false)
+        val force = intent.getBooleanExtra(EXTRA_FORCE, false)
+        val sweep = intent.getBooleanExtra(EXTRA_SWEEP, false)
         val pending = goAsync()
         val done = CountDownLatch(1)
         var code = RESULT_TIMEOUT
@@ -47,7 +63,10 @@ class RescueReceiver : BroadcastReceiver() {
                     summary = "not_device_owner ${leftovers(engine)}".trim()
                 } else {
                     var report = engine.revertAll()
-                    if (removeOwner) report += engine.removeDeviceOwner(force = true)
+                    if (sweep) report += engine.sweepCatalog()
+                    // Never give up the role over something that could not be undone, unless asked to:
+                    // once the role is gone, nobody may be able to show a hidden package again.
+                    if (removeOwner && (report.allOk || force)) report += engine.removeDeviceOwner(force)
                     code = if (report.allOk) RESULT_OK else RESULT_PARTIAL
                     summary = (
                         "reverted=${report.succeeded.size} failed=${report.failed.size}" +
@@ -88,6 +107,8 @@ class RescueReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION = "io.github.erwsim.vigie.action.RESCUE_REVERT_ALL"
         const val EXTRA_REMOVE_OWNER = "remove_owner"
+        const val EXTRA_FORCE = "force"
+        const val EXTRA_SWEEP = "sweep"
         const val RESULT_OK = 1
         const val RESULT_PARTIAL = 2
         const val RESULT_NOT_OWNER = 3

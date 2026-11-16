@@ -29,7 +29,9 @@ class NfcCollector : Collector {
     override suspend fun start(ctx: CollectorContext) {
         val adapter = NfcAdapter.getDefaultAdapter(ctx.appContext) ?: return
         report(ctx, adapter.isEnabled)
-        ctx.registerReceiver(IntentFilter(NfcAdapter.ACTION_ADAPTER_STATE_CHANGED)) { intent ->
+        // Sent by the NFC service app (uid nfc, not the system server): needs an exported receiver.
+        // Protected broadcast: no other app can forge it.
+        ctx.registerReceiver(IntentFilter(NfcAdapter.ACTION_ADAPTER_STATE_CHANGED), exported = true) { intent ->
             when (intent.getIntExtra(NfcAdapter.EXTRA_ADAPTER_STATE, -1)) {
                 NfcAdapter.STATE_ON -> report(ctx, true)
                 NfcAdapter.STATE_OFF -> report(ctx, false)

@@ -59,12 +59,15 @@ class PostureCollector : Collector {
             ctx.guard("observe $key") { resolver.registerContentObserver(Settings.Global.getUriFor(key), false, observer) }
         }
         ctx.onStop { resolver.unregisterContentObserver(observer) }
+        // The two KeyChain actions are sent by the KeyChain app (its own uid, not the system server):
+        // exported receiver needed. All three are protected broadcasts, and the only effect is a re-read.
         ctx.registerReceiver(
             IntentFilter().apply {
                 addAction(KeyChain.ACTION_TRUST_STORE_CHANGED)
                 addAction(KeyChain.ACTION_KEYCHAIN_CHANGED)
                 addAction(DevicePolicyManager.ACTION_DEVICE_OWNER_CHANGED)
             },
+            exported = true,
         ) { requestCheck() }
     }
 

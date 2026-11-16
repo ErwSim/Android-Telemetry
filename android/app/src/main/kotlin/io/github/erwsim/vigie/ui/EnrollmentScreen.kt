@@ -235,5 +235,7 @@ private fun errorText(resources: Resources, error: EnrollmentError): String = re
         EnrollmentError.KEY_CERT_MISMATCH -> R.string.enroll_err_mismatch
         EnrollmentError.BAD_SERVER_CA -> R.string.enroll_err_ca
         EnrollmentError.BAD_DNS_HOST -> R.string.enroll_err_dns
+        EnrollmentError.BAD_TOKEN -> R.string.enroll_err_token
+        EnrollmentError.BAD_DEVICE_ID -> R.string.enroll_err_device_id
     },
 )

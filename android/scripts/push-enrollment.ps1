@@ -14,7 +14,8 @@ $dest = "/sdcard/Download/$name"
 
 Assert-Adb
 if ($Remove) {
-    Invoke-AdbShell rm -f $dest | Out-Null
+    # Quoted: an unquoted -f would be parsed as a PowerShell parameter of Invoke-AdbShell.
+    Invoke-AdbShell 'rm' '-f' $dest | Out-Null
     if ($LASTEXITCODE -eq 0) { Ok "Copie supprimée du téléphone : $dest" } else { Fail "Suppression impossible : $dest" }
     exit 0
 }

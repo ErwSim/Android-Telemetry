@@ -7,31 +7,37 @@
 # common.sh) ; seul le shell ADB ou le système peut l'envoyer, et elle ne peut que défaire.
 #
 # Usage : ./rescue-revert.sh                 « Tout rétablir »
+#         ./rescue-revert.sh --sweep         en plus, rétablit tout ce que le catalogue a pu modifier
+#                                            (paquets masqués ou suspendus, restrictions, permissions
+#                                            refusées, DNS privé), même sans trace dans l'état de Vigie
 #         ./rescue-revert.sh --remove-owner  équivaut à ./remove-device-owner.sh (retrait complet)
+# Ne fonctionne qu'après le premier déverrouillage qui suit un redémarrage.
 # Codes de sortie : 0 tout rétabli, 2 partiel, 3 Vigie n'est plus Device Owner, 4 délai dépassé,
 # 5 aucune réponse exploitable de Vigie, 1 autre erreur.
 set -euo pipefail
 cd "$(dirname "$0")"
 . ./common.sh
 
-if [ "${1:-}" = "--remove-owner" ]; then
-    exec ./remove-device-owner.sh
-elif [ -n "${1:-}" ]; then
-    die "Option inconnue : $1 (seule --remove-owner existe)."
-fi
+flags=()
+case "${1:-}" in
+    "") ;;
+    --remove-owner) exec ./remove-device-owner.sh ;;
+    --sweep) flags=(sweep) ;;
+    *) die "Option inconnue : $1 (--sweep ou --remove-owner)." ;;
+esac
 
 require_adb
 require_installed
 
 info "Envoi de l'ordre « Tout rétablir » à Vigie (jusqu'à une minute)…"
-rescue_broadcast
+rescue_broadcast ${flags[@]+"${flags[@]}"}
 case "$RESCUE_CODE" in
     1)
         ok "Tout est rétabli ($RESCUE_DATA)."
         ;;
     2)
         warn "Rétablissement partiel : $RESCUE_DATA"
-        warn "Réessayez ; si un élément résiste, consultez le journal de l'écran Politique ou le README (section Politique Device Owner)."
+        warn "Réessayez ; si un élément résiste, consultez le journal de l'écran Politique ou le README (section Politique Device Owner). « ./rescue-revert.sh --sweep » rétablit aussi ce dont Vigie aurait perdu la trace."
         exit 2
         ;;
     3)
@@ -45,7 +51,7 @@ case "$RESCUE_CODE" in
         ;;
     *)
         printf '%s\n' "$RESCUE_OUT" >&2
-        warn "Pas de réponse exploitable de Vigie. Vérifiez que l'APK installé contient l'issue de secours (version avec l'écran Politique) et qu'il démarre."
+        warn "Pas de réponse exploitable de Vigie. Vérifiez que le téléphone a été déverrouillé depuis son dernier démarrage, que l'APK installé contient l'issue de secours et qu'il démarre. Dernier recours si l'app ne démarre plus : ./remove-device-owner.sh (APK testOnly)."
         exit 5
         ;;
 esac

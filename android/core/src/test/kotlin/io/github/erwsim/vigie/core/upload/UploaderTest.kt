@@ -121,6 +121,52 @@ class UploaderTest {
     }
 
     @Test
+    fun aBackoffLeftInTheFarFutureByAClockJumpDoesNotBlockUploads() = runBlocking {
+        // The retry time is a wall-clock time. The clock was wrong (one year ahead) when a failure set it,
+        // then got corrected: without a bound, nothing would be sent for a year.
+        fill(2)
+        clock.now += 365L * 86_400_000
+        server.enqueue(code(503))
+        assertTrue(uploader.run() is UploadOutcome.Retry)
+        clock.now -= 365L * 86_400_000
+        server.enqueue(ack(2))
+        assertEquals(UploadOutcome.Sent(2, moreLeft = false), uploader.run())
+        assertEquals(0L, outbox.totals.value.count)
+    }
+
+    @Test
+    fun aRecentBackoffIsStillHonoured() = runBlocking {
+        fill(1)
+        server.enqueue(code(503))
+        uploader.run()
+        assertTrue(uploader.run() is UploadOutcome.Deferred)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun anUnexpectedExceptionWhileSendingIsAFailureWithBackoffNotACrash() = runBlocking {
+        // e.g. a Keystore or provider RuntimeException during the TLS handshake with the client key.
+        fill(2)
+        val broken = OkHttpClient.Builder().addInterceptor { throw IllegalStateException("keystore operation failed") }.build()
+        val u = Uploader(outbox, { broken to target }, status, clock, { net }, { limits }, Random(42))
+        val outcome = u.run()
+        assertTrue(outcome.toString(), outcome is UploadOutcome.Retry)
+        assertEquals(2L, outbox.totals.value.count)
+        assertTrue(status.status.value.lastError!!.contains("keystore operation failed"))
+        assertTrue(status.status.value.nextAttemptAtMs > clock.now)
+    }
+
+    @Test
+    fun credentialsThatCannotBeLoadedAreAFailureWithBackoff() = runBlocking {
+        fill(1)
+        val u = Uploader(outbox, { throw java.security.KeyStoreException("no such entry") }, status, clock, { net }, { limits }, Random(42))
+        val outcome = u.run()
+        assertTrue(outcome.toString(), outcome is UploadOutcome.Retry && outcome.cause == RetryCause.AUTH)
+        assertEquals(1L, outbox.totals.value.count)
+        assertTrue(status.status.value.lastError!!.startsWith("credentials"))
+    }
+
+    @Test
     fun duplicatesAndRejectedAreRemovedToo() = runBlocking {
         fill(4)
         server.enqueue(ack(accepted = 1, duplicates = 2, rejected = listOf("x")))

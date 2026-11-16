@@ -99,6 +99,22 @@ class OutboxEventSinkTest {
         assertEquals(listOf(1L, 2L, 3L), seen)
     }
 
+    @Test
+    fun aFailingListenerNeverWritesTheEventsTwice() = runBlocking {
+        // The listener (buffer limits, upload request) runs after the write: if it fails, the events are
+        // already in the outbox with their seq and must not go back to the pending list.
+        val sink = OutboxEventSink(outbox, clock, "b", scope, flushDelayMs = 600_000)
+        sink.listener = FlushListener { throw IllegalStateException("WorkManager is not initialized") }
+        repeat(3) { sink.emit("device.screen") { put("state", "on") } }
+        assertTrue("the write itself succeeded", sink.flushNow())
+        assertEquals(0, sink.pendingInMemory())
+        sink.listener = null
+        sink.flushNow()
+        val rows = outbox.batch(10)
+        assertEquals(listOf(1L, 2L, 3L), rows.map { it.seq })
+        assertEquals(3, rows.map { it.id }.toSet().size)
+    }
+
     private suspend fun waitFor(condition: () -> Boolean) {
         withTimeout(10_000) { while (!condition()) delay(20) }
     }

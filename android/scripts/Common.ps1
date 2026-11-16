@@ -76,9 +76,14 @@ $script:RescueAction = 'io.github.erwsim.vigie.action.RESCUE_REVERT_ALL'
 
 # Envoie l'ordre (jusqu'à une minute) et renvoie Out (sortie brute), Code (1 tout rétabli,
 # 2 partiel, 3 plus Device Owner, 4 délai dépassé, $null si aucune réponse exploitable) et Data (résumé).
-function Invoke-Rescue([switch]$RemoveOwner) {
+#   -RemoveOwner : abandonne ensuite le rôle, seulement si tout a pu être défait ;
+#   -Force       : avec -RemoveOwner, abandonne le rôle même si un élément n'a pas pu être défait ;
+#   -Sweep       : rétablit en plus tout ce que le catalogue a pu modifier (état douteux ou perdu).
+function Invoke-Rescue([switch]$RemoveOwner, [switch]$Force, [switch]$Sweep) {
     $extra = @()
-    if ($RemoveOwner) { $extra = @('--ez', 'remove_owner', 'true') }
+    if ($RemoveOwner) { $extra += @('--ez', 'remove_owner', 'true') }
+    if ($Force) { $extra += @('--ez', 'force', 'true') }
+    if ($Sweep) { $extra += @('--ez', 'sweep', 'true') }
     # Appel natif (pas Invoke-AdbShell) : « -a »/« -n » doivent arriver tels quels à adb.
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
@@ -104,22 +109,40 @@ function Get-RescueField([string]$Data, [string]$Key) {
     return @()
 }
 
-# Après la perte du rôle, Vigie ne peut plus rien défaire : propose pm unhide / pm unsuspend pour
-# les paquets qu'elle avait masqués ou suspendus (liste tirée du résumé de l'issue de secours).
+# État d'un paquet pour l'utilisateur 0, lu dans « dumpsys package » (ligne « User 0: ... hidden=... suspended=... »).
+function Test-PackageFlag([string]$Package, [string]$Flag) {
+    $line = @(Invoke-AdbShell dumpsys package $Package | Where-Object { $_ -match '^\s*User 0:' }) | Select-Object -First 1
+    return ($line -match "$Flag=true")
+}
+
+# Après la perte du rôle, Vigie ne peut plus rien défaire. Android lève en principe lui-même les
+# politiques du Device Owner retiré (paquets masqués ou suspendus compris) : on vérifie l'état réel
+# de chaque paquet que Vigie avait masqué ou suspendu, et on ne tente « pm unhide » / « pm unsuspend »
+# que pour ceux qui le sont encore. Ces commandes peuvent être refusées au shell ADB (permission
+# MANAGE_USERS, paquets suspendus par un administrateur) : le seul recours est alors de redonner le
+# rôle à Vigie (enable-device-owner) puis de relancer rescue-revert, l'état appliqué étant conservé.
 function Restore-Leftovers([string]$Data) {
-    $hidden = Get-RescueField $Data 'hidden'
-    $suspended = Get-RescueField $Data 'suspended'
+    $hidden = @(Get-RescueField $Data 'hidden')
+    $suspended = @(Get-RescueField $Data 'suspended')
+    $stuck = @()
     if ($hidden.Count + $suspended.Count -eq 0) {
         Info 'Aucun paquet masqué ou suspendu à rétablir.'
-    } else {
-        $answer = Read-Host 'Réafficher/réactiver ces paquets par ADB (pm unhide / pm unsuspend) ? (oui/non)'
-        if ($answer -eq 'oui') {
-            foreach ($p in $hidden) { Info "pm unhide $p : $((Invoke-AdbShell pm unhide $p) -join ' ')" }
-            foreach ($p in $suspended) { Info "pm unsuspend $p : $((Invoke-AdbShell pm unsuspend $p) -join ' ')" }
-            Warn 'Vérifiez dans Paramètres > Applications que ces apps sont de nouveau utilisables.'
-        }
     }
-    if ((Get-RescueField $Data 'other_items').Count -gt 0) {
-        Warn "Restrictions, permissions ou DNS privé posés par Vigie ont normalement été levés par Android au retrait du Device Owner ; vérifiez le DNS privé dans Paramètres > Connexions."
+    foreach ($p in $hidden) {
+        if (-not (Test-PackageFlag $p 'hidden')) { Ok "$p : visible."; continue }
+        Info "pm unhide $p : $((Invoke-AdbShell pm unhide $p) -join ' ')"
+        if (Test-PackageFlag $p 'hidden') { $stuck += $p } else { Ok "$p : réaffiché." }
+    }
+    foreach ($p in $suspended) {
+        if (-not (Test-PackageFlag $p 'suspended')) { Ok "$p : actif."; continue }
+        Info "pm unsuspend $p : $((Invoke-AdbShell pm unsuspend $p) -join ' ')"
+        if (Test-PackageFlag $p 'suspended') { $stuck += $p } else { Ok "$p : réactivé." }
+    }
+    if ($stuck.Count -gt 0) {
+        Warn "Toujours masqués ou suspendus : $($stuck -join ' ')"
+        Warn "Android réserve leur rétablissement au Device Owner. Redonnez le rôle à Vigie (.\enable-device-owner.ps1, sans comptes sur le téléphone), puis lancez .\rescue-revert.ps1 : Vigie a gardé la liste de ce qu'elle avait appliqué."
+    }
+    if (@(Get-RescueField $Data 'other_items').Count -gt 0) {
+        Warn "Restrictions, permissions ou DNS privé posés par Vigie ont normalement été levés par Android au retrait du Device Owner ; vérifiez le DNS privé dans Paramètres > Connexions > Plus de paramètres de connexion."
     }
 }

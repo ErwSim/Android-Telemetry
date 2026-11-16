@@ -17,9 +17,17 @@ if (-not $Apk -or -not (Test-Path $Apk)) {
     Fail 'APK introuvable. Construisez-le (.\gradlew.bat assembleRelease) ou passez son chemin avec -Apk.'
 }
 
+if ((Split-Path -Leaf $Apk) -like '*debug*.apk') {
+    Warn "APK de débogage : signé avec la clé de débogage (une mise à jour vers l'APK release sera refusée tant que Vigie est Device Owner) et « débogable » (adb run-as peut lire les données de l'app)."
+    Warn 'Sur le téléphone de tous les jours, installez l''APK release (.\gradlew.bat assembleRelease).'
+    $answer = Read-Host 'Installer quand même l''APK de débogage ? (oui/non)'
+    if ($answer -ne 'oui') { Fail 'Abandon.' }
+}
+
 Assert-Adb
 Info "Installation de $Apk"
-$out = Invoke-Adb install -r -t $Apk
+# Quoted: an unquoted -r/-t would be parsed as a PowerShell parameter of Invoke-Adb, not passed to adb.
+$out = Invoke-Adb 'install' '-r' '-t' $Apk
 $code = $LASTEXITCODE
 $out | ForEach-Object { Write-Host "  $_" }
 if ($code -ne 0 -or @($out | Where-Object { $_ -match 'Failure' }).Count -gt 0) {

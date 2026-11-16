@@ -17,8 +17,13 @@ import io.github.erwsim.vigie.core.collector.CollectorContext
 import io.github.erwsim.vigie.core.collector.Requirement
 import io.github.erwsim.vigie.core.event.Rfc3339
 import io.github.erwsim.vigie.core.event.Severity
+import io.github.erwsim.vigie.core.event.eventData
 import io.github.erwsim.vigie.core.settings.SettingKey
 import io.github.erwsim.vigie.core.settings.SettingSpec
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonObject
 
 /**
  * `location.fix` / `location.provider` from `GPS_PROVIDER` and `PASSIVE_PROVIDER` only
@@ -68,7 +73,7 @@ class LocationCollector : Collector {
     override suspend fun start(ctx: CollectorContext) {
         val lm = ctx.appContext.getSystemService(LocationManager::class.java) ?: return
         manager = lm
-        tracker = MotionTracker()
+        tracker = MotionTracker(startedAtElapsedMs = ctx.clock.elapsedRealtime())
         currentMode = null
         lastGpsFixTime = 0
         lastEmitElapsed = Long.MIN_VALUE / 2
@@ -95,6 +100,18 @@ class LocationCollector : Collector {
         }
         ctx.onStop { disarmMotionTrigger(ctx) }
 
+        // No fix at all (indoors): give up the fast cadence instead of letting the GNSS receiver search
+        // minute after minute. One cheap check per minute on the collectors' thread (no wake-up alarm).
+        ctx.scope.launch {
+            while (isActive) {
+                delay(NO_FIX_CHECK_MS)
+                if (manager != null && currentMode == MotionTracker.Mode.MOVING) {
+                    val mode = tracker.onNoFix(ctx.clock.elapsedRealtime())
+                    if (mode != currentMode) requestGps(ctx, mode)
+                }
+            }
+        }
+
         providerChanged(ctx, LocationManager.GPS_PROVIDER, lm.isProviderEnabled(LocationManager.GPS_PROVIDER), onlyIfChanged = true)
     }
 
@@ -115,17 +132,21 @@ class LocationCollector : Collector {
         }
         lastEmitElapsed = now
         val mock = location.isMock
-        ctx.emit("location.fix", if (mock) Severity.NOTABLE else Severity.INFO) {
-            put("lat", location.latitude)
-            put("lon", location.longitude)
-            if (location.hasAccuracy()) put("acc_m", location.accuracy)
-            if (location.hasAltitude()) put("alt_m", location.altitude)
-            if (location.hasSpeed()) put("speed_mps", location.speed)
-            if (location.hasBearing()) put("bearing_deg", location.bearing)
-            put("provider", location.provider ?: if (passive) LocationManager.PASSIVE_PROVIDER else LocationManager.GPS_PROVIDER)
-            put("mock", mock)
-            put("fix_ts", Rfc3339.format(location.time))
-        }
+        ctx.sink.emit(
+            "location.fix",
+            if (mock) Severity.NOTABLE else Severity.INFO,
+            fixData(
+                lat = location.latitude,
+                lon = location.longitude,
+                accuracyM = if (location.hasAccuracy()) location.accuracy else null,
+                altitudeM = if (location.hasAltitude()) location.altitude else null,
+                speedMps = if (location.hasSpeed()) location.speed else null,
+                bearingDeg = if (location.hasBearing()) location.bearing else null,
+                provider = location.provider ?: if (passive) LocationManager.PASSIVE_PROVIDER else LocationManager.GPS_PROVIDER,
+                mock = mock,
+                fixTimeMs = location.time,
+            ),
+        )
         val mode = tracker.onFix(
             location.latitude,
             location.longitude,
@@ -194,6 +215,31 @@ class LocationCollector : Collector {
     }
 
     companion object {
+        private const val NO_FIX_CHECK_MS = 60_000L
+
+        /** `location.fix` data (contract §2). */
+        fun fixData(
+            lat: Double,
+            lon: Double,
+            accuracyM: Float?,
+            altitudeM: Double?,
+            speedMps: Float?,
+            bearingDeg: Float?,
+            provider: String,
+            mock: Boolean,
+            fixTimeMs: Long,
+        ): JsonObject = eventData {
+            put("lat", lat)
+            put("lon", lon)
+            put("acc_m", accuracyM)
+            put("alt_m", altitudeM)
+            put("speed_mps", speedMps)
+            put("bearing_deg", bearingDeg)
+            put("provider", provider)
+            put("mock", mock)
+            put("fix_ts", Rfc3339.format(fixTimeMs))
+        }
+
         val MOVING_INTERVAL = SettingKey.IntKey("location.moving_interval_s", 60, 10, 3_600)
         val STATIONARY_INTERVAL = SettingKey.IntKey("location.stationary_interval_s", 900, 60, 7_200)
         val PASSIVE = SettingKey.BoolKey("location.passive", true)

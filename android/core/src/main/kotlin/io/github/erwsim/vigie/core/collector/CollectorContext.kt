@@ -130,7 +130,15 @@ class CollectorContext internal constructor(
 
     /**
      * Registers a broadcast receiver whose callback runs guarded on the collectors' thread, and
-     * unregisters it when the collector stops. System broadcasts are delivered even when not exported.
+     * unregisters it when the collector stops.
+     *
+     * [exported] = false (`RECEIVER_NOT_EXPORTED`) only delivers broadcasts sent by the system
+     * server itself (uid 1000/root) or by this app. Broadcasts sent by system *apps* running under
+     * another uid are dropped ("Exported Denial" in `BroadcastSkipPolicy`): Bluetooth
+     * (`ACL_CONNECTED`…, uid bluetooth), NFC (`ADAPTER_STATE_CHANGED`, uid nfc), KeyChain
+     * (`TRUST_STORE_CHANGED`), telephony. Those need [exported] = true, which is safe only for
+     * actions declared `<protected-broadcast>` by the platform (no third-party app can send them):
+     * check the framework manifest before using it.
      */
     fun registerReceiver(filter: IntentFilter, exported: Boolean = false, onReceive: (Intent) -> Unit): BroadcastReceiver {
         val receiver = object : BroadcastReceiver() {

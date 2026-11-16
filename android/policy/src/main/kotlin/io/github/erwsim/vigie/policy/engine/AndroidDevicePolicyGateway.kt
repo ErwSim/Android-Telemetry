@@ -108,7 +108,19 @@ class AndroidDevicePolicyGateway(private val context: Context) : DevicePolicyGat
 
     override fun setPrivateDnsSpecifiedHost(host: String): Int = dpm.setGlobalPrivateDnsModeSpecifiedHost(admin, host)
 
-    override fun setPrivateDnsOpportunistic(): Int = dpm.setGlobalPrivateDnsModeOpportunistic(admin)
+    /**
+     * The dedicated API refuses (SecurityException) as soon as a user not affiliated with the device
+     * exists (guest, secondary user, Samsung maintenance mode): AOSP `setGlobalPrivateDns` calls
+     * `checkAllUsersAreAffiliatedWithDevice`. Leaving a dead DNS host must always be possible, so the
+     * global setting is then written directly: `private_dns_mode` is in the Device Owner allowlist
+     * of `setGlobalSetting`, which has no such condition. The engine reads the mode back anyway.
+     */
+    override fun setPrivateDnsOpportunistic(): Int = try {
+        dpm.setGlobalPrivateDnsModeOpportunistic(admin)
+    } catch (_: SecurityException) {
+        dpm.setGlobalSetting(admin, KEY_PRIVATE_DNS_MODE, "opportunistic")
+        DevicePolicyManager.PRIVATE_DNS_SET_NO_ERROR
+    }
 
     /** No dedicated API: `private_dns_mode` is in the Device Owner global settings allowlist (API 29+). */
     override fun setPrivateDnsOff() = dpm.setGlobalSetting(admin, KEY_PRIVATE_DNS_MODE, "off")

@@ -85,7 +85,10 @@ remettez ses champs à zéro au début de `start`.
 
 - `start`, `stop`, `collectOnce` et tous les rappels enregistrés via `ctx` s'exécutent sur **le fil des
   collecteurs** (un `HandlerThread` partagé « vigie-collectors »). Ils peuvent suspendre, **jamais bloquer**.
-- Rappels Android : `ctx.registerReceiver(filter) { intent -> }` (désinscrit automatiquement à l'arrêt),
+- Rappels Android : `ctx.registerReceiver(filter) { intent -> }` (désinscrit automatiquement à l'arrêt ;
+  **`exported = true` obligatoire pour les diffusions émises par une app système qui ne tourne pas sous
+  l'uid du système** : Bluetooth, NFC, KeyChain, téléphonie. Un récepteur non exporté ne les reçoit jamais.
+  À n'utiliser que pour une action déclarée `<protected-broadcast>` par la plateforme),
   `ctx.executor` (pour `LocationManager`, `PowerManager`, `TelephonyManager.registerTelephonyCallback`…),
   `ctx.handler` / `ctx.looper` sinon. Un rappel livré sur le fil principal (ex. `TriggerEventListener`) doit
   repasser par `ctx.handler.post { ctx.guard("…") { … } }`.
@@ -148,7 +151,9 @@ ctx.emit("device.battery", Severity.INFO) {
   `optional = true` n'empêche pas le démarrage (mode dégradé ; la liste `missingPermissions` est affichée).
 - En **Device Owner**, `PolicyModule.onAgentStarted` s'accorde **toutes** les permissions d'exécution
   déclarées par le manifeste fusionné (localisation d'avant-plan avant arrière-plan), puis remet l'état à
-  `DEFAULT` : la permission reste accordée mais l'utilisateur garde la main. Chaque attribution émet
+  `DEFAULT` : la permission reste accordée mais l'utilisateur garde la main. Chaque permission n'est
+  auto-accordée qu'une fois par activation du Device Owner (`onOwnerEnabled` remet le compteur à zéro) :
+  une permission retirée ensuite par le propriétaire n'est pas reprise par le passage de maintenance. Chaque attribution émet
   `security.policy` (`permission_granted`, `target` = permission, `ok`), et la protection contre l'arrêt
   forcé (`setUserControlDisabledPackages`) `security.policy` (`force_stop_protection`, `enabled`/`disabled`)
   à chaque changement. Rien à coder pour un nouveau collecteur. Sans Device Owner, l'onglet Collecteurs
@@ -231,7 +236,10 @@ CollectorHarness(MyCollector()).use { h ->
   le contrat). `app/src/test/…/ContractConformanceTest` fait produire à chaque collecteur de l'APK ses
   événements types (constructeurs de données publics, processeurs de journaux, banc) et vérifie aussi
   `agent.heartbeat.collectors` (les 21 collecteurs, état `running`/`disabled`/`unavailable`) ; un type
-  déclaré qui ne peut pas être produit sur la JVM doit y être listé avec sa raison.
+  déclaré qui ne peut pas être produit sur la JVM doit y être listé avec sa raison. Les échantillons sont
+  dans `ApkSamples`, repris par `CrossServerTest` : envoi au **vrai collecteur** (`server/collector`) par le
+  vrai `Uploader`, avec un `.vigie` du vrai `enroll` (ignoré sans `VIGIE_CROSS_ENROLL` ; mode d'emploi en
+  tête du fichier).
 - Autres aides : `FakeClock`, `MemoryPrefs`, `TestContext`, `openTestDatabase(dir)` (Room sur SQLite JVM
   embarqué, schéma réel).
 - Avant de committer : `./gradlew lint test assembleDebug assembleRelease` doit être vert (la release a
@@ -267,7 +275,15 @@ CollectorHarness(MyCollector()).use { h ->
   tests). Chaque action émet `security.policy` et une ligne du journal local ; l'état est écrit avant chaque
   changement. Catalogue : `res/raw/policy_catalog.json` ; garde-fous codés en dur (`engine/Guards.kt`).
 - Écran Politique : `app/…/ui/PolicyScreen.kt` (Compose, dans `:app`) sur `policy/…/ui/PolicyController`.
-- Issue de secours ADB : `rescue/RescueReceiver` (permission `FORCE_STOP_PACKAGES` exigée de l'expéditeur) ;
-  scripts `rescue-revert.*` et `remove-device-owner.*`.
+- Issue de secours ADB : `rescue/RescueReceiver` (permission `FORCE_STOP_PACKAGES` exigée de l'expéditeur ;
+  extras `sweep`, `remove_owner`, `force`) ; scripts `rescue-revert.*` et `remove-device-owner.*`. Elle tourne
+  dans le processus de l'app : rien de ce qui est lancé au démarrage (`VigieApplication`, portées de
+  coroutines d'`Agent` et de `PolicyModule`) ne doit pouvoir le faire planter.
+- Garde-fous : `PackageDenyList` (liste de refus), `RestrictionGuard` et `SettingGuard` (listes
+  **d'autorisation** : toute clé absente est refusée). Ajouter une restriction ou un réglage au catalogue
+  exige de l'ajouter d'abord à la liste vérifiée, documentation `UserManager`/`Settings` à l'appui.
+- État appliqué : écrit avant chaque changement (`PENDING`), relu enregistrement par enregistrement ;
+  illisible → `stateWasUnreadable()` et balayage du catalogue (`sweepCatalog`) à « Tout rétablir ». Défaire
+  ne s'arrête jamais sur un élément (`isolated`, `bookkeeping`).
 - Les appels bloquants (`setGlobalPrivateDnsModeSpecifiedHost`, sonde DoT) se font hors fil principal.
 - Ne jamais poser `DISALLOW_DEBUGGING_FEATURES` ni couper la signalisation USB (porte de secours ADB).

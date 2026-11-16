@@ -6,10 +6,14 @@
 # Common.ps1) ; seul le shell ADB ou le système peut l'envoyer, et elle ne peut que défaire.
 #
 # Usage : .\rescue-revert.ps1                « Tout rétablir »
+#         .\rescue-revert.ps1 -Sweep         en plus, rétablit tout ce que le catalogue a pu modifier
+#                                            (paquets masqués ou suspendus, restrictions, permissions
+#                                            refusées, DNS privé), même sans trace dans l'état de Vigie
 #         .\rescue-revert.ps1 -RemoveOwner   équivaut à .\remove-device-owner.ps1 (retrait complet)
+# Ne fonctionne qu'après le premier déverrouillage qui suit un redémarrage.
 # Codes de sortie : 0 tout rétabli, 2 partiel, 3 Vigie n'est plus Device Owner, 4 délai dépassé,
 # 5 aucune réponse exploitable de Vigie, 1 autre erreur.
-param([switch]$RemoveOwner)
+param([switch]$RemoveOwner, [switch]$Sweep)
 . "$PSScriptRoot\Common.ps1"
 
 if ($RemoveOwner) {
@@ -21,12 +25,12 @@ Assert-Adb
 Assert-Installed
 
 Info "Envoi de l'ordre « Tout rétablir » à Vigie (jusqu'à une minute)..."
-$r = Invoke-Rescue
+$r = Invoke-Rescue -Sweep:$Sweep
 switch ($r.Code) {
     1 { Ok "Tout est rétabli ($($r.Data))." }
     2 {
         Warn "Rétablissement partiel : $($r.Data)"
-        Warn "Réessayez ; si un élément résiste, consultez le journal de l'écran Politique ou le README (section Politique Device Owner)."
+        Warn "Réessayez ; si un élément résiste, consultez le journal de l'écran Politique ou le README (section Politique Device Owner). « .\rescue-revert.ps1 -Sweep » rétablit aussi ce dont Vigie aurait perdu la trace."
         exit 2
     }
     3 {
@@ -40,7 +44,7 @@ switch ($r.Code) {
     }
     default {
         $r.Out | ForEach-Object { Write-Host "    $_" }
-        Warn "Pas de réponse exploitable de Vigie. Vérifiez que l'APK installé contient l'issue de secours (version avec l'écran Politique) et qu'il démarre."
+        Warn "Pas de réponse exploitable de Vigie. Vérifiez que le téléphone a été déverrouillé depuis son dernier démarrage, que l'APK installé contient l'issue de secours et qu'il démarre. Dernier recours si l'app ne démarre plus : .\remove-device-owner.ps1 (APK testOnly)."
         exit 5
     }
 }

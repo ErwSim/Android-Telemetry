@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-11-15",
+  "updated": "2026-11-16",
   "source": "docs/research/android-plateforme.md §3.8, §7 (niveaux Universal Android Debloater NG, uad_lists.json du 15/11/2026). Présence sur le S25+ à vérifier : un paquet absent est ignoré.",
   "notes": "profile: balanced = équilibré (Play Services, Play Store, push FCM et apps bancaires intacts) ; strict = ajouté au profil équilibré. method: hide = setApplicationHidden (l'app disparaît, ses services s'arrêtent), suspend = setPackagesSuspended (icône grisée, activités bloquées ; ses services d'arrière-plan peuvent continuer). default: coché par défaut dans le profil. Les paquets de la liste de refus codée en dur (PackageDenyList) sont refusés même s'ils figurent ici.",
   "packages": [
@@ -87,7 +87,6 @@
     { "key": "no_thread_network", "title": "Couper Thread", "description": "Coupe la radio Thread (domotique Matter), si l'appareil en a une.", "breaks": "Domotique Thread depuis le téléphone.", "risk": "low", "profile": "strict", "default": true },
     { "key": "no_bluetooth_sharing", "title": "Interdire le partage Bluetooth", "description": "Interdit l'envoi de fichiers par Bluetooth (OPP).", "breaks": "Envoi de fichiers par Bluetooth.", "risk": "low", "profile": "strict", "default": true },
     { "key": "no_usb_file_transfer", "title": "Interdire le transfert de fichiers USB", "description": "Coupe le transfert de fichiers (MTP/PTP) par câble. ADB et la recharge ne sont pas concernés.", "breaks": "Copie de photos et fichiers par câble.", "risk": "low", "profile": "strict", "default": false },
-    { "key": "no_grant_admin", "title": "Interdire les nouveaux administrateurs", "description": "Aucune autre app ne peut devenir administrateur de l'appareil (technique de rançongiciels et de logiciels espions).", "breaks": "Activer plus tard un antivol ou une app d'entreprise qui demande ce droit.", "risk": "low", "profile": "strict", "default": true },
     { "key": "no_near_field_communication_radio", "title": "Couper le NFC", "description": "Coupe la radio NFC.", "breaks": "Paiement sans contact (Google Wallet, Samsung Wallet, cartes de transport).", "risk": "high", "profile": "strict", "default": false }
   ],
   "settings": [

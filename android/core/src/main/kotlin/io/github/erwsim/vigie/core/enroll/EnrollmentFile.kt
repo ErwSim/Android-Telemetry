@@ -40,6 +40,8 @@ enum class EnrollmentError {
     KEY_CERT_MISMATCH,
     BAD_SERVER_CA,
     BAD_DNS_HOST,
+    BAD_TOKEN,
+    BAD_DEVICE_ID,
 }
 
 class EnrollmentException(val error: EnrollmentError, val detail: String? = null) :
@@ -63,6 +65,9 @@ class ParsedEnrollment(
 object EnrollmentParser {
     const val MAX_FILE_BYTES = 256 * 1024
     private val json = Json { ignoreUnknownKeys = true }
+    /** Visible ASCII without spaces, at most 512 characters (the collector's own limit). */
+    private val TOKEN_REGEX = Regex("^[\\x21-\\x7e]{1,512}$")
+    private val DEVICE_ID_REGEX = Regex("^[A-Za-z0-9._:-]{1,128}$")
     private val HOST_REGEX = Regex("^(?=.{1,253}$)([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,63}$")
 
     /** Parses and validates a `.vigie` file. [nowMs] is used for the certificate expiry check. */
@@ -81,6 +86,9 @@ object EnrollmentParser {
         val urlText = required(raw.ingestUrl, "ingest_url")
         val deviceId = required(raw.deviceId, "device_id")
         val token = required(raw.deviceToken, "device_token")
+        // The token is sent in an HTTP header and the device id in every batch: only what can be sent.
+        if (!TOKEN_REGEX.matches(token)) throw EnrollmentException(EnrollmentError.BAD_TOKEN)
+        if (!DEVICE_ID_REGEX.matches(deviceId)) throw EnrollmentException(EnrollmentError.BAD_DEVICE_ID, deviceId.take(40))
         val certPem = required(raw.clientCertPem, "client_cert_pem")
         val keyPem = required(raw.clientKeyPem, "client_key_pem")
 

@@ -5,6 +5,8 @@
 #    les journaux réseau et sécurité, retire la protection contre l'arrêt forcé, émet
 #    security.policy « device_owner_cleared » puis appelle clearDeviceOwnerApp. Le retrait étant
 #    annoncé, il n'est pas signalé comme agent.tamper. Fonctionne avec tout APK (testOnly ou non).
+#    Si un élément ne peut pas être défait, Vigie GARDE le rôle (elle seule peut réessayer) et ce
+#    script propose de forcer le retrait.
 # 2. Repli, seulement si Vigie ne répond pas (app qui ne démarre plus) : « dpm remove-active-admin »,
 #    possible uniquement avec un APK testOnly. Vigie ne défait alors rien elle-même (paquets masqués
 #    à réafficher, proposé ensuite) et le retrait est vu comme une désactivation (agent.tamper
@@ -32,7 +34,24 @@ téléphone).
     $r = Invoke-Rescue -RemoveOwner
     switch ($r.Code) {
         1 { Ok "Politique rétablie ($($r.Data))." }
-        2 { Warn "Rétablissement partiel, retrait forcé : $($r.Data)" }
+        2 {
+            Warn "Rétablissement partiel : $($r.Data)"
+            if (Test-IsOwner) {
+                Write-Host @'
+Vigie n'a pas pu tout défaire et a donc gardé le rôle de Device Owner : elle seule peut réessayer
+(.\rescue-revert.ps1, puis .\rescue-revert.ps1 -Sweep). Forcer le retrait laisse ces éléments en
+l'état ; selon la version d'Android, un paquet resté masqué ou suspendu ne peut ensuite plus être
+rétabli que par un Device Owner.
+'@
+                $answer = Read-Host 'Forcer quand même le retrait ? (oui/non)'
+                if ($answer -ne 'oui') { Fail 'Abandon : Vigie reste Device Owner.' }
+                $r = Invoke-Rescue -RemoveOwner -Force
+                if ($null -eq $r.Code) {
+                    $r.Out | ForEach-Object { Write-Host "    $_" }
+                    Fail 'Pas de réponse de Vigie au retrait forcé.'
+                }
+            }
+        }
         3 { Info "Vigie n'était déjà plus Device Owner ($($r.Data))." }
         4 {
             Warn "Vigie n'a pas fini dans le délai ; vérification du rôle dans 30 s..."
@@ -46,7 +65,7 @@ téléphone).
             }
             Write-Host @'
 Repli : « dpm remove-active-admin » (APK testOnly). Vigie ne défera pas sa politique elle-même :
-les paquets qu'elle avait masqués ou suspendus vous seront proposés ensuite (pm unhide / unsuspend).
+l'état des paquets qu'elle avait masqués ou suspendus est vérifié ensuite.
 Le retrait sera signalé par agent.tamper (admin_disabled, device_owner_lost) : c'est attendu.
 '@
             $answer = Read-Host 'Utiliser ce repli ? (oui/non)'

@@ -7,6 +7,7 @@ import io.github.erwsim.vigie.core.event.Severity
 import io.github.erwsim.vigie.core.event.VigieJson
 import io.github.erwsim.vigie.core.outbox.Outbox
 import io.github.erwsim.vigie.core.outbox.OutboxEntity
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -125,10 +126,21 @@ class Uploader(
     }
 
     private suspend fun runLocked(force: Boolean): UploadOutcome {
-        val (client, tgt) = target() ?: return UploadOutcome.NotEnrolled
         val now = clock.nowMillis()
         val status = statusStore.status.value
-        if (!force && status.nextAttemptAtMs > now) return UploadOutcome.Deferred(status.nextAttemptAtMs)
+        // The retry time is a wall-clock time: one further away than the longest possible delay was set
+        // by a clock that has moved back since. It is ignored, otherwise nothing would be sent until the
+        // clock catches up.
+        val wait = status.nextAttemptAtMs - now
+        if (!force && wait > 0 && wait <= MAX_RETRY_AFTER_MS) return UploadOutcome.Deferred(status.nextAttemptAtMs)
+        val (client, tgt) = try {
+            target()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Keystore or stored enrollment unreadable: keep everything, say why, try again later.
+            return fail(RetryCause.AUTH, "credentials: ${describe(e)}", null, 0)
+        } ?: return UploadOutcome.NotEnrolled
 
         rerunRequested = false
         var sent = 0
@@ -169,6 +181,12 @@ class Uploader(
                 post(client, tgt, payload)
             } catch (e: IOException) {
                 return fail(RetryCause.NETWORK, "network: ${e.message ?: e.javaClass.simpleName}", null, sent)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Not an I/O error (Keystore/provider failure while signing the TLS handshake, invalid
+                // header…): same treatment, never an uncaught exception that would leave no trace.
+                return fail(RetryCause.NETWORK, "network: ${describe(e)}", null, sent)
             }
 
             when (response.code) {
@@ -221,6 +239,8 @@ class Uploader(
         outbox.addDropped(rows.size.toLong())
         statusStore.update { it.copy(lastError = reason) }
     }
+
+    private fun describe(e: Exception) = "${e.javaClass.simpleName}: ${e.message.orEmpty()}".take(200)
 
     private fun fail(cause: RetryCause, error: String, retryAfterMs: Long?, sent: Int): UploadOutcome {
         val now = clock.nowMillis()

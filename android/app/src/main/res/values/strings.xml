@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="fr">
     <string name="app_name">Vigie</string>
+    <string name="startup_failed">Vigie n\'a pas pu démarrer : %1$s\n\nRien n\'est collecté. Si une politique Device Owner est appliquée, elle peut être défaite depuis un ordinateur avec le script rescue-revert (ADB), puis l\'app réinstallée (même clé de signature).</string>
 
     <!-- Navigation -->
     <string name="nav_home">Accueil</string>
@@ -160,6 +161,8 @@
     <string name="enroll_err_mismatch">la clé ne correspond pas au certificat.</string>
     <string name="enroll_err_ca">autorité du serveur illisible.</string>
     <string name="enroll_err_dns">nom d\'hôte DNS privé invalide :</string>
+    <string name="enroll_err_token">jeton d\'appareil invalide (caractères ou longueur inattendus)</string>
+    <string name="enroll_err_device_id">identifiant d\'appareil invalide :</string>
     <string name="ping_ok">Connexion réussie (heure du serveur : %1$s).</string>
     <string name="ping_device_mismatch">Le serveur répond, mais pour un autre identifiant d\'appareil.</string>
     <string name="ping_unauthorized">Refusé par le serveur (%1$d) : jeton ou certificat invalide, ou appareil révoqué. Les données sont conservées.</string>
