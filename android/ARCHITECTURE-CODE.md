@@ -251,13 +251,53 @@ CollectorHarness(MyCollector()).use { h ->
 |---|---|
 | Événement, JSON, ULID, RFC 3339, `boot_id` | `core/event/` |
 | Tampon (Room, `seq`, purge sévérité/âge, `dropped_total`) | `core/outbox/Outbox.kt` |
+| Horizon de la purge par âge (saut d'horloge murale) | `core/outbox/AgeHorizon.kt` |
 | Écritures groupées, journal local en mémoire | `core/sink/OutboxEventSink.kt` |
-| Envoi (lots, gzip, codes HTTP, backoff, Wi-Fi) | `core/upload/Uploader.kt`, `core/work/Workers.kt` |
+| Envoi (lots, gzip, codes HTTP dont la bissection du `400`, backoff, Wi-Fi) | `core/upload/Uploader.kt`, `core/work/Workers.kt` |
 | Client mTLS, épinglage de l'AC, ping | `core/upload/IngestApi.kt` |
 | Fichier `.vigie`, Keystore, jeton chiffré | `core/enroll/` |
 | `agent.tamper` (permission retirée, arrêt forcé, perte du Device Owner), retrait volontaire annoncé | `core/integrity/IntegrityMonitor.kt` |
 | Horodatage d'origine (`OriginTime`) | `core/sink/EventSink.kt` |
 | Câblage global, maintenance (15 min), file réseau | `core/Agent.kt` |
+
+### Envoi : `400` (lot empoisonné), `413`, erreurs transitoires
+
+`Uploader.runLocked` (contrat §3). Seul le tampon est durable ; rien d'autre n'a besoin de survivre à un arrêt.
+
+- `200` cohérent : lignes supprimées. `200` incohérent, `401`/`403`, `429`, `5xx`, réseau : tout est gardé,
+  backoff, **jamais** de coupe du lot.
+- `413` : le lot est coupé en deux (taille mémorisée dans `UploadStatus.batchSize`) ; un événement seul est
+  supprimé.
+- `400` : bissection **en mémoire, dans le passage** : `suspects` (pile des fins de plages refusées, bornent
+  `Outbox.batch(..., maxSeq)`) et `bisectLimit` (moitié du lot refusé). Coût ≈ 2·log2(lot) requêtes par
+  événement fautif ; au plus `MAX_REFUSALS_PER_RUN` (60) refus `400`/`413` par passage, sinon `PROTOCOL`
+  avec backoff. Un événement seul en `400` est supprimé par `Outbox.drop` (suppression **et** `dropped_total`
+  dans une seule transaction) et signalé par `onDropped` (`Agent` → `agent.collector_error`).
+- **Garde-fou** : sur le premier `400` d'un passage, un lot sans événement est envoyé (`probeEnvelope`). Refusé
+  aussi (`http_400_envelope`) : aucun événement n'est supprimé. Un `200` quelconque du passage vaut preuve.
+- Arrêt brutal : une ligne n'est supprimée qu'après `200` ou en `400` seule ; la reprise recommence la
+  bissection de ce qui reste (≤ 2·log2(500) requêtes de plus), sans perte.
+
+### Purge par âge et horloge murale (`AgeHorizon`)
+
+`Outbox.enforceLimits` ne compare plus `ts` à `horloge_murale − durée` mais à `horizon − durée`, avec
+`horizon = min(murale, horizon_précédent + 2 × Δelapsed + 1 min)` (jamais au-delà de la murale ; après un
+redémarrage, `+ 2 jours` au plus). État : SharedPreferences `vigie_age_horizon`. Un saut en avant ne vide plus
+le tampon ; un saut en arrière rabat l'horizon aussitôt (les événements écrits ensuite ne sont pas purgés).
+
+**Limites connues** (non couvertes) :
+- Saut en avant **suivi d'un redémarrage** : l'horizon avance d'au plus 2 jours par redémarrage, pas zéro (on ne
+  connaît pas la durée d'arrêt) ; un téléphone vraiment éteint longtemps garde ses vieux événements un peu
+  plus longtemps que la durée réglée (rattrapage à vitesse double).
+- Une horloge qui reste fausse en avant vieillit quand même les événements deux fois plus vite (≈ 15 jours
+  réels pour 30 jours de rétention) ; un attaquant patient peut donc accélérer la purge, pas la déclencher d'un coup.
+- Saut en arrière : les événements antérieurs au saut sont conservés plus longtemps que la durée réglée
+  (le plafond de taille s'applique toujours) ; leurs `ts` ne sont jamais corrigés.
+- La purge **par taille** et `agent.buffer_overflow` ne dépendent pas de l'horloge ; les `ts` des événements
+  émis pendant l'erreur d'horloge restent faux (le serveur les compare à son heure à la réception).
+- Le `400` : si le serveur refuse l'enveloppe vide ET accepte les lots (comportement non prévu par le
+  contrat), aucun événement n'est supprimé et la file reste bloquée (backoff). L'agent n'a jamais été testé
+  contre un serveur réel renvoyant `400`, ni sur appareil.
 
 ## 11. Module `:policy` (repères)
 

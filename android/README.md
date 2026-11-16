@@ -17,9 +17,9 @@ téléphone ni sur un émulateur** (voir la dernière section).
 
 | Élément | État |
 |---|---|
-| Tampon Room (`seq` transactionnel, plafond 200 Mio / 30 j, purge « plus anciens de plus faible sévérité » + `agent.buffer_overflow`) | fait, testé |
+| Tampon Room (`seq` transactionnel, plafond 200 Mio / 30 j, purge « plus anciens de plus faible sévérité » + `agent.buffer_overflow`) ; purge par âge protégée contre un saut de l'horloge murale (`AgeHorizon`) | fait, testé (JVM) |
 | Horodatage d'origine des événements relevés après coup (`app.foreground`, `net.dns`, `net.connect`, `security.log`) | fait, testé |
-| Envoi : lots ≤ 500 événements et ≤ 1 Mio gzip, suppression après accusé, 401/413/429/5xx, `Retry-After`, backoff avec gigue, « gros volumes en Wi-Fi seulement », reprise au retour du réseau | fait, testé (MockWebServer) |
+| Envoi : lots ≤ 500 événements et ≤ 1 Mio gzip, suppression après accusé, 400 (lot empoisonné : bissection) / 401 / 413 / 429 / 5xx, `Retry-After`, backoff avec gigue, « gros volumes en Wi-Fi seulement », reprise au retour du réseau | fait, testé (MockWebServer) ; **jamais exercé sur appareil ni contre un vrai serveur en 400** |
 | Enrôlement `.vigie` : clé dans l'Android Keystore, jeton chiffré, mTLS, épinglage de l'AC serveur, test `GET /api/v1/ping`, désenrôlement | fait ; analyse et mTLS testés, Keystore Android **non testé** |
 | Service de premier plan (`specialUse` + `location`), démarrage au boot et après mise à jour, redémarrage (sticky + maintenance 15 min), `agent.started/stopped/heartbeat/collector_error/config_changed` | fait, non testé sur appareil |
 | 21 collecteurs : 18 sans privilège (`:collectors`) et 3 Device Owner (`:policy`), voir « Collecteurs » | faits ; logique et conformité au contrat testées, comportement réel non testé |
@@ -186,6 +186,21 @@ Replis, du plus au moins recommandé :
   (heartbeat 15 min, inventaire quotidien), maintenance toutes les 15 min (âge du tampon, intégrité,
   redémarrage du service si besoin).
 - **Envoi déclenché** aussi par tout événement `sev >= 2` et par un tampon de plus de 500 événements.
+- **Lot refusé en `400`** (contrat §3 : enveloppe illisible, déterministe) : au lieu de bloquer la file
+  jusqu'à la purge par âge, l'agent coupe le lot en deux et renvoie chaque moitié (environ 2·log2(500) ≈ 18
+  requêtes par événement fautif, au plus 60 refus `400`/`413` par passage, puis backoff `PROTOCOL` normal
+  de 5 min à 6 h). Un événement qui reçoit encore `400` **seul** est supprimé, compté dans `dropped_total`
+  et tracé par un `agent.collector_error` (`collector` = `upload`, type et id de l'événement, jamais son
+  contenu ; 5 au plus par passage). Garde-fou : avant toute suppression, l'agent envoie un lot **sans
+  événement** (même enveloppe) ; s'il reçoit aussi `400`, la faute est dans l'enveloppe ou le serveur, rien
+  n'est supprimé (`last_error` = `http_400_envelope`, backoff). Un `5xx`, `429`, `401`/`403` ne coupe jamais
+  un lot. Un arrêt brutal en cours de bissection ne perd rien : seul le tampon est durable, la bissection
+  reprend sur ce qui reste.
+- **Saut de l'horloge murale et purge par âge** : la purge utilise un « horizon » (`AgeHorizon`) qui avance au
+  plus deux fois plus vite que l'horloge monotone (`elapsedRealtime`) et jamais au-delà de l'horloge murale.
+  Un saut en avant de plus de 30 jours ne vide donc plus le tampon (une horloge qui reste fausse vieillit les
+  événements au plus deux fois plus vite) ; un saut en arrière ne fait pas purger les événements écrits
+  ensuite. Après un redémarrage, l'horizon ne peut avancer que de 2 jours au-delà de sa dernière valeur.
 - **Écritures groupées** : jusqu'à 3 s en mémoire avant une transaction unique (immédiat si `sev >= 2`). Un
   arrêt brutal peut perdre ces quelques secondes, jamais créer de trou ni de doublon de `seq`.
 - **Direct Boot** non utilisé : rien n'est collecté entre un redémarrage et le premier déverrouillage (le

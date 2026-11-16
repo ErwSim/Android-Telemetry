@@ -16,9 +16,11 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
+import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
+import mockwebserver3.SocketEffect
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -28,6 +30,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
 import kotlin.random.Random
@@ -41,7 +44,7 @@ class UploaderTest {
     private lateinit var outbox: Outbox
     private lateinit var server: MockWebServer
     private lateinit var target: IngestTarget
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder().retryOnConnectionFailure(false).build()
     private val clock = FakeClock()
     private val status = UploadStatusStore(MemoryPrefs())
     private val ulid = UlidGenerator()
@@ -49,6 +52,7 @@ class UploaderTest {
     private var limits = UploadLimits(wifiOnlyLarge = true, largeThresholdBytes = 5L * 1024 * 1024)
     private var enrolled = true
     private lateinit var uploader: Uploader
+    private val dropped = CopyOnWriteArrayList<DroppedEvent>()
 
     @Before
     fun setUp() {
@@ -65,6 +69,7 @@ class UploaderTest {
             network = { net },
             limits = { limits },
             random = Random(42),
+            onDropped = { dropped += it },
         )
     }
 
@@ -344,5 +349,180 @@ class UploaderTest {
             assertTrue(d in 15_000L..30 * 60_000L)
         }
         assertTrue(uploader.backoffMs(RetryCause.AUTH, 30) <= 6 * 3_600_000L)
+    }
+
+    // ---- Poisoned batch (contract §3, 400): bisection ----
+
+    /**
+     * Server double: answers 400 to every batch containing a seq of [poison] (and to the empty probe
+     * when [envelopeBroken]), 200 otherwise. [override] may force a response for a given request.
+     */
+    private inner class PoisonServer(
+        val poison: Set<Long> = emptySet(),
+        var envelopeBroken: Boolean = false,
+        var override: (index: Int, seqs: List<Long>) -> MockResponse? = { _, _ -> null },
+    ) : Dispatcher() {
+        val requests = CopyOnWriteArrayList<List<Long>>()
+        val acked = CopyOnWriteArrayList<Long>()
+
+        override fun dispatch(request: RecordedRequest): MockResponse {
+            val seqs = request.seqs()
+            requests += seqs
+            override(requests.size, seqs)?.let { return it }
+            val bad = envelopeBroken || seqs.any { it in poison }
+            if (bad) return code(400)
+            acked += seqs
+            return ack(seqs.size)
+        }
+    }
+
+    private fun serve(poison: Set<Long> = emptySet(), envelopeBroken: Boolean = false, override: (Int, List<Long>) -> MockResponse? = { _, _ -> null }) =
+        PoisonServer(poison, envelopeBroken, override).also { server.dispatcher = it }
+
+    /** Runs the uploader (a new cycle each time, backoff ignored) until the buffer is empty; returns the number of runs. */
+    private fun drain(maxRuns: Int = 20): Int = runBlocking {
+        var runs = 0
+        while (outbox.refreshTotals().count > 0 && runs < maxRuns) {
+            uploader.run(force = true)
+            runs++
+        }
+        runs
+    }
+
+    private fun assertOnlyHealthyDelivered(srv: PoisonServer, total: Int) {
+        val healthy = (1L..total).filter { it !in srv.poison }
+        assertEquals("every healthy event delivered once", healthy, srv.acked.sorted())
+        assertEquals(srv.acked.size, srv.acked.toSet().size)
+    }
+
+    @Test
+    fun aPoisonedEventInTheMiddleOfA500BatchIsIsolatedDroppedAndTheOthersSent() = runBlocking {
+        fill(500)
+        val srv = serve(poison = setOf(250L))
+        assertEquals(UploadOutcome.Sent(499, moreLeft = false), uploader.run())
+        assertEquals(0L, outbox.refreshTotals().count)
+        assertEquals(1L, outbox.droppedTotal())
+        assertOnlyHealthyDelivered(srv, 500)
+        // About 2*log2(500) requests, plus the envelope probe: bounded, no storm.
+        assertTrue("requests=${srv.requests.size}", srv.requests.size <= 30)
+        // The poison was refused alone before being dropped.
+        assertTrue(srv.requests.any { it == listOf(250L) })
+        assertEquals(listOf(250L), dropped.map { it.seq })
+        assertEquals("http_400", dropped.single().reason)
+        assertEquals("device.screen", dropped.single().type)
+    }
+
+    @Test
+    fun twoPoisonedEventsAreBothDroppedAndNothingElse() = runBlocking {
+        fill(500)
+        val srv = serve(poison = setOf(100L, 400L))
+        assertEquals(UploadOutcome.Sent(498, moreLeft = false), uploader.run())
+        assertEquals(0L, outbox.refreshTotals().count)
+        assertEquals(2L, outbox.droppedTotal())
+        assertOnlyHealthyDelivered(srv, 500)
+        assertTrue("requests=${srv.requests.size}", srv.requests.size <= 55)
+    }
+
+    @Test
+    fun anEntirelyPoisonedBatchIsDroppedWithABoundedNumberOfRequestsPerRun() = runBlocking {
+        fill(64)
+        val srv = serve(poison = (1L..64L).toSet())
+        val first = uploader.run()
+        // 2n-1 = 127 refusals are needed, a run stops at the cap with a normal backoff (no storm).
+        assertTrue(first.toString(), first is UploadOutcome.Retry && first.cause == RetryCause.PROTOCOL)
+        assertTrue("requests=${srv.requests.size}", srv.requests.size <= Uploader.MAX_REFUSALS_PER_RUN + 2)
+        assertTrue(status.status.value.nextAttemptAtMs > clock.now)
+        // Later cycles finish the job; nothing healthy exists, everything is dropped and counted.
+        val runs = drain()
+        assertTrue("runs=$runs", runs in 1..4)
+        assertEquals(0L, outbox.refreshTotals().count)
+        assertEquals(64L, outbox.droppedTotal())
+        assertTrue("requests=${srv.requests.size}", srv.requests.size <= 4 * 64)
+        assertTrue(srv.acked.isEmpty())
+    }
+
+    @Test
+    fun anAbruptStopInTheMiddleOfTheBisectionLosesNothingAndResumes() = runBlocking {
+        fill(100)
+        // Requests: 1 batch (400), 2 probe, 3 [1-50] ok, 4 [51-100] 400, 5 [51-75] 400, 6 = the process dies.
+        val srv = serve(poison = setOf(70L)) { index, _ ->
+            if (index == 6) MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build() else null
+        }
+        val outcome = uploader.run()
+        assertTrue(outcome.toString(), outcome is UploadOutcome.Retry && outcome.cause == RetryCause.NETWORK)
+        assertEquals(50L, outbox.refreshTotals().count) // [1-50] was acknowledged and deleted, nothing else
+        assertEquals(0L, outbox.droppedTotal())
+        assertEquals((1L..50L).toList(), srv.acked.sorted())
+
+        // New process: same database file, all in-memory state and the upload preferences are gone.
+        db.close()
+        db = openTestDatabase(tmp.root)
+        outbox = Outbox(db)
+        uploader = Uploader(outbox, { client to target }, UploadStatusStore(MemoryPrefs()), clock, { net }, { limits }, Random(1), onDropped = { dropped += it })
+        val before = srv.requests.size
+        drain()
+        assertEquals(0L, outbox.refreshTotals().count)
+        assertEquals(1L, outbox.droppedTotal())
+        assertOnlyHealthyDelivered(srv, 100)
+        assertTrue("requests after restart=${srv.requests.size - before}", srv.requests.size - before <= 25)
+    }
+
+    @Test
+    fun aServerErrorIsTransientNotAPoisonedBatch() = runBlocking {
+        fill(500)
+        val srv = serve { index, _ -> if (index == 1) code(503) else null }
+        val first = uploader.run() as UploadOutcome.Retry
+        assertEquals(RetryCause.SERVER, first.cause)
+        assertEquals(1, srv.requests.size)
+        assertEquals(500L, outbox.refreshTotals().count)
+        assertEquals(0L, outbox.droppedTotal())
+        // The next cycle sends the same full batch, not a half.
+        assertEquals(UploadOutcome.Sent(500, moreLeft = false), uploader.run(force = true))
+        assertEquals(500, srv.requests[1].size)
+    }
+
+    @Test
+    fun aServerErrorInTheMiddleOfABisectionKeepsEverythingAndTheBisectionResumesLater() = runBlocking {
+        fill(100)
+        // 1 batch (400), 2 probe, 3 [1-50] -> 503.
+        val srv = serve(poison = setOf(30L)) { index, _ -> if (index == 3) code(503) else null }
+        val outcome = uploader.run() as UploadOutcome.Retry
+        assertEquals(RetryCause.SERVER, outcome.cause)
+        assertEquals(100L, outbox.refreshTotals().count)
+        assertEquals(0L, outbox.droppedTotal())
+        assertTrue(dropped.isEmpty())
+        drain()
+        assertEquals(0L, outbox.refreshTotals().count)
+        assertEquals(1L, outbox.droppedTotal())
+        assertOnlyHealthyDelivered(srv, 100)
+    }
+
+    @Test
+    fun a400ThatComesFromTheEnvelopeNotFromAnEventDeletesNothing() = runBlocking {
+        // Every request is refused, including the one without any event: the fault is not in the events.
+        fill(100)
+        val srv = serve(envelopeBroken = true)
+        val outcome = uploader.run() as UploadOutcome.Retry
+        assertEquals(RetryCause.PROTOCOL, outcome.cause)
+        assertEquals("http_400_envelope", status.status.value.lastError)
+        assertEquals(2, srv.requests.size) // the batch, then the empty probe: no bisection, no storm
+        assertEquals(100L, outbox.refreshTotals().count)
+        assertEquals(0L, outbox.droppedTotal())
+        // Same on later cycles (batch size and buffer unchanged, still nothing deleted).
+        repeat(3) { uploader.run(force = true) }
+        assertEquals(100L, outbox.refreshTotals().count)
+        assertEquals(0L, outbox.droppedTotal())
+        assertTrue(dropped.isEmpty())
+    }
+
+    @Test
+    fun theBisectionDoesNotLeaveABadBatchSizeBehind() = runBlocking {
+        fill(500)
+        serve(poison = setOf(7L))
+        uploader.run()
+        fill(500)
+        val srv = serve()
+        assertEquals(UploadOutcome.Sent(500, moreLeft = false), uploader.run())
+        assertTrue(srv.requests.size <= 3)
     }
 }
