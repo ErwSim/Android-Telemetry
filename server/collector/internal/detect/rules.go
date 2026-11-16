@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 // Finding is the result of a detection, before storage.
@@ -602,9 +602,9 @@ type NewAppInput struct {
 	Labels   Labels
 }
 
-// OwnPackage reports whether pkg is Vigie itself (its agent and companion), never reported.
+// OwnPackage reports whether pkg is Watchpost itself (its agent and companion), never reported.
 func OwnPackage(pkg string) bool {
-	return pkg == "io.github.erwsim.vigie" || strings.HasPrefix(pkg, "io.github.erwsim.vigie.")
+	return pkg == "io.github.erwsim.watchpost" || strings.HasPrefix(pkg, "io.github.erwsim.watchpost.")
 }
 
 func hasCombo(reasons []string) bool {

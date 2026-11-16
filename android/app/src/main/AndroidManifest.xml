@@ -20,7 +20,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
-        android:name=".VigieApplication"
+        android:name=".WatchpostApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
@@ -28,7 +28,7 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
         android:testOnly="${testOnly}"
-        android:theme="@style/Theme.Vigie"
+        android:theme="@style/Theme.Watchpost"
         tools:ignore="UnusedAttribute">
 
         <activity

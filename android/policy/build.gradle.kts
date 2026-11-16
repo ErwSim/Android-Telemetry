@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "io.github.erwsim.vigie.policy"
+    namespace = "io.github.erwsim.watchpost.policy"
     compileSdk = 37
 
     defaultConfig {

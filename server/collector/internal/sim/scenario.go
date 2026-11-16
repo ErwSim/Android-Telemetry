@@ -101,7 +101,7 @@ func (g *Generator) emitS(ts time.Time, typ string, sev int, data map[string]any
 // --- healthy fleet ---------------------------------------------------------------------------------
 
 // riskOf scores an application of the healthy fleet like the agent would (contract §11.2): reasons from
-// its installer and permissions; system applications and Vigie are capped at "low".
+// its installer and permissions; system applications and Watchpost are capped at "low".
 func riskOf(a *app) map[string]any {
 	reasons := []string{}
 	score := 0
@@ -127,10 +127,10 @@ func riskOf(a *app) map[string]any {
 			add("background_location", 15)
 		}
 	}
-	if a.notifies || a.pkg == "io.github.erwsim.vigie" {
+	if a.notifies || a.pkg == "io.github.erwsim.watchpost" {
 		add("boot_receiver", 5)
 	}
-	if a.pkg == "io.github.erwsim.vigie" {
+	if a.pkg == "io.github.erwsim.watchpost" {
 		add("device_admin", 15)
 	}
 	if a.target < 30 {
@@ -139,7 +139,7 @@ func riskOf(a *app) map[string]any {
 	score = min(score, 100)
 	level := "low"
 	switch {
-	case a.system || a.pkg == "io.github.erwsim.vigie":
+	case a.system || a.pkg == "io.github.erwsim.watchpost":
 		score = min(score, 29) // capped at low, reasons kept (contract §11.2)
 	case score >= 70:
 		level = "high"
@@ -249,7 +249,7 @@ func (g *Generator) healthyOps(from time.Time) {
 	g.op("org.thoughtcrime.securesms", "read_contacts", g.spoisson(0.2*f), g.spoisson(0.1*f))
 	g.op("com.google.android.gms", "fine_location", 3+g.spoisson(2), 3)
 	g.op("com.google.android.gms", "get_accounts", g.spoisson(1), g.spoisson(1))
-	g.op("io.github.erwsim.vigie", "fine_location", 10+g.spoisson(4), 10)
+	g.op("io.github.erwsim.watchpost", "fine_location", 10+g.spoisson(4), 10)
 	g.op("com.google.android.googlequicksearchbox", "record_audio", g.spoisson(0.3*f), g.spoisson(0.2*f)) // assistant
 	g.op("com.samsung.android.bixby.agent", "record_audio", g.spoisson(0.1*f), g.spoisson(0.1*f))
 	if day {
@@ -450,11 +450,11 @@ func attackRisk(a *attack) map[string]any {
 func specialAccess(extra map[string][]string) map[string]any {
 	lists := map[string][]string{
 		"accessibility_services": {},
-		"notification_listeners": {"io.github.erwsim.vigie/io.github.erwsim.vigie.collect.NotificationCollector", "com.samsung.android.app.watchmanager/.NotificationListener"},
-		"device_admins":          {"io.github.erwsim.vigie/.admin.VigieAdminReceiver", "com.google.android.gms/.mdm.receivers.MdmDeviceAdminReceiver"},
+		"notification_listeners": {"io.github.erwsim.watchpost/io.github.erwsim.watchpost.collect.NotificationCollector", "com.samsung.android.app.watchmanager/.NotificationListener"},
+		"device_admins":          {"io.github.erwsim.watchpost/.admin.WatchpostAdminReceiver", "com.google.android.gms/.mdm.receivers.MdmDeviceAdminReceiver"},
 		"overlay_apps":           {"com.samsung.android.app.cocktailbarservice"},
 		"unknown_sources_apps":   {},
-		"usage_access_apps":      {"io.github.erwsim.vigie", "com.google.android.gms", "com.samsung.android.lool"},
+		"usage_access_apps":      {"io.github.erwsim.watchpost", "com.google.android.gms", "com.samsung.android.lool"},
 		"vpn_apps":               {},
 	}
 	for k, v := range extra {

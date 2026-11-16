@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/tracking"
+	"github.com/erwsim/watchpost/server/collector/internal/tracking"
 )
 
 // TrackingRow is the AdGuard Home query log aggregated for one hour, client and domain.

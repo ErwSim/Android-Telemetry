@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
 )
 
 // Storage side of the behavioral detections (contract §11.3): the aggregates they read (ops_counts,

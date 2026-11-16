@@ -127,7 +127,7 @@ func TestUsageBytesOverflow(t *testing.T) {
 }
 
 // Regression: the retention purge kept the last position, heartbeat and posture
-// of each device forever (device_latest), beyond VIGIE_RETENTION_DAYS.
+// of each device forever (device_latest), beyond WATCHPOST_RETENTION_DAYS.
 func TestRetentionPurgesLatestState(t *testing.T) {
 	e := newEnv(t, nil)
 	c := e.session()

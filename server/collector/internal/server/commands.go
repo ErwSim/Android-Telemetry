@@ -11,9 +11,9 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/command"
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/command"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 // Remote commands (contract §8). The collector relays commands of a closed list to the agent; the

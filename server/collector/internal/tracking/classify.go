@@ -1,6 +1,6 @@
 // Package tracking implements the "tracking" view of contract §9: classification of domains by
 // publisher, validation of domain names, the essential domains guard, the rules block managed by
-// Vigie among the AdGuard Home user rules, the blocking levels file, and the aggregation of the view.
+// Watchpost among the AdGuard Home user rules, the blocking levels file, and the aggregation of the view.
 package tracking
 
 import (

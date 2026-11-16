@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 var hour0 = time.Date(2026, 11, 10, 14, 0, 0, 0, time.UTC).UnixMilli()
@@ -58,8 +58,8 @@ func TestEmbeddedLists(t *testing.T) {
 
 func TestParseEnv(t *testing.T) {
 	env := map[string]string{
-		"VIGIE_DETECT_DISABLE": "fanout, detect.mail_ports", "VIGIE_DETECT_UPLOAD_FLOOR_MB": "200", "VIGIE_DETECT_UPLOAD_FACTOR": "5.5",
-		"VIGIE_DETECT_MAIL_CLIENTS": "org.example.mail", "VIGIE_DETECT_DNS_BYPASS_PORTS": "443,853,53", "VIGIE_DETECT_FANOUT": "50",
+		"WATCHPOST_DETECT_DISABLE": "fanout, detect.mail_ports", "WATCHPOST_DETECT_UPLOAD_FLOOR_MB": "200", "WATCHPOST_DETECT_UPLOAD_FACTOR": "5.5",
+		"WATCHPOST_DETECT_MAIL_CLIENTS": "org.example.mail", "WATCHPOST_DETECT_DNS_BYPASS_PORTS": "443,853,53", "WATCHPOST_DETECT_FANOUT": "50",
 	}
 	th, errs := ParseEnv(func(k string) string { return env[k] })
 	if len(errs) != 0 {
@@ -70,8 +70,8 @@ func TestParseEnv(t *testing.T) {
 		th.Fanout != 50 {
 		t.Fatalf("%+v", th)
 	}
-	for k, v := range map[string]string{"VIGIE_DETECT_DISABLE": "fanot", "VIGIE_DETECT_FANOUT": "0", "VIGIE_DETECT_UPLOAD_FACTOR": "x",
-		"VIGIE_DETECT_DNS_BYPASS_PORTS": "70000", "VIGIE_DETECT_MAIL_CLIENTS": "a;b", "VIGIE_DETECT_SMS_DAILY_MAX": "-1"} {
+	for k, v := range map[string]string{"WATCHPOST_DETECT_DISABLE": "fanot", "WATCHPOST_DETECT_FANOUT": "0", "WATCHPOST_DETECT_UPLOAD_FACTOR": "x",
+		"WATCHPOST_DETECT_DNS_BYPASS_PORTS": "70000", "WATCHPOST_DETECT_MAIL_CLIENTS": "a;b", "WATCHPOST_DETECT_SMS_DAILY_MAX": "-1"} {
 		if _, errs := ParseEnv(func(key string) string {
 			if key == k {
 				return v
@@ -271,7 +271,7 @@ func TestNewAppRisky(t *testing.T) {
 	fs := true
 	in := NewAppInput{
 		Installs: []Install{{Package: "com.update.system", Installer: "com.google.android.packageinstaller", TS: inst},
-			{Package: "fr.vinted", Installer: "com.android.vending", TS: inst}, {Package: "io.github.erwsim.vigie", TS: inst}},
+			{Package: "fr.vinted", Installer: "com.android.vending", TS: inst}, {Package: "io.github.erwsim.watchpost", TS: inst}},
 		Risks: []Risk{{Package: "com.update.system", Label: "Mise à jour système", Level: "high", Score: 92, TS: inst + 2000,
 			Reasons: []string{"sideloaded", "accessibility_service", "overlay", "combo_banking_trojan"}},
 			{Package: "fr.vinted", Level: "low", Score: 10, TS: inst + 1000, FromStore: &fs}},
@@ -280,7 +280,7 @@ func TestNewAppRisky(t *testing.T) {
 			{Package: "com.update.system", Kind: "overlay", TS: inst + 25*3600000},         // after 24 h
 			{Package: "fr.vinted", Kind: "permission:CAMERA", TS: inst + 60000},            // not sensitive
 			{Package: "com.android.chrome", Kind: "permission:SEND_SMS", TS: inst + 60000}, // not a new app
-			{Package: "io.github.erwsim.vigie", Kind: "device_admin", TS: inst + 60000}},   // Vigie itself
+			{Package: "io.github.erwsim.watchpost", Kind: "device_admin", TS: inst + 60000}},   // Watchpost itself
 	}
 	in.Caps = append(in.Caps, Capability{Package: "com.update.system", Kind: "overlay", TS: inst + 7*60000})
 	out := NewAppRisky(in)

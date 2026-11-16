@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 // Broker fans accepted events out to the SSE subscribers. Publishing never

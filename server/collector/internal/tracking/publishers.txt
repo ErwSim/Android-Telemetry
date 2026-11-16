@@ -1,4 +1,4 @@
-# Vigie — rattachement des domaines aux éditeurs (vue « pistage », contrat §9).
+# Watchpost — rattachement des domaines aux éditeurs (vue « pistage », contrat §9).
 # Version 1 (16/11/2026). Fichier versionné avec le collecteur et embarqué dans le binaire.
 #
 # Format :

@@ -86,7 +86,7 @@ func TestValidDomain(t *testing.T) {
 }
 
 func TestEssentials(t *testing.T) {
-	e := NewEssentials(map[string]string{"ingest.vigie.example": "envoi des événements Vigie", "not a host": "x"})
+	e := NewEssentials(map[string]string{"ingest.watchpost.example": "envoi des événements Watchpost", "not a host": "x"})
 	if got := e.BrokenBy("google.com"); len(got) < 2 {
 		t.Fatalf("google.com breaks %v", got)
 	}
@@ -96,7 +96,7 @@ func TestEssentials(t *testing.T) {
 	if got := e.BrokenBy("sub.mtalk.google.com"); len(got) != 0 {
 		t.Fatalf("subdomain of an essential domain does not break it: %v", got)
 	}
-	if got := e.BrokenBy("vigie.example"); len(got) != 1 {
+	if got := e.BrokenBy("watchpost.example"); len(got) != 1 {
 		t.Fatalf("own host %v", got)
 	}
 	if got := e.BrokenBy("doubleclick.net"); len(got) != 0 {
@@ -151,7 +151,7 @@ func TestApplyOverrideKeepsForeignLinesOfTheBlock(t *testing.T) {
 		"||before.example^",
 		BlockBegin,
 		"||tracker.example.com^$important",
-		"||hand-made.example^",           // not written by Vigie (no $important)
+		"||hand-made.example^",           // not written by Watchpost (no $important)
 		"! note du propriétaire",         // a comment
 		"@@||app.example.net^$important", // ours
 		"",

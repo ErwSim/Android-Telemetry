@@ -8,7 +8,7 @@ collector/web/dist
 **/*.db
 **/*.db-wal
 **/*.db-shm
-**/*.vigie
+**/*.watchpost
 **/*.key
 **/*.pem
 **/*.p12

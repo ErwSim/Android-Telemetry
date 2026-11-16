@@ -15,10 +15,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/adguard"
-	"github.com/erwsim/android-telemetry/server/collector/internal/command"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
-	"github.com/erwsim/android-telemetry/server/collector/internal/tracking"
+	"github.com/erwsim/watchpost/server/collector/internal/adguard"
+	"github.com/erwsim/watchpost/server/collector/internal/command"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/tracking"
 )
 
 // Tracking view (contract §9): the AdGuard Home query log is read incrementally and aggregated per hour
@@ -61,16 +61,16 @@ func newTrackingService(s *Server) (*trackingService, error) {
 	cfg := s.cfg
 	own := map[string]string{}
 	if u, err := url.Parse(cfg.PublicIngestURL); err == nil && u.Hostname() != "" {
-		own[u.Hostname()] = "envoi des événements et commandes Vigie (serveur d'ingestion)"
+		own[u.Hostname()] = "envoi des événements et commandes Watchpost (serveur d'ingestion)"
 	}
 	if cfg.PrivateDNSHost != "" {
-		own[cfg.PrivateDNSHost] = "DNS privé du téléphone (serveur Vigie) : plus aucune résolution de noms"
+		own[cfg.PrivateDNSHost] = "DNS privé du téléphone (serveur Watchpost) : plus aucune résolution de noms"
 	}
 	t := &trackingService{s: s, classifier: tracking.Default(), essentials: tracking.NewEssentials(own), poll: cfg.AdGuardPoll}
 	if cfg.AdGuardLevelsFile != "" {
 		l, err := tracking.LoadLevels(cfg.AdGuardLevelsFile)
 		if err != nil {
-			return nil, fmt.Errorf("VIGIE_ADGUARD_LEVELS_FILE : %w", err)
+			return nil, fmt.Errorf("WATCHPOST_ADGUARD_LEVELS_FILE : %w", err)
 		}
 		t.levels = l
 	}
@@ -78,7 +78,7 @@ func newTrackingService(s *Server) (*trackingService, error) {
 	if cfg.AdGuardURL != "" {
 		c, err := adguard.New(cfg.AdGuardURL, cfg.AdGuardUser, cfg.AdGuardPassword)
 		if err != nil {
-			return nil, fmt.Errorf("VIGIE_ADGUARD_URL : %w", err)
+			return nil, fmt.Errorf("WATCHPOST_ADGUARD_URL : %w", err)
 		}
 		t.client = c
 	}
@@ -88,7 +88,7 @@ func newTrackingService(s *Server) (*trackingService, error) {
 // StartTracking starts reading the AdGuard Home query log (when configured) until ctx is canceled.
 func (s *Server) StartTracking(ctx context.Context) {
 	if s.tracking.client == nil {
-		s.log.Info("vue pistage : AdGuard Home non configuré (VIGIE_ADGUARD_URL), vue construite depuis net.dns seul")
+		s.log.Info("vue pistage : AdGuard Home non configuré (WATCHPOST_ADGUARD_URL), vue construite depuis net.dns seul")
 		return
 	}
 	go s.tracking.run(ctx)
@@ -466,9 +466,9 @@ func classifyReason(it *adguard.QueryLogItem, names map[int64]string) (bool, str
 		if listID == 0 {
 			if ov, err := tracking.ParseOverrides([]string{tracking.BlockBegin, text, tracking.BlockEnd}); err == nil && len(ov) == 1 {
 				if allow {
-					return "Autorisation manuelle (Vigie)"
+					return "Autorisation manuelle (Watchpost)"
 				}
-				return "Blocage manuel (Vigie)"
+				return "Blocage manuel (Watchpost)"
 			}
 			if text != "" {
 				return "Règle personnalisée : " + text
@@ -877,7 +877,7 @@ func (s *Server) handleTrackingOverride(w http.ResponseWriter, r *http.Request) 
 		}
 		st.UserRules = rules
 		// Allowing a domain weakens the blocking; forcing the blocking of an essential domain can cut the
-		// phone off (push, updates, Vigie itself): both are what someone holding the console session
+		// phone off (push, updates, Watchpost itself): both are what someone holding the console session
 		// would do, and are worth an alert.
 		sev := 1
 		if action == tracking.ActionAllow || (action == tracking.ActionDefault && previous == tracking.ActionBlock) ||
@@ -936,7 +936,7 @@ func (s *Server) handleTrackingLevelPut(w http.ResponseWriter, r *http.Request) 
 	level, ok := jsonString(fields["level"])
 	t := s.tracking
 	if t.levels == nil {
-		writeError(w, http.StatusServiceUnavailable, "levels_not_configured", "correspondance niveaux → listes absente (VIGIE_ADGUARD_LEVELS_FILE)")
+		writeError(w, http.StatusServiceUnavailable, "levels_not_configured", "correspondance niveaux → listes absente (WATCHPOST_ADGUARD_LEVELS_FILE)")
 		return
 	}
 	if !ok || !t.levels.Has(level) {

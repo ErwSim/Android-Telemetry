@@ -13,27 +13,27 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
-	"github.com/erwsim/android-telemetry/server/collector/internal/sim"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/sim"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 // TestDetectionCost measures the detection job on a database of a few million simulated events (89 days of
 // a phone, every attack scenario in the last two days): full evaluation of the backlog, steady state after
 // a late batch, and the latency of the ingestion while the job runs. Long: only with
-// VIGIE_DETECT_COST=<days> (e.g. 89), optionally VIGIE_DETECT_COST_RATE (default 2) and
-// VIGIE_DETECT_COST_DB (database path kept between runs).
+// WATCHPOST_DETECT_COST=<days> (e.g. 89), optionally WATCHPOST_DETECT_COST_RATE (default 2) and
+// WATCHPOST_DETECT_COST_DB (database path kept between runs).
 func TestDetectionCost(t *testing.T) {
-	days, _ := strconv.Atoi(os.Getenv("VIGIE_DETECT_COST"))
+	days, _ := strconv.Atoi(os.Getenv("WATCHPOST_DETECT_COST"))
 	if days <= 0 {
-		t.Skip("VIGIE_DETECT_COST=<jours> pour mesurer le coût des détections")
+		t.Skip("WATCHPOST_DETECT_COST=<jours> pour mesurer le coût des détections")
 	}
 	rate := 2.0
-	if v, err := strconv.ParseFloat(os.Getenv("VIGIE_DETECT_COST_RATE"), 64); err == nil && v > 0 {
+	if v, err := strconv.ParseFloat(os.Getenv("WATCHPOST_DETECT_COST_RATE"), 64); err == nil && v > 0 {
 		rate = v
 	}
 	ctx := context.Background()
-	path := os.Getenv("VIGIE_DETECT_COST_DB")
+	path := os.Getenv("WATCHPOST_DETECT_COST_DB")
 	if path == "" {
 		path = filepath.Join(t.TempDir(), "cost.db")
 	}

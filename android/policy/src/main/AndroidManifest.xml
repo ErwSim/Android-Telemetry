@@ -23,10 +23,10 @@
     <application>
         <!--
             Device admin receiver. Activated as Device Owner by ADB only:
-            adb shell dpm set-device-owner io.github.erwsim.vigie/io.github.erwsim.vigie.policy.VigieAdminReceiver
+            adb shell dpm set-device-owner io.github.erwsim.watchpost/io.github.erwsim.watchpost.policy.WatchpostAdminReceiver
         -->
         <receiver
-            android:name=".VigieAdminReceiver"
+            android:name=".WatchpostAdminReceiver"
             android:description="@string/policy_admin_description"
             android:exported="true"
             android:label="@string/policy_admin_label"
@@ -43,7 +43,7 @@
             ADB rescue ("Tout rétablir" without the UI): scripts/rescue-revert.sh / .ps1.
             The sender must hold FORCE_STOP_PACKAGES (signature|privileged, not grantable to
             third-party apps, even by "pm grant"): only the system and the ADB shell can send it.
-            It can only UNDO Vigie's own policy, never apply anything.
+            It can only UNDO Watchpost's own policy, never apply anything.
         -->
         <receiver
             android:name=".rescue.RescueReceiver"
@@ -51,7 +51,7 @@
             android:permission="android.permission.FORCE_STOP_PACKAGES"
             tools:ignore="ExportedReceiver">
             <intent-filter>
-                <action android:name="io.github.erwsim.vigie.action.RESCUE_REVERT_ALL" />
+                <action android:name="io.github.erwsim.watchpost.action.RESCUE_REVERT_ALL" />
             </intent-filter>
         </receiver>
     </application>

@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="fr">
-    <string name="vigie_reason_missing_permission">Permission manquante : %1$s</string>
-    <string name="vigie_reason_device_owner">Nécessite le mode Device Owner (propriétaire de l\'appareil)</string>
-    <string name="vigie_reason_feature">Fonction matérielle absente : %1$s</string>
-    <string name="vigie_reason_check_failed">Vérification impossible : %1$s</string>
-    <string name="vigie_reason_start_failed">Erreur au démarrage : %1$s</string>
-    <string name="vigie_reason_too_many_errors">Arrêté après des erreurs répétées (réactivez-le pour réessayer)</string>
+    <string name="watchpost_reason_missing_permission">Permission manquante : %1$s</string>
+    <string name="watchpost_reason_device_owner">Nécessite le mode Device Owner (propriétaire de l\'appareil)</string>
+    <string name="watchpost_reason_feature">Fonction matérielle absente : %1$s</string>
+    <string name="watchpost_reason_check_failed">Vérification impossible : %1$s</string>
+    <string name="watchpost_reason_start_failed">Erreur au démarrage : %1$s</string>
+    <string name="watchpost_reason_too_many_errors">Arrêté après des erreurs répétées (réactivez-le pour réessayer)</string>
 </resources>

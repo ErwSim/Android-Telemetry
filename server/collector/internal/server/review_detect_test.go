@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 func (e *env) mute(c *http.Cookie, method string, body map[string]any) *http.Response {
 	b, _ := json.Marshal(body)
-	rec := e.do(method, "/api/console/detections/mute", bytes.NewReader(b), withCookie(c), withHeader("X-Requested-With", "vigie"),
+	rec := e.do(method, "/api/console/detections/mute", bytes.NewReader(b), withCookie(c), withHeader("X-Requested-With", "watchpost"),
 		withHeader("Content-Type", "application/json"))
 	return rec.Result()
 }

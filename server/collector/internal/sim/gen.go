@@ -1,4 +1,4 @@
-// Package sim generates realistic Vigie events covering the whole catalog of
+// Package sim generates realistic Watchpost events covering the whole catalog of
 // contract §2: a plausible daily routine around Paris (GPS track, Wi-Fi and
 // cells, screen sessions, foreground apps, notifications), DNS lookups and
 // connections of Google/Samsung/user packages, hourly network usage, daily
@@ -12,7 +12,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
 	_ "time/tzdata" // Europe/Paris in minimal images
 )
 
@@ -58,7 +58,7 @@ type Options struct {
 	AgentVersion string
 	SeqBase      int64
 	// PrivateDNSHost is the private DNS host of the enrollment file (posture, policy,
-	// connectivity); "dns.vigie.example" when empty.
+	// connectivity); "dns.watchpost.example" when empty.
 	PrivateDNSHost string
 	// LateBatches mimics the real agent: net.dns, net.connect and security.log are read after the fact,
 	// so they are delivered in batches every 1h30 to 2h, with their original ts (hours old), while
@@ -158,7 +158,7 @@ func New(opts Options) *Generator {
 		opts.AgentVersion = "1.0.0-sim"
 	}
 	if opts.PrivateDNSHost == "" {
-		opts.PrivateDNSHost = "dns.vigie.example"
+		opts.PrivateDNSHost = "dns.watchpost.example"
 	}
 	start := opts.Start.UTC().Truncate(time.Millisecond)
 	g := &Generator{

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 const queryTimeout = 30 * time.Second

@@ -1,6 +1,6 @@
 import java.util.Properties
 
-// Vigie Notifications: separate, optional companion APK holding the project's only
+// Watchpost Notifications: separate, optional companion APK holding the project's only
 // NotificationListenerService (kept out of the Device Owner APK: principle 4, Play Protect).
 // No INTERNET permission, no library besides the channel's protocol (no AndroidX, no network,
 // nothing from Google).
@@ -9,9 +9,9 @@ plugins {
 }
 
 // Same build parameters as :app (gradle.properties, -P...): testOnly, version.
-val vigieTestOnly: Boolean = providers.gradleProperty("vigie.testOnly").map { it.toBoolean() }.getOrElse(true)
-val vigieVersionCode: Int = providers.gradleProperty("vigie.versionCode").map { it.toInt() }.getOrElse(1)
-val vigieVersionName: String = providers.gradleProperty("vigie.versionName").getOrElse("0.1.0")
+val watchpostTestOnly: Boolean = providers.gradleProperty("watchpost.testOnly").map { it.toBoolean() }.getOrElse(true)
+val watchpostVersionCode: Int = providers.gradleProperty("watchpost.versionCode").map { it.toInt() }.getOrElse(1)
+val watchpostVersionName: String = providers.gradleProperty("watchpost.versionName").getOrElse("0.1.0")
 
 // Release signing: the SAME key as the agent, read from the same place as :app (environment
 // variables first, then android/keystore.properties, never versioned): no secret is duplicated.
@@ -26,23 +26,23 @@ val keystoreProperties = Properties().apply {
 fun signingValue(env: String, key: String): String? =
     providers.environmentVariable(env).orNull?.takeIf { it.isNotBlank() } ?: keystoreProperties.getProperty(key)
 
-val releaseStoreFile = signingValue("VIGIE_KEYSTORE_FILE", "storeFile")
-val releaseStorePassword = signingValue("VIGIE_KEYSTORE_PASSWORD", "storePassword")
-val releaseKeyAlias = signingValue("VIGIE_KEY_ALIAS", "keyAlias")
-val releaseKeyPassword = signingValue("VIGIE_KEY_PASSWORD", "keyPassword")
+val releaseStoreFile = signingValue("WATCHPOST_KEYSTORE_FILE", "storeFile")
+val releaseStorePassword = signingValue("WATCHPOST_KEYSTORE_PASSWORD", "storePassword")
+val releaseKeyAlias = signingValue("WATCHPOST_KEY_ALIAS", "keyAlias")
+val releaseKeyPassword = signingValue("WATCHPOST_KEY_PASSWORD", "keyPassword")
 val hasReleaseSigning = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword).all { it != null }
 
 android {
-    namespace = "io.github.erwsim.vigie.notifier"
+    namespace = "io.github.erwsim.watchpost.notifier"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "io.github.erwsim.vigie.notifier"
+        applicationId = "io.github.erwsim.watchpost.notifier"
         minSdk = 36
         targetSdk = 37
-        versionCode = vigieVersionCode
-        versionName = vigieVersionName
-        manifestPlaceholders["testOnly"] = vigieTestOnly.toString()
+        versionCode = watchpostVersionCode
+        versionName = watchpostVersionName
+        manifestPlaceholders["testOnly"] = watchpostTestOnly.toString()
     }
 
     signingConfigs {

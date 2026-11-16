@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/command"
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/command"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
 )
 
 const testCode = "correct horse battery staple"

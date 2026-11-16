@@ -44,30 +44,30 @@ const (
 	ScreenOffMaxMinutes = 5                   // an hour with the screen on 5 min at most counts as "screen off"
 )
 
-// Thresholds are the tunable parameters of the detections (VIGIE_DETECT_* variables, see the README for
+// Thresholds are the tunable parameters of the detections (WATCHPOST_DETECT_* variables, see the README for
 // the reasoning behind each default).
 type Thresholds struct {
 	Disabled map[string]bool // detection types turned off
 
-	UploadFloorBytes int64   // VIGIE_DETECT_UPLOAD_FLOOR_MB (MiB): absolute floor of an hour's upload
-	UploadFactor     float64 // VIGIE_DETECT_UPLOAD_FACTOR: k of k × median
-	UploadLearnDays  int     // VIGIE_DETECT_UPLOAD_LEARN_DAYS: device history needed before the median is used
+	UploadFloorBytes int64   // WATCHPOST_DETECT_UPLOAD_FLOOR_MB (MiB): absolute floor of an hour's upload
+	UploadFactor     float64 // WATCHPOST_DETECT_UPLOAD_FACTOR: k of k × median
+	UploadLearnDays  int     // WATCHPOST_DETECT_UPLOAD_LEARN_DAYS: device history needed before the median is used
 
-	Fanout          int // VIGIE_DETECT_FANOUT: distinct addresses per application and hour
-	FanoutScreenOff int // VIGIE_DETECT_FANOUT_SCREEN_OFF: same, for an hour spent screen off
+	Fanout          int // WATCHPOST_DETECT_FANOUT: distinct addresses per application and hour
+	FanoutScreenOff int // WATCHPOST_DETECT_FANOUT_SCREEN_OFF: same, for an hour spent screen off
 
-	MailMin     int             // VIGIE_DETECT_MAIL_MIN: connections per day to ports 25/465/587
-	MailClients map[string]bool // mail_clients.txt + VIGIE_DETECT_MAIL_CLIENTS
+	MailMin     int             // WATCHPOST_DETECT_MAIL_MIN: connections per day to ports 25/465/587
+	MailClients map[string]bool // mail_clients.txt + WATCHPOST_DETECT_MAIL_CLIENTS
 
-	DNSBypassMin    int             // VIGIE_DETECT_DNS_BYPASS_MIN: connections per day to a known public resolver
-	DNSBypassPorts  map[int]bool    // VIGIE_DETECT_DNS_BYPASS_PORTS
-	DNSBypassExempt map[string]bool // VIGIE_DETECT_DNS_BYPASS_EXEMPT
+	DNSBypassMin    int             // WATCHPOST_DETECT_DNS_BYPASS_MIN: connections per day to a known public resolver
+	DNSBypassPorts  map[int]bool    // WATCHPOST_DETECT_DNS_BYPASS_PORTS
+	DNSBypassExempt map[string]bool // WATCHPOST_DETECT_DNS_BYPASS_EXEMPT
 
-	SMSOtherMin int64 // VIGIE_DETECT_SMS_OTHER_MIN: SMS per day sent by an app that is not the SMS app
-	SMSDailyMax int64 // VIGIE_DETECT_SMS_DAILY_MAX: SMS per day of any app above which it is reported
+	SMSOtherMin int64 // WATCHPOST_DETECT_SMS_OTHER_MIN: SMS per day sent by an app that is not the SMS app
+	SMSDailyMax int64 // WATCHPOST_DETECT_SMS_DAILY_MAX: SMS per day of any app above which it is reported
 
-	MicBackgroundMin    int64 // VIGIE_DETECT_MIC_BG_MIN: background uses of the microphone per day
-	CameraBackgroundMin int64 // VIGIE_DETECT_CAMERA_BG_MIN: background uses of the camera per day
+	MicBackgroundMin    int64 // WATCHPOST_DETECT_MIC_BG_MIN: background uses of the microphone per day
+	CameraBackgroundMin int64 // WATCHPOST_DETECT_CAMERA_BG_MIN: background uses of the camera per day
 }
 
 // Defaults returns the default thresholds.
@@ -110,7 +110,7 @@ func splitList(v string) []string {
 	return strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' || r == '\n' })
 }
 
-// ParseEnv reads the VIGIE_DETECT_* variables (get returns "" when unset) on top of the defaults. It
+// ParseEnv reads the WATCHPOST_DETECT_* variables (get returns "" when unset) on top of the defaults. It
 // returns the thresholds and the list of errors (empty when valid).
 func ParseEnv(get func(string) string) (Thresholds, []string) {
 	t := Defaults()
@@ -127,7 +127,7 @@ func ParseEnv(get func(string) string) (Thresholds, []string) {
 		}
 		return n
 	}
-	for _, name := range splitList(get("VIGIE_DETECT_DISABLE")) {
+	for _, name := range splitList(get("WATCHPOST_DETECT_DISABLE")) {
 		typ := name
 		if !strings.HasPrefix(typ, "detect.") {
 			typ = "detect." + typ
@@ -137,55 +137,55 @@ func ParseEnv(get func(string) string) (Thresholds, []string) {
 			known = known || x == typ
 		}
 		if !known {
-			errs = append(errs, fmt.Sprintf("VIGIE_DETECT_DISABLE : détection %q inconnue", name))
+			errs = append(errs, fmt.Sprintf("WATCHPOST_DETECT_DISABLE : détection %q inconnue", name))
 			continue
 		}
 		t.Disabled[typ] = true
 	}
-	t.UploadFloorBytes = intVar("VIGIE_DETECT_UPLOAD_FLOOR_MB", t.UploadFloorBytes>>20, 1, 1<<20) << 20
-	if v := get("VIGIE_DETECT_UPLOAD_FACTOR"); v != "" {
+	t.UploadFloorBytes = intVar("WATCHPOST_DETECT_UPLOAD_FLOOR_MB", t.UploadFloorBytes>>20, 1, 1<<20) << 20
+	if v := get("WATCHPOST_DETECT_UPLOAD_FACTOR"); v != "" {
 		f, err := strconv.ParseFloat(v, 64)
 		if err != nil || f < 1 || f > 1000 {
-			errs = append(errs, "VIGIE_DETECT_UPLOAD_FACTOR : nombre entre 1 et 1000 attendu")
+			errs = append(errs, "WATCHPOST_DETECT_UPLOAD_FACTOR : nombre entre 1 et 1000 attendu")
 		} else {
 			t.UploadFactor = f
 		}
 	}
-	t.UploadLearnDays = int(intVar("VIGIE_DETECT_UPLOAD_LEARN_DAYS", int64(t.UploadLearnDays), 0, 14))
-	t.Fanout = int(intVar("VIGIE_DETECT_FANOUT", int64(t.Fanout), 2, 1000000))
-	t.FanoutScreenOff = int(intVar("VIGIE_DETECT_FANOUT_SCREEN_OFF", int64(t.FanoutScreenOff), 2, 1000000))
-	t.MailMin = int(intVar("VIGIE_DETECT_MAIL_MIN", int64(t.MailMin), 1, 1000000))
-	for _, p := range splitList(get("VIGIE_DETECT_MAIL_CLIENTS")) {
+	t.UploadLearnDays = int(intVar("WATCHPOST_DETECT_UPLOAD_LEARN_DAYS", int64(t.UploadLearnDays), 0, 14))
+	t.Fanout = int(intVar("WATCHPOST_DETECT_FANOUT", int64(t.Fanout), 2, 1000000))
+	t.FanoutScreenOff = int(intVar("WATCHPOST_DETECT_FANOUT_SCREEN_OFF", int64(t.FanoutScreenOff), 2, 1000000))
+	t.MailMin = int(intVar("WATCHPOST_DETECT_MAIL_MIN", int64(t.MailMin), 1, 1000000))
+	for _, p := range splitList(get("WATCHPOST_DETECT_MAIL_CLIENTS")) {
 		if !packageRe.MatchString(p) {
-			errs = append(errs, fmt.Sprintf("VIGIE_DETECT_MAIL_CLIENTS : %q n'est pas un nom de paquet", p))
+			errs = append(errs, fmt.Sprintf("WATCHPOST_DETECT_MAIL_CLIENTS : %q n'est pas un nom de paquet", p))
 			continue
 		}
 		t.MailClients[p] = true
 	}
-	t.DNSBypassMin = int(intVar("VIGIE_DETECT_DNS_BYPASS_MIN", int64(t.DNSBypassMin), 1, 1000000))
-	if v := get("VIGIE_DETECT_DNS_BYPASS_PORTS"); v != "" {
+	t.DNSBypassMin = int(intVar("WATCHPOST_DETECT_DNS_BYPASS_MIN", int64(t.DNSBypassMin), 1, 1000000))
+	if v := get("WATCHPOST_DETECT_DNS_BYPASS_PORTS"); v != "" {
 		ports := map[int]bool{}
 		for _, p := range splitList(v) {
 			n, err := strconv.Atoi(p)
 			if err != nil || n < 1 || n > 65535 {
-				errs = append(errs, fmt.Sprintf("VIGIE_DETECT_DNS_BYPASS_PORTS : port %q invalide", p))
+				errs = append(errs, fmt.Sprintf("WATCHPOST_DETECT_DNS_BYPASS_PORTS : port %q invalide", p))
 				continue
 			}
 			ports[n] = true
 		}
 		t.DNSBypassPorts = ports
 	}
-	for _, p := range splitList(get("VIGIE_DETECT_DNS_BYPASS_EXEMPT")) {
+	for _, p := range splitList(get("WATCHPOST_DETECT_DNS_BYPASS_EXEMPT")) {
 		if !packageRe.MatchString(p) {
-			errs = append(errs, fmt.Sprintf("VIGIE_DETECT_DNS_BYPASS_EXEMPT : %q n'est pas un nom de paquet", p))
+			errs = append(errs, fmt.Sprintf("WATCHPOST_DETECT_DNS_BYPASS_EXEMPT : %q n'est pas un nom de paquet", p))
 			continue
 		}
 		t.DNSBypassExempt[p] = true
 	}
-	t.SMSOtherMin = intVar("VIGIE_DETECT_SMS_OTHER_MIN", t.SMSOtherMin, 1, 1000000)
-	t.SMSDailyMax = intVar("VIGIE_DETECT_SMS_DAILY_MAX", t.SMSDailyMax, 1, 1000000)
-	t.MicBackgroundMin = intVar("VIGIE_DETECT_MIC_BG_MIN", t.MicBackgroundMin, 1, 1000000)
-	t.CameraBackgroundMin = intVar("VIGIE_DETECT_CAMERA_BG_MIN", t.CameraBackgroundMin, 1, 1000000)
+	t.SMSOtherMin = intVar("WATCHPOST_DETECT_SMS_OTHER_MIN", t.SMSOtherMin, 1, 1000000)
+	t.SMSDailyMax = intVar("WATCHPOST_DETECT_SMS_DAILY_MAX", t.SMSDailyMax, 1, 1000000)
+	t.MicBackgroundMin = intVar("WATCHPOST_DETECT_MIC_BG_MIN", t.MicBackgroundMin, 1, 1000000)
+	t.CameraBackgroundMin = intVar("WATCHPOST_DETECT_CAMERA_BG_MIN", t.CameraBackgroundMin, 1, 1000000)
 	return t, errs
 }
 

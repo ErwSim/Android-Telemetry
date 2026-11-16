@@ -20,7 +20,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
 )
 
 // Command types (contract §8).
@@ -43,7 +43,7 @@ const (
 	MaxMessageUnits   = 200              // lock message, in UTF-16 code units (JavaScript and Kotlin String.length)
 	PBKDF2Iterations  = 600000
 	KeyBytes          = 32
-	SaltPrefix        = "vigie-cmd-v1:"
+	SaltPrefix        = "watchpost-cmd-v1:"
 	SignatureEncLen   = 44 // base64 of a 32-byte HMAC-SHA256, padded
 	DefaultSimpleTTL  = time.Hour
 	DefaultSensitiveT = 7 * 24 * time.Hour
@@ -361,7 +361,7 @@ func ValidSignatureFormat(sig string) bool {
 	return err == nil && len(b) == KeyBytes
 }
 
-// DeriveKey computes K = PBKDF2-HMAC-SHA256(code, "vigie-cmd-v1:" + device_id, 600000, 32).
+// DeriveKey computes K = PBKDF2-HMAC-SHA256(code, "watchpost-cmd-v1:" + device_id, 600000, 32).
 func DeriveKey(code, deviceID string) ([]byte, error) {
 	return pbkdf2.Key(sha256.New, code, []byte(SaltPrefix+deviceID), PBKDF2Iterations, KeyBytes)
 }

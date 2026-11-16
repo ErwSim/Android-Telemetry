@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/enroll"
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
-	"github.com/erwsim/android-telemetry/server/collector/internal/pki"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/enroll"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/pki"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 // Ingestion limits (contract §3).
@@ -28,7 +28,7 @@ const (
 )
 
 // CertHeader carries the SHA-256 of the verified client certificate, set by Caddy.
-const CertHeader = "X-Vigie-Client-Cert-Sha256"
+const CertHeader = "X-Watchpost-Client-Cert-Sha256"
 
 var errUnauthorized = errors.New("unauthorized")
 

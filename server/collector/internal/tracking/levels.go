@@ -62,7 +62,7 @@ type Level struct {
 	Lists       []string `json:"lists"`
 }
 
-// Levels is the content of VIGIE_ADGUARD_LEVELS_FILE (format documented in the README).
+// Levels is the content of WATCHPOST_ADGUARD_LEVELS_FILE (format documented in the README).
 type Levels struct {
 	Version int                `json:"version"`
 	Lists   map[string]ListDef `json:"lists"`

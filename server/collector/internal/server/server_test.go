@@ -21,13 +21,13 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/auth"
-	"github.com/erwsim/android-telemetry/server/collector/internal/config"
-	"github.com/erwsim/android-telemetry/server/collector/internal/enroll"
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
-	"github.com/erwsim/android-telemetry/server/collector/internal/pki"
-	"github.com/erwsim/android-telemetry/server/collector/internal/sim"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/auth"
+	"github.com/erwsim/watchpost/server/collector/internal/config"
+	"github.com/erwsim/watchpost/server/collector/internal/enroll"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/pki"
+	"github.com/erwsim/watchpost/server/collector/internal/sim"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 type env struct {
@@ -48,7 +48,7 @@ var testPassword = "mot-de-passe-de-test"
 func newEnv(t *testing.T, vars map[string]string) *env {
 	t.Helper()
 	dir := t.TempDir()
-	m := map[string]string{"VIGIE_DATA_DIR": dir, "VIGIE_COOKIE_SECURE": "false"}
+	m := map[string]string{"WATCHPOST_DATA_DIR": dir, "WATCHPOST_COOKIE_SECURE": "false"}
 	for k, v := range vars {
 		m[k] = v
 	}
@@ -57,7 +57,7 @@ func newEnv(t *testing.T, vars map[string]string) *env {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	st, err := store.Open(ctx, filepath.Join(dir, "vigie.db"))
+	st, err := store.Open(ctx, filepath.Join(dir, "watchpost.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func newEnv(t *testing.T, vars map[string]string) *env {
 	}
 	fp, _ := pki.FingerprintPEM([]byte(f.ClientCertPEM))
 	consoleFS := fstest.MapFS{
-		"index.html":         {Data: []byte("<!doctype html><title>Vigie</title>")},
+		"index.html":         {Data: []byte("<!doctype html><title>Watchpost</title>")},
 		"assets/app-1234.js": {Data: []byte("console.log(1)")},
 	}
 	srv, err := New(cfg, st, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{ConsoleFS: consoleFS})
@@ -321,7 +321,7 @@ func TestIngestAuth(t *testing.T) {
 }
 
 func TestIngestWithoutRequiredCert(t *testing.T) {
-	e := newEnv(t, map[string]string{"VIGIE_REQUIRE_CLIENT_CERT": "false"})
+	e := newEnv(t, map[string]string{"WATCHPOST_REQUIRE_CLIENT_CERT": "false"})
 	body := e.batch([]map[string]any{e.event(time.Now(), "net.dns", 0, nil)})
 	if rec := e.ingestRaw(body, true, withHeader(CertHeader, "")); rec.Code != http.StatusOK {
 		t.Fatalf("no cert allowed: %d", rec.Code)
@@ -333,7 +333,7 @@ func TestIngestWithoutRequiredCert(t *testing.T) {
 }
 
 func TestIngestAuthFailureRateLimit(t *testing.T) {
-	e := newEnv(t, map[string]string{"VIGIE_TRUSTED_PROXIES": "10.0.0.1"})
+	e := newEnv(t, map[string]string{"WATCHPOST_TRUSTED_PROXIES": "10.0.0.1"})
 	body := e.batch([]map[string]any{})
 	bad := []reqOpt{withRemote("10.0.0.1:5000"), withHeader("X-Forwarded-For", "198.51.100.7"), withHeader("Authorization", "Bearer nope")}
 	codes := map[int]int{}
@@ -386,7 +386,7 @@ func (e *env) addUser(name string) {
 func (e *env) login(name, password string, opts ...reqOpt) *httptest.ResponseRecorder {
 	b, _ := json.Marshal(map[string]string{"username": name, "password": password})
 	return e.do(http.MethodPost, "/api/console/login", bytes.NewReader(b),
-		append([]reqOpt{withHeader("X-Requested-With", "vigie"), withHeader("Content-Type", "application/json")}, opts...)...)
+		append([]reqOpt{withHeader("X-Requested-With", "watchpost"), withHeader("Content-Type", "application/json")}, opts...)...)
 }
 
 func (e *env) session() *http.Cookie {
@@ -397,7 +397,7 @@ func (e *env) session() *http.Cookie {
 		e.t.Fatalf("login: %d %s", rec.Code, rec.Body)
 	}
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "vigie_session" {
+		if c.Name == "watchpost_session" {
 			return c
 		}
 	}
@@ -451,7 +451,7 @@ func TestConsoleAuth(t *testing.T) {
 	if rec := e.do(http.MethodPost, "/api/console/logout", nil, withCookie(c)); rec.Code != http.StatusForbidden {
 		t.Fatalf("logout without header: %d", rec.Code)
 	}
-	if rec := e.do(http.MethodPost, "/api/console/logout", nil, withCookie(c), withHeader("X-Requested-With", "vigie")); rec.Code != http.StatusNoContent {
+	if rec := e.do(http.MethodPost, "/api/console/logout", nil, withCookie(c), withHeader("X-Requested-With", "watchpost")); rec.Code != http.StatusNoContent {
 		t.Fatalf("logout: %d", rec.Code)
 	}
 	if rec := e.get(c, "/api/console/me", nil); rec.Code != http.StatusUnauthorized {
@@ -460,11 +460,11 @@ func TestConsoleAuth(t *testing.T) {
 }
 
 func TestSecureCookieAttributes(t *testing.T) {
-	e := newEnv(t, map[string]string{"VIGIE_COOKIE_SECURE": "true"})
+	e := newEnv(t, map[string]string{"WATCHPOST_COOKIE_SECURE": "true"})
 	e.addUser("admin")
 	rec := e.login("admin", testPassword)
 	sc := rec.Header().Get("Set-Cookie")
-	if !strings.HasPrefix(sc, "__Host-vigie_session=") || !strings.Contains(sc, "Secure") {
+	if !strings.HasPrefix(sc, "__Host-watchpost_session=") || !strings.Contains(sc, "Secure") {
 		t.Fatalf("cookie %q", sc)
 	}
 	if rec.Header().Get("Strict-Transport-Security") == "" {
@@ -857,11 +857,11 @@ func TestAlerts(t *testing.T) {
 		b, _ := io.ReadAll(r.Body)
 		gotBody = string(b)
 		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{"timestamp":"2026-11-15T21:45:00.412+0000",
-			"rule":{"level":10,"id":"100150","description":"Vigie : traceur BLE"},
-			"data":{"vigie":{"type":"net.ble_tracker","device_id":"dev_1","id":"01J","ts":"2026-11-15T21:44:59.000Z"}}}}]}}`)
+			"rule":{"level":10,"id":"100150","description":"Watchpost : traceur BLE"},
+			"data":{"watchpost":{"type":"net.ble_tracker","device_id":"dev_1","id":"01J","ts":"2026-11-15T21:44:59.000Z"}}}}]}}`)
 	}))
 	defer idx.Close()
-	e2 := newEnv(t, map[string]string{"VIGIE_WAZUH_INDEXER_URL": idx.URL, "VIGIE_WAZUH_INDEXER_USER": "reader", "VIGIE_WAZUH_INDEXER_PASSWORD": "secret"})
+	e2 := newEnv(t, map[string]string{"WATCHPOST_WAZUH_INDEXER_URL": idx.URL, "WATCHPOST_WAZUH_INDEXER_USER": "reader", "WATCHPOST_WAZUH_INDEXER_PASSWORD": "secret"})
 	c2 := e2.session()
 	rec = e2.get(c2, "/api/console/alerts", url.Values{"from": {"2026-11-01T00:00:00Z"}, "to": {"2026-11-16T00:00:00Z"}, "level_min": {"7"}, "limit": {"10"}})
 	ans := decodeJSON[AlertsAnswer](t, rec)
@@ -869,7 +869,7 @@ func TestAlerts(t *testing.T) {
 		ans.Alerts[0].TS != "2026-11-15T21:45:00.412Z" || ans.Alerts[0].RuleID != "100150" {
 		t.Fatalf("alerts: %s", rec.Body)
 	}
-	if !strings.Contains(gotBody, `"data.vigie.type"`) || !strings.Contains(gotBody, `"gte":7`) || !strings.Contains(gotBody, `"size":10`) {
+	if !strings.Contains(gotBody, `"data.watchpost.type"`) || !strings.Contains(gotBody, `"gte":7`) || !strings.Contains(gotBody, `"size":10`) {
 		t.Fatalf("query: %s", gotBody)
 	}
 
@@ -935,7 +935,7 @@ func TestStreamRequiresSession(t *testing.T) {
 }
 
 func TestTileURL(t *testing.T) {
-	e := newEnv(t, map[string]string{"VIGIE_TILE_URL": "https://{s}.tiles.example.org/carte/{z}/{x}/{y}.png"})
+	e := newEnv(t, map[string]string{"WATCHPOST_TILE_URL": "https://{s}.tiles.example.org/carte/{z}/{x}/{y}.png"})
 	rec := e.do(http.MethodGet, "/", nil)
 	if !strings.Contains(rec.Header().Get("Content-Security-Policy"), "connect-src 'self' https://*.tiles.example.org;") {
 		t.Fatalf("CSP %q", rec.Header().Get("Content-Security-Policy"))
@@ -949,7 +949,7 @@ func TestStaticAndHeaders(t *testing.T) {
 	e := newEnv(t, nil)
 	rec := e.do(http.MethodGet, "/", nil)
 	csp := rec.Header().Get("Content-Security-Policy")
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<title>Vigie") {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<title>Watchpost") {
 		t.Fatalf("index: %d", rec.Code)
 	}
 	// Exact header of contract §6 "Précisions".
@@ -961,7 +961,7 @@ func TestStaticAndHeaders(t *testing.T) {
 		t.Fatal("security headers")
 	}
 	// SPA fallback for client routes, 404 for missing assets.
-	if rec := e.do(http.MethodGet, "/carte/jour", nil); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<title>Vigie") {
+	if rec := e.do(http.MethodGet, "/carte/jour", nil); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<title>Watchpost") {
 		t.Fatalf("SPA fallback: %d", rec.Code)
 	}
 	if rec := e.do(http.MethodGet, "/assets/missing.js", nil); rec.Code != http.StatusNotFound {
@@ -976,7 +976,7 @@ func TestStaticAndHeaders(t *testing.T) {
 	if cfgJSON.Code != http.StatusOK || strings.TrimSpace(cfgJSON.Body.String()) != `{"tileUrl":"https://tile.openstreetmap.org/{z}/{x}/{y}.png"}` {
 		t.Fatalf("config.json: %d %s", cfgJSON.Code, cfgJSON.Body)
 	}
-	if rec := e.do(http.MethodGet, "/../../etc/passwd", nil); rec.Code == http.StatusOK && !strings.Contains(rec.Body.String(), "<title>Vigie") {
+	if rec := e.do(http.MethodGet, "/../../etc/passwd", nil); rec.Code == http.StatusOK && !strings.Contains(rec.Body.String(), "<title>Watchpost") {
 		t.Fatal("path traversal")
 	}
 	if rec := e.do(http.MethodPost, "/", nil); rec.Code != http.StatusMethodNotAllowed {
@@ -1051,7 +1051,7 @@ func TestSessionIdleExpiry(t *testing.T) {
 // counted by data.count in /stats/top, and an event older than the retention is acknowledged without
 // being stored (accepted + duplicates + rejected still totals the batch).
 func TestLateEvents(t *testing.T) {
-	e := newEnv(t, map[string]string{"VIGIE_RETENTION_DAYS": "30"})
+	e := newEnv(t, map[string]string{"WATCHPOST_RETENTION_DAYS": "30"})
 	e.addUser("admin")
 	c := e.session()
 	now := time.Now().UTC()

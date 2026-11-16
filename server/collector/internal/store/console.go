@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
 )
 
 // DeviceSummary is one entry of GET /devices.

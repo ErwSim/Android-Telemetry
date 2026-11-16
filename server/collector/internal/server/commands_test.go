@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/command"
-	"github.com/erwsim/android-telemetry/server/collector/internal/enroll"
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
-	"github.com/erwsim/android-telemetry/server/collector/internal/ratelimit"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/command"
+	"github.com/erwsim/watchpost/server/collector/internal/enroll"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/ratelimit"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 func cmdPayload(id, device, typ, params string, issued, expires time.Time) string {
@@ -31,7 +31,7 @@ func cmdPayload(id, device, typ, params string, issued, expires time.Time) strin
 func (e *env) createCommand(c *http.Cookie, body map[string]any) *httptest.ResponseRecorder {
 	b, _ := json.Marshal(body)
 	return e.do(http.MethodPost, "/api/console/commands", bytes.NewReader(b), withCookie(c),
-		withHeader("X-Requested-With", "vigie"), withHeader("Content-Type", "application/json"))
+		withHeader("X-Requested-With", "watchpost"), withHeader("Content-Type", "application/json"))
 }
 
 func (e *env) simpleCommand(c *http.Cookie, typ, params string) (string, *httptest.ResponseRecorder) {
@@ -141,7 +141,7 @@ func TestCommandLifecycle(t *testing.T) {
 	if got := e.commands(c)[id]; got.Status != "delivered" || got.DeliveredAt == nil {
 		t.Fatalf("after poll %+v", got)
 	}
-	cancel := e.do(http.MethodPost, "/api/console/commands/"+id+"/cancel", nil, withCookie(c), withHeader("X-Requested-With", "vigie"))
+	cancel := e.do(http.MethodPost, "/api/console/commands/"+id+"/cancel", nil, withCookie(c), withHeader("X-Requested-With", "watchpost"))
 	if cancel.Code != http.StatusConflict {
 		t.Fatalf("cancel of a delivered command: %d", cancel.Code)
 	}
@@ -259,7 +259,7 @@ func TestCommandValidation(t *testing.T) {
 	if rec := e.do(http.MethodPost, "/api/console/commands", bytes.NewReader(b), withCookie(c)); rec.Code != http.StatusForbidden {
 		t.Fatalf("without X-Requested-With: %d", rec.Code)
 	}
-	if rec := e.do(http.MethodPost, "/api/console/commands", bytes.NewReader(b), withHeader("X-Requested-With", "vigie")); rec.Code != http.StatusUnauthorized {
+	if rec := e.do(http.MethodPost, "/api/console/commands", bytes.NewReader(b), withHeader("X-Requested-With", "watchpost")); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("without session: %d", rec.Code)
 	}
 	// Revoked device.
@@ -308,7 +308,7 @@ func TestCommandLimitsAndCancel(t *testing.T) {
 		t.Fatalf("11th pending: %d %s", rec.Code, rec.Body)
 	}
 	cancel := func(id string) int {
-		return e.do(http.MethodPost, "/api/console/commands/"+id+"/cancel", nil, withCookie(c), withHeader("X-Requested-With", "vigie")).Code
+		return e.do(http.MethodPost, "/api/console/commands/"+id+"/cancel", nil, withCookie(c), withHeader("X-Requested-With", "watchpost")).Code
 	}
 	if code := e.do(http.MethodPost, "/api/console/commands/"+ids[0]+"/cancel", nil, withCookie(c)).Code; code != http.StatusForbidden {
 		t.Fatalf("cancel without CSRF header: %d", code)
@@ -376,7 +376,7 @@ func TestCommandCancelRace(t *testing.T) {
 			wg.Add(1)
 			go func(id string) {
 				defer wg.Done()
-				code := e.do(http.MethodPost, "/api/console/commands/"+id+"/cancel", nil, withCookie(c), withHeader("X-Requested-With", "vigie")).Code
+				code := e.do(http.MethodPost, "/api/console/commands/"+id+"/cancel", nil, withCookie(c), withHeader("X-Requested-With", "watchpost")).Code
 				mu.Lock()
 				defer mu.Unlock()
 				switch code {
@@ -491,7 +491,7 @@ func next(t *testing.T, ch <-chan sseMsg) (sseMsg, bool) {
 func TestCommandStream(t *testing.T) {
 	var logs bytes.Buffer
 	var logMu sync.Mutex
-	e := newEnv(t, map[string]string{"VIGIE_CMD_KEEPALIVE_S": "5"})
+	e := newEnv(t, map[string]string{"WATCHPOST_CMD_KEEPALIVE_S": "5"})
 	e.srv.log = slog.New(slog.NewTextHandler(&lockedWriter{w: &logs, mu: &logMu}, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	c := e.session()
 	ts := httptest.NewServer(e.h)
@@ -566,7 +566,7 @@ func TestCommandStream(t *testing.T) {
 }
 
 func TestCommandStreamRevocationAndShutdown(t *testing.T) {
-	e := newEnv(t, map[string]string{"VIGIE_CMD_KEEPALIVE_S": "5"})
+	e := newEnv(t, map[string]string{"WATCHPOST_CMD_KEEPALIVE_S": "5"})
 	ts := httptest.NewServer(e.h)
 	defer ts.Close()
 	resp, ch := e.openStream(ts)
@@ -701,7 +701,7 @@ func TestCommandSignatureErasedOnceFinal(t *testing.T) {
 
 	// Cancelled.
 	cancelled, _ := signed("clear_lock_message", time.Hour)
-	if rec := e.do(http.MethodPost, "/api/console/commands/"+cancelled+"/cancel", nil, withCookie(c), withHeader("X-Requested-With", "vigie")); rec.Code != http.StatusNoContent {
+	if rec := e.do(http.MethodPost, "/api/console/commands/"+cancelled+"/cancel", nil, withCookie(c), withHeader("X-Requested-With", "watchpost")); rec.Code != http.StatusNoContent {
 		t.Fatalf("cancel: %d", rec.Code)
 	}
 	if got := stored(cancelled); got != store.SigErased {

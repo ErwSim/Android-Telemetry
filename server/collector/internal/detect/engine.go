@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 // Engine evaluates the detections periodically. It never scans the events table: each run takes the hours
@@ -36,7 +36,7 @@ type Engine struct {
 
 // Options configure an Engine.
 type Options struct {
-	// AdGuardClients maps a device to its AdGuard Home clients (VIGIE_ADGUARD_CLIENTS; none: the whole log).
+	// AdGuardClients maps a device to its AdGuard Home clients (WATCHPOST_ADGUARD_CLIENTS; none: the whole log).
 	AdGuardClients map[string][]string
 	// ThreatLists is false when no list of category "threat" is declared: detect.threat_domain stays silent.
 	ThreatLists bool

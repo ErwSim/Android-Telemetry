@@ -10,7 +10,7 @@
     <string name="cmd_channel_alert_description">Affichée pendant qu\'une commande à distance fait sonner ou vibrer le téléphone, avec un bouton pour l\'arrêter.</string>
     <string name="cmd_channel_name">Commandes à distance reçues</string>
     <string name="cmd_channel_description">Une notification pour chaque commande à distance reçue, exécutée ou refusée.</string>
-    <string name="cmd_notif_ringing_title">Vigie fait sonner ce téléphone</string>
+    <string name="cmd_notif_ringing_title">Watchpost fait sonner ce téléphone</string>
     <string name="cmd_notif_ringing_text">Demandé à distance par le propriétaire. Touchez pour arrêter.</string>
     <string name="cmd_notif_stop">Arrêter</string>
     <string name="cmd_notif_processed_title">Commande à distance</string>
@@ -37,7 +37,7 @@
     <string name="cmd_refusal_expired">expirée</string>
     <string name="cmd_refusal_replay">déjà reçue (rejeu)</string>
     <string name="cmd_refusal_bad_params">paramètres hors bornes</string>
-    <string name="cmd_refusal_not_device_owner">Vigie n\'est pas Device Owner</string>
+    <string name="cmd_refusal_not_device_owner">Watchpost n\'est pas Device Owner</string>
     <string name="cmd_refusal_locked_out">commandes sensibles bloquées une heure après 5 signatures invalides</string>
     <string name="cmd_detail_dnd">« Ne pas déranger » coupe les alarmes : vibration et notification seulement</string>
     <string name="cmd_detail_no_fix">aucune position en 60 s</string>
@@ -102,7 +102,7 @@
     <string name="cmd_section_lock_message">Message de l\'écran de verrouillage</string>
     <string name="cmd_lock_message_none">Aucun message posé par une commande.</string>
     <string name="cmd_lock_message_clear">Effacer le message</string>
-    <string name="cmd_lock_message_needs_owner">Verrouiller et afficher un message exigent que Vigie soit Device Owner.</string>
+    <string name="cmd_lock_message_needs_owner">Verrouiller et afficher un message exigent que Watchpost soit Device Owner.</string>
 
     <string name="cmd_section_history">Commandes reçues</string>
     <string name="cmd_history_empty">Aucune commande reçue.</string>

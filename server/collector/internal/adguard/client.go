@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/config"
+	"github.com/erwsim/watchpost/server/collector/internal/config"
 )
 
 // Client calls the AdGuard Home API with HTTP basic authentication.
@@ -129,7 +129,7 @@ type QueryLog struct {
 	Data   []QueryLogItem `json:"data"`
 }
 
-// QueryLogItem is one entry of the query log (only the fields Vigie uses).
+// QueryLogItem is one entry of the query log (only the fields Watchpost uses).
 type QueryLogItem struct {
 	Time     string `json:"time"`
 	Client   string `json:"client"`

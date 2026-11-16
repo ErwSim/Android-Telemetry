@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "io.github.erwsim.vigie.collectors"
+    namespace = "io.github.erwsim.watchpost.collectors"
     compileSdk = 37
 
     defaultConfig {

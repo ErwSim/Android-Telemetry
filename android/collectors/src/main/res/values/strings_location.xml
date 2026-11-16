@@ -2,14 +2,14 @@
 <!-- Location modes (contract §10). Kept apart from strings.xml: owned by the location collector. -->
 <resources>
     <string name="setting_location_mode">Mode de localisation</string>
-    <string name="setting_location_mode_summary">Choisit les sources de position. Seul le GPS ne transmet rien à Google par Vigie.</string>
+    <string name="setting_location_mode_summary">Choisit les sources de position. Seul le GPS ne transmet rien à Google par Watchpost.</string>
 
     <string name="location_mode_gps">GPS seul (par défaut)</string>
-    <string name="location_mode_gps_desc">Positions calculées par la puce GNSS du téléphone, plus les positions passives des autres apps. Vigie ne demande rien aux Services Google Play. En intérieur ou en sous-sol, souvent aucune position ; premier point parfois long à obtenir.</string>
+    <string name="location_mode_gps_desc">Positions calculées par la puce GNSS du téléphone, plus les positions passives des autres apps. Watchpost ne demande rien aux Services Google Play. En intérieur ou en sous-sol, souvent aucune position ; premier point parfois long à obtenir.</string>
 
     <string name="location_mode_gps_network">GPS + réseau</string>
     <string name="location_mode_gps_network_desc">Ajoute le fournisseur « réseau ». Sur ce téléphone, il est fourni par les Services Google Play : les réseaux Wi-Fi et les antennes relais alentour sont envoyés à Google, et seulement si « Précision de la localisation Google » est activée. Gain : une position approximative en intérieur, en quelques secondes. Consommation : un peu plus (deux sources interrogées à chaque intervalle).</string>
 
     <string name="location_mode_fused">Fusionné</string>
-    <string name="location_mode_fused_desc">Utilise le fournisseur « fusionné » des Services Google Play : GPS, Wi-Fi, antennes relais et capteurs combinés. Google reçoit les réseaux Wi-Fi et antennes alentour comme en mode réseau. Gain : position rapide et souvent précise en intérieur, moins de temps GPS donc en général moins de consommation. Si le fournisseur est absent ou désactivé, Vigie revient au GPS seul.</string>
+    <string name="location_mode_fused_desc">Utilise le fournisseur « fusionné » des Services Google Play : GPS, Wi-Fi, antennes relais et capteurs combinés. Google reçoit les réseaux Wi-Fi et antennes alentour comme en mode réseau. Gain : position rapide et souvent précise en intérieur, moins de temps GPS donc en général moins de consommation. Si le fournisseur est absent ou désactivé, Watchpost revient au GPS seul.</string>
 </resources>

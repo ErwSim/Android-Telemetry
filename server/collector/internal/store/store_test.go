@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
 )
 
 func ingestRaw(t *testing.T, st *Store, evs []map[string]any) {
@@ -57,7 +57,7 @@ func snapshot(t *testing.T, st *Store) []string {
 // (migrations 2 and 3) gives the same aggregates as the Go code used at ingestion.
 func TestMigration2RebuildMatchesIngest(t *testing.T) {
 	ctx := context.Background()
-	st, err := Open(ctx, filepath.Join(t.TempDir(), "vigie.db"))
+	st, err := Open(ctx, filepath.Join(t.TempDir(), "watchpost.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func topOf(t *testing.T, st *Store, kind string, from, to time.Time) map[string]
 // late events (old ts) land in the hour of their ts, not in the hour of reception.
 func TestTopWeightedByCountAndOldTS(t *testing.T) {
 	ctx := context.Background()
-	st, err := Open(ctx, filepath.Join(t.TempDir(), "vigie.db"))
+	st, err := Open(ctx, filepath.Join(t.TempDir(), "watchpost.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func TestTopWeightedByCountAndOldTS(t *testing.T) {
 // aggregated for them; weighted aggregates follow the purge by hour.
 func TestRetentionWithOldTS(t *testing.T) {
 	ctx := context.Background()
-	st, err := Open(ctx, filepath.Join(t.TempDir(), "vigie.db"))
+	st, err := Open(ctx, filepath.Join(t.TempDir(), "watchpost.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func countRows(t *testing.T, st *Store, q string) int {
 
 func TestSchemaVersion(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "vigie.db")
+	path := filepath.Join(t.TempDir(), "watchpost.db")
 	st, err := Open(ctx, path)
 	if err != nil {
 		t.Fatal(err)
@@ -288,7 +288,7 @@ func apps(names ...string) []any {
 // that do not send inventory_id.
 func TestLatestAppsByInventoryID(t *testing.T) {
 	ctx := context.Background()
-	st, err := Open(ctx, filepath.Join(t.TempDir(), "vigie.db"))
+	st, err := Open(ctx, filepath.Join(t.TempDir(), "watchpost.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/adguard"
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
-	"github.com/erwsim/android-telemetry/server/collector/internal/sim"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/adguard"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/sim"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 // simulate runs the simulator from now-span to now and stores its events like the ingestion does (directly
@@ -170,7 +170,7 @@ func TestScenarioAttacks(t *testing.T) {
 		t.Errorf("detections for applications outside the scenarios: %v", others)
 	}
 	t.Logf("detections per application: %v", got)
-	if os.Getenv("VIGIE_SCENARIO_DUMP") != "" {
+	if os.Getenv("WATCHPOST_SCENARIO_DUMP") != "" {
 		for _, d := range e.allDetections() {
 			t.Logf("%s %-26s %s", d.WindowFrom, d.Type, d.Summary)
 		}

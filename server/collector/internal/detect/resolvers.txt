@@ -1,6 +1,6 @@
 # Résolveurs DNS publics connus (DoH, DoT), lus par detect.dns_bypass.
 #
-# Une application qui se connecte à l'une de ces adresses sur un port de VIGIE_DETECT_DNS_BYPASS_PORTS
+# Une application qui se connecte à l'une de ces adresses sur un port de WATCHPOST_DETECT_DNS_BYPASS_PORTS
 # (443 et 853 par défaut : DNS sur HTTPS, DNS sur TLS) résout ses noms sans passer par le DNS privé du
 # téléphone, donc sans le filtrage d'AdGuard Home ni le journal net.dns.
 #
@@ -53,7 +53,7 @@
 2620:119:35::35         OpenDNS
 2620:119:53::53         OpenDNS
 
-# AdGuard DNS public (dns.adguard-dns.com, sans filtre, famille) — pas l'AdGuard Home de Vigie
+# AdGuard DNS public (dns.adguard-dns.com, sans filtre, famille) — pas l'AdGuard Home de Watchpost
 94.140.14.14            AdGuard DNS
 94.140.15.15            AdGuard DNS
 94.140.14.140           AdGuard DNS

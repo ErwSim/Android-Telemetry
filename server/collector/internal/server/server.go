@@ -11,11 +11,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/config"
-	"github.com/erwsim/android-telemetry/server/collector/internal/detect"
-	"github.com/erwsim/android-telemetry/server/collector/internal/export"
-	"github.com/erwsim/android-telemetry/server/collector/internal/ratelimit"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/config"
+	"github.com/erwsim/watchpost/server/collector/internal/detect"
+	"github.com/erwsim/watchpost/server/collector/internal/export"
+	"github.com/erwsim/watchpost/server/collector/internal/ratelimit"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 // Server holds the HTTP handlers and their dependencies.

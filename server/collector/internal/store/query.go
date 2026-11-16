@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
 )
 
 func fmtMS(ms int64) string { return model.FormatMS(ms) }

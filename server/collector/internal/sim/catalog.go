@@ -69,9 +69,9 @@ var apps = []app{
 		dangerous: []string{"android.permission.READ_CALL_LOG", "android.permission.CALL_PHONE"}},
 	{pkg: "com.samsung.android.messaging", label: "Messages", uid: 10063, system: true, version: "16.0.20.22", code: 160002022, target: 36, fgWeight: 2, notifies: true,
 		dangerous: []string{"android.permission.READ_SMS", "android.permission.SEND_SMS"}},
-	{pkg: "io.github.erwsim.vigie", label: "Vigie", uid: 10301, installer: "com.android.shell", version: "1.0.0", code: 1, target: 36,
+	{pkg: "io.github.erwsim.watchpost", label: "Watchpost", uid: 10301, installer: "com.android.shell", version: "1.0.0", code: 1, target: 36,
 		dangerous: []string{"android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.POST_NOTIFICATIONS"},
-		hosts:     []string{"ingest.vigie.example", "dns.vigie.example"}, bgPerHour: 4},
+		hosts:     []string{"ingest.watchpost.example", "dns.watchpost.example"}, bgPerHour: 4},
 	// User apps
 	{pkg: "com.whatsapp", label: "WhatsApp", uid: 10251, installer: "com.android.vending", version: "2.25.32.74", code: 252327400, target: 35,
 		dangerous: []string{"android.permission.CAMERA", "android.permission.RECORD_AUDIO", "android.permission.READ_CONTACTS"},
@@ -143,7 +143,7 @@ func addressesFor(host string) []string {
 		v4prefix = "149.154"
 	case contains(host, "signal"):
 		v4prefix = "13.248"
-	case contains(host, "vigie.example"):
+	case contains(host, "watchpost.example"):
 		v4prefix = "203.0"
 	default:
 		v4prefix = []string{"151.101", "104.16", "23.62", "185.15"}[h%4]

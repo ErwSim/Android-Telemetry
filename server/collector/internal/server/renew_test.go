@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/enroll"
-	"github.com/erwsim/android-telemetry/server/collector/internal/pki"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/enroll"
+	"github.com/erwsim/watchpost/server/collector/internal/pki"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 // pair is one credential generation as an agent presents it.
@@ -205,7 +205,7 @@ func TestRevokeInvalidatesBothPairs(t *testing.T) {
 func TestRenewalWithoutRequiredCert(t *testing.T) {
 	// Without client-cert enforcement a missing fingerprint is allowed, but a wrong one never is,
 	// and the pending token is still only accepted with the pending certificate.
-	e := newEnv(t, map[string]string{"VIGIE_REQUIRE_CLIENT_CERT": "false"})
+	e := newEnv(t, map[string]string{"WATCHPOST_REQUIRE_CLIENT_CERT": "false"})
 	oldP := pair{e.dev.DeviceToken, e.fp}
 	newP := pairOf(t, e.renew())
 	if c := e.sendPing(pair{newP.token, oldP.fp}); c != 401 {

@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "io.github.erwsim.vigie.notifier.protocol"
+    namespace = "io.github.erwsim.watchpost.notifier.protocol"
     compileSdk = 37
 
     defaultConfig {

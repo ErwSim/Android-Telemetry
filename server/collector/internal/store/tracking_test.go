@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
 )
 
 // The usage_counts rebuild of migration 5 gives the same counters as the ingestion.

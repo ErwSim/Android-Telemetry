@@ -20,7 +20,7 @@ func newDev(t *testing.T, st *Store, id string) {
 
 func TestPendingCredentialsLifecycle(t *testing.T) {
 	ctx := context.Background()
-	st, err := Open(ctx, filepath.Join(t.TempDir(), "vigie.db"))
+	st, err := Open(ctx, filepath.Join(t.TempDir(), "watchpost.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestPendingCredentialsLifecycle(t *testing.T) {
 // A database created by a binary that predates migration 4 keeps its devices and gains renewal.
 func TestMigration4OnExistingDatabase(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "vigie.db")
+	path := filepath.Join(t.TempDir(), "watchpost.db")
 	if err := restrictFiles(path); err != nil {
 		t.Fatal(err)
 	}

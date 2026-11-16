@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/pki"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/pki"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 func TestCreateWriteRead(t *testing.T) {
 	dir := t.TempDir()
 	ctx := context.Background()
-	st, err := store.Open(ctx, filepath.Join(dir, "vigie.db"))
+	st, err := store.Open(ctx, filepath.Join(dir, "watchpost.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestCreateWriteRead(t *testing.T) {
 	if dev.CertSHA256 != fp {
 		t.Fatal("fingerprint not stored")
 	}
-	path := filepath.Join(dir, "s25.vigie")
+	path := filepath.Join(dir, "s25.watchpost")
 	if err := f.Write(path, false); err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestCreateWriteRead(t *testing.T) {
 // Regression: --force rewrote an existing file in place and kept its mode, so
 // the device token and private key could land in a world-readable file.
 func TestWriteForceKeepsSecretsPrivate(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "s25.vigie")
+	path := filepath.Join(t.TempDir(), "s25.watchpost")
 	if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestWriteForceKeepsSecretsPrivate(t *testing.T) {
 func newTestStore(t *testing.T) (*store.Store, *pki.CA) {
 	t.Helper()
 	dir := t.TempDir()
-	st, err := store.Open(context.Background(), filepath.Join(dir, "vigie.db"))
+	st, err := store.Open(context.Background(), filepath.Join(dir, "watchpost.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestRenew(t *testing.T) {
 		t.Fatalf("revoked: %v", err)
 	}
 	// The renewed file is written 0600 like any other.
-	path := filepath.Join(t.TempDir(), "r.vigie")
+	path := filepath.Join(t.TempDir(), "r.watchpost")
 	if err := r2.Write(path, false); err != nil {
 		t.Fatal(err)
 	}

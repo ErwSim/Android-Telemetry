@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
 )
 
 func parseEv(t *testing.T, ts time.Time, typ, data string) *model.Event {

@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Vigie only talks to the enrolled ingest server.
+    Watchpost only talks to the enrolled ingest server.
     - No cleartext traffic.
     - Only system CAs: user-installed CAs (a classic interception vector) are never trusted.
-      When the .vigie file contains server_ca_pem, the app trusts ONLY that CA (pinning in code).
+      When the .watchpost file contains server_ca_pem, the app trusts ONLY that CA (pinning in code).
     - Certificate Transparency, enforced by default for targetSdk 37, is disabled: a private
-      server CA (VIGIE_SERVER_CA_FILE) has no SCTs and would be refused. The app connects to a
+      server CA (WATCHPOST_SERVER_CA_FILE) has no SCTs and would be refused. The app connects to a
       single, enrolled host, and in private-CA mode the pinning is stricter than CT.
 -->
 <network-security-config>

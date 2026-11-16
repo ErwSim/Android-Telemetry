@@ -15,7 +15,7 @@ func TestDatabaseFilesArePrivate(t *testing.T) {
 	if err := os.Chmod(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, "vigie.db")
+	path := filepath.Join(dir, "watchpost.db")
 	// A leftover WAL from an older version, world-readable.
 	if err := os.WriteFile(path+"-wal", nil, 0o644); err != nil {
 		t.Fatal(err)
@@ -35,7 +35,7 @@ func TestDatabaseFilesArePrivate(t *testing.T) {
 	if err := st.r.QueryRow("SELECT 1").Scan(&one); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"vigie.db", "vigie.db-wal", "vigie.db-shm"} {
+	for _, f := range []string{"watchpost.db", "watchpost.db-wal", "watchpost.db-shm"} {
 		fi, err := os.Stat(filepath.Join(dir, f))
 		if err != nil {
 			t.Fatalf("%s: %v", f, err)

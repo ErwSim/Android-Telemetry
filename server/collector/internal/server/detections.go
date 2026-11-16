@@ -9,9 +9,9 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/detect"
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/detect"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 // Behavioral detections (contract §11.3): computed in the background by detect.Engine from the aggregates,
@@ -30,10 +30,10 @@ func (s *Server) newDetector() *detect.Engine {
 	})
 }
 
-// StartDetections evaluates the detections every VIGIE_DETECT_INTERVAL_S until ctx is canceled.
+// StartDetections evaluates the detections every WATCHPOST_DETECT_INTERVAL_S until ctx is canceled.
 func (s *Server) StartDetections(ctx context.Context) {
 	if !s.cfg.DetectEnabled {
-		s.log.Info("détections désactivées (VIGIE_DETECT_ENABLED=false)")
+		s.log.Info("détections désactivées (WATCHPOST_DETECT_ENABLED=false)")
 		return
 	}
 	var off []string
@@ -44,7 +44,7 @@ func (s *Server) StartDetections(ctx context.Context) {
 	}
 	s.log.Info("détections actives", "interval", s.cfg.DetectInterval.String(), "disabled", off)
 	if s.tracking.client != nil && len(s.tracking.threats) == 0 {
-		s.log.Warn("détections : aucune liste de catégorie \"threat\" dans VIGIE_ADGUARD_LEVELS_FILE, detect.threat_domain reste muette")
+		s.log.Warn("détections : aucune liste de catégorie \"threat\" dans WATCHPOST_ADGUARD_LEVELS_FILE, detect.threat_domain reste muette")
 	}
 	go s.detector.Run(ctx, s.cfg.DetectInterval)
 }

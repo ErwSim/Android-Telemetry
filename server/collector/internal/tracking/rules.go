@@ -10,8 +10,8 @@ import (
 // Overrides are written in a block delimited by these comment lines among the AdGuard Home user rules.
 // Rules outside the block (entered by hand in AdGuard) are never touched.
 const (
-	BlockBegin = "! vigie:begin — règles gérées par la console Vigie (vue « pistage ») : ne pas modifier à la main"
-	BlockEnd   = "! vigie:end"
+	BlockBegin = "! watchpost:begin — règles gérées par la console Watchpost (vue « pistage ») : ne pas modifier à la main"
+	BlockEnd   = "! watchpost:end"
 )
 
 // Override actions.
@@ -21,13 +21,13 @@ const (
 	ActionDefault = "default"
 )
 
-// ErrCorruptBlock is returned when the markers of the managed block are inconsistent: Vigie then
+// ErrCorruptBlock is returned when the markers of the managed block are inconsistent: Watchpost then
 // refuses to rewrite the rules rather than risk deleting rules of the owner.
-var ErrCorruptBlock = errors.New("bloc Vigie incohérent dans les règles personnalisées d'AdGuard Home (repères vigie:begin / vigie:end)")
+var ErrCorruptBlock = errors.New("bloc Watchpost incohérent dans les règles personnalisées d'AdGuard Home (repères watchpost:begin / watchpost:end)")
 
 var managedRuleRe = regexp.MustCompile(`^(@@)?\|\|([a-z0-9_.-]+)\^\$important$`)
 
-func isBegin(l string) bool { return strings.HasPrefix(strings.TrimSpace(l), "! vigie:begin") }
+func isBegin(l string) bool { return strings.HasPrefix(strings.TrimSpace(l), "! watchpost:begin") }
 func isEnd(l string) bool   { return strings.TrimSpace(l) == BlockEnd }
 
 // findBlock returns the indexes of the begin and end markers (-1, -1 when there is no block).
@@ -88,7 +88,7 @@ func RuleFor(domain, action string) string {
 
 // ApplyOverride returns the user rules with the override of domain set (block, allow) or removed
 // (default), and whether they changed. The block is rewritten sorted; it is appended at the end when
-// absent and removed when empty. A line found between the markers that is not a rule written by Vigie
+// absent and removed when empty. A line found between the markers that is not a rule written by Watchpost
 // (a rule or a comment added there by hand in AdGuard Home) is never deleted: it is moved right after
 // the block. The domain must already be validated (ValidDomain).
 func ApplyOverride(rules []string, domain, action string) ([]string, bool, error) {

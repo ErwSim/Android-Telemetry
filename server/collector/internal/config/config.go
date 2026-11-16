@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/detect"
+	"github.com/erwsim/watchpost/server/collector/internal/detect"
 )
 
 // Config is the collector configuration.
@@ -30,7 +30,7 @@ type Config struct {
 	RetentionDays     int
 	ConsoleDir        string
 	CookieSecure      bool
-	TileURL           string // VIGIE_TILE_URL, served by GET /config.json
+	TileURL           string // WATCHPOST_TILE_URL, served by GET /config.json
 	TileOrigin        string // origin of TileURL, allowed in the CSP connect-src
 
 	WazuhIndexerURL      string
@@ -40,24 +40,24 @@ type Config struct {
 	WazuhIndexerInsecure bool
 
 	// Remote commands (contract §8).
-	CmdKeepAlive time.Duration // VIGIE_CMD_KEEPALIVE_S
+	CmdKeepAlive time.Duration // WATCHPOST_CMD_KEEPALIVE_S
 
 	// Tracking view (contract §9). AdGuardURL empty: the view is built from net.dns alone.
 	AdGuardURL        string
 	AdGuardUser       string
 	AdGuardPassword   string
 	AdGuardLevelsFile string
-	AdGuardPoll       time.Duration       // VIGIE_ADGUARD_POLL_S
-	AdGuardClients    map[string][]string // VIGIE_ADGUARD_CLIENTS: device_id -> AdGuard clients (ClientID or IP)
+	AdGuardPoll       time.Duration       // WATCHPOST_ADGUARD_POLL_S
+	AdGuardClients    map[string][]string // WATCHPOST_ADGUARD_CLIENTS: device_id -> AdGuard clients (ClientID or IP)
 
 	// Behavioral detections (contract §11.3).
-	DetectEnabled  bool              // VIGIE_DETECT_ENABLED
-	DetectInterval time.Duration     // VIGIE_DETECT_INTERVAL_S
-	Detect         detect.Thresholds // VIGIE_DETECT_* thresholds
+	DetectEnabled  bool              // WATCHPOST_DETECT_ENABLED
+	DetectInterval time.Duration     // WATCHPOST_DETECT_INTERVAL_S
+	Detect         detect.Thresholds // WATCHPOST_DETECT_* thresholds
 }
 
 // DBPath returns the SQLite database path.
-func (c *Config) DBPath() string { return filepath.Join(c.DataDir, "vigie.db") }
+func (c *Config) DBPath() string { return filepath.Join(c.DataDir, "watchpost.db") }
 
 // PKIDir returns the client PKI directory.
 func (c *Config) PKIDir() string { return filepath.Join(c.DataDir, "pki") }
@@ -100,61 +100,61 @@ func FromLookup(lookup func(string) (string, bool)) (*Config, error) {
 	}
 
 	c := &Config{
-		Listen:               get("VIGIE_LISTEN", ":8080"),
-		DataDir:              get("VIGIE_DATA_DIR", "/data"),
-		ExportPath:           get("VIGIE_EXPORT_NDJSON", ""),
-		ExportMaxBytes:       intVar("VIGIE_EXPORT_MAX_BYTES", 52428800, 1<<20),
-		ExportKeep:           int(intVar("VIGIE_EXPORT_KEEP", 5, 1)),
-		RequireClientCert:    boolVar("VIGIE_REQUIRE_CLIENT_CERT", true),
-		PublicIngestURL:      get("VIGIE_PUBLIC_INGEST_URL", ""),
-		PrivateDNSHost:       get("VIGIE_PRIVATE_DNS_HOST", ""),
-		ServerCAFile:         get("VIGIE_SERVER_CA_FILE", ""),
-		RetentionDays:        int(intVar("VIGIE_RETENTION_DAYS", 90, 1)),
-		ConsoleDir:           get("VIGIE_CONSOLE_DIR", ""),
-		CookieSecure:         boolVar("VIGIE_COOKIE_SECURE", true),
-		WazuhIndexerURL:      get("VIGIE_WAZUH_INDEXER_URL", ""),
-		WazuhIndexerUser:     get("VIGIE_WAZUH_INDEXER_USER", ""),
-		WazuhIndexerPassword: get("VIGIE_WAZUH_INDEXER_PASSWORD", ""),
-		WazuhIndexerCAFile:   get("VIGIE_WAZUH_INDEXER_CA_FILE", ""),
-		WazuhIndexerInsecure: boolVar("VIGIE_WAZUH_INDEXER_INSECURE", false),
+		Listen:               get("WATCHPOST_LISTEN", ":8080"),
+		DataDir:              get("WATCHPOST_DATA_DIR", "/data"),
+		ExportPath:           get("WATCHPOST_EXPORT_NDJSON", ""),
+		ExportMaxBytes:       intVar("WATCHPOST_EXPORT_MAX_BYTES", 52428800, 1<<20),
+		ExportKeep:           int(intVar("WATCHPOST_EXPORT_KEEP", 5, 1)),
+		RequireClientCert:    boolVar("WATCHPOST_REQUIRE_CLIENT_CERT", true),
+		PublicIngestURL:      get("WATCHPOST_PUBLIC_INGEST_URL", ""),
+		PrivateDNSHost:       get("WATCHPOST_PRIVATE_DNS_HOST", ""),
+		ServerCAFile:         get("WATCHPOST_SERVER_CA_FILE", ""),
+		RetentionDays:        int(intVar("WATCHPOST_RETENTION_DAYS", 90, 1)),
+		ConsoleDir:           get("WATCHPOST_CONSOLE_DIR", ""),
+		CookieSecure:         boolVar("WATCHPOST_COOKIE_SECURE", true),
+		WazuhIndexerURL:      get("WATCHPOST_WAZUH_INDEXER_URL", ""),
+		WazuhIndexerUser:     get("WATCHPOST_WAZUH_INDEXER_USER", ""),
+		WazuhIndexerPassword: get("WATCHPOST_WAZUH_INDEXER_PASSWORD", ""),
+		WazuhIndexerCAFile:   get("WATCHPOST_WAZUH_INDEXER_CA_FILE", ""),
+		WazuhIndexerInsecure: boolVar("WATCHPOST_WAZUH_INDEXER_INSECURE", false),
 	}
-	for _, s := range strings.FieldsFunc(get("VIGIE_TRUSTED_PROXIES", "127.0.0.1/32"), splitList) {
+	for _, s := range strings.FieldsFunc(get("WATCHPOST_TRUSTED_PROXIES", "127.0.0.1/32"), splitList) {
 		p, err := parsePrefix(s)
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("VIGIE_TRUSTED_PROXIES : %q n'est ni une IP ni un CIDR", s))
+			errs = append(errs, fmt.Sprintf("WATCHPOST_TRUSTED_PROXIES : %q n'est ni une IP ni un CIDR", s))
 			continue
 		}
 		c.TrustedProxies = append(c.TrustedProxies, p)
 	}
-	c.TileURL = get("VIGIE_TILE_URL", DefaultTileURL)
+	c.TileURL = get("WATCHPOST_TILE_URL", DefaultTileURL)
 	if o, err := TileOrigin(c.TileURL); err != nil {
-		errs = append(errs, "VIGIE_TILE_URL : "+err.Error())
+		errs = append(errs, "WATCHPOST_TILE_URL : "+err.Error())
 	} else {
 		c.TileOrigin = o
 	}
-	c.CmdKeepAlive = time.Duration(intVar("VIGIE_CMD_KEEPALIVE_S", 120, 5)) * time.Second
+	c.CmdKeepAlive = time.Duration(intVar("WATCHPOST_CMD_KEEPALIVE_S", 120, 5)) * time.Second
 	if c.CmdKeepAlive > time.Hour {
-		errs = append(errs, "VIGIE_CMD_KEEPALIVE_S : 3600 au plus")
+		errs = append(errs, "WATCHPOST_CMD_KEEPALIVE_S : 3600 au plus")
 	}
-	c.AdGuardURL = strings.TrimRight(get("VIGIE_ADGUARD_URL", ""), "/")
-	c.AdGuardUser = get("VIGIE_ADGUARD_USER", "")
-	c.AdGuardPassword = get("VIGIE_ADGUARD_PASSWORD", "")
-	c.AdGuardLevelsFile = get("VIGIE_ADGUARD_LEVELS_FILE", "")
-	c.AdGuardPoll = time.Duration(intVar("VIGIE_ADGUARD_POLL_S", 60, 10)) * time.Second
+	c.AdGuardURL = strings.TrimRight(get("WATCHPOST_ADGUARD_URL", ""), "/")
+	c.AdGuardUser = get("WATCHPOST_ADGUARD_USER", "")
+	c.AdGuardPassword = get("WATCHPOST_ADGUARD_PASSWORD", "")
+	c.AdGuardLevelsFile = get("WATCHPOST_ADGUARD_LEVELS_FILE", "")
+	c.AdGuardPoll = time.Duration(intVar("WATCHPOST_ADGUARD_POLL_S", 60, 10)) * time.Second
 	if c.AdGuardURL != "" {
 		if err := CheckAdGuardURL(c.AdGuardURL); err != nil {
-			errs = append(errs, "VIGIE_ADGUARD_URL : "+err.Error())
+			errs = append(errs, "WATCHPOST_ADGUARD_URL : "+err.Error())
 		}
 	}
-	if clients, err := parseClients(get("VIGIE_ADGUARD_CLIENTS", "")); err != nil {
-		errs = append(errs, "VIGIE_ADGUARD_CLIENTS : "+err.Error())
+	if clients, err := parseClients(get("WATCHPOST_ADGUARD_CLIENTS", "")); err != nil {
+		errs = append(errs, "WATCHPOST_ADGUARD_CLIENTS : "+err.Error())
 	} else {
 		c.AdGuardClients = clients
 	}
-	c.DetectEnabled = boolVar("VIGIE_DETECT_ENABLED", true)
-	c.DetectInterval = time.Duration(intVar("VIGIE_DETECT_INTERVAL_S", 300, 10)) * time.Second
+	c.DetectEnabled = boolVar("WATCHPOST_DETECT_ENABLED", true)
+	c.DetectInterval = time.Duration(intVar("WATCHPOST_DETECT_INTERVAL_S", 300, 10)) * time.Second
 	if c.DetectInterval > 24*time.Hour {
-		errs = append(errs, "VIGIE_DETECT_INTERVAL_S : 86400 au plus")
+		errs = append(errs, "WATCHPOST_DETECT_INTERVAL_S : 86400 au plus")
 	}
 	th, derrs := detect.ParseEnv(func(k string) string { return get(k, "") })
 	c.Detect = th
@@ -237,7 +237,7 @@ func CheckAdGuardURL(raw string) error {
 		return fmt.Errorf("%q : URL http(s)://hôte[:port] attendue", raw)
 	}
 	if u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
-		return fmt.Errorf("URL sans identifiants, requête ni fragment attendue (identifiants : VIGIE_ADGUARD_USER et VIGIE_ADGUARD_PASSWORD)")
+		return fmt.Errorf("URL sans identifiants, requête ni fragment attendue (identifiants : WATCHPOST_ADGUARD_USER et WATCHPOST_ADGUARD_PASSWORD)")
 	}
 	return nil
 }

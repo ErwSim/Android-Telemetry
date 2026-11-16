@@ -14,22 +14,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/adguard"
-	"github.com/erwsim/android-telemetry/server/collector/internal/enroll"
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
-	"github.com/erwsim/android-telemetry/server/collector/internal/tracking"
+	"github.com/erwsim/watchpost/server/collector/internal/adguard"
+	"github.com/erwsim/watchpost/server/collector/internal/enroll"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/tracking"
 )
 
 const exampleLevels = "../../examples/adguard-levels.example.json"
 
 func newTrackingEnv(t *testing.T) (*env, *adguard.Fake, *httptest.Server) {
 	t.Helper()
-	fake := adguard.NewFake("vigie", "secret-adguard")
+	fake := adguard.NewFake("watchpost", "secret-adguard")
 	ag := httptest.NewServer(fake)
 	t.Cleanup(ag.Close)
 	e := newEnv(t, map[string]string{
-		"VIGIE_ADGUARD_URL": ag.URL, "VIGIE_ADGUARD_USER": "vigie", "VIGIE_ADGUARD_PASSWORD": "secret-adguard",
-		"VIGIE_ADGUARD_LEVELS_FILE": exampleLevels, "VIGIE_PUBLIC_INGEST_URL": "https://ingest.vigie.example",
+		"WATCHPOST_ADGUARD_URL": ag.URL, "WATCHPOST_ADGUARD_USER": "watchpost", "WATCHPOST_ADGUARD_PASSWORD": "secret-adguard",
+		"WATCHPOST_ADGUARD_LEVELS_FILE": exampleLevels, "WATCHPOST_PUBLIC_INGEST_URL": "https://ingest.watchpost.example",
 	})
 	return e, fake, ag
 }
@@ -56,7 +56,7 @@ func (e *env) put(c *http.Cookie, path string, body any, csrf bool) *httptest.Re
 	b, _ := json.Marshal(body)
 	opts := []reqOpt{withCookie(c), withHeader("Content-Type", "application/json")}
 	if csrf {
-		opts = append(opts, withHeader("X-Requested-With", "vigie"))
+		opts = append(opts, withHeader("X-Requested-With", "watchpost"))
 	}
 	return e.do(http.MethodPut, "/api/console/tracking/"+path, bytes.NewReader(b), opts...)
 }
@@ -216,7 +216,7 @@ func TestTrackingWithAdGuard(t *testing.T) {
 	if d["override"] != "block" {
 		t.Fatalf("override not shown %v", d)
 	}
-	// AdGuard applies the rule: the next query is blocked by "Blocage manuel (Vigie)".
+	// AdGuard applies the rule: the next query is blocked by "Blocage manuel (Watchpost)".
 	fake.AddQuery(time.Now(), "192.0.2.10", "s25", "graph.facebook.com")
 	e.srv.now = func() time.Time { return time.Now().Add(2 * time.Minute) }
 	if err := e.srv.tracking.pollOnce(ctx); err != nil {
@@ -224,7 +224,7 @@ func TestTrackingWithAdGuard(t *testing.T) {
 	}
 	e.srv.now = time.Now
 	d = e.trackingGet(c, "domains", url.Values{"q": {"graph.facebook"}, "to": {model.FormatTS(time.Now().Add(time.Hour))}})["domains"].([]any)[0].(map[string]any)
-	if d["status"] != "mixed" || d["reason"] != "Blocage manuel (Vigie)" || num(d["blocked"]) != 1 {
+	if d["status"] != "mixed" || d["reason"] != "Blocage manuel (Watchpost)" || num(d["blocked"]) != 1 {
 		t.Fatalf("after override %v", d)
 	}
 	for _, dom := range []string{"google.com", "graph.facebook.com", "mtalk.google.com"} {
@@ -294,7 +294,7 @@ func TestTrackingIncrementalAndGaps(t *testing.T) {
 	if len(st.Gaps) != 0 {
 		t.Fatalf("gaps left %+v", st.Gaps)
 	}
-	// Clients: VIGIE_ADGUARD_CLIENTS restricts a device to its AdGuard clients.
+	// Clients: WATCHPOST_ADGUARD_CLIENTS restricts a device to its AdGuard clients.
 	if c, _ := e.st.TrackingCounts(ctx, []string{"other"}, base.UnixMilli(), time.Now().UnixMilli()); len(c) != 0 {
 		t.Fatalf("other client %v", c)
 	}
@@ -616,7 +616,7 @@ func TestTrackingChangesAreServerEvents(t *testing.T) {
 	if err := e.srv.tracking.pollOnce(ctx); err != nil {
 		t.Fatal(err)
 	}
-	other, err := enroll.Create(ctx, e.st, e.ca, enroll.Params{Name: "révoqué", IngestURL: "https://ingest.vigie.example"}, time.Now())
+	other, err := enroll.Create(ctx, e.st, e.ca, enroll.Params{Name: "révoqué", IngestURL: "https://ingest.watchpost.example"}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

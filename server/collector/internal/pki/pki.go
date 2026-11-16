@@ -102,7 +102,7 @@ func create(dir string, now time.Time) error {
 	ski := subjectKeyID(&key.PublicKey)
 	tmpl := &x509.Certificate{
 		SerialNumber:          randomSerial(),
-		Subject:               pkix.Name{CommonName: "Vigie Client CA", Organization: []string{"Vigie"}},
+		Subject:               pkix.Name{CommonName: "Watchpost Client CA", Organization: []string{"Watchpost"}},
 		NotBefore:             now.Add(-backdate),
 		NotAfter:              now.Add(caValidity),
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature,
@@ -174,7 +174,7 @@ func (ca *CA) Issue(deviceID string, now time.Time) (*ClientCert, error) {
 	}
 	tmpl := &x509.Certificate{
 		SerialNumber:          randomSerial(),
-		Subject:               pkix.Name{CommonName: deviceID, Organization: []string{"Vigie"}},
+		Subject:               pkix.Name{CommonName: deviceID, Organization: []string{"Watchpost"}},
 		NotBefore:             now.Add(-backdate),
 		NotAfter:              notAfter,
 		KeyUsage:              x509.KeyUsageDigitalSignature,

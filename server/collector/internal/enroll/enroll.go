@@ -15,11 +15,11 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/pki"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/pki"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
-// File is the content of a .vigie enrollment file.
+// File is the content of a .watchpost enrollment file.
 type File struct {
 	Version        int    `json:"version"`
 	IngestURL      string `json:"ingest_url"`

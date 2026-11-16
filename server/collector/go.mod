@@ -1,4 +1,4 @@
-module github.com/erwsim/android-telemetry/server/collector
+module github.com/erwsim/watchpost/server/collector
 
 go 1.24.0
 

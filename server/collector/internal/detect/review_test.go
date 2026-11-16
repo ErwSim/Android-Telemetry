@@ -4,7 +4,7 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 // Review of v1.2. These tests pin what the detections do NOT see, so that the README stays true and a

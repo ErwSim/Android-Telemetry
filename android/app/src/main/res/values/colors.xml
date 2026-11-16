@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="vigie_background">#FFF8FAF9</color>
-    <color name="vigie_icon_background">#FF1B4D3E</color>
-    <color name="vigie_icon_foreground">#FFFFFFFF</color>
+    <color name="watchpost_background">#FFF8FAF9</color>
+    <color name="watchpost_icon_background">#FF1B4D3E</color>
+    <color name="watchpost_icon_foreground">#FFFFFFFF</color>
 </resources>

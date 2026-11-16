@@ -195,11 +195,11 @@ func (g *Generator) daily(t time.Time, updates bool) {
 	}
 	g.emit(t.Add(1500*time.Millisecond), "app.special_access", 0, map[string]any{
 		"accessibility_services": []any{},
-		"notification_listeners": []any{"io.github.erwsim.vigie/io.github.erwsim.vigie.collect.NotificationCollector", "com.samsung.android.app.watchmanager/.NotificationListener"},
-		"device_admins":          []any{"io.github.erwsim.vigie/.admin.VigieAdminReceiver", "com.google.android.gms/.mdm.receivers.MdmDeviceAdminReceiver"},
+		"notification_listeners": []any{"io.github.erwsim.watchpost/io.github.erwsim.watchpost.collect.NotificationCollector", "com.samsung.android.app.watchmanager/.NotificationListener"},
+		"device_admins":          []any{"io.github.erwsim.watchpost/.admin.WatchpostAdminReceiver", "com.google.android.gms/.mdm.receivers.MdmDeviceAdminReceiver"},
 		"overlay_apps":           []any{"com.samsung.android.app.cocktailbarservice"},
 		"unknown_sources_apps":   []any{},
-		"usage_access_apps":      []any{"io.github.erwsim.vigie", "com.google.android.gms", "com.samsung.android.lool"},
+		"usage_access_apps":      []any{"io.github.erwsim.watchpost", "com.google.android.gms", "com.samsung.android.lool"},
 		"vpn_apps":               []any{},
 		"default_apps": map[string]any{"browser": "com.android.chrome", "sms": "com.samsung.android.messaging",
 			"dialer": "com.samsung.android.dialer", "home": "com.sec.android.app.launcher", "assistant": "com.google.android.googlequicksearchbox"},
@@ -252,7 +252,7 @@ func (g *Generator) PlanScenario(from, to time.Time) {
 	})
 
 	tam := at(0.52)
-	g.emit(tam, "agent.tamper", 3, map[string]any{"kind": "permission_revoked", "detail": "android.permission.ACCESS_FINE_LOCATION retirée à Vigie"})
+	g.emit(tam, "agent.tamper", 3, map[string]any{"kind": "permission_revoked", "detail": "android.permission.ACCESS_FINE_LOCATION retirée à Watchpost"})
 	g.emit(tam.Add(90*time.Second), "agent.tamper", 3, map[string]any{"kind": "force_stop", "detail": "arrêt forcé du service détecté au redémarrage"})
 	g.emit(at(0.15), "agent.collector_error", 1, map[string]any{"collector": "wifi_scan", "error": "SecurityException: startScan limité (4 balayages / 2 min)"})
 	g.emit(at(0.2), "agent.config_changed", 0, map[string]any{"key": "upload.wifi_only", "old": false, "new": true})
@@ -424,7 +424,7 @@ func (g *Generator) reboot(t time.Time) {
 		"fields": map[string]any{"verified_boot_state": "green", "dm_verity_mode": "enforcing"}})
 	g.emit(up.Add(300*time.Millisecond), "security.log", 0, map[string]any{"tag": "logging_started", "level": "info", "log_id": g.rng.Intn(1 << 20), "fields": map[string]any{}})
 	g.emit(up.Add(400*time.Millisecond), "security.log", 0, map[string]any{"tag": "key_generated", "level": "info", "log_id": g.rng.Intn(1 << 20),
-		"fields": map[string]any{"success": true, "alias": "vigie_upload_key", "uid": 10301}})
+		"fields": map[string]any{"success": true, "alias": "watchpost_upload_key", "uid": 10301}})
 	g.emit(up.Add(time.Second), "agent.started", 0, map[string]any{"reason": "boot_completed", "agent_version": g.version})
 }
 

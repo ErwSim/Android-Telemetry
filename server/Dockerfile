@@ -1,10 +1,10 @@
-# Image du collecteur Vigie (contexte de build : server/).
+# Image du collecteur Watchpost (contexte de build : server/).
 #
-#   docker build -t vigie-collector:local server/
+#   docker build -t watchpost-collector:local server/
 #
 # Derrière un proxy HTTPS à AC privée (environnements d'entreprise ou d'intégration) :
 #   docker build --network host --build-arg HTTPS_PROXY=… \
-#     --secret id=ca_bundle,src=/chemin/ca.crt -t vigie-collector:local server/
+#     --secret id=ca_bundle,src=/chemin/ca.crt -t watchpost-collector:local server/
 
 ARG NODE_IMAGE=node:22-bookworm-slim
 ARG GO_IMAGE=golang:1.24-bookworm
@@ -41,20 +41,20 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     set -eu; rm -rf web/dist; \
     if [ -f /tmp/console/index.html ]; then cp -r /tmp/console web/dist; fi; \
     go vet ./... && \
-    go build -ldflags "-s -w -X main.version=${VERSION}" -o /rootfs/usr/local/bin/vigie-collector . && \
+    go build -ldflags "-s -w -X main.version=${VERSION}" -o /rootfs/usr/local/bin/watchpost-collector . && \
     mkdir -p /rootfs/data /rootfs/export /rootfs/tmp /rootfs/etc/ssl/certs && \
     cp /etc/ssl/certs/ca-certificates.crt /rootfs/etc/ssl/certs/ && \
-    printf 'root:x:0:0:root:/root:/sbin/nologin\nvigie:x:65532:65532:vigie:/data:/sbin/nologin\n' > /rootfs/etc/passwd && \
-    printf 'root:x:0:\nvigie:x:65532:\n' > /rootfs/etc/group && \
+    printf 'root:x:0:0:root:/root:/sbin/nologin\nwatchpost:x:65532:65532:watchpost:/data:/sbin/nologin\n' > /rootfs/etc/passwd && \
+    printf 'root:x:0:\nwatchpost:x:65532:\n' > /rootfs/etc/group && \
     chown 65532:65532 /rootfs/data /rootfs/export && chmod 0700 /rootfs/data && chmod 0750 /rootfs/export && chmod 1777 /rootfs/tmp
 
 # --- 3. Image finale minimale, utilisateur non privilégié
 FROM scratch
 COPY --from=build /rootfs/ /
 USER 65532:65532
-ENV VIGIE_DATA_DIR=/data VIGIE_LISTEN=:8080
+ENV WATCHPOST_DATA_DIR=/data WATCHPOST_LISTEN=:8080
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD ["/usr/local/bin/vigie-collector", "healthcheck"]
-ENTRYPOINT ["/usr/local/bin/vigie-collector"]
+    CMD ["/usr/local/bin/watchpost-collector", "healthcheck"]
+ENTRYPOINT ["/usr/local/bin/watchpost-collector"]
 CMD ["serve"]

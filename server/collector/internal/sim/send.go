@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/enroll"
-	"github.com/erwsim/android-telemetry/server/collector/internal/pki"
+	"github.com/erwsim/watchpost/server/collector/internal/enroll"
+	"github.com/erwsim/watchpost/server/collector/internal/pki"
 )
 
 const crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -117,9 +117,9 @@ func (c *Client) newRequest(ctx context.Context, method, path string, body io.Re
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("User-Agent", "vigie-sim/"+c.version)
+	req.Header.Set("User-Agent", "watchpost-sim/"+c.version)
 	if c.certHeader {
-		req.Header.Set("X-Vigie-Client-Cert-Sha256", c.certFP)
+		req.Header.Set("X-Watchpost-Client-Cert-Sha256", c.certFP)
 	}
 	return req, nil
 }

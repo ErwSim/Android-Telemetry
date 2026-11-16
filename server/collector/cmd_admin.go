@@ -15,12 +15,12 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/auth"
-	"github.com/erwsim/android-telemetry/server/collector/internal/config"
-	"github.com/erwsim/android-telemetry/server/collector/internal/enroll"
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
-	"github.com/erwsim/android-telemetry/server/collector/internal/pki"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/auth"
+	"github.com/erwsim/watchpost/server/collector/internal/config"
+	"github.com/erwsim/watchpost/server/collector/internal/enroll"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/pki"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 func openStore(ctx context.Context) (*config.Config, *store.Store, error) {
@@ -35,14 +35,14 @@ func openStore(ctx context.Context) (*config.Config, *store.Store, error) {
 	return cfg, st, nil
 }
 
-// fileParams resolves what enroll and renew write into the .vigie file (URL, DNS host, server CA).
+// fileParams resolves what enroll and renew write into the .watchpost file (URL, DNS host, server CA).
 func fileParams(cfg *config.Config, ingestURL string) (enroll.Params, error) {
 	u := ingestURL
 	if u == "" {
 		u = cfg.PublicIngestURL
 	}
 	if u == "" {
-		return enroll.Params{}, errors.New("URL d'ingestion inconnue : définissez VIGIE_PUBLIC_INGEST_URL ou --ingest-url")
+		return enroll.Params{}, errors.New("URL d'ingestion inconnue : définissez WATCHPOST_PUBLIC_INGEST_URL ou --ingest-url")
 	}
 	pu, err := enroll.CheckIngestURL(u)
 	if err != nil {
@@ -55,10 +55,10 @@ func fileParams(cfg *config.Config, ingestURL string) (enroll.Params, error) {
 	if cfg.ServerCAFile != "" {
 		b, err := os.ReadFile(cfg.ServerCAFile)
 		if err != nil {
-			return enroll.Params{}, fmt.Errorf("VIGIE_SERVER_CA_FILE : %w", err)
+			return enroll.Params{}, fmt.Errorf("WATCHPOST_SERVER_CA_FILE : %w", err)
 		}
 		if _, err := pki.FingerprintPEM(b); err != nil {
-			return enroll.Params{}, fmt.Errorf("VIGIE_SERVER_CA_FILE : %w", err)
+			return enroll.Params{}, fmt.Errorf("WATCHPOST_SERVER_CA_FILE : %w", err)
 		}
 		p.ServerCAPEM = string(b)
 	}
@@ -68,8 +68,8 @@ func fileParams(cfg *config.Config, ingestURL string) (enroll.Params, error) {
 func cmdEnroll(args []string) error {
 	fl := flag.NewFlagSet("enroll", flag.ContinueOnError)
 	name := fl.String("name", "", "nom de l'appareil (ex. s25)")
-	out := fl.String("out", "", "fichier .vigie à écrire")
-	ingestURL := fl.String("ingest-url", "", "URL d'ingestion (défaut : VIGIE_PUBLIC_INGEST_URL)")
+	out := fl.String("out", "", "fichier .watchpost à écrire")
+	ingestURL := fl.String("ingest-url", "", "URL d'ingestion (défaut : WATCHPOST_PUBLIC_INGEST_URL)")
 	force := fl.Bool("force", false, "écraser le fichier de sortie s'il existe")
 	if err := fl.Parse(args); err != nil {
 		return err
@@ -120,8 +120,8 @@ func cmdRenew(args []string) error {
 		id, args = args[0], args[1:]
 	}
 	fl := flag.NewFlagSet("renew", flag.ContinueOnError)
-	out := fl.String("out", "", "fichier .vigie à écrire")
-	ingestURL := fl.String("ingest-url", "", "URL d'ingestion (défaut : VIGIE_PUBLIC_INGEST_URL)")
+	out := fl.String("out", "", "fichier .watchpost à écrire")
+	ingestURL := fl.String("ingest-url", "", "URL d'ingestion (défaut : WATCHPOST_PUBLIC_INGEST_URL)")
 	force := fl.Bool("force", false, "écraser le fichier de sortie s'il existe")
 	if err := fl.Parse(args); err != nil {
 		return err
@@ -129,10 +129,10 @@ func cmdRenew(args []string) error {
 	if id == "" && fl.NArg() == 1 {
 		id = fl.Arg(0)
 	} else if fl.NArg() != 0 {
-		return errors.New("utilisation : vigie-collector renew <device_id> --out <fichier.vigie> [--ingest-url URL] [--force]")
+		return errors.New("utilisation : watchpost-collector renew <device_id> --out <fichier.watchpost> [--ingest-url URL] [--force]")
 	}
 	if id == "" || *out == "" {
-		return errors.New("utilisation : vigie-collector renew <device_id> --out <fichier.vigie> [--ingest-url URL] [--force]")
+		return errors.New("utilisation : watchpost-collector renew <device_id> --out <fichier.watchpost> [--ingest-url URL] [--force]")
 	}
 	ctx := context.Background()
 	cfg, st, err := openStore(ctx)
@@ -271,7 +271,7 @@ func cmdDevices(args []string) error {
 
 func cmdRevoke(args []string) error {
 	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
-		return errors.New("utilisation : vigie-collector revoke <device_id>")
+		return errors.New("utilisation : watchpost-collector revoke <device_id>")
 	}
 	ctx := context.Background()
 	_, st, err := openStore(ctx)
@@ -292,7 +292,7 @@ func cmdRevoke(args []string) error {
 
 func cmdUser(args []string) error {
 	if len(args) != 2 || args[0] != "set-password" {
-		return errors.New("utilisation : vigie-collector user set-password <nom>")
+		return errors.New("utilisation : watchpost-collector user set-password <nom>")
 	}
 	username := args[1]
 	if !auth.ValidUsername(username) {

@@ -74,7 +74,7 @@ func VerifyPassword(password, encoded string) (bool, error) {
 
 // DummyHash returns a hash verified when the user does not exist, to equalize timings.
 var DummyHash = sync.OnceValue(func() string {
-	h, err := HashPassword("vigie-dummy-password-for-timing")
+	h, err := HashPassword("watchpost-dummy-password-for-timing")
 	if err != nil {
 		panic(err)
 	}

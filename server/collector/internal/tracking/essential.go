@@ -9,7 +9,7 @@ type Essential struct {
 	Breaks string `json:"breaks"`
 }
 
-// builtinEssentials is the exception list of Vigie: push notifications (FCM), connectivity check,
+// builtinEssentials is the exception list of Watchpost: push notifications (FCM), connectivity check,
 // network time and updates.
 var builtinEssentials = []Essential{
 	{"mtalk.google.com", "notifications push (Firebase Cloud Messaging) : messageries, banque, double authentification"},
@@ -30,7 +30,7 @@ var builtinEssentials = []Essential{
 	{"gvt1.com", "téléchargement des mises à jour des applications et du système (Google)"},
 }
 
-// Essentials holds the exception list, completed with the hosts of the Vigie deployment itself.
+// Essentials holds the exception list, completed with the hosts of the Watchpost deployment itself.
 type Essentials struct{ list []Essential }
 
 // NewEssentials returns the built-in list plus the given hosts (ingestion host, private DNS host).

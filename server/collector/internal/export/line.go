@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"strconv"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 // MaxLineBytes is the maximum size of one exported line, newline included.
@@ -39,7 +39,7 @@ type lineBody struct {
 }
 
 type line struct {
-	Vigie lineBody `json:"vigie"`
+	Watchpost lineBody `json:"watchpost"`
 }
 
 var truncatedData = map[string]any{"truncated": true}
@@ -105,10 +105,10 @@ func Lines(ev store.StoredEvent, deviceName string) [][]byte {
 }
 
 func render(b lineBody) []byte {
-	buf := encode(line{Vigie: b})
+	buf := encode(line{Watchpost: b})
 	if len(buf) > MaxLineBytes {
 		b.Data = truncatedData
-		buf = encode(line{Vigie: b})
+		buf = encode(line{Watchpost: b})
 	}
 	return buf
 }
@@ -119,7 +119,7 @@ func encode(v any) []byte {
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(v); err != nil {
 		// Cannot happen with decoded JSON values; emit a minimal valid line.
-		return []byte(`{"vigie":{"error":"encode"}}` + "\n")
+		return []byte(`{"watchpost":{"error":"encode"}}` + "\n")
 	}
 	return buf.Bytes() // Encode appends '\n'
 }

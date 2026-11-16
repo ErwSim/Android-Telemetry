@@ -15,10 +15,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/config"
+	"github.com/erwsim/watchpost/server/collector/internal/config"
 )
 
-// AlertsClient reads Vigie alerts from the Wazuh indexer (OpenSearch).
+// AlertsClient reads Watchpost alerts from the Wazuh indexer (OpenSearch).
 type AlertsClient struct {
 	base     *url.URL
 	user     string
@@ -33,17 +33,17 @@ func NewAlertsClient(cfg *config.Config) (*AlertsClient, error) {
 	}
 	u, err := url.Parse(strings.TrimRight(cfg.WazuhIndexerURL, "/"))
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return nil, fmt.Errorf("VIGIE_WAZUH_INDEXER_URL invalide")
+		return nil, fmt.Errorf("WATCHPOST_WAZUH_INDEXER_URL invalide")
 	}
 	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
 	if cfg.WazuhIndexerCAFile != "" {
 		pem, err := os.ReadFile(cfg.WazuhIndexerCAFile)
 		if err != nil {
-			return nil, fmt.Errorf("VIGIE_WAZUH_INDEXER_CA_FILE : %w", err)
+			return nil, fmt.Errorf("WATCHPOST_WAZUH_INDEXER_CA_FILE : %w", err)
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("VIGIE_WAZUH_INDEXER_CA_FILE : aucun certificat PEM")
+			return nil, fmt.Errorf("WATCHPOST_WAZUH_INDEXER_CA_FILE : aucun certificat PEM")
 		}
 		tlsCfg.RootCAs = pool
 	}
@@ -93,12 +93,12 @@ type searchHit struct {
 			Description string `json:"description"`
 		} `json:"rule"`
 		Data struct {
-			Vigie struct {
+			Watchpost struct {
 				Type     string `json:"type"`
 				DeviceID string `json:"device_id"`
 				ID       string `json:"id"`
 				TS       string `json:"ts"`
-			} `json:"vigie"`
+			} `json:"watchpost"`
 		} `json:"data"`
 	} `json:"_source"`
 }
@@ -109,7 +109,7 @@ type searchResult struct {
 	} `json:"hits"`
 }
 
-// Search returns Vigie alerts (documents of wazuh-alerts-* with data.vigie.type)
+// Search returns Watchpost alerts (documents of wazuh-alerts-* with data.watchpost.type)
 // in [from, to] with rule.level >= levelMin, newest first.
 func (c *AlertsClient) Search(ctx context.Context, log *slog.Logger, fromMS, toMS int64, levelMin, limit int) AlertsAnswer {
 	if c.base == nil {
@@ -119,9 +119,9 @@ func (c *AlertsClient) Search(ctx context.Context, log *slog.Logger, fromMS, toM
 		"size":             limit,
 		"track_total_hits": false,
 		"sort":             []any{map[string]any{"timestamp": map[string]any{"order": "desc"}}},
-		"_source":          []string{"timestamp", "rule.level", "rule.id", "rule.description", "data.vigie.type", "data.vigie.device_id", "data.vigie.id", "data.vigie.ts"},
+		"_source":          []string{"timestamp", "rule.level", "rule.id", "rule.description", "data.watchpost.type", "data.watchpost.device_id", "data.watchpost.id", "data.watchpost.ts"},
 		"query": map[string]any{"bool": map[string]any{"filter": []any{
-			map[string]any{"exists": map[string]any{"field": "data.vigie.type"}},
+			map[string]any{"exists": map[string]any{"field": "data.watchpost.type"}},
 			map[string]any{"range": map[string]any{"timestamp": map[string]any{"gte": fromMS, "lte": toMS, "format": "epoch_millis"}}},
 			map[string]any{"range": map[string]any{"rule.level": map[string]any{"gte": levelMin}}},
 		}}},
@@ -160,7 +160,7 @@ func (c *AlertsClient) Search(ctx context.Context, log *slog.Logger, fromMS, toM
 		src := h.Source
 		ans.Alerts = append(ans.Alerts, Alert{
 			TS: normalizeWazuhTS(src.Timestamp), Level: src.Rule.Level, RuleID: src.Rule.ID, Description: src.Rule.Description,
-			Type: src.Data.Vigie.Type, DeviceID: src.Data.Vigie.DeviceID, EventID: src.Data.Vigie.ID, EventTS: src.Data.Vigie.TS,
+			Type: src.Data.Watchpost.Type, DeviceID: src.Data.Watchpost.DeviceID, EventID: src.Data.Watchpost.ID, EventTS: src.Data.Watchpost.TS,
 		})
 	}
 	return ans

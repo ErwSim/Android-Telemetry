@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/command"
+	"github.com/erwsim/watchpost/server/collector/internal/command"
 )
 
 // AgentCommand is a command object received from the collector (contract §8).

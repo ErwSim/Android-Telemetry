@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Framework theme only (no AndroidX in the companion). DayNight: follows the system's dark mode. -->
-    <style name="Theme.VigieNotifier" parent="@android:style/Theme.DeviceDefault.DayNight" />
+    <style name="Theme.WatchpostNotifier" parent="@android:style/Theme.DeviceDefault.DayNight" />
 
     <style name="Body">
         <item name="android:layout_width">match_parent</item>

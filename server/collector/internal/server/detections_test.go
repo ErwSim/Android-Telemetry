@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/adguard"
-	"github.com/erwsim/android-telemetry/server/collector/internal/model"
+	"github.com/erwsim/watchpost/server/collector/internal/adguard"
+	"github.com/erwsim/watchpost/server/collector/internal/model"
 )
 
 type detItem struct {
@@ -314,7 +314,7 @@ func TestDetectionsQuietBelowThresholds(t *testing.T) {
 		t.Fatalf("dirty hours left: %d %v", n, err)
 	}
 	// Disabled detection: nothing even above its threshold.
-	e2 := newEnv(t, map[string]string{"VIGIE_DETECT_DISABLE": "fanout"})
+	e2 := newEnv(t, map[string]string{"WATCHPOST_DETECT_DISABLE": "fanout"})
 	e2.ingestAll(e2.connects(h.Add(time.Minute), "com.proxy.sdk", 400, 443, "198.51"))
 	if n := e2.runDetections(); n != 0 {
 		t.Fatalf("disabled detection: %d", n)

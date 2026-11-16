@@ -6,9 +6,9 @@ plugins {
 }
 
 // Build parameters (gradle.properties, overridable with -P...).
-val vigieTestOnly: Boolean = providers.gradleProperty("vigie.testOnly").map { it.toBoolean() }.getOrElse(true)
-val vigieVersionCode: Int = providers.gradleProperty("vigie.versionCode").map { it.toInt() }.getOrElse(1)
-val vigieVersionName: String = providers.gradleProperty("vigie.versionName").getOrElse("0.1.0")
+val watchpostTestOnly: Boolean = providers.gradleProperty("watchpost.testOnly").map { it.toBoolean() }.getOrElse(true)
+val watchpostVersionCode: Int = providers.gradleProperty("watchpost.versionCode").map { it.toInt() }.getOrElse(1)
+val watchpostVersionName: String = providers.gradleProperty("watchpost.versionName").getOrElse("0.1.0")
 
 // Release signing: environment variables first, then android/keystore.properties (never versioned).
 // The signing key must stay the same for every update: a Device Owner app cannot be replaced by an
@@ -21,24 +21,24 @@ val keystoreProperties = Properties().apply {
 fun signingValue(env: String, key: String): String? =
     providers.environmentVariable(env).orNull?.takeIf { it.isNotBlank() } ?: keystoreProperties.getProperty(key)
 
-val releaseStoreFile = signingValue("VIGIE_KEYSTORE_FILE", "storeFile")
-val releaseStorePassword = signingValue("VIGIE_KEYSTORE_PASSWORD", "storePassword")
-val releaseKeyAlias = signingValue("VIGIE_KEY_ALIAS", "keyAlias")
-val releaseKeyPassword = signingValue("VIGIE_KEY_PASSWORD", "keyPassword")
+val releaseStoreFile = signingValue("WATCHPOST_KEYSTORE_FILE", "storeFile")
+val releaseStorePassword = signingValue("WATCHPOST_KEYSTORE_PASSWORD", "storePassword")
+val releaseKeyAlias = signingValue("WATCHPOST_KEY_ALIAS", "keyAlias")
+val releaseKeyPassword = signingValue("WATCHPOST_KEY_PASSWORD", "keyPassword")
 val hasReleaseSigning = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword).all { it != null }
 
 android {
-    namespace = "io.github.erwsim.vigie"
+    namespace = "io.github.erwsim.watchpost"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "io.github.erwsim.vigie"
+        applicationId = "io.github.erwsim.watchpost"
         minSdk = 36
         targetSdk = 37
-        versionCode = vigieVersionCode
-        versionName = vigieVersionName
+        versionCode = watchpostVersionCode
+        versionName = watchpostVersionName
         // android:testOnly in the manifest: true keeps "dpm remove-active-admin" usable.
-        manifestPlaceholders["testOnly"] = vigieTestOnly.toString()
+        manifestPlaceholders["testOnly"] = watchpostTestOnly.toString()
     }
 
     signingConfigs {
@@ -106,7 +106,7 @@ dependencies {
 
     testImplementation(testFixtures(project(":core")))
     testImplementation(libs.junit)
-    // CrossServerTest drives the real uploader against the real collector (skipped unless VIGIE_CROSS_ENROLL is set).
+    // CrossServerTest drives the real uploader against the real collector (skipped unless WATCHPOST_CROSS_ENROLL is set).
     testImplementation(libs.okhttp)
     testImplementation(libs.room.runtime)
 }

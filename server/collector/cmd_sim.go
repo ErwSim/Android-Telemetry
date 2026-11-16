@@ -14,15 +14,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/adguard"
-	"github.com/erwsim/android-telemetry/server/collector/internal/enroll"
-	"github.com/erwsim/android-telemetry/server/collector/internal/sim"
+	"github.com/erwsim/watchpost/server/collector/internal/adguard"
+	"github.com/erwsim/watchpost/server/collector/internal/enroll"
+	"github.com/erwsim/watchpost/server/collector/internal/sim"
 )
 
 func cmdSim(args []string) error {
 	fl := flag.NewFlagSet("sim", flag.ContinueOnError)
-	enrollPath := fl.String("enroll", "", "fichier .vigie de l'appareil simulé (requis)")
-	url := fl.String("url", "", "URL d'ingestion (défaut : celle du fichier .vigie)")
+	enrollPath := fl.String("enroll", "", "fichier .watchpost de l'appareil simulé (requis)")
+	url := fl.String("url", "", "URL d'ingestion (défaut : celle du fichier .watchpost)")
 	backfill := fl.Duration("backfill", 0, "génère d'abord l'historique de cette durée (ex. 24h, 168h)")
 	follow := fl.Bool("follow", false, "avec --backfill : continuer ensuite en temps réel")
 	rate := fl.Float64("rate", 1, "facteur de volume (trafic DNS/connexions, notifications) ; 1 = réaliste")
@@ -43,7 +43,7 @@ func cmdSim(args []string) error {
 	scenario := fl.String("scenario", sim.ScenarioHealthy, "scénarios séparés par des virgules (voir plus bas) ; sain : aucun")
 	appOps := fl.Bool("app-ops", true, "émettre app.ops (expérimental côté agent : =false pour simuler son absence)")
 	fl.Usage = func() {
-		fmt.Fprintln(fl.Output(), "Usage : vigie-collector sim --enroll <fichier.vigie> [options]")
+		fmt.Fprintln(fl.Output(), "Usage : watchpost-collector sim --enroll <fichier.watchpost> [options]")
 		fl.PrintDefaults()
 		fmt.Fprintln(fl.Output(), "\nScénarios (--scenario) :")
 		for _, i := range sim.ScenarioInfo {
@@ -62,7 +62,7 @@ func cmdSim(args []string) error {
 		return errors.New("--poll-interval doit être entre 1m et 15m")
 	}
 	if *enrollPath == "" {
-		return errors.New("--enroll <fichier.vigie> est requis")
+		return errors.New("--enroll <fichier.watchpost> est requis")
 	}
 	if *batch < 1 || *batch > 500 {
 		return errors.New("--batch doit être entre 1 et 500")
@@ -136,7 +136,7 @@ func cmdSim(args []string) error {
 		srv := &http.Server{Handler: fake, ReadHeaderTimeout: 10 * time.Second}
 		go func() { _ = srv.Serve(ln) }()
 		go func() { <-ctx.Done(); _ = srv.Close() }()
-		fmt.Fprintf(os.Stderr, "Faux AdGuard Home : http://%s (%d requêtes dans le journal) — VIGIE_ADGUARD_URL=http://%s\n",
+		fmt.Fprintf(os.Stderr, "Faux AdGuard Home : http://%s (%d requêtes dans le journal) — WATCHPOST_ADGUARD_URL=http://%s\n",
 			ln.Addr(), fake.Len(), ln.Addr())
 		return nil
 	}

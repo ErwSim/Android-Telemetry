@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/auth"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/auth"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 const (
@@ -20,7 +20,7 @@ const (
 	sessionLifetime = 7 * 24 * time.Hour
 	sessionTouch    = 5 * time.Minute
 	csrfHeader      = "X-Requested-With"
-	csrfValue       = "vigie"
+	csrfValue       = "watchpost"
 )
 
 type ctxKey int
@@ -29,9 +29,9 @@ const userKey ctxKey = 1
 
 func (s *Server) cookieName() string {
 	if s.cfg.CookieSecure {
-		return "__Host-vigie_session" // requires Secure, Path=/ and no Domain
+		return "__Host-watchpost_session" // requires Secure, Path=/ and no Domain
 	}
-	return "vigie_session"
+	return "watchpost_session"
 }
 
 func hashSessionToken(t string) []byte {
@@ -39,13 +39,13 @@ func hashSessionToken(t string) []byte {
 	return sum[:]
 }
 
-// csrf requires the X-Requested-With: vigie header on state-changing requests.
+// csrf requires the X-Requested-With: watchpost header on state-changing requests.
 // A cross-site form cannot set it, and a cross-site fetch setting it needs a
 // CORS preflight that this server never approves.
 func (s *Server) csrf(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get(csrfHeader) != csrfValue {
-			writeError(w, http.StatusForbidden, "csrf", "en-tête X-Requested-With: vigie requis")
+			writeError(w, http.StatusForbidden, "csrf", "en-tête X-Requested-With: watchpost requis")
 			return
 		}
 		next(w, r)
@@ -78,7 +78,7 @@ func (s *Server) currentUser(r *http.Request) (string, []byte, bool) {
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get(csrfHeader) != csrfValue {
-			writeError(w, http.StatusForbidden, "csrf", "en-tête X-Requested-With: vigie requis")
+			writeError(w, http.StatusForbidden, "csrf", "en-tête X-Requested-With: watchpost requis")
 			return
 		}
 		user, _, ok := s.currentUser(r)

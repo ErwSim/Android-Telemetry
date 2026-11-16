@@ -1,4 +1,4 @@
-// Package model defines the Vigie event format (contract §1) and its validation.
+// Package model defines the Watchpost event format (contract §1) and its validation.
 package model
 
 import (

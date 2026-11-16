@@ -54,25 +54,25 @@
 
     <!--
         notifications collector: local channel with the separate companion APK
-        io.github.erwsim.vigie.notifier (the only NotificationListenerService of the project; this APK
+        io.github.erwsim.watchpost.notifier (the only NotificationListenerService of the project; this APK
         has none). Signature-level permission, declared identically by both APKs (same key) so that
         either can be installed first. The agent holds it to send ACTION_CONFIG_CHANGED to the
         companion's receiver; the companion holds it to call the provider below.
     -->
     <permission
-        android:name="io.github.erwsim.vigie.permission.NOTIFICATION_RELAY"
+        android:name="io.github.erwsim.watchpost.permission.NOTIFICATION_RELAY"
         android:description="@string/notifications_permission_desc"
         android:label="@string/notifications_permission_label"
         android:protectionLevel="signature" />
-    <uses-permission android:name="io.github.erwsim.vigie.permission.NOTIFICATION_RELAY" />
+    <uses-permission android:name="io.github.erwsim.watchpost.permission.NOTIFICATION_RELAY" />
 
     <application>
         <!-- Called by the companion only (permission above + signature and package checked in code). -->
         <provider
-            android:name="io.github.erwsim.vigie.collectors.notifications.NotificationsProvider"
-            android:authorities="io.github.erwsim.vigie.notifications"
+            android:name="io.github.erwsim.watchpost.collectors.notifications.NotificationsProvider"
+            android:authorities="io.github.erwsim.watchpost.notifications"
             android:exported="true"
             android:grantUriPermissions="false"
-            android:permission="io.github.erwsim.vigie.permission.NOTIFICATION_RELAY" />
+            android:permission="io.github.erwsim.watchpost.permission.NOTIFICATION_RELAY" />
     </application>
 </manifest>

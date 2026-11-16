@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// Fake is a small in-memory AdGuard Home serving the routes Vigie uses (query log, filtering status,
+// Fake is a small in-memory AdGuard Home serving the routes Watchpost uses (query log, filtering status,
 // user rules, filter lists), for the tests and the local demonstration (sim --fake-adguard). Queries
 // are decided like AdGuard Home does with its rules: enabled lists block their domains and subdomains,
 // "@@" rules allow, "$important" wins.
@@ -25,7 +25,7 @@ type Fake struct {
 	// The query log of AdGuard Home is two files (the rotated "querylog.json.1" and the current
 	// "querylog.json") plus a memory buffer of the newest records (querylog.size_memory): log[:rot] is
 	// the rotated file, log[rot:len(log)-mem] the current one, the rest is in memory. With
-	// size_memory: 1, as Vigie configures it, every record is written at once: mem is 0 (the default).
+	// size_memory: 1, as Watchpost configures it, every record is written at once: mem is 0 (the default).
 	rot, mem  int
 	filters   []fakeFilter
 	userRules []string
@@ -77,7 +77,7 @@ var FakeLists = map[string]struct {
 		"sb.scorecardresearch.com", "dqa.samsungdm.com", "dc.samsungdm.com", "cdn.privacy-mgmt.com"}},
 }
 
-// ThreatListURL is the threat list of the example levels file, enabled in the fake from the start (the Vigie
+// ThreatListURL is the threat list of the example levels file, enabled in the fake from the start (the Watchpost
 // installation enables its threat list at every level).
 const ThreatListURL = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.medium.txt"
 
@@ -317,7 +317,7 @@ func (f *Fake) Len() int {
 	return len(f.log)
 }
 
-// ServeHTTP implements the routes of AdGuard Home used by Vigie.
+// ServeHTTP implements the routes of AdGuard Home used by Watchpost.
 func (f *Fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	u, p, ok := r.BasicAuth()
 	if f.User != "" && (!ok || subtle.ConstantTimeCompare([]byte(u), []byte(f.User)) != 1 ||

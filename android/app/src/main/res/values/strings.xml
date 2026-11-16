@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="fr">
-    <string name="app_name">Vigie</string>
-    <string name="startup_failed">Vigie n\'a pas pu démarrer : %1$s\n\nRien n\'est collecté. Si une politique Device Owner est appliquée, elle peut être défaite depuis un ordinateur avec le script rescue-revert (ADB), puis l\'app réinstallée (même clé de signature).</string>
+    <string name="app_name">Watchpost</string>
+    <string name="startup_failed">Watchpost n\'a pas pu démarrer : %1$s\n\nRien n\'est collecté. Si une politique Device Owner est appliquée, elle peut être défaite depuis un ordinateur avec le script rescue-revert (ADB), puis l\'app réinstallée (même clé de signature).</string>
 
     <!-- Navigation -->
     <string name="nav_home">Accueil</string>
@@ -13,9 +13,9 @@
     <string name="action_back">Retour</string>
 
     <!-- Notification -->
-    <string name="notif_title">Vigie collecte…</string>
+    <string name="notif_title">Watchpost collecte…</string>
     <string name="notif_channel_name">Collecte en cours</string>
-    <string name="notif_channel_description">Notification permanente : Vigie collecte des événements sur cet appareil et les envoie à votre serveur.</string>
+    <string name="notif_channel_description">Notification permanente : Watchpost collecte des événements sur cet appareil et les envoie à votre serveur.</string>
     <plurals name="notif_pending">
         <item quantity="one">%1$d événement en attente</item>
         <item quantity="many">%1$d événements en attente</item>
@@ -49,8 +49,8 @@
     <string name="action_cancel">Annuler</string>
     <string name="action_test_connection">Tester la connexion</string>
     <string name="action_unenroll">Désenrôler</string>
-    <string name="action_import_file">Importer un fichier .vigie</string>
-    <string name="action_reenroll">Importer un nouveau fichier .vigie</string>
+    <string name="action_import_file">Importer un fichier .watchpost</string>
+    <string name="action_reenroll">Importer un nouveau fichier .watchpost</string>
 
     <!-- Home -->
     <string name="home_agent_title">Agent</string>
@@ -73,12 +73,12 @@
     <string name="home_system_title">Système</string>
     <string name="home_notifications">Notifications</string>
     <string name="home_battery_optimization">Optimisation de la batterie</string>
-    <string name="battery_exempt">Désactivée pour Vigie</string>
-    <string name="battery_optimized">Active (Vigie peut être retardée)</string>
-    <string name="home_samsung_sleep_hint">Sur Samsung, ajoutez aussi Vigie à « Applications jamais en veille » (Paramètres › Batterie › Limites d\'utilisation en arrière-plan) : aucune API ne permet de le faire automatiquement.</string>
+    <string name="battery_exempt">Désactivée pour Watchpost</string>
+    <string name="battery_optimized">Active (Watchpost peut être retardée)</string>
+    <string name="home_samsung_sleep_hint">Sur Samsung, ajoutez aussi Watchpost à « Applications jamais en veille » (Paramètres › Batterie › Limites d\'utilisation en arrière-plan) : aucune API ne permet de le faire automatiquement.</string>
     <string name="home_errors_title">Erreurs</string>
-    <string name="home_transparency_title">Ce que fait Vigie</string>
-    <string name="home_transparency">Vigie ne collecte que ce qui est décrit dans l\'onglet Collecteurs, et chaque collecteur peut être désactivé. Les événements ne partent que vers le serveur enrôlé, que vous administrez. Le serveur ne peut envoyer aucune commande ni configuration au téléphone : tout se règle ici. Aucun contenu de SMS, d\'appel, de notification, de frappe ou d\'écran n\'est collecté. L\'onglet Journal local montre exactement ce qui est émis.</string>
+    <string name="home_transparency_title">Ce que fait Watchpost</string>
+    <string name="home_transparency">Watchpost ne collecte que ce qui est décrit dans l\'onglet Collecteurs, et chaque collecteur peut être désactivé. Les événements ne partent que vers le serveur enrôlé, que vous administrez. Le serveur ne peut envoyer aucune commande ni configuration au téléphone : tout se règle ici. Aucun contenu de SMS, d\'appel, de notification, de frappe ou d\'écran n\'est collecté. L\'onglet Journal local montre exactement ce qui est émis.</string>
 
     <!-- Collectors -->
     <string name="collectors_intro">Chaque collecteur peut être désactivé. Un collecteur « indisponible » attend une permission, le mode Device Owner ou un matériel absent.</string>
@@ -118,11 +118,11 @@
     <string name="settings_version">Version</string>
     <string name="settings_build_type">Variante</string>
     <string name="settings_test_only">APK « testOnly »</string>
-    <string name="settings_test_only_summary">Le retrait du Device Owner se fait depuis l\'écran Politique, ou par ADB avec « scripts/remove-device-owner.sh ». Un APK testOnly permet en plus un dernier recours par « adb shell dpm remove-active-admin » si Vigie ne répond plus.</string>
+    <string name="settings_test_only_summary">Le retrait du Device Owner se fait depuis l\'écran Politique, ou par ADB avec « scripts/remove-device-owner.sh ». Un APK testOnly permet en plus un dernier recours par « adb shell dpm remove-active-admin » si Watchpost ne répond plus.</string>
 
     <!-- Enrollment -->
     <string name="enroll_new_title">Enrôler cet appareil</string>
-    <string name="enroll_explanation">Choisissez le fichier .vigie produit sur votre serveur (installation Docker : « sudo ./enroll.sh s25 » depuis le dossier infra ; collecteur seul : « vigie-collector enroll --name s25 --out s25.vigie »), copié par câble, par exemple dans Téléchargements. La clé privée est importée dans le Keystore Android (non exportable) puis oubliée ; le jeton est chiffré sur l\'appareil.</string>
+    <string name="enroll_explanation">Choisissez le fichier .watchpost produit sur votre serveur (installation Docker : « sudo ./enroll.sh s25 » depuis le dossier infra ; collecteur seul : « watchpost-collector enroll --name s25 --out s25.watchpost »), copié par câble, par exemple dans Téléchargements. La clé privée est importée dans le Keystore Android (non exportable) puis oubliée ; le jeton est chiffré sur l\'appareil.</string>
     <string name="enroll_confirm_title">Vérifier avant d\'enrôler</string>
     <string name="enroll_current_title">Enrôlement actuel</string>
     <string name="enroll_url">Adresse d\'ingestion</string>
@@ -138,8 +138,8 @@
     <string name="enroll_error">Fichier refusé : %1$s %2$s</string>
     <string name="enroll_read_error">Lecture du fichier impossible : %1$s</string>
     <string name="enroll_import_error">Import impossible : %1$s</string>
-    <string name="enroll_done_deleted">Appareil enrôlé. Le fichier .vigie a été supprimé.</string>
-    <string name="enroll_done_not_deleted">Appareil enrôlé. Supprimez maintenant le fichier .vigie : il contient des secrets.</string>
+    <string name="enroll_done_deleted">Appareil enrôlé. Le fichier .watchpost a été supprimé.</string>
+    <string name="enroll_done_not_deleted">Appareil enrôlé. Supprimez maintenant le fichier .watchpost : il contient des secrets.</string>
     <string name="enroll_result_title">Résultat</string>
     <string name="enroll_security_title">Sécurité</string>
     <string name="enroll_security">Seule l\'adresse enrôlée reçoit des données, en HTTPS avec certificat client. Les redirections sont refusées, les autorités ajoutées par l\'utilisateur ne sont jamais acceptées et le trafic en clair est interdit.</string>
@@ -149,12 +149,12 @@
         <item quantity="other">La clé, le certificat et le jeton seront effacés, ainsi que les %1$d événements en attente d\'envoi. La collecte continue localement.</item>
     </plurals>
     <string name="enroll_unenrolled">Appareil désenrôlé.</string>
-    <string name="enroll_reenroll_desc">Renouveler sans désenrôler : le certificat client expire (date ci-dessus, 2 ans après son émission). Produisez un nouveau fichier .vigie sur le serveur et importez-le ici : les événements en attente sont conservés s\'il s\'agit du même serveur. « Désenrôler » efface au contraire la clé, le jeton et les événements en attente.</string>
+    <string name="enroll_reenroll_desc">Renouveler sans désenrôler : le certificat client expire (date ci-dessus, 2 ans après son émission). Produisez un nouveau fichier .watchpost sur le serveur et importez-le ici : les événements en attente sont conservés s\'il s\'agit du même serveur. « Désenrôler » efface au contraire la clé, le jeton et les événements en attente.</string>
     <string name="enroll_change_renewal">Renouvellement : même serveur, même appareil. Les événements en attente (%1$d) sont conservés.</string>
     <string name="enroll_change_identity">Même serveur, autre identifiant d\'appareil (%1$s → %2$s) : les événements en attente (%3$d) sont conservés et seront envoyés sous le nouvel identifiant.</string>
     <string name="enroll_change_server">Autre serveur (%1$s → %2$s) : les événements en attente (%3$d), collectés pour l\'ancien serveur, seront effacés. Rien de ce qui a été collecté pour un serveur n\'est envoyé à un autre.</string>
     <string name="enroll_err_too_large">fichier trop volumineux.</string>
-    <string name="enroll_err_not_json">ce n\'est pas un fichier .vigie (JSON invalide).</string>
+    <string name="enroll_err_not_json">ce n\'est pas un fichier .watchpost (JSON invalide).</string>
     <string name="enroll_err_version">version de fichier non prise en charge.</string>
     <string name="enroll_err_missing">champ obligatoire manquant :</string>
     <string name="enroll_err_url">adresse d\'ingestion invalide :</string>

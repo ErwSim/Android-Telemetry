@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
 )
 
 // Delivery guarantee

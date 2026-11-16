@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "io.github.erwsim.vigie.core"
+    namespace = "io.github.erwsim.watchpost.core"
     compileSdk = 37
 
     defaultConfig {

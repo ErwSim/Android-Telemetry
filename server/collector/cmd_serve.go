@@ -14,12 +14,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/erwsim/android-telemetry/server/collector/internal/config"
-	"github.com/erwsim/android-telemetry/server/collector/internal/export"
-	"github.com/erwsim/android-telemetry/server/collector/internal/pki"
-	"github.com/erwsim/android-telemetry/server/collector/internal/server"
-	"github.com/erwsim/android-telemetry/server/collector/internal/store"
-	"github.com/erwsim/android-telemetry/server/collector/web"
+	"github.com/erwsim/watchpost/server/collector/internal/config"
+	"github.com/erwsim/watchpost/server/collector/internal/export"
+	"github.com/erwsim/watchpost/server/collector/internal/pki"
+	"github.com/erwsim/watchpost/server/collector/internal/server"
+	"github.com/erwsim/watchpost/server/collector/internal/store"
+	"github.com/erwsim/watchpost/server/collector/web"
 )
 
 func cmdServe(args []string) error {
@@ -46,19 +46,19 @@ func cmdServe(args []string) error {
 		log.Info("AC cliente créée", "cert", filepath.Join(cfg.PKIDir(), "ca.crt"))
 	}
 	if n, err := st.CountUsers(ctx); err == nil && n == 0 {
-		log.Warn("aucun compte console : créez-en un avec « vigie-collector user set-password <nom> »")
+		log.Warn("aucun compte console : créez-en un avec « watchpost-collector user set-password <nom> »")
 	}
 	if !cfg.CookieSecure {
-		log.Warn("VIGIE_COOKIE_SECURE=false : cookies de session sans attribut Secure (développement uniquement)")
+		log.Warn("WATCHPOST_COOKIE_SECURE=false : cookies de session sans attribut Secure (développement uniquement)")
 	}
 	if !cfg.RequireClientCert {
-		log.Warn("VIGIE_REQUIRE_CLIENT_CERT=false : le certificat client n'est pas exigé à l'ingestion")
+		log.Warn("WATCHPOST_REQUIRE_CLIENT_CERT=false : le certificat client n'est pas exigé à l'ingestion")
 	}
 
 	var consoleFS fs.FS
 	if cfg.ConsoleDir != "" {
 		if _, err := os.Stat(filepath.Join(cfg.ConsoleDir, "index.html")); err != nil {
-			return fmt.Errorf("VIGIE_CONSOLE_DIR : index.html introuvable dans %s", cfg.ConsoleDir)
+			return fmt.Errorf("WATCHPOST_CONSOLE_DIR : index.html introuvable dans %s", cfg.ConsoleDir)
 		}
 		consoleFS = os.DirFS(cfg.ConsoleDir)
 		log.Info("console servie depuis un répertoire", "dir", cfg.ConsoleDir)
@@ -102,7 +102,7 @@ func cmdServe(args []string) error {
 	if err != nil {
 		return err
 	}
-	log.Info("vigie-collector démarré", "version", version, "listen", ln.Addr().String(), "data_dir", cfg.DataDir)
+	log.Info("watchpost-collector démarré", "version", version, "listen", ln.Addr().String(), "data_dir", cfg.DataDir)
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- httpSrv.Serve(ln) }()
@@ -128,25 +128,25 @@ func cmdServe(args []string) error {
 	if exp != nil {
 		exp.Wait()
 	}
-	log.Info("vigie-collector arrêté")
+	log.Info("watchpost-collector arrêté")
 	return nil
 }
 
 func cmdHealthcheck(args []string) error {
 	fl := flag.NewFlagSet("healthcheck", flag.ContinueOnError)
-	u := fl.String("url", "", "URL à vérifier (défaut : http://127.0.0.1:<port de VIGIE_LISTEN>/healthz)")
+	u := fl.String("url", "", "URL à vérifier (défaut : http://127.0.0.1:<port de WATCHPOST_LISTEN>/healthz)")
 	if err := fl.Parse(args); err != nil {
 		return err
 	}
 	target := *u
 	if target == "" {
-		listen := os.Getenv("VIGIE_LISTEN")
+		listen := os.Getenv("WATCHPOST_LISTEN")
 		if listen == "" {
 			listen = ":8080"
 		}
 		_, port, err := net.SplitHostPort(listen)
 		if err != nil {
-			return fmt.Errorf("VIGIE_LISTEN invalide : %w", err)
+			return fmt.Errorf("WATCHPOST_LISTEN invalide : %w", err)
 		}
 		target = "http://127.0.0.1:" + port + "/healthz"
 	}
