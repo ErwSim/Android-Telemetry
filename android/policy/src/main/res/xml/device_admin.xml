@@ -2,11 +2,18 @@
 <!--
     Device Owner APIs (logs, permissions, restrictions, private DNS…) do not depend on this list.
     watch-login: delivers onPasswordFailed/onPasswordSucceeded (security.keyguard) and allows
-    getCurrentFailedPasswordAttempts. No other legacy policy is requested (no wipe, no reset password,
-    no camera or keyguard control).
+    getCurrentFailedPasswordAttempts.
+    force-lock: DevicePolicyManager.lockNow() for the signed remote command "lock" (contract §8).
+    wipe-data: DevicePolicyManager.wipeDevice() for the signed remote command "wipe", which also needs
+    "Autoriser l'effacement à distance" switched on in the app (off by default).
+    Nothing else (no reset password, no camera or keyguard feature control).
+    These policies are read when the admin is activated: on a device where Vigie was already Device
+    Owner with an older list, check after the update that "lock" works (see README).
 -->
 <device-admin>
     <uses-policies>
         <watch-login />
+        <force-lock />
+        <wipe-data />
     </uses-policies>
 </device-admin>

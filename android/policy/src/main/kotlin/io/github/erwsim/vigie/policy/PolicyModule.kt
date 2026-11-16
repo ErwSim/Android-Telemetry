@@ -19,6 +19,12 @@ import io.github.erwsim.vigie.policy.logs.NetworkLogCollector
 import io.github.erwsim.vigie.policy.logs.SecurityLogCollector
 import io.github.erwsim.vigie.policy.logs.SecurityLogProcessor
 import io.github.erwsim.vigie.policy.posture.PostureCollector
+import io.github.erwsim.vigie.policy.remote.AndroidFactoryReset
+import io.github.erwsim.vigie.policy.remote.AndroidLockScreenGateway
+import io.github.erwsim.vigie.policy.remote.ClearLockMessageExecutor
+import io.github.erwsim.vigie.policy.remote.LockExecutor
+import io.github.erwsim.vigie.policy.remote.WipeExecutor
+import io.github.erwsim.vigie.core.command.CommandTypes
 import io.github.erwsim.vigie.policy.ui.PolicyController
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -150,8 +156,43 @@ object PolicyModule {
         ).also { guardInstance = it }
     }
 
+    /**
+     * Remote commands that need the Device Owner (contract §8): `lock`, `clear_lock_message`, `wipe`.
+     * This is the only place where the real factory reset ([AndroidFactoryReset]) is built, and it is
+     * handed only to [WipeExecutor], which checks every condition again before calling it.
+     */
+    fun registerCommandExecutors(agent: Agent) {
+        val lockScreen = AndroidLockScreenGateway(agent.context)
+        agent.commands.register(CommandTypes.LOCK, LockExecutor(lockScreen))
+        agent.commands.register(CommandTypes.CLEAR_LOCK_MESSAGE, ClearLockMessageExecutor(lockScreen))
+        agent.commands.register(
+            CommandTypes.WIPE,
+            WipeExecutor(
+                live = agent.commands::wipeLive,
+                isDeviceOwner = lockScreen::isDeviceOwner,
+                reset = AndroidFactoryReset(agent.context),
+            ),
+        )
+    }
+
+    /** Lock-screen message currently set by a remote `lock` (null if none), for the app. */
+    fun lockScreenMessage(agent: Agent): String? = AndroidLockScreenGateway(agent.context).lockScreenInfo()
+
+    /** Local removal of the lock-screen message from the app (reversibility, principle 6). */
+    fun clearLockScreenMessage(agent: Agent): Boolean = try {
+        val gw = AndroidLockScreenGateway(agent.context)
+        gw.isDeviceOwner() && run {
+            gw.setLockScreenInfo(null)
+            true
+        }
+    } catch (e: Exception) {
+        Log.w(TAG, "clear lock screen info failed", e)
+        false
+    }
+
     /** Called once from `Application.onCreate`, after `Agent.init`. */
     fun install(agent: Agent) {
+        registerCommandExecutors(agent)
         scope.launch {
             agent.settings.changes.collect { key ->
                 when (key) {
