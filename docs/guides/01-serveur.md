@@ -109,7 +109,12 @@ collecteur : comptez plusieurs minutes. Le dashboard Wazuh peut mettre plusieurs
 script le dit (« pas encore prêt ») sans que ce soit une erreur.
 
 Le script est **rejouable** : après toute modification de `infra/.env` ou du dépôt, relancez
-`sudo ./install.sh --yes`. Il conserve les secrets existants.
+`sudo ./install.sh --yes`. Il conserve les secrets existants **et ce que vous avez réglé dans les interfaces** : mot de passe
+de la console changé avec `set-password`, réglages d'AdGuard Home, utilisateurs créés dans le dashboard Wazuh. Pour
+repartir de zéro sur un point précis, il a des options explicites : `--reset-console-password` (repose le mot de passe de
+`.env`), `--reset-adguard` (régénère toute la configuration d'AdGuard ; l'ancienne est gardée), `--renew-wazuh-certs` et
+`--renew-wazuh-ca` (certificats internes de Wazuh, guide 05 §8). Le script annonce à la fin les notifications (désactivées par
+défaut, guide 05 §3) et l'échéance des certificats internes de Wazuh.
 
 Récupérez les mots de passe générés :
 
@@ -165,16 +170,20 @@ Test-NetConnection <IP du VPS> -Port 9200
 - Wazuh : deux tableaux de bord sont déjà importés, « Vigie — sécurité du téléphone » et « Vigie — pistage et DNS »
   (dans le menu du dashboard, rubrique des tableaux de bord ; l'intitulé exact peut varier selon la version).
   Ils seront vides tant qu'aucun appareil n'envoie.
-- AdGuard Home : **ne changez pas les réglages dans son interface** pour qu'ils durent. `install.sh` régénère
-  `AdGuardHome.yaml` à chaque exécution et écrase ces modifications. Vos règles personnelles vont dans
-  `infra/data/adguard/userfilters/regles-perso.txt` (guide 05). Vous pouvez en revanche **lire** le journal des requêtes
-  et les statistiques.
+- AdGuard Home : à chaque `install.sh`, la configuration **gérée par Vigie** (compte `admin`, TLS et DoT, amonts Quad9 et
+  Mullvad, DNSSEC, listes du profil, journal lu par Wazuh) est réappliquée, et le reste est **conservé** : règles
+  personnalisées de l'interface, listes ajoutées, listes d'autorisation, clients, réécritures DNS, durée du journal.
+  AdGuard est arrêté quelques secondes pendant la fusion : le DNS du téléphone est brièvement indisponible (voir
+  `infra/README.md` §6.2 pour la règle complète). Vous pouvez aussi mettre des règles dans
+  `infra/data/adguard/userfilters/regles-perso.txt` (guide 05).
 - Si la console accepte mal votre mot de passe plusieurs fois de suite, elle limite les essais (10 échecs par
   adresse et par compte, puis un par minute).
-- **Changer le mot de passe de la console** : modifiez `VIGIE_CONSOLE_PASSWORD` dans `infra/.env`, puis
-  `sudo ./install.sh --yes`. Piège : `install.sh` réécrit le mot de passe du compte `admin` à partir de `.env` à
-  chaque exécution ; un changement fait seulement avec `vigie-collector user set-password` serait annulé au passage
-  suivant.
+- **Changer le mot de passe de la console** : la source de vérité est la base du collecteur.
+  `sudo docker compose exec collector vigie-collector user set-password admin` (depuis `infra/`, saisie sans écho,
+  12 caractères au minimum) change le mot de passe et ferme les sessions ouvertes ; `install.sh` ne l'écrasera plus.
+  Le mot de passe de `.env` et de `secrets/identifiants.txt` n'est alors plus à jour : notez le nouveau.
+  `sudo ./install.sh --reset-console-password` repose celui de `.env`. Les autres mots de passe (indexeur, API Wazuh, AdGuard,
+  accès Caddy) se changent dans `.env` puis `sudo ./install.sh --yes` ; `--rotate-passwords` les régénère tous (guide 05 §8).
 
 ## 7. Sauvegardes
 
@@ -205,8 +214,9 @@ Le serveur produit un fichier `.vigie` par appareil, qui contient l'adresse d'in
 
 ```bash
 sudo ./enroll.sh s25                 # produit ./s25.vigie (droits 600)
-sudo ./enroll.sh --list              # appareils enrôlés (identifiant, dernier contact, état)
-sudo ./enroll.sh --revoke dev_xxx    # révoque un appareil : jeton et certificat refusés aussitôt
+sudo ./enroll.sh --list              # appareils : identifiant, dernier contact, expiration du certificat (« à renouveler » sous 30 jours)
+sudo ./enroll.sh --renew s25         # nouveau fichier pour le MÊME appareil (guide 05 §8) : s25-renouvellement.vigie
+sudo ./enroll.sh --revoke s25        # (nom ou dev_…) révoque un appareil : jeton et certificat refusés aussitôt
 ```
 
 Faites cette étape au moment du [guide 03](03-telephone.md), pas avant (le fichier doit rester le moins longtemps
@@ -216,7 +226,8 @@ supprimez toutes les copies** (VPS, PC, téléphone) : `shred -u s25.vigie` sur 
 `Remove-Item .\s25.vigie` (la corbeille et le stockage SSD ne garantissent pas l'effacement : c'est la raison pour
 laquelle le fichier a des droits 600 et ne doit jamais circuler par un canal non chiffré).
 
-Le certificat de l'appareil est valable **2 ans** : voir le guide 05 pour le renouvellement.
+Le certificat de l'appareil est valable **2 ans** : `--list` en affiche l'échéance ; le renouvellement garde le même
+identifiant d'appareil et le même historique (guide 05 §8).
 
 ## 9. Vérifier l'installation
 
