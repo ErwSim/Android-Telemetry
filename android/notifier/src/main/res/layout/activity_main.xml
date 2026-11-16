@@ -2,8 +2,7 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="?android:attr/colorBackground">
+    android:layout_height="match_parent">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -90,8 +89,7 @@
         <EditText
             android:id="@+id/edit_excluded"
             style="@style/ListField"
-            android:autofillHints=""
-            android:hint="@string/hint_packages" />
+            android:importantForAutofill="no" />
 
         <TextView
             style="@style/Body"
@@ -101,8 +99,7 @@
         <EditText
             android:id="@+id/edit_ignored"
             style="@style/ListField"
-            android:autofillHints=""
-            android:hint="@string/hint_packages" />
+            android:importantForAutofill="no" />
 
         <Button
             android:id="@+id/button_save"

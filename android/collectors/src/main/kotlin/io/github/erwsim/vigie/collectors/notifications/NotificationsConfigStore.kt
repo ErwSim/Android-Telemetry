@@ -1,5 +1,6 @@
 package io.github.erwsim.vigie.collectors.notifications
 
+import androidx.core.content.edit
 import io.github.erwsim.vigie.core.event.EventTypes
 import io.github.erwsim.vigie.core.settings.AgentSettings
 import io.github.erwsim.vigie.core.settings.CoreSettings
@@ -50,7 +51,7 @@ class NotificationsConfigStore(private val settings: AgentSettings) {
                 rejected += parsed.rejected
                 parsed.packages
             }
-            if (reset) settings.raw.edit().remove(key).apply() else settings.raw.edit().putString(key, PackageLists.joinForStorage(new)).apply()
+            settings.raw.edit { if (reset) remove(key) else putString(key, PackageLists.joinForStorage(new)) }
             if (old != new) {
                 changed = true
                 settings.sink?.emit(EventTypes.AGENT_CONFIG_CHANGED) {

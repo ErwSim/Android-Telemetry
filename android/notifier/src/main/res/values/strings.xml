@@ -42,7 +42,6 @@
     <string name="lists_explain">Une app par ligne, désignée par son nom de paquet (exemple : com.exemple.banque ; visible dans Paramètres › Applications › l\'app, ou dans la liste des apps de Vigie). Ces listes ne reconnaissent une app que par son nom exact : la liste par défaut (banques et paiement courants, authentificateurs, gestionnaires de mots de passe, SMS, téléphone) est forcément incomplète, ajoutez-y vos propres apps sensibles. Chaque modification est enregistrée dans Vigie et signalée au serveur (agent.config_changed).</string>
     <string name="label_excluded">Apps exclues du contenu (seul le nom de l\'app est transmis, jamais le titre ni le texte) :</string>
     <string name="label_ignored">Apps totalement ignorées (rien n\'est transmis) :</string>
-    <string name="hint_packages">com.exemple.app</string>
     <string name="button_save">Enregistrer dans Vigie</string>
     <string name="button_reset">Rétablir les listes par défaut</string>
     <string name="lists_saved">Enregistré dans Vigie : %1$d apps exclues du contenu, %2$d apps ignorées.</string>
@@ -51,6 +50,6 @@
     <string name="lists_working">Enregistrement…</string>
 
     <string name="header_remove">Retirer l\'accès, désinstaller</string>
-    <string name="remove">Retirer l\'accès : bouton « Réglage d\'accès aux notifications » ci-dessus, puis désactiver Vigie Notifications (dans les Paramètres, cherchez « Accès aux notifications » : le chemin varie selon la version de One UI), ou par ADB : scripts/notifier-access.sh --revoke. Le module cesse aussitôt de lire les notifications. Pour tout arrêter côté agent, désactivez plutôt le collecteur « Notifications » dans Vigie. Désinstaller : bouton ci-dessous (Désinstaller), ou scripts/uninstall-notifier.sh. L\'agent Vigie continue de fonctionner sans ce module (son collecteur « Notifications » passe « indisponible »).</string>
+    <string name="remove" tools:ignore="TypographyDashes">Retirer l\'accès : bouton « Réglage d\'accès aux notifications » ci-dessus, puis désactiver Vigie Notifications (dans les Paramètres, cherchez « Accès aux notifications » : le chemin varie selon la version de One UI), ou par ADB : scripts/notifier-access.sh --revoke. Le module cesse aussitôt de lire les notifications. Pour tout arrêter côté agent, désactivez plutôt le collecteur « Notifications » dans Vigie. Désinstaller : bouton ci-dessous (Désinstaller), ou scripts/uninstall-notifier.sh. L\'agent Vigie continue de fonctionner sans ce module (son collecteur « Notifications » passe « indisponible »).</string>
     <string name="button_app_info">Informations sur l\'app (désinstaller)</string>
 </resources>
