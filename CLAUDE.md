@@ -1,29 +1,34 @@
-# Vigie (dépôt Android-Telemetry)
+# Watchpost
 
-Chaîne personnelle de télémétrie de sécurité et de réduction du pistage pour le téléphone Android du
-propriétaire du dépôt (Samsung Galaxy S25+). Le propriétaire parle français : documentation, messages de
-commit et textes d'interface en français ; identifiants de code en anglais.
+Self-hosted security-telemetry and anti-tracking toolchain for a personal Android phone (Android 16+, developed
+against Samsung One UI 8/9). A Device Owner agent app and an optional notification companion APK, a Go collector with
+a web console, Wazuh as SIEM and AdGuard Home as private DNS, all deployed with Docker Compose.
 
-## À lire avant de travailler
+The project language is English: code identifiers, user interface texts, documentation and commit messages.
 
-1. `docs/ETAT.md` — état d'avancement, ce qui est vérifié ou non, prochaines étapes. **À mettre à jour à
-   chaque fin de session de travail.**
-2. `docs/ARCHITECTURE.md` — décisions, principes non négociables, composants.
-3. `docs/contrat/contrat.md` — format des événements et API. Toute évolution commence par ce fichier.
-4. `docs/research/` — faits de plateforme vérifiés (Android/Samsung, Wazuh, AdGuard).
+## Read before working
 
-## Répertoires
+1. `docs/STATUS.md`: what exists, what has been verified or not, known limits, next steps. **Update it at the end of
+   every working session.**
+2. `docs/ARCHITECTURE.md`: decisions, non-negotiable principles, components.
+3. `docs/contract/contract.md`: event format and APIs. Any change starts with this file.
+4. `docs/research/`: verified platform facts (Android/Samsung, Wazuh, AdGuard).
+5. `docs/guides/`: user guides (server, APK, phone, rollback, operations, on-device checks, development, SMS and
+   malware); `docs/guides/07-development.md` explains how to build, test and run everything locally.
 
-- `android/` — Vigie Agent (Kotlin, Device Owner). Voir `android/README.md`.
-- `server/collector/` — collecteur Go (ingestion, stockage, API console, export Wazuh, CLI).
-- `server/console/` — console web (React + Vite).
-- `infra/` — Docker Compose (Caddy, collecteur, Wazuh, AdGuard Home, WireGuard optionnel), PKI, installation.
+## Directories
 
-## Règles
+- `android/`: Watchpost Agent (Kotlin, Device Owner) and the Watchpost Notifications companion APK. See
+  `android/README.md`.
+- `server/collector/`: Go collector (ingestion, storage, console API, Wazuh export, CLI, simulator).
+- `server/console/`: web console (React + Vite).
+- `infra/`: Docker Compose (Caddy, collector, Wazuh, AdGuard Home, optional WireGuard), PKI, installation.
 
-- Principes non négociables de `docs/ARCHITECTURE.md` : aucune furtivité ; le serveur n'envoie au téléphone
-  que des commandes d'une liste fermée (les sensibles signées par un code qu'il ne connaît pas), jamais de
-  configuration ni de politique ; aucune dépendance Google dans l'agent ; contenu privé de tiers réduit au
-  minimum ; tout est désactivable et réversible.
-- Ne jamais committer de secrets (`.env`, clés, `.vigie`, `.p12`) : ils sont générés à l'installation.
-- Dire clairement ce qui a été réellement exécuté/testé et ce qui ne l'a pas été.
+## Rules
+
+- Non-negotiable principles of `docs/ARCHITECTURE.md`: no stealth; the server sends the phone only commands from a
+  closed list (the sensitive ones signed with a passphrase it does not know), never configuration or policy; no
+  Google dependency in the agent; third parties' private content reduced to the minimum; everything can be turned off
+  and reversed.
+- Never commit secrets (`.env`, keys, `.watchpost`, `.p12`, keystores): they are generated at installation.
+- Say clearly what was actually run or tested and what was not.

@@ -1,6 +1,6 @@
-# Secrets et données générées
+# Secrets and generated data
 .env
-*.vigie
+*.watchpost
 *.p12
 *.pfx
 *.key
@@ -31,7 +31,7 @@ server/collector/web/dist/
 node_modules/
 server/console/dist/
 
-# Divers
+# Misc
 .idea/
 .vscode/
 *.iml

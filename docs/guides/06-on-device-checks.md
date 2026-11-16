@@ -1,326 +1,347 @@
-# 06 — Vérifications à faire sur l'appareil
+# 06 — Checks to run on the device
 
-Cette liste rassemble **tout ce qui n'a jamais été vérifié sur un vrai Galaxy S25+** (ou avec un vrai serveur public), tiré
-de `android/README.md`, des recherches (`docs/research/android-plateforme.md`, `docs/research/serveur-siem-dns.md`),
-de `infra/README.md` et des README du collecteur et de la console. C'est la feuille de route de vos **premières semaines
-d'essai**, et la matière de ce que vous rapporterez à Claude Code ([guide 07](07-reprise-developpement.md)) pour corriger.
+This list gathers **everything that has never been verified on a real Samsung Galaxy phone** (or with a real public
+server), drawn from `android/README.md`, the research notes (`docs/research/android-platform.md`,
+`docs/research/server-siem-dns.md`), `infra/README.md` and the READMEs of the collector and the console. It is the
+roadmap for your **first weeks of trial**, and the material for what you report back so that the project can be
+fixed ([guide 07](07-development.md)).
 
-Mode d'emploi :
+How to use it:
 
-- Les cases sont **ordonnées par risque décroissant** : les premières peuvent vous coûter le téléphone ou l'accès ADB,
-  les dernières ne font que décrire la précision des données. Respectez l'ordre pour les niveaux 1 et 2. Les phases du guide 03 (« Ordre d'essai conseillé ») renvoient à ces cases ;
-  tout ce qui touche aux commandes à distance, au compagnon de notifications, aux gardes, aux rôles et au comptage des
-  opérations (versions 1.1 et 1.2) n'a, comme le reste, jamais été exécuté sur un téléphone.
-- Chaque case dit **comment tester** et **quoi noter**. Notez toujours : la date et l'heure, la version de One UI (Paramètres ›
-  À propos du téléphone › Informations sur le logiciel), la version de Vigie (Réglages › À propos), le texte **exact** des messages
-  (capture d'écran), et le résultat (« ça marche », « ça échoue », « différent de ce qui est écrit »).
-- Un échec n'est pas un drame : c'est précisément ce que cette liste cherche. Après un échec de niveau 1, **arrêtez-vous** et
-  rapportez avant d'aller plus loin.
-- Les identifiants V1, V2… permettent de les citer.
+- The boxes are **ordered by decreasing risk**: the first ones can cost you the phone or ADB access, the last ones
+  only describe the precision of the data. Follow the order for levels 1 and 2. The phases of guide 03 ("Recommended
+  order of trials") refer to these boxes; everything that concerns remote commands, the notification companion, the
+  guards, the roles and the counting of operations (versions 1.1 and 1.2) has, like the rest, never been run on a
+  phone.
+- Each box says **how to test** and **what to note**. Always note: the date and time, the One UI version (Settings ›
+  About phone › Software information), the Watchpost version (Settings › About), the **exact** text of messages
+  (screenshot), and the result ("it works", "it fails", "different from what is written").
+- A failure is not a drama: it is precisely what this list is looking for. After a level 1 failure, **stop** and
+  report before going further.
+- The identifiers V1, V2… let you cite them.
 
-## Niveau 1 — Peut coûter le téléphone ou l'accès ADB
+## Level 1 — Can cost you the phone or ADB access
 
-- [ ] **V1. Scripts PowerShell** (relus contre les `.sh`, jamais exécutés ni analysés par PowerShell ; les scripts bash ont été
-  exécutés contre un `adb` factice, jamais contre un téléphone). *Test* : lancer chacun une fois sous Windows, **sous la forme
-  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\<nom>.ps1`** (`install-apk`,
+- [ ] **V1. PowerShell scripts** (checked against the `.sh` ones, never run nor analysed by PowerShell; the bash
+  scripts were run against a fake `adb`, never against a phone). *Test*: run each one once on Windows, **in the form
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\<name>.ps1`** (`install-apk`,
   `enable-device-owner`, `grant-adb-permissions`, `battery-exemptions`, `push-enrollment`, `rescue-revert`,
-  `remove-device-owner`, `generate-keystore`). *Noter* : erreur de syntaxe, de politique d'exécution, d'encodage
-  (accents), message inattendu, différence de comportement avec la version bash.
-- [ ] **V2. Version et installation.** *Test* : `adb shell getprop ro.build.version.sdk` (36 ou plus) puis `install-apk`.
-  *Noter* : Android et One UI, résultat d'installation, toute alerte Play Protect (texte exact).
-- [ ] **V3. Activation du Device Owner sur S25+** (`dpm set-device-owner`) après retrait des comptes, du Dossier sécurisé, de
-  Dual Messenger. *Test* : `enable-device-owner`. *Noter* : le message exact de `dpm` (succès **ou** échec), la sortie de
-  `adb shell pm list users` et `adb shell dumpsys account` avant, toute erreur « user limit reached » (signalée sur Samsung par
-  d'autres projets, sans solution connue). Si `dumpsys account` ne montre plus de compte et que l'activation échoue quand
-  même : arrêt, rapport.
-- [ ] **V4. Remise des comptes sous Device Owner.** *Test* : remettre Google puis Samsung puis le reste ; ouvrir le Play Store.
-  *Noter* : tout refus ou message « administrateur », l'état du Play Store, de Samsung Wallet, des sauvegardes.
-- [ ] **V5. L'issue de secours répond « à vide ».** *Test* : `rescue-revert` politique vide, écran allumé **puis** écran éteint
-  et verrouillé ; puis, après un redémarrage, **avant** le premier déverrouillage (l'application n'est pas démarrable à ce stade :
-  l'absence de réponse, code 5, est attendue) et **après**. *Noter* : `Tout est rétabli (reverted=0…)` et le code de sortie, le temps de réponse ; sinon le code
-  (5 = aucune réponse) et la sortie brute.
-- [ ] **V6. L'issue de secours défait une vraie politique.** *Test* : appliquer « Astuces » seule (guide 03, palier 2), puis
-  `rescue-revert` ; réappliquer, puis `rescue-revert --sweep` (`-Sweep` sous PowerShell : rétablit aussi ce dont Vigie
-  aurait perdu la trace). *Noter* : `reverted=1`, l'icône d'Astuces redevient normale, le journal de l'écran Politique.
-- [ ] **V7. Retrait complet par le script** (`remove-device-owner`), politique vide. *Test* : retirer, vérifier
-  `adb shell dpm list-owners` (Vigie absente), puis **réactiver** (comptes à retirer de nouveau). *Noter* : le résultat, la
-  **absence** d'alerte `agent.tamper` (le retrait est annoncé) et la présence de l'événement `security.policy`
-  `device_owner_cleared`, la sauvegarde Android qui se réactive, ce qui reste (restrictions, DNS).
-- [ ] **V8. Retrait de dernier recours** `dpm remove-active-admin` (APK testOnly), politique vide, **avant** d'avoir appliqué le
-  profil strict. *Test* : lancer directement `adb shell dpm remove-active-admin --user 0
-  io.github.erwsim.vigie/io.github.erwsim.vigie.policy.VigieAdminReceiver` (c'est ce que le script `remove-device-owner` fait
-  quand Vigie ne répond pas), vérifier `adb shell dpm list-owners`, puis réactiver (comptes à retirer de nouveau).
-  *Noter* : succès ou « Attempt to remove non-test admin » (l'APK n'est alors pas testOnly : `adb shell dumpsys package
-  io.github.erwsim.vigie | grep TEST_ONLY`), alertes `agent.tamper` (attendues dans ce cas), restrictions et DNS restés en
-  place, l'état de l'application après.
-- [ ] **V9. Blocage automatique (Auto Blocker) et Protection avancée.** *Test* : **seulement après V5 à V8**. (a) Auto Blocker
-  actif, `adb devices` voit-il le téléphone ? `adb install` passe-t-il ? (b) Device Owner actif, **activer** Auto Blocker :
-  `adb shell dpm list-owners`, Vigie tourne-t-elle, `rescue-revert` répond-il ? (c) mode « restrictions maximales » : désactive-t-il
-  Vigie ? (d) Protection avancée (Paramètres › Google › Tous les services › Protection avancée) : mêmes questions. *Noter* :
-  chaque résultat et les textes affichés ; si l'USB est coupé, désactivez le réglage depuis le téléphone. En cas de doute,
-  laissez-le **désactivé**.
-- [ ] **V10. Play Protect.** *Test* : après 24 h, Play Store › profil › Play Protect : Vigie est-elle analysée, signalée
-  « dangereuse », désactivée ? *Noter* : tout message, avec le texte exact. Comportement d'un APK testOnly : inconnu.
-- [ ] **V11. Mise à jour de l'APK.** *Test* : `install-apk` avec le **même** APK (ou un nouveau `-Pvigie.versionCode=2`), avant
-  puis après l'application de la politique équilibrée. *Noter* : succès, l'agent redémarre seul, **Device Owner conservé**, politique
-  conservée, aucune alerte `agent.tamper` ou « application sans installateur » (attendue ? voir guide 05), événements
-  `agent.started` (raison `update`).
+  `remove-device-owner`, `generate-keystore`). *Note*: syntax error, execution policy error, encoding error
+  (accents), unexpected message, difference in behaviour from the bash version.
+- [ ] **V2. Version and installation.** *Test*: `adb shell getprop ro.build.version.sdk` (36 or more) then
+  `install-apk`. *Note*: Android and One UI, installation result, any Play Protect alert (exact text).
+- [ ] **V3. Device Owner activation on the Galaxy phone** (`dpm set-device-owner`) after removing the accounts, Secure
+  Folder, Dual Messenger. *Test*: `enable-device-owner`. *Note*: the exact `dpm` message (success **or** failure),
+  the output of `adb shell pm list users` and `adb shell dumpsys account` beforehand, any "user limit reached" error
+  (reported on Samsung by other projects, with no known solution). If `dumpsys account` shows no account any more
+  and activation fails anyway: stop, report.
+- [ ] **V4. Putting the accounts back under Device Owner.** *Test*: put back Google, then Samsung, then the rest; open
+  the Play Store. *Note*: any refusal or "administrator" message, the state of the Play Store, of Samsung Wallet, of
+  backups.
+- [ ] **V5. The rescue answers "empty".** *Test*: `rescue-revert` with an empty policy, screen on **then** screen off
+  and locked; then, after a reboot, **before** the first unlock (the application cannot start at this stage: no
+  answer, code 5, is expected) and **after**. *Note*: `Everything is restored (reverted=0…)` and the exit code, the
+  response time; otherwise the code (5 = no answer) and the raw output.
+- [ ] **V6. The rescue undoes a real policy.** *Test*: apply "Tips" alone (guide 03, stage 2), then `rescue-revert`;
+  apply again, then `rescue-revert --sweep` (`-Sweep` in PowerShell: also restores what Watchpost might have lost
+  track of). *Note*: `reverted=1`, the Tips icon returns to normal, the Policy screen's log.
+- [ ] **V7. Full removal through the script** (`remove-device-owner`), empty policy. *Test*: remove, check
+  `adb shell dpm list-owners` (Watchpost absent), then **re-activate** (accounts to be removed again). *Note*: the
+  result, the **absence** of an `agent.tamper` alert (the removal is announced) and the presence of the
+  `security.policy` event `device_owner_cleared`, Android backup turning back on, what remains (restrictions, DNS).
+- [ ] **V8. Last-resort removal** `dpm remove-active-admin` (testOnly APK), empty policy, **before** having applied
+  the strict profile. *Test*: run directly `adb shell dpm remove-active-admin --user 0
+  io.github.erwsim.watchpost/io.github.erwsim.watchpost.policy.WatchpostAdminReceiver` (this is what the
+  `remove-device-owner` script does when Watchpost does not answer), check `adb shell dpm list-owners`, then
+  re-activate (accounts to be removed again). *Note*: success or "Attempt to remove non-test admin" (the APK is then
+  not testOnly: `adb shell dumpsys package io.github.erwsim.watchpost | grep TEST_ONLY`), `agent.tamper` alerts
+  (expected in this case), restrictions and DNS left in place, the application's state afterwards.
+- [ ] **V9. Auto Blocker and Advanced Protection.** *Test*: **only after V5 to V8**. (a) Auto Blocker on: does
+  `adb devices` see the phone? does `adb install` go through? (b) Device Owner active, **turn on** Auto Blocker:
+  `adb shell dpm list-owners`, is Watchpost running, does `rescue-revert` answer? (c) "maximum restrictions" mode:
+  does it disable Watchpost? (d) Advanced Protection (Settings › Google › All services › Advanced Protection): same
+  questions. *Note*: each result and the texts displayed; if USB is cut, turn the setting off from the phone. When in
+  doubt, leave it **off**.
+- [ ] **V10. Play Protect.** *Test*: after 24 h, Play Store › profile › Play Protect: is Watchpost scanned, flagged
+  "harmful", disabled? *Note*: any message, with the exact text. Behaviour towards a testOnly APK: unknown.
+- [ ] **V11. APK update.** *Test*: `install-apk` with the **same** APK (or a new `-Pwatchpost.versionCode=2`), before
+  then after applying the balanced policy. *Note*: success, the agent restarts by itself, **Device Owner kept**,
+  policy kept, no `agent.tamper` alert or "application with no installer" (expected? see guide 05), `agent.started`
+  events (reason `update`).
 
-- [ ] **V12. Verrouillage à distance (`lock`) et message.** *Test* : console › Commandes › « Verrouiller avec message » (guide 03, §15),
-  téléphone en main. *Noter* : `lockNow` verrouille-t-il, One UI affiche-t-il le message sur l'écran de verrouillage
-  (`setDeviceOwnerLockScreenInfo`) ; « Effacer le message » (commande, puis bouton local de l'écran de Vigie) ; résultat
-  `lock_refused` si les politiques d'administration n'ont pas été rechargées après une mise à jour ; sans écran de verrouillage
-  sécurisé, seul l'écran s'éteint.
-- [ ] **V13. Code de commande et signatures.** *Test* : un code faux une fois (`bad_signature` constaté **par le téléphone**, alerte
-  Wazuh de niveau 10) ; un code correct ; un code avec accents saisi à l'identique. **Ne provoquez pas cinq refus** (blocage d'une
-  heure, `locked_out`). *Noter* : le temps de « Calcul de la clé… » sur le téléphone, la concordance avec la console.
-- [ ] **V14. « Tout rétablir » et issue de secours avec des gardes actives.** *Test* : activer la quarantaine puis la garde SMS ;
-  « Tout rétablir » (elles sont éteintes d'abord) et contrôler Paramètres › Applications › l'appli › Autorisations, les claviers et
-  l'accessibilité ; réactiver, puis `rescue-revert` (et `--sweep`) **avec une garde active** ; `remove-device-owner` en dernier.
-  *Noter* : une permission restée verrouillée « contrôlé par l'administrateur », un état d'avant différent.
-- [ ] **V15. Effacement à distance (`wipe`) — UNIQUEMENT sur un téléphone de test ou après sauvegarde complète, jamais sur le téléphone
-  de tous les jours.** *Test* : (a) interrupteur « Autoriser l'effacement à distance » **éteint** : la commande est refusée
-  (`disabled`) et rien ne se passe ; (b) interrupteur allumé : `wipeDevice(0)` réinitialise-t-il vraiment, la protection contre la
-  réinitialisation (compte Google) et les eSIM sont-elles conservées, en combien de temps le résultat arrive-t-il avant l'effacement.
-  Tant que (b) n'a pas été vu, **n'activez jamais** l'effacement sur votre téléphone.
+- [ ] **V12. Remote lock (`lock`) and message.** *Test*: console › Commands › "Lock with a message" (guide 03, §15),
+  phone in hand. *Note*: does `lockNow` lock, does One UI show the message on the lock screen
+  (`setDeviceOwnerLockScreenInfo`); "Clear the message" (command, then the local button on Watchpost's screen); result
+  `lock_refused` if the administration policies were not reloaded after an update; without a secure lock screen, only
+  the screen turns off.
+- [ ] **V13. Command passphrase and signatures.** *Test*: a wrong passphrase once (`bad_signature` observed **by the
+  phone**, Wazuh alert of level 10); a correct passphrase; a passphrase with accents typed identically. **Do not
+  provoke five refusals** (one-hour lock-out, `locked_out`). *Note*: the time of "Computing the key…" on the phone,
+  the match with the console.
+- [ ] **V14. "Restore everything" and rescue with active guards.** *Test*: enable the quarantine then the SMS guard;
+  "Restore everything" (they are switched off first) and check Settings › Apps › the app › Permissions, the keyboards
+  and accessibility; enable again, then `rescue-revert` (and `--sweep`) **with a guard active**;
+  `remove-device-owner` last. *Note*: a permission left locked "controlled by the administrator", a previous state
+  that differs.
+- [ ] **V15. Remote erase (`wipe`) — ONLY on a test phone or after a complete backup, never on your everyday phone.**
+  *Test*: (a) the "Allow remote erase" switch **off**: the command is refused (`disabled`) and nothing happens; (b)
+  switch on: does `wipeDevice(0)` really reset, are reset protection (Google account) and eSIMs kept, how long before
+  the erase does the result arrive. As long as (b) has not been seen, **never enable** erase on your phone.
 
-## Niveau 2 — Peut casser l'usage quotidien (politique)
+## Level 2 — Can break everyday use (policy)
 
-À faire **dans l'ordre du guide 03** (section 14 pour la politique, section 16 pour les gardes), une chose à la fois, 24 heures minimum entre chaque.
+To be done **in the order of guide 03** (section 14 for the policy, section 16 for the guards), one thing at a time, 24
+hours minimum between each.
 
-- [ ] **V16. DNS privé imposé** (`setGlobalPrivateDnsModeSpecifiedHost`). *Test* : palier 1 du guide 03, sur Wi-Fi **et** en
-  données mobiles, plusieurs opérateurs/réseaux si possible. *Noter* : succès de l'application (`private_dns_set ok=true`),
-  message d'erreur (`HOST_NOT_SERVING`…), réseaux où le port 853 est bloqué, ralentissement perçu, requêtes visibles dans le
-  journal d'AdGuard.
-- [ ] **V17. Repli du DNS privé.** *Test* : `sudo docker compose stop adguardhome` ; mesurer le délai avant retour
-  d'Internet (15 minutes par défaut) ; relancer AdGuard ; l'hôte est-il réimposé tout seul ? *Noter* : délai réel, alerte
-  Wazuh de sévérité 2 reçue, et si l'application du DNS verrouillé change le comportement.
-- [ ] **V18. Verrou du DNS** (« Verrouiller le réglage »). *Test* : l'activer puis ouvrir le réglage DNS privé d'Android (grisé ?),
-  puis « Rétablir ». *Noter* : levée effective du verrou.
-- [ ] **V19. Masquer et suspendre des applications.** *Test* : « Astuces » (suspension), puis chaque lot (guide 03, lots 3a à 3c) ;
-  redémarrer ; comparer `adb shell pm list packages` avant, après application, après « Tout rétablir ». *Noter* : les
-  paquets du catalogue **absents** de votre S25+ (« absent de ce téléphone »), ceux dont l'application échoue (journal
-  `ok=false`), la persistance des masques après redémarrage, l'état exact retrouvé après « Tout rétablir ».
-- [ ] **V20. Modules système (Mainline) masqués** : Android AdServices, On-Device Personalization, Federated Compute (effet « à
-  vérifier après application » dans l'application). *Test* : lot 3b seul, redémarrer, Paramètres › Mise à jour logicielle,
-  Play System Update, Play Store. *Noter* : tout dysfonctionnement ou message d'erreur.
-- [ ] **V21. Notifications push** après chaque lot. *Test* : message reçu téléphone verrouillé depuis plus de 10 minutes, Wi-Fi puis
-  données. *Noter* : retard ou absence ; domaines bloqués dans AdGuard.
-- [ ] **V22. Play Store** (mise à jour, installation) et **vérification des applications**. *Noter* : échec, message.
-- [ ] **V23. Application bancaire** (Play Integrity) avec le Device Owner actif, puis avec le profil équilibré. *Test* :
-  ouverture, connexion, validation d'une opération. *Noter* : refus de démarrer ; options développeur et débogage USB actifs
-  gênent-ils (désactiver temporairement le débogage USB si c'est le cas, puis le réactiver) ; Play Protect désactivé gêne-t-il.
-- [ ] **V24. Paiement sans contact et Wallet** (Google Wallet, Samsung Wallet/Pay/Pass), avec le Device Owner seul, puis après le profil
-  équilibré. Effet **inconnu** (aucune source). *Test* : un vrai paiement de faible montant, carte physique en secours ; carte de
-  transport. *Noter* : tout refus, la nécessité de ré-enregistrer des cartes.
-- [ ] **V25. Mises à jour Samsung (OTA) et Device Owner.** *Test* : Paramètres › Mise à jour logicielle ; à la prochaine mise à jour
-  réelle, `adb shell dpm list-owners` avant et après. *Noter* : le Device Owner survit-il, l'agent reprend-il, la mise à jour a-t-elle été
-  possible (domaines `ospserver.net` autorisés).
-- [ ] **V26. Compte Samsung et services** sous le profil équilibré (conflit signalé : HaGeZi bloque `gld.samsungosp.com`). *Noter* :
-  échecs de connexion au compte Samsung, Galaxy Store, Samsung Cloud, Find My Mobile.
-- [ ] **V27. Restrictions** : « Interdire la 2G » (effet réel de `DISALLOW_CELLULAR_2G` : le téléphone n'utilise plus la 2G ;
-  vérifier `net.cell` sur quelques jours), « Interdire les sources inconnues » (**l'installation ADB passe-t-elle ?** voir V11),
-  capture et suggestions de contenu. *Noter* : conséquence observée.
-- [ ] **V28. Permission refusée** (Appli Google : localisation) : Paramètres › Applications › Appli Google › Autorisations
-  (verrouillée ?). *Noter* : le texte affiché et l'effet sur la météo ou Discover.
-- [ ] **V29. Réglage `ble_scan_always_enabled`** (nécessite `WRITE_SECURE_SETTINGS`). *Test* : après application, `adb shell settings get
-  global ble_scan_always_enabled` (attendu `0`). *Noter* : valeur, erreur.
-- [ ] **V30. Sauvegarde Android réactivée** par le profil équilibré. *Test* : Paramètres › Comptes et sauvegarde ; `adb shell bmgr enabled`.
-  *Noter* : l'état avant (coupé par le Device Owner) et après.
-- [ ] **V31. Profil strict, élément par élément** (guide 03, palier 4). *Test* : un élément à la fois, 24 heures. *Noter*, par
-  élément : l'effet observé, ce qui casse réellement (compte Samsung, Galaxy Store, mode sans échec : démarrer en mode sans échec
-  est-il impossible ?, ajout de certificat, Appli Google, UWB, Thread…). Cette liste est le principal gain de connaissance.
-- [ ] **V32. VPN permanent** (facultatif, carte « VPN permanent ») : cohérence avec le DNS privé (le résolveur doit être joignable
-  dans et hors du VPN, selon la recherche). Non essayé ; n'activez le mode « bloquer sans VPN » qu'avec un VPN fiable.
+- [ ] **V16. Enforced private DNS** (`setGlobalPrivateDnsModeSpecifiedHost`). *Test*: stage 1 of guide 03, on Wi-Fi
+  **and** mobile data, several carriers/networks if possible. *Note*: success of the application (`private_dns_set
+  ok=true`), error message (`HOST_NOT_SERVING`…), networks where port 853 is blocked, perceived slowdown, requests
+  visible in AdGuard's log.
+- [ ] **V17. Private DNS fallback.** *Test*: `sudo docker compose stop adguardhome`; measure the delay before Internet
+  returns (15 minutes by default); start AdGuard again; is the host enforced again by itself? *Note*: actual delay,
+  severity-2 Wazuh alert received, and whether applying the locked DNS changes the behaviour.
+- [ ] **V18. DNS lock** ("Lock the setting"). *Test*: turn it on then open Android's private DNS setting (greyed out?),
+  then "Restore". *Note*: effective lifting of the lock.
+- [ ] **V19. Hiding and suspending applications.** *Test*: "Tips" (suspension), then each batch (guide 03, batches 3a to
+  3c); reboot; compare `adb shell pm list packages` before, after applying, after "Restore everything". *Note*: the
+  catalogue packages **absent** from your phone ("absent from this phone"), those whose application fails (log
+  `ok=false`), persistence of the hides after a reboot, the exact state found again after "Restore everything".
+- [ ] **V20. Hidden system modules (Mainline)**: Android AdServices, On-Device Personalization, Federated Compute
+  (effect "to be checked after applying" in the application). *Test*: batch 3b alone, reboot, Settings › Software
+  update, Play System Update, Play Store. *Note*: any malfunction or error message.
+- [ ] **V21. Push notifications** after each batch. *Test*: message received with the phone locked for more than 10
+  minutes, Wi-Fi then data. *Note*: delay or absence; domains blocked in AdGuard.
+- [ ] **V22. Play Store** (update, installation) and **app verification**. *Note*: failure, message.
+- [ ] **V23. Banking application** (Play Integrity) with the Device Owner active, then with the balanced profile.
+  *Test*: opening, login, validation of a transaction. *Note*: refusal to start; do developer options and USB
+  debugging being on interfere (temporarily turn off USB debugging if so, then turn it back on); does Play Protect
+  being off interfere.
+- [ ] **V24. Contactless payment and Wallet** (Google Wallet, Samsung Wallet/Pay/Pass), with the Device Owner alone,
+  then after the balanced profile. Effect **unknown** (no source). *Test*: a real small payment, physical card as
+  backup; transit card. *Note*: any refusal, the need to register cards again.
+- [ ] **V25. Samsung updates (OTA) and Device Owner.** *Test*: Settings › Software update; at the next real update,
+  `adb shell dpm list-owners` before and after. *Note*: does the Device Owner survive, does the agent resume, was the
+  update possible (`ospserver.net` domains allowed).
+- [ ] **V26. Samsung account and services** under the balanced profile (reported conflict: HaGeZi blocks
+  `gld.samsungosp.com`). *Note*: Samsung account login failures, Galaxy Store, Samsung Cloud, Find My Mobile.
+- [ ] **V27. Restrictions**: "Forbid 2G" (real effect of `DISALLOW_CELLULAR_2G`: the phone no longer uses 2G; check
+  `net.cell` over a few days), "Forbid unknown sources" (**does ADB installation go through?** see V11), content
+  capture and suggestions. *Note*: observed consequence.
+- [ ] **V28. Denied permission** (Google app: location): Settings › Apps › Google app › Permissions (locked?). *Note*:
+  the text displayed and the effect on the weather or Discover.
+- [ ] **V29. Setting `ble_scan_always_enabled`** (requires `WRITE_SECURE_SETTINGS`). *Test*: after applying,
+  `adb shell settings get global ble_scan_always_enabled` (expected `0`). *Note*: value, error.
+- [ ] **V30. Android backup re-enabled** by the balanced profile. *Test*: Settings › Accounts and backup;
+  `adb shell bmgr enabled`. *Note*: the state before (turned off by the Device Owner) and after.
+- [ ] **V31. Strict profile, item by item** (guide 03, stage 4). *Test*: one item at a time, 24 hours. *Note*, per item:
+  the observed effect, what really breaks (Samsung account, Galaxy Store, safe mode: is booting into safe mode
+  impossible?, adding a certificate, Google app, UWB, Thread…). This list is the main gain in knowledge.
+- [ ] **V32. Always-on VPN** (optional, "Always-on VPN" card): consistency with private DNS (the resolver must be
+  reachable inside and outside the VPN, according to the research). Not tried; enable the "block without VPN" mode
+  only with a reliable VPN.
 
-- [ ] **V33. Garde Quarantaine** (la moins risquée). *Test* : guide 03, §16, ligne 1. *Noter* : la notification « Nouvelle application en
-  quarantaine », les permissions grisées, « Libérer » (l'appli redemande), l'absence de nouvelle quarantaine à la mise à jour,
-  **l'appairage d'une montre, d'écouteurs ou d'une voiture dont l'appli vient d'être installée** (échec sans message ?), le délai
-  entre l'installation et le refus, `quarantined`/`released` dans la console.
-- [ ] **V34. Garde Claviers.** *Test* : liste vide ; l'aperçu nomme-t-il le clavier tiers activé ; saisie normale **et code PIN après
-  redémarrage** ; l'écran des Paramètres de One UI respecte-t-il la liste (un clavier non approuvé non activable) ? *Noter* : la
-  garde n'est appliquée que dans les Paramètres, `adb shell ime enable` la contourne.
-- [ ] **V35. Garde Accessibilité.** *Test* : liste vide ; services déjà activés « gardés » ; TalkBack et le Voice Assistant Samsung
-  toujours activables ; un service tiers non activé ne l'est plus. *Noter* : le comportement de One UI (« désactivé par
-  l'administrateur »).
-- [ ] **V36. Garde Appels.** *Test* : l'aperçu (rarement vide), appel depuis le composeur et le carnet d'adresses Samsung, composeur
-  ouvert pour un appel d'urgence (sans appeler). *Noter* : applications arrêtées au refus, groupe « Téléphone » gelé.
-- [ ] **V37. Garde SMS.** *Test* : l'aperçu ; envoi d'un SMS depuis Samsung Messages ; SOS d'urgence intact ; **changer d'appli SMS par
-  défaut** puis revenir. *Noter* : la notification « Appli par défaut changée » dans les 10 à 20 secondes, la liste qui suit, les
-  permissions du rôle accordées au nouveau détenteur, le groupe SMS gelé des applications refusées. Voir le guide 08.
-- [ ] **V38. Options des gardes** (lecture des SMS ; décrocher et journal d'appels). *Test* : avec une garde SMS ou Appels active,
-  désigner comme appli SMS par défaut une application que la garde refusait : elle envoie et reçoit sans rien redemander ; revenir
-  à l'application d'origine. *Noter* : la saisie automatique des codes reçus par SMS cesse-t-elle (option « lecture »).
+- [ ] **V33. Quarantine guard** (the least risky). *Test*: guide 03, §16, line 1. *Note*: the "New app in quarantine"
+  notification, the greyed-out permissions, "Release" (the app asks again), the absence of a new quarantine at update,
+  **pairing a watch, earbuds or a car whose app was just installed** (failure without a message?), the delay between
+  installation and denial, `quarantined`/`released` in the console.
+- [ ] **V34. Keyboards guard.** *Test*: empty list; does the preview name the enabled third-party keyboard; normal
+  typing **and PIN after a reboot**; does One UI's Settings screen respect the list (a non-approved keyboard cannot be
+  enabled)? *Note*: the guard is applied only in Settings, `adb shell ime enable` bypasses it.
+- [ ] **V35. Accessibility guard.** *Test*: empty list; services already enabled "kept"; TalkBack and Samsung's Voice
+  Assistant still enableable; a third-party service that is not enabled can no longer be. *Note*: One UI's behaviour
+  ("disabled by the administrator").
+- [ ] **V36. Calls guard.** *Test*: the preview (rarely empty), calling from the dialer and Samsung's address book,
+  dialer opened for an emergency call (without calling). *Note*: applications stopped at the denial, "Phone" group
+  frozen.
+- [ ] **V37. SMS guard.** *Test*: the preview; sending an SMS from Samsung Messages; emergency SOS intact; **change the
+  default SMS app** and then go back. *Note*: the "Default app changed" notification within 10 to 20 seconds, the list
+  that follows, the role's permissions granted to the new holder, the frozen SMS group of the denied applications. See
+  guide 08.
+- [ ] **V38. Guard options** (reading SMS; answering and call log). *Test*: with an SMS or Calls guard active,
+  designate as default SMS app an application the guard was refusing: it sends and receives without asking for
+  anything; go back to the original application. *Note*: does automatic entry of codes received by SMS stop ("reading"
+  option).
 
-## Niveau 3 — La collecte fait-elle ce qu'elle dit ?
+## Level 3 — Does the collection do what it says?
 
-- [ ] **V39. Survie du service.** *Test* : 24 heures écran éteint, puis redémarrage. *Noter* : dans la console, les
-  `agent.heartbeat` toutes les 15 minutes sans trou (Événements › `agent.`), les alertes d'absence, l'événement `agent.started`
-  (raison `boot`), `device.boot` après le premier déverrouillage, la consommation de batterie de Vigie (Paramètres › Batterie).
-- [ ] **V40. Rien avant le premier déverrouillage** (Direct Boot non utilisé : comportement voulu). *Noter* : l'intervalle sans
-  événement après un redémarrage.
-- [ ] **V41. Permissions automatiques et protection contre l'arrêt forcé.** *Test* : Paramètres › Applications › Vigie ›
-  Autorisations (localisation « toujours », notifications, appareils à proximité, téléphone) ; « Forcer l'arrêt » et « Effacer les
-  données » sont-ils grisés ? *Noter* : permissions manquantes, effet de `setUserControlDisabledPackages`, l'application est-elle
-  désinstallable (attendu : non, tant qu'elle est Device Owner). Retirer volontairement une permission dans les Paramètres :
-  le collecteur passe-t-il « indisponible », `agent.tamper` `permission_revoked` est-il émis, et l'onglet Collecteurs
-  permet-il de la redonner (Vigie ne la reprend pas d'elle-même, la revue de l'application l'ayant voulu ainsi) ?
-- [ ] **V42. Clé dans l'Android Keystore et mTLS.** *Test* : « Tester la connexion » après l'enrôlement, **après redémarrage**
-  et après plusieurs jours. *Noter* : « Connexion réussie » ou le message d'erreur exact.
-- [ ] **V43. Journal réseau du système.** *Test* : premiers `net.dns` et `net.connect` avec leur paquet (délai jusqu'à 1 h 30 ; essai
-  `adb shell dpm force-network-logs`) ; vérifier l'heure d'origine (`ts`), les `count`, l'attribution à des paquets réels, les lots perdus
-  (`agent.collector_error`). *Noter* : le délai réel, le volume par jour, les applications absentes (UDP/QUIC attendu).
-- [ ] **V44. Journal de sécurité du système.** *Test* : `adb shell dpm force-security-logs` ; événements `security.log` (ADB,
-  installations, déverrouillages) ; journaux d'avant redémarrage (`pre_reboot: true`), **à comparer à ce que renvoie réellement l'appareil**
-  (la fonction peut renvoyer `null`). *Noter* : tags présents et absents, noms de champs différents du contrat.
-- [ ] **V45. Notifications d'Android.** *Test* : texte exact de la mention « appareil géré » et de la notification « réseau
-  surveillé » (nombre d'apparitions). *Noter* : les deux textes.
-- [ ] **V46. Position (GPS + passif).** *Test* : 15 minutes de marche avec le téléphone en poche, puis trajet en voiture ; comparer à la carte ;
-  un jour de séjour en intérieur. *Noter* : densité de points, précision, trous attendus (intérieur), batterie.
-- [ ] **V47. Wi-Fi, cellule, Bluetooth, NFC, point d'accès.** *Test* : SSID/BSSID présents (exigent la localisation précise) ; `net.cell`
-  avec ses champs ; connexions Bluetooth (voiture, écouteurs) ; activer le point d'accès. *Noter* : champs absents, valeurs
-  suspectes.
-- [ ] **V48. Caméra et micro.** *Test* : ouvrir l'appareil photo, enregistrer un mémo vocal, passer un appel. *Noter* : événements
-  `sensor.camera` et `sensor.microphone`, `screen_on` et `locked`, **pas d'alerte pendant un appel**. **Attribution
-  expérimentale** (réglage « Attribution expérimentale (DUMP) », désactivé par défaut) : l'activer, refaire le test, noter si
-  `package` est renseigné ou si l'erreur indique un refus SELinux.
-- [ ] **V49. Application au premier plan et volumes** (accès à l'utilisation accordé par `grant-adb-permissions`). *Test* :
-  `app.foreground` apparaît (100 à 400 par jour) ; `net.usage` horaire (valeurs estimées, retard d'au moins 30 minutes) ; comparer à
-  Paramètres › Connexions › Utilisation des données. *Noter* : écarts, applications manquantes.
-- [ ] **V50. Inventaire et changements d'applications.** *Test* : installer puis désinstaller une application depuis le Play Store :
-  `app.installed`, `app.removed` ; révoquer/accorder une permission : `app.permission_changed` ; la page Applications ›
-  Accès spéciaux. *Noter* : délais, champs manquants.
-- [ ] **V51. Événements USB et ADB.** *Test* : brancher le câble, lancer un script : `device.usb`, `security.log` (`adb_shell_cmd`),
-  alertes Wazuh correspondantes (attendues, guide 05). *Noter* : niveau de bruit.
-- [ ] **V52. Posture complète.** *Test* : console › Sécurité › Posture. *Noter* : champs présents et absents (`play_protect` est
-  volontairement omis), valeurs fausses (chiffrement, démarrage vérifié, correctif).
-- [ ] **V53. Déverrouillages échoués.** *Test* : saisir un mauvais code une ou deux fois : `security.keyguard`. (La règle
-  d'alerte est à 5 échecs en 10 minutes ou 10 consécutifs : ne la déclenchez pas exprès sur un téléphone que vous utilisez.)
-- [ ] **V54. Mode hors ligne.** *Test* : mode avion une heure, puis retour : le tampon part-il, sans doublon ni trou de séquence
-  (pas d'alerte de séquence) ? *Noter* : délai de reprise.
-- [ ] **V55. Renouvellement du certificat et réenrôlement.** *Test* : `sudo ./enroll.sh --renew s25`, import par « Importer un
-  nouveau fichier .vigie » (guide 05 §8) ; vérifier le message « Renouvellement : même serveur, même appareil », le tampon
-  conservé, la nouvelle échéance, `enroll.sh --list`. Essayer aussi (avec un fichier `enroll` d'un autre appareil) l'annonce
-  « Même serveur, autre identifiant » puis, sans l'importer, « Autre serveur » (le tampon y est **effacé**). *Noter* : nombre
-  d'événements avant et après, alertes de séquence ou d'absence, et si l'ancien couple est bien refusé ensuite. Le désenrôlement
-  (qui efface clé, jeton et tampon) se teste à part.
-- [ ] **V56. Autorité de certificat utilisateur** (facultatif) : installer un certificat de test puis le retirer : `security.ca_cert`
-  (sévérité 2) et l'alerte de niveau 10 attendue. *Noter* : délai, doublons entre journal système et posture.
-- [ ] **V57. Certificate Transparency désactivée par `network_security_config`.** Ne concerne que le mode `--tls internal`
-  (l'AC privée est alors épinglée). Avec Let's Encrypt, le succès de « Tester la connexion » suffit.
-- [ ] **V58. Traceurs Bluetooth** (AirTag, SmartTag, Tile, Localiser de Google) : seulement si vous avez un traceur à
-  disposition, séparé de son propriétaire, déplacé avec vous plus de 30 minutes sur plus de 500 m. Sinon, rien à vérifier.
+- [ ] **V39. Service survival.** *Test*: 24 hours with the screen off, then a reboot. *Note*: in the console, the
+  `agent.heartbeat` events every 15 minutes with no gap (Events › `agent.`), absence alerts, the `agent.started` event
+  (reason `boot`), `device.boot` after the first unlock, Watchpost's battery consumption (Settings › Battery).
+- [ ] **V40. Nothing before the first unlock** (Direct Boot not used: intended behaviour). *Note*: the interval with no
+  event after a reboot.
+- [ ] **V41. Automatic permissions and force-stop protection.** *Test*: Settings › Apps › Watchpost › Permissions
+  (location "always", notifications, nearby devices, phone); are "Force stop" and "Clear data" greyed out? *Note*:
+  missing permissions, effect of `setUserControlDisabledPackages`, is the application uninstallable (expected: no, as
+  long as it is Device Owner). Deliberately remove a permission in Settings: does the collector become "unavailable",
+  is `agent.tamper` `permission_revoked` emitted, and does the Collectors tab let you give it back (Watchpost does not
+  take it back by itself, the application's review having wanted it so)?
+- [ ] **V42. Key in the Android Keystore and mTLS.** *Test*: "Test the connection" after enrollment, **after a reboot**
+  and after several days. *Note*: "Connection successful" or the exact error message.
+- [ ] **V43. System network log.** *Test*: first `net.dns` and `net.connect` with their package (delay up to 1 h 30;
+  try `adb shell dpm force-network-logs`); check the original time (`ts`), the `count` values, attribution to real
+  packages, lost batches (`agent.collector_error`). *Note*: the real delay, the volume per day, absent applications
+  (UDP/QUIC expected).
+- [ ] **V44. System security log.** *Test*: `adb shell dpm force-security-logs`; `security.log` events (ADB,
+  installations, unlocks); logs from before a reboot (`pre_reboot: true`), **to be compared with what the device
+  actually returns** (the function may return `null`). *Note*: tags present and absent, field names that differ from
+  the contract.
+- [ ] **V45. Android's notifications.** *Test*: exact text of the "device managed" notice and of the "network
+  monitored" notification (number of appearances). *Note*: both texts.
+- [ ] **V46. Location (GPS + passive).** *Test*: 15 minutes of walking with the phone in the pocket, then a car trip;
+  compare with the map; a day spent indoors. *Note*: density of points, accuracy, expected gaps (indoors), battery.
+- [ ] **V47. Wi-Fi, cell, Bluetooth, NFC, hotspot.** *Test*: SSID/BSSID present (they require precise location);
+  `net.cell` with its fields; Bluetooth connections (car, earbuds); turn on the hotspot. *Note*: absent fields,
+  suspicious values.
+- [ ] **V48. Camera and microphone.** *Test*: open the camera, record a voice memo, make a call. *Note*:
+  `sensor.camera` and `sensor.microphone` events, `screen_on` and `locked`, **no alert during a call**.
+  **Experimental attribution** ("Experimental attribution (DUMP)" setting, off by default): turn it on, redo the
+  test, note whether `package` is filled in or whether the error indicates a SELinux denial.
+- [ ] **V49. Foreground application and volumes** (usage access granted by `grant-adb-permissions`). *Test*:
+  `app.foreground` appears (100 to 400 per day); hourly `net.usage` (estimated values, delay of at least 30
+  minutes); compare with Settings › Connections › Data usage. *Note*: discrepancies, missing applications.
+- [ ] **V50. Inventory and application changes.** *Test*: install then uninstall an application from the Play Store:
+  `app.installed`, `app.removed`; revoke/grant a permission: `app.permission_changed`; the Apps › Special access
+  page. *Note*: delays, missing fields.
+- [ ] **V51. USB and ADB events.** *Test*: plug in the cable, run a script: `device.usb`, `security.log`
+  (`adb_shell_cmd`), corresponding Wazuh alerts (expected, guide 05). *Note*: the noise level.
+- [ ] **V52. Complete posture.** *Test*: console › Security › Posture. *Note*: fields present and absent
+  (`play_protect` is deliberately omitted), wrong values (encryption, verified boot, patch).
+- [ ] **V53. Failed unlocks.** *Test*: enter a wrong code once or twice: `security.keyguard`. (The alert rule is at 5
+  failures within 10 minutes or 10 consecutive: do not trigger it on purpose on a phone you use.)
+- [ ] **V54. Offline mode.** *Test*: airplane mode for an hour, then back: does the buffer go out, with no duplicate or
+  sequence gap (no sequence alert)? *Note*: resumption delay.
+- [ ] **V55. Certificate renewal and re-enrollment.** *Test*: `sudo ./enroll.sh --renew phone`, import through "Import
+  a new .watchpost file" (guide 05 §8); check the message "Renewal: same server, same device", the buffer kept, the new
+  expiry, `enroll.sh --list`. Also try (with an `enroll` file of another device) the announcement "Same server,
+  different device identifier" and then, without importing it, "Different server" (the buffer is **erased** there).
+  *Note*: number of events before and after, sequence or absence alerts, and whether the old pair is indeed refused
+  afterwards. Unenrolling (which erases key, token and buffer) is tested separately.
+- [ ] **V56. User certificate authority** (optional): install a test certificate then remove it: `security.ca_cert`
+  (severity 2) and the expected level-10 alert. *Note*: delay, duplicates between the system log and the posture.
+- [ ] **V57. Certificate Transparency disabled by `network_security_config`.** Concerns only `--tls internal` mode
+  (the private CA is then pinned). With Let's Encrypt, the success of "Test the connection" is enough.
+- [ ] **V58. Bluetooth trackers** (AirTag, SmartTag, Tile, Google's Find Hub): only if you have a tracker available,
+  separated from its owner, moved with you for more than 30 minutes over more than 500 m. Otherwise, nothing to check.
 
-- [ ] **V59. Consommation du canal de commandes permanent.** *Test* : 24 heures en Wi-Fi puis en réseau mobile (Paramètres ›
-  Batterie ; `adb shell dumpsys batterystats`), comparées au mode « Interrogation périodique ». *Noter* : part de Vigie ; si elle
-  est forte, essayer un maintien serveur plus long (`VIGIE_CMD_KEEPALIVE_S`, **240 s au plus**) ou l'interrogation.
-- [ ] **V60. Réception d'une commande en Doze.** *Test* : écran éteint depuis plus d'une heure (ou `adb shell dumpsys deviceidle
-  force-idle`), émettre `ring`. *Noter* : le délai de réception (la connexion doit rester ouverte grâce au service de premier plan).
-- [ ] **V61. Sonnerie à distance.** *Test* : `ring` en mode silencieux, vibreur et « Ne pas déranger » (avec et sans alarmes
-  autorisées) ; bouton « Arrêter » sur l'écran de verrouillage ; volume d'alarme remis ensuite. *Noter* : `dnd_alarms_muted`.
-- [ ] **V62. `locate` et reconnexion du canal.** *Test* : « Localiser maintenant » dans les trois modes de localisation, en
-  intérieur et dehors ; reconnexion après passage Wi-Fi ↔ mobile, mode avion, redémarrage du serveur ; comportement après
-  révocation de l'appareil (« refusé par le serveur », plus d'essais). *Noter* : `no_fix`, délais.
-- [ ] **V63. Compagnon de notifications : Play Protect et installation.** *Test* : `install-notifier` (guide 03, §17). *Noter* : toute
-  alerte Play Protect (texte exact ; l'agent est-il touché ?), « Même clé de signature » affiché, `INSTALL_FAILED_DUPLICATE_PERMISSION`.
-- [ ] **V64. Accès aux notifications du compagnon.** *Test* : `notifier-access` ; `cmd notification allow_listener` fonctionne-t-il sur
-  One UI 8/9 ; l'interrupteur « Paramètre restreint » apparaît-il. *Noter* : la sortie du script et le chemin réel dans les Paramètres.
-- [ ] **V65. Survie du service d'écoute du compagnon.** *Test* : 24 heures, redémarrage, mise à jour, arrêt forcé ; « Applications
-  jamais en veille ». *Noter* : le compagnon affiche-t-il « service connecté » ; le canal quand l'agent est tué ou en mise à jour
-  (« non remises » augmente, aucune erreur) et démarrage de l'agent par l'appel du compagnon ; lecture de
-  `enabled_notification_listeners` par l'agent ; diffusion « réglages modifiés » reçue.
-- [ ] **V66. Contenu réel des notifications.** *Test* : activer « Contenu des notifications » quelques jours. *Noter* : contenu des
-  messageries, codes déjà masqués par Android 15+, notifications groupées, volume quotidien (quelques dizaines attendues) ; masquage
-  à tort (années, montants, codes postaux) ; les applications sensibles de **votre** téléphone absentes de la liste d'exclusion.
-- [ ] **V67. Modes de localisation « GPS + réseau » et « fusionné ».** *Test* : guide 03, §18 ; comparer à « GPS seul » en
-  intérieur. *Noter* : `location.fix.provider`, repli sur le GPS seul si un fournisseur manque, batterie.
-- [ ] **V68. Applications par défaut (`app.role`).** *Test* : changer de navigateur, de clavier, d'appli SMS ; console › Sécurité ›
-  Rôles par défaut et `app.special_access.default_apps`. *Noter* : les rôles lisibles (l'assistant et la saisie automatique sont **non
-  garantis** : une valeur absente veut dire « inconnue »), l'absence d'événement au premier relevé.
-- [ ] **V69. Profil de risque (`app.risk`).** *Test* : console › Applications › Risque ; comparer quelques notes à la réalité, **surtout
-  les applications de contrôle parental, d'automatisation, d'antivirus, d'identification d'appelant si vous en avez** (attendues
-  « élevé »). *Noter* : une application légitime « élevée », une application qui devrait l'être et ne l'est pas, le nombre
-  d'événements du premier passage (une centaine attendue), « accordée » contre « demandée ».
-- [ ] **V70. Comptage `app.ops` (expérimental) : à considérer comme absent tant que non vu.** *Test* : guide 08, §5 : `adb shell
-  dumpsys appops --history --op SEND_SMS` produit-il des lignes `[bg-s] = access=N` ; `Debug.dumpService` refusé par SELinux ?
-  taille d'une lecture (quelques centaines de Kio) ; l'envoi d'un SMS depuis Messages incrémente-t-il `SEND_SMS` pour *son* paquet ;
-  un envoi bloqué par la garde apparaît-il (`rejected_count`) ? *Noter* : le collecteur se déclare-t-il « indisponible » (et sa raison).
-- [ ] **V71. Détections sur un vrai téléphone.** *Test* : une semaine. *Noter* : le nombre de `sms_permission` de la **revue
-  initiale** (applications légitimes qui détiennent `SEND_SMS`), les faux positifs réels (navigateur avec DNS chiffré,
-  première sauvegarde de photos, appel vidéo, client de messagerie non listé, nouvelle application de montre ou gestionnaire de mots
-  de passe), le bruit par jour, l'effet de la mise en sourdine, l'affichage de « Non surveillé ici ».
+- [ ] **V59. Consumption of the permanent command channel.** *Test*: 24 hours on Wi-Fi then on mobile network (Settings
+  › Battery; `adb shell dumpsys batterystats`), compared with "Periodic polling" mode. *Note*: Watchpost's share; if
+  it is high, try a longer server keep-alive (`WATCHPOST_CMD_KEEPALIVE_S`, **240 s at most**) or polling.
+- [ ] **V60. Receiving a command in Doze.** *Test*: screen off for more than an hour (or `adb shell dumpsys deviceidle
+  force-idle`), issue `ring`. *Note*: the reception delay (the connection must stay open thanks to the foreground
+  service).
+- [ ] **V61. Remote ringing.** *Test*: `ring` in silent mode, vibrate mode and "Do Not Disturb" (with and without
+  alarms allowed); "Stop" button on the lock screen; alarm volume restored afterwards. *Note*: `dnd_alarms_muted`.
+- [ ] **V62. `locate` and channel reconnection.** *Test*: "Locate now" in the three location modes, indoors and
+  outside; reconnection after a Wi-Fi ↔ mobile switch, airplane mode, server restart; behaviour after the device is
+  revoked ("refused by the server", no more attempts). *Note*: `no_fix`, delays.
+- [ ] **V63. Notification companion: Play Protect and installation.** *Test*: `install-notifier` (guide 03, §17).
+  *Note*: any Play Protect alert (exact text; is the agent affected?), "Same signing key as the Watchpost agent"
+  displayed, `INSTALL_FAILED_DUPLICATE_PERMISSION`.
+- [ ] **V64. The companion's notification access.** *Test*: `notifier-access`; does `cmd notification allow_listener`
+  work on One UI 8/9; does the "Restricted setting" switch appear. *Note*: the script's output and the real path in
+  Settings.
+- [ ] **V65. Survival of the companion's listener service.** *Test*: 24 hours, reboot, update, force stop; "Never
+  sleeping apps". *Note*: does the companion show "service connected"; the channel when the agent is killed or being
+  updated ("not delivered" increases, no error) and the agent being started by the companion's call; the agent's
+  reading of `enabled_notification_listeners`; "settings changed" broadcast received.
+- [ ] **V66. Real notification content.** *Test*: turn on "Notification content" for a few days. *Note*: content of
+  messengers, codes already masked by Android 15+, grouped notifications, daily volume (a few dozen expected);
+  wrongly masked items (years, amounts, postal codes); the sensitive applications of **your** phone missing from the
+  exclusion list.
+- [ ] **V67. Location modes "GPS + network" and "Fused".** *Test*: guide 03, §18; compare with "GPS only" indoors.
+  *Note*: `location.fix.provider`, fallback to GPS only if a provider is missing, battery.
+- [ ] **V68. Default applications (`app.role`).** *Test*: change browser, keyboard, SMS app; console › Security ›
+  Default roles and `app.special_access.default_apps`. *Note*: the roles that can be read (the assistant and autofill
+  are **not guaranteed**: an absent value means "unknown"), the absence of an event at the first reading.
+- [ ] **V69. Risk profile (`app.risk`).** *Test*: console › Apps › Risk; compare a few scores with reality,
+  **especially parental-control, automation, antivirus and caller-identification applications if you have any**
+  (expected "high"). *Note*: a legitimate application that is "high", an application that should be and is not, the
+  number of events of the first pass (about a hundred expected), "granted" versus "requested".
+- [ ] **V70. `app.ops` counters (experimental): to be considered absent until seen.** *Test*: guide 08, §5:
+  does `adb shell dumpsys appops --history --op SEND_SMS` produce `[bg-s] = access=N` lines; is `Debug.dumpService`
+  refused by SELinux? size of a reading (a few hundred KiB); does sending an SMS from Messages increment `SEND_SMS`
+  for *its* package; does a send blocked by the guard appear (`rejected_count`)? *Note*: does the collector declare
+  itself "unavailable" (and its reason).
+- [ ] **V71. Detections on a real phone.** *Test*: one week. *Note*: the number of `sms_permission` from the **initial
+  review** (legitimate applications that hold `SEND_SMS`), the real false positives (browser with encrypted DNS,
+  first photo backup, video call, unlisted mail client, new watch application or password manager), the noise per
+  day, the effect of muting, the display of "Not monitored here".
 
-### Points « plausibles à vérifier sur appareil » issus de la revue de l'application
+### "Plausible to verify on a device" points from the application review
 
-Ces huit points sont des hypothèses du code que rien n'a confirmées ; plusieurs recoupent des cases ci-dessus, la formulation
-ci-dessous est celle de la revue.
+These eight points are assumptions of the code that nothing has confirmed; several overlap with boxes above, the
+wording below is that of the review.
 
-- [ ] **V72. Masquage et suspension réels sur One UI, et ce qu'Android défait au retrait du rôle.** *Test* : appliquer un paquet masqué
-  et un paquet suspendu ; lancer `remove-device-owner` **après** « Tout rétablir » (V7), puis, sur un second essai à vide avec un
-  paquet encore masqué, le retrait par `dpm remove-active-admin` (V8) : le paquet est-il réaffiché par Android ? `adb shell pm unhide
-  <paquet>` est-il refusé (permission `MANAGE_USERS`) ? *Noter* : la sortie de chaque commande et `dumpsys package <paquet>`
-  (ligne `User 0:`, champs `hidden` et `suspended`).
-- [ ] **V73. `am broadcast` du shell vers l'issue de secours.** *Test* : V5, écran allumé, éteint, puis après redémarrage avant et
-  après déverrouillage. *Noter* : la sortie brute d'`am broadcast` (`result=…, data=…`).
-- [ ] **V74. Room sur le SQLite du système.** *Test* : tuer le processus de Vigie (Paramètres › Applications › Vigie ; « Forcer
-  l'arrêt » est normalement grisé en Device Owner), redémarrer le téléphone, couper le réseau une heure. *Noter* : le tampon
-  survit-il (Journal local › « En attente »), la séquence `seq` reste-t-elle continue (aucune alerte de trou de séquence).
-- [ ] **V75. TLS client avec une clé de l'Android Keystore.** *Test* : V42. *Noter* : « Connexion réussie » avant et après
-  redémarrage ; toute erreur de poignée de main.
-- [ ] **V76. Survie du service 24 h** : V39.
-- [ ] **V77. `no_usb_file_transfer` laisse-t-il ADB ? et `no_cellular_2g` coché par défaut en zone 2G seule.** *Test* : appliquer
-  « Interdire le transfert de fichiers USB » (profil strict, décoché par défaut) puis `adb devices`, `adb shell` et
-  `push-enrollment` ; appliquer « Interdire la 2G » (coché par défaut dans l'équilibré) et se rendre, si possible, dans une zone sans
-  4G/5G. *Noter* : ADB reste-t-il utilisable, le téléphone garde-t-il un réseau pour les appels (les urgences restent permises).
-- [ ] **V78. Balayage BLE continu et consommation GNSS.** *Test* : une journée complète avec le collecteur Traceurs actif puis
-  inactif ; le GNSS retombe à la cadence lente après 5 minutes sans position (intérieur). *Noter* : part de batterie de Vigie
-  (Paramètres › Batterie) dans chaque cas.
-- [ ] **V79. Faux `agent.tamper` `force_stop`** si « Entretien de l'appareil » Samsung (optimisation, nettoyage de la mémoire,
-  mise en veille profonde) arrête l'application. *Test* : lancer l'optimisation de l'Entretien de l'appareil, puis consulter
-  Sécurité › Journal / Alertes. *Noter* : alerte reçue ou non, état de l'agent après.
+- [ ] **V72. Real hiding and suspension on One UI, and what Android undoes when the role is removed.** *Test*: apply a
+  hidden package and a suspended package; run `remove-device-owner` **after** "Restore everything" (V7), then, in a
+  second empty trial with a package still hidden, removal through `dpm remove-active-admin` (V8): does Android show
+  the package again? is `adb shell pm unhide <package>` refused (permission `MANAGE_USERS`)? *Note*: the output of each
+  command and `dumpsys package <package>` (line `User 0:`, fields `hidden` and `suspended`).
+- [ ] **V73. Shell `am broadcast` to the rescue.** *Test*: V5, screen on, off, then after a reboot before and after
+  unlocking. *Note*: the raw output of `am broadcast` (`result=…, data=…`).
+- [ ] **V74. Room on the system's SQLite.** *Test*: kill Watchpost's process (Settings › Apps › Watchpost; "Force stop"
+  is normally greyed out for a Device Owner), reboot the phone, cut the network for an hour. *Note*: does the buffer
+  survive (Local event log › "Pending"), does the `seq` sequence stay continuous (no sequence-gap alert).
+- [ ] **V75. Client TLS with an Android Keystore key.** *Test*: V42. *Note*: "Connection successful" before and after a
+  reboot; any handshake error.
+- [ ] **V76. Service survival for 24 h**: V39.
+- [ ] **V77. Does `no_usb_file_transfer` leave ADB alone? and `no_cellular_2g` ticked by default in a 2G-only area.**
+  *Test*: apply "Forbid USB file transfer" (strict profile, unticked by default) then `adb devices`, `adb shell` and
+  `push-enrollment`; apply "Forbid 2G" (ticked by default in balanced) and go, if possible, to an area with no 4G/5G.
+  *Note*: does ADB remain usable, does the phone keep a network for calls (emergency calls remain allowed).
+- [ ] **V78. Continuous BLE scanning and GNSS consumption.** *Test*: a full day with the Trackers collector on then
+  off; the GNSS falls back to the slow cadence after 5 minutes without a position (indoors). *Note*: Watchpost's share
+  of battery (Settings › Battery) in each case.
+- [ ] **V79. False `agent.tamper` `force_stop`** if Samsung's "Device care" (optimization, memory cleaning, deep sleep)
+  stops the application. *Test*: run Device care's optimization, then look at Security › Log / Alerts. *Note*: alert
+  received or not, the agent's state afterwards.
 
-## Niveau 4 — Serveur et console avec de vraies données
+## Level 4 — Server and console with real data
 
-Les cinq premières cases viennent du guide 01 (section 9).
+The first five boxes come from guide 01 (section 9).
 
-- [ ] **V80. Let's Encrypt** réel (console, ingestion, `dns.…`) : `curl` et `openssl s_client` du guide 01. *Noter* : échecs de validation
-  éventuels.
-- [ ] **V81. Listes de blocage HaGeZi** téléchargées par AdGuard (nombre de règles non nul) et **résolution amont par Quad9**.
-- [ ] **V82. Mémoire avec les listes chargées** : `free -h`, `sudo docker stats --no-stream` après 24 heures. *Noter* : mémoire d'AdGuard
-  (≈ 300 Mo attendus), swap utilisé, conteneur redémarré.
-- [ ] **V83. Port 853 depuis plusieurs réseaux mobiles et Wi-Fi.** *Noter* : lesquels bloquent le DNS sur TLS.
-- [ ] **V84. Premier renouvellement Let's Encrypt** (environ 60 jours) : dates du certificat avant et après ; AdGuard le recharge
-  sans redémarrer.
-- [ ] **V85. Restauration sur un serveur neuf** (jamais essayée ; seule la restauration sur place a été vérifiée) :
-  `restore.sh` sur un VPS vierge ; le téléphone enrôlé est accepté.
-- [ ] **V86. Tuiles de carte réelles** (OpenStreetMap par défaut) : la carte de la console s'affiche-t-elle ?
-- [ ] **V87. Volume réel** après une à deux semaines : événements par jour, croissance du disque (`df -h /var/lib/docker`),
-  fluidité de la console et de Wazuh, nombre d'alertes par jour (bruit).
-- [ ] **V88. Tableaux de bord Wazuh avec de vraies données** : alertes, carte des positions (le fond de carte est tiers).
-- [ ] **V89. Options non essayées** (facultatif) : mode ClientID avec joker DNS-01, WireGuard.
+- [ ] **V80. Real Let's Encrypt** (console, ingestion, `dns.…`): the `curl` and `openssl s_client` commands of guide
+  01. *Note*: possible validation failures.
+- [ ] **V81. HaGeZi blocking lists** downloaded by AdGuard (non-zero number of rules) and **upstream resolution through
+  Quad9**.
+- [ ] **V82. Memory with the lists loaded**: `free -h`, `sudo docker stats --no-stream` after 24 hours. *Note*:
+  AdGuard's memory (≈ 300 MB expected), swap used, restarted container.
+- [ ] **V83. Port 853 from several mobile networks and Wi-Fi networks.** *Note*: which ones block DNS over TLS.
+- [ ] **V84. First Let's Encrypt renewal** (about 60 days): certificate dates before and after; AdGuard reloads it
+  without restarting.
+- [ ] **V85. Restore on a new server** (never tried; only the restore in place was verified): `restore.sh` on a blank
+  VPS; the enrolled phone is accepted.
+- [ ] **V86. Real map tiles** (OpenStreetMap by default): does the console's map display?
+- [ ] **V87. Real volume** after one to two weeks: events per day, disk growth (`df -h /var/lib/docker`), smoothness
+  of the console and Wazuh, number of alerts per day (noise).
+- [ ] **V88. Wazuh dashboards with real data**: alerts, map of positions (the base map is a third party's).
+- [ ] **V89. Options not tried** (optional): ClientID mode with a DNS-01 wildcard, WireGuard.
 
-- [ ] **V90. Notifications d'alerte réelles.** *Test* : `VIGIE_NOTIFY_*` dans `infra/.env` (guide 05, §3), puis `install.sh` ; un vrai
-  serveur ntfy ; un relais SMTP avec TLS et authentification ; seuil abaissé à 8 pour recevoir « permission SMS accordée ».
-  *Noter* : réception, absence de contenu de notification dans le message, délai.
-- [ ] **V91. Page Pistage avec le vrai AdGuard et les vraies listes** (dont Multi PRO, non servies lors des essais). *Test* :
-  Bloquer et Autoriser un domaine, changer de niveau, `install.sh --profile`. *Noter* : l'effet sur le téléphone (requête DoT
-  avant/après), le décompte bloqué/autorisé complet avec un téléphone réel (la lecture du journal d'AdGuard par le collecteur a été corrigée après
-  un essai où elle en sautait ; `server/collector/README.md`, « Lecture »), la cohérence du niveau affiché.
-- [ ] **V92. Tableau de bord Wazuh « Vigie — détections et applications »** : affichage dans un navigateur (jamais regardé) et
-  règles de corrélation (13) avec de vraies détections.
-- [ ] **V93. `update.sh` sur un vrai serveur** (reconstruction depuis les registres d'images, jamais essayée).
+- [ ] **V90. Real alert notifications.** *Test*: `WATCHPOST_NOTIFY_*` in `infra/.env` (guide 05, §3), then
+  `install.sh`; a real ntfy server; an SMTP relay with TLS and authentication; threshold lowered to 8 to receive "SMS
+  permission granted". *Note*: reception, absence of notification content in the message, delay.
+- [ ] **V91. Tracking page with the real AdGuard and the real lists** (including Multi PRO, not served during the
+  trials). *Test*: Block and Allow a domain, change level, `install.sh --profile`. *Note*: the effect on the phone (DoT
+  query before/after), the complete blocked/allowed count with a real phone (the collector's reading of AdGuard's log
+  was fixed after a trial where it skipped some; `server/collector/README.md`, "Reading"), the consistency of the
+  level displayed.
+- [ ] **V92. Wazuh dashboard "Watchpost — detections and apps"**: display in a browser (never looked at) and
+  correlation rules (13) with real detections.
+- [ ] **V93. `update.sh` on a real server** (rebuild from the image registries, never tried).
 
-## Fiche de rapport à transmettre à Claude Code
+## Report template
 
-Pour chaque case en échec ou différente de l'attendu, rapportez :
+For each box that failed or differs from what was expected, report:
 
-1. l'identifiant (V16…) et ce que vous attendiez ;
-2. ce qui s'est passé : message exact ou capture d'écran, heure ;
-3. le contexte : version d'Android et de One UI, version de Vigie, mode (Device Owner ou non), profil appliqué et éléments cochés ;
-4. les traces :
-   - **sur le téléphone** : le « Journal des actions » de l'écran Politique et l'onglet Journal local de Vigie ;
-   - **depuis le PC** : `adb logcat -d | grep -i -E "vigie|AndroidRuntime"` (PowerShell : `adb logcat -d | Select-String -Pattern 'vigie|AndroidRuntime'`) ;
-   - **dans la console** : le détail JSON de l'événement concerné (page Événements, touchez l'événement) ;
-   - **sur le serveur** : `sudo docker compose logs --since 1h collector caddy adguardhome` (dossier `infra`).
+1. the identifier (V16…) and what you expected;
+2. what happened: exact message or screenshot, time;
+3. the context: Android and One UI version, Watchpost version, mode (Device Owner or not), profile applied and items
+   ticked;
+4. the traces:
+   - **on the phone**: the Policy screen's "Action log" and Watchpost's Local event log tab;
+   - **from the PC**: `adb logcat -d | grep -i -E "watchpost|AndroidRuntime"` (PowerShell:
+     `adb logcat -d | Select-String -Pattern 'watchpost|AndroidRuntime'`);
+   - **in the console**: the JSON detail of the event concerned (Events page, tap the event);
+   - **on the server**: `sudo docker compose logs --since 1h collector caddy adguardhome` (`infra` folder).
 
-Ne joignez **jamais** de fichier `.vigie`, de contenu de `infra/.env`, `infra/secrets/` ou de keystore.
+**Never** attach a `.watchpost` file, the contents of `infra/.env`, `infra/secrets/` or a keystore.

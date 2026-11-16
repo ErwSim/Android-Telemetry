@@ -1,396 +1,396 @@
-# 05 — Exploitation
+# 05 — Operations
 
-Ce guide dit comment vivre avec Vigie une fois installé : lire la console (dont les pages Détections, Pistage et Commandes),
-comprendre les alertes Wazuh, utiliser AdGuard Home, mettre à jour, et savoir quand l'agent a cessé d'émettre. Il suppose les
-guides 01 à 03 faits. La question « suis-je protégé contre un logiciel qui envoie des SMS à mon insu ? » a son propre guide :
-le [guide 08](08-sms-et-logiciels-malveillants.md).
+This guide says how to live with Watchpost once it is installed: reading the console (including the Detections,
+Tracking and Commands pages), understanding the Wazuh alerts, using AdGuard Home, updating, and knowing when the agent
+has stopped sending. It assumes guides 01 to 03 are done. The question "am I protected against software that sends
+SMS without my knowledge?" has its own guide: [guide 08](08-sms-and-malware.md).
 
-> **Statut de vérification.** La console, Wazuh et AdGuard ont été essayés avec des données **simulées** (le simulateur du
-> collecteur) et jamais avec un vrai téléphone. Les « faux positifs attendus » ci-dessous sont **déduits de la logique des
-> règles**, pas observés : adaptez-les à ce que vous verrez réellement (guide 06).
+> **Verification status.** The console, Wazuh and AdGuard were tried with **simulated** data (the collector's
+> simulator) and never with a real phone. The "expected false positives" below are **deduced from the logic of the
+> rules**, not observed: adapt them to what you actually see (guide 06).
 
-## 1. Rythme conseillé
+## 1. Recommended rhythm
 
-| Quand | Quoi |
+| When | What |
 |---|---|
-| Chaque jour (une minute) | console › Vue d'ensemble : dernier contact, **bandeau de détections** (« Rien à signaler » ou le nombre de détections par gravité), alertes ; sans notification configurée (§3), **rien ne vous prévient** |
-| Chaque semaine | console › Alertes (7 jours) et Sécurité › Posture ; journal des requêtes d'AdGuard (domaines bloqués inattendus) ; espace disque du VPS |
-| Chaque mois | `sudo ./backup.sh` + copie chiffrée hors serveur ; mises à jour du système du VPS ; relecture de l'inventaire d'applications |
-| Chaque semestre | `sudo ./update.sh` (images épinglées) ; test de restauration d'une sauvegarde ; vérifier que la sauvegarde du keystore est lisible |
-| Avant l'échéance (2 ans) | renouveler le certificat client du téléphone (§8) ; `sudo ./enroll.sh --list` signale « à renouveler » sous 30 jours |
+| Every day (one minute) | console › Overview: last contact, **detections banner** ("Nothing to report" or the number of detections by severity), alerts; without notifications configured (§3), **nothing warns you** |
+| Every week | console › Alerts (7 days) and Security › Posture; AdGuard's query log (unexpected blocked domains); the VPS's disk space |
+| Every month | `sudo ./backup.sh` + an encrypted copy off the server; VPS system updates; review of the application inventory |
+| Every six months | `sudo ./update.sh` (pinned images); a test restore of a backup; check that the keystore backup is readable |
+| Before the expiry (2 years) | renew the phone's client certificate (§8); `sudo ./enroll.sh --list` flags "renew" within 30 days |
 
-## 2. La console Vigie
+## 2. The Watchpost console
 
-`https://console.<votre domaine>`. Session de 12 heures d'inactivité ; limitation des essais de mot de passe. En haut :
-le **sélecteur d'appareil**, un **point vert/rouge « dernier contact »** (vert si moins de 35 minutes : deux battements
-manqués de 15 minutes plus une marge), le thème, la déconnexion. Chaque page propose une période (sélecteur) et un bouton
-« Actualiser ».
+`https://console.<your domain>`. Session of 12 hours of inactivity; password attempts are rate-limited. At the top:
+the **device selector**, a **green/red "last contact" dot** (green if less than 35 minutes: two missed 15-minute
+heartbeats plus a margin), the theme, log out. Each page offers a period (selector) and a "Refresh" button.
 
-| Page | Ce que vous y voyez |
+| Page | What you see there |
 |---|---|
-| **Vue d'ensemble** | en tête, le **bandeau de détections** (§2.1) ; « État de l'appareil » : dernier contact, batterie, tampon en attente, Device Owner, version de l'agent, événements perdus, état de chaque collecteur, état du canal de commandes ; dernière position ; posture de sécurité (résumé) ; activité des 24 dernières heures ; derniers événements de sévérité 2 ou plus ; dernières alertes Wazuh. Un bandeau d'avertissement s'affiche si aucun contact depuis plus de 35 minutes. |
-| **Détections** | les verdicts expliqués du collecteur (§2.1) : une carte par détection |
-| **Carte** | trace des positions sur la période, point sélectionné, résumé, et **trous de données** (« téléphone éteint » ou « pas de fix » : la carte croise la trace avec l'activité). Les positions viennent du GPS et du fournisseur passif : en intérieur, il peut y avoir peu de points. **Le fond de carte est chargé depuis les tuiles OpenStreetMap par défaut : OpenStreetMap voit votre adresse IP et les zones que vous consultez** (§9). |
-| **Événements** | tous les événements, filtrables par sévérité (0 info à 3 critique), par texte (paquet, domaine, SSID…) et par type (préfixes séparés par des virgules, ex. `net.,security.log`). Touchez un événement pour voir toutes ses données. |
-| **Réseau** | « Part Google / Samsung » (DNS et applications), noms DNS les plus demandés, destinations (connexions), applications les plus actives, **volumes de données par application**, chronologie. Les noms DNS et les connexions **par application** viennent du journal réseau du Device Owner : ils arrivent par lots (jusqu'à 1 h 30 de retard) et ne couvrent pas l'UDP/QUIC ni les IP codées en dur. |
-| **Pistage** | qu'est-ce qui est bloqué ou autorisé, vers qui, depuis quelle application, et que faire (§2.2) |
-| **Applications** | onglets **Risque** (§2.4, le premier), Inventaire (état, installateur, permissions dangereuses, mises à jour ; « Hors store » = installée hors Play Store/Galaxy Store ; filtres Désactivées, Suspendues, Masquées), **Opérations sensibles** (`app.ops`, expérimental : vide tant que ce collecteur ne fonctionne pas), Permissions dangereuses, **Accès spéciaux** (accessibilité, écoute des notifications, administrateurs, superposition, sources inconnues, accès à l'utilisation, VPN, applications par défaut), Notifications (compagnon), Historique. Une **fiche d'application** (depuis le risque, l'inventaire, les détections) réunit profil, rôles, détections, permissions, opérations, domaines contactés et historique d'installation. |
-| **Commandes** | commandes à distance (§2.3) |
-| **Sécurité** | onglets Posture (état courant et historique des changements), **Rôles par défaut** (appli SMS, composeur, clavier, accueil, navigateur : état et historique des changements), Journal système (`security.log`), Caméra et micro, Déverrouillages (échecs), Certificats d'AC (ajoutées par l'utilisateur), Cellulaire et BLE (2G, traceurs), Politique appliquée (`security.policy`). |
-| **Alertes** | alertes Wazuh sur la période, filtrables par niveau. « Wazuh non configuré » signifie que le collecteur ne joint pas l'indexeur (anormal avec cette installation : `sudo docker compose logs collector`). |
+| **Overview** | at the top, the **detections banner** (§2.1); "Device state": last contact, battery, buffer waiting, Device Owner, agent version, lost events, state of each collector, state of the command channel; last position; security posture (summary); activity over the last 24 hours; latest events of severity 2 or more; latest Wazuh alerts. A warning banner appears if there has been no contact for more than 35 minutes. |
+| **Detections** | the collector's explained verdicts (§2.1): one card per detection |
+| **Map** | trace of positions over the period, selected point, summary, and **data gaps** ("phone off" or "no fix": the map cross-references the trace with activity). Positions come from the GPS and the passive provider: indoors, there may be few points. **The base map is loaded from OpenStreetMap tiles by default: OpenStreetMap sees your IP address and the areas you look at** (§9). |
+| **Events** | all the events, filterable by severity (0 info to 3 critical), by text (package, domain, SSID…) and by type (prefixes separated by commas, e.g. `net.,security.log`). Tap an event to see all its data. |
+| **Network** | "Google / Samsung share" (DNS and applications), most requested DNS names, destinations (connections), most active applications, **data volumes per application**, timeline. The DNS names and connections **per application** come from the Device Owner's network log: they arrive in batches (up to 1 h 30 late) and do not cover UDP/QUIC or hard-coded IPs. |
+| **Tracking** | what is blocked or allowed, towards whom, from which application, and what to do (§2.2) |
+| **Apps** | tabs **Risk** (§2.4, the first), Inventory (state, installer, dangerous permissions, updates; "Outside a store" = installed from outside the Play Store/Galaxy Store; filters Disabled, Suspended, Hidden), **Sensitive operations** (`app.ops`, experimental: empty as long as that collector does not work), Dangerous permissions, **Special access** (accessibility, notification listeners, administrators, overlay, unknown sources, usage access, VPN, default apps), Notifications (companion), History. An **application sheet** (from the risk tab, the inventory, the detections) gathers profile, roles, detections, permissions, operations, domains contacted and installation history. |
+| **Commands** | remote commands (§2.3) |
+| **Security** | tabs Posture (current state and history of changes), **Default roles** (SMS app, dialer, keyboard, home, browser: state and history of changes), System log (`security.log`), Camera and microphone, Unlocks (failures), CA certificates (added by the user), Cellular and BLE (2G, trackers), Applied policy (`security.policy`). |
+| **Alerts** | Wazuh alerts over the period, filterable by level. "Wazuh not configured" means that the collector cannot reach the indexer (abnormal with this installation: `sudo docker compose logs collector`). |
 
-Limites à garder en tête : les statistiques « top » et chronologies horaires sont alignées sur des heures UTC pleines ; un
-événement tardif modifie des compteurs d'heures déjà passées ; la console n'affiche pas les événements plus vieux que la
-rétention (§7).
+Limits to keep in mind: the "top" statistics and hourly timelines are aligned on whole UTC hours; a late event
+changes counters of hours already past; the console does not display events older than the retention (§7).
 
-### 2.1 La page Détections et le bandeau de verdict
+### 2.1 The Detections page and the verdict banner
 
-Une **détection** est un verdict expliqué calculé par le collecteur sur les données reçues (« l'application X a fait Y, voici
-pourquoi c'est suspect, ce que ça peut avoir d'innocent, que faire »). Une carte montre : gravité, type, application (nom et paquet),
-heure, une phrase de ce qui a été observé, les preuves, puis (dépliable) pourquoi c'est suspect, les explications innocentes, que
-faire, des liens (fiche de l'application, domaines dans Pistage, trafic dans Réseau, Caméra et micro) et le rappel de la **garde**
-qui répond au risque : les gardes ne se règlent **que sur le téléphone**. Filtres : type, gravité, période. Les nouvelles détections
-arrivent en direct ; une détection **par application, par type et par jour** (24 h après l'installation pour une application
-nouvelle), mise à jour sur place.
+A **detection** is an explained verdict computed by the collector from the data received ("application X did Y, here
+is why it is suspicious, what may be innocent about it, what to do"). A card shows: severity, type, application (name
+and package), time, a sentence on what was observed, the evidence, then (expandable) why it is suspicious, the
+innocent explanations, what to do, links (application sheet, domains in Tracking, traffic in Network, Camera and
+microphone) and a reminder of the **guard** that answers the risk: guards are set **only on the phone**. Filters:
+type, severity, period. New detections arrive live; one detection **per application, per type and per day** (24 h
+after installation for a new application), updated in place.
 
-**Le bandeau de verdict dit la vérité** : « Rien à signaler » n'est pas une garantie. Il rappelle toujours ce qui est surveillé
-(permission d'envoi de SMS détenue, changement d'appli SMS par défaut, domaines de menaces, gros envois, connexions, nouvelles
-applications à risque), affiche « **Non surveillé ici** » pour l'envoi de SMS eux-mêmes et l'usage du micro et de la caméra en
-arrière-plan tant que le collecteur expérimental « Usage des opérations sensibles » n'est pas « en marche », et rappelle que **la garde
-SMS de l'application est la vraie protection**. Les détections sont des **indices**, pas des preuves.
+**The verdict banner tells the truth**: "Nothing to report" is not a guarantee. It always recalls what is monitored
+(SMS-sending permission held, change of default SMS app, threat domains, large uploads, connections, new risky
+applications), shows "**Not monitored here**" for the sending of SMS themselves and for background microphone and
+camera use as long as the experimental "Sensitive operations usage" collector is not "running", and recalls that **the
+application's SMS guard is the real protection**. Detections are **hints**, not proof.
 
-| Détection | Quand | Que faire | Faux positifs prévisibles |
+| Detection | When | What to do | Predictable false positives |
 |---|---|---|---|
-| `threat_domain` | une application a demandé un domaine bloqué par une liste de **menaces** (hameçonnage, maliciels, serveurs de commande) | identifier l'application (page Réseau, Pistage), la désinstaller ou la mettre en quarantaine ; navigateur : lien d'hameçonnage suivi, vérifier qu'aucun mot de passe n'a été saisi ; **ne jamais autoriser** le domaine | un navigateur qui a suivi un lien (gravité réduite) |
-| `sms_permission` | une application ni appli SMS ni du système **détient** `SEND_SMS` | savoir pourquoi ; sinon retirer la permission ou désinstaller ; garde SMS (guide 08) | **revue initiale** : messagerie vocale visuelle, application d'opérateur, montre connectée, vérification de numéro |
-| `default_app_changed` | l'appli SMS (3), composeur, clavier ou assistant par défaut a changé | si ce n'est pas vous : remettre votre application, désinstaller l'intruse (guide 04, cas E) | nouvelle messagerie ou nouveau clavier que **vous** avez choisis |
-| `new_app_risky` | une application installée depuis moins de 24 h est à risque élevé ou obtient une capacité sensible | vérifier que l'installation est voulue ; sinon désinstaller | **tout** nouvel outil légitime qui obtient une capacité suivie : VPN, gestionnaire de mots de passe (accessibilité), **nouvelle application de montre** (notifications), nouvelle appli SMS ; contrôle parental, antivirus, automatisation |
-| `sms_abuse` | (avec `app_ops`) envoi, ou tentative refusée, de SMS par une autre application que l'appli SMS, ou volume > 200 par jour | garde SMS, désinstaller, facture de l'opérateur | messagerie vocale visuelle, application de montre |
-| `sensor_background` | (avec `app_ops`) micro ou caméra en arrière-plan au-delà d'un seuil | retirer micro et caméra, désinstaller ; si l'application est administrateur, retirer ce droit d'abord | un enregistreur ou une application de visio laissé actif |
-| `upload_spike` | envoi massif de données en une heure (> 1 Gio et > 10 × la médiane) | sauvegarde ou vidéo : rien ; sinon (galerie « coffre », application inconnue) exfiltration possible : désinstaller, changer les mots de passe exposés | **première sauvegarde de photos**, sauvegarde vers Drive, **appel vidéo HD d'une heure** (≈ 1,3 Gio), partage de connexion |
-| `fanout` | des centaines d'adresses distinctes contactées en une heure (300, 100 écran éteint) | relais ou proxy (votre connexion revendue) : désinstaller | podcasts ou flux RSS rafraîchis la nuit, client BitTorrent, navigation très dense |
-| `mail_ports` | une application qui n'est pas un client de messagerie connu se connecte aux ports 25, 465 ou 587 | spam envoyé depuis le téléphone : désinstaller | **client de messagerie non listé** (ex. Yandex Mail) : l'ajouter (`VIGIE_DETECT_MAIL_CLIENTS`) |
-| `dns_bypass` | une application se connecte à un résolveur DNS public (ports 443, 853) : elle échappe au filtrage | navigateur avec « DNS sécurisé » : le désactiver, ou exempter l'application | **navigateur avec DNS chiffré** (Firefox, Chrome), Telegram, applications VPN, Tailscale : une par application et par jour, indéfiniment |
-| `inventory_mismatch` | une application déclarée « système » alors que son installateur dit le contraire (alerte Wazuh 100481, niveau 12) | sérieux : l'agent ou l'appareil peut mentir ; regarder l'état de l'agent et la posture | — (non masquable) |
-| `flood` | plus de 200 détections dans la journée pour un appareil | données incohérentes ou appareil compromis : regarder l'agent et la posture | — (non masquable) |
+| `threat_domain` | an application requested a domain blocked by a **threat** list (phishing, malware, command servers) | identify the application (Network, Tracking pages), uninstall it or quarantine it; browser: phishing link followed, check that no password was typed; **never allow** the domain | a browser that followed a link (reduced severity) |
+| `sms_permission` | an application that is neither the SMS app nor a system one **holds** `SEND_SMS` | find out why; otherwise remove the permission or uninstall; SMS guard (guide 08) | **initial review**: visual voicemail, carrier application, connected watch, number verification |
+| `default_app_changed` | the default SMS app (3), dialer, keyboard or assistant changed | if it was not you: put your application back, uninstall the intruder (guide 04, case E) | a new messenger or keyboard that **you** chose |
+| `new_app_risky` | an application installed less than 24 h ago is high risk or obtains a sensitive capability | check the installation was wanted; otherwise uninstall | **any** new legitimate tool that obtains a tracked capability: VPN, password manager (accessibility), **new watch application** (notifications), new SMS app; parental control, antivirus, automation |
+| `sms_abuse` | (with `app_ops`) sending, or a refused attempt, of SMS by an application other than the SMS app, or volume > 200 per day | SMS guard, uninstall, carrier bill | visual voicemail, watch application |
+| `sensor_background` | (with `app_ops`) microphone or camera in the background above a threshold | remove microphone and camera, uninstall; if the application is an administrator, remove that right first | a recorder or video-call application left running |
+| `upload_spike` | massive upload of data within an hour (> 1 GiB and > 10 × the median) | backup or video: nothing; otherwise (a "vault" gallery, an unknown application) possible exfiltration: uninstall, change the exposed passwords | **first photo backup**, backup to Drive, **an hour-long HD video call** (≈ 1.3 GiB), tethering |
+| `fanout` | hundreds of distinct addresses contacted within an hour (300, 100 with the screen off) | relay or proxy (your connection resold): uninstall | podcasts or RSS feeds refreshed at night, a BitTorrent client, very dense browsing |
+| `mail_ports` | an application that is not a known mail client connects to ports 25, 465 or 587 | spam sent from the phone: uninstall | **an unlisted mail client** (e.g. Yandex Mail): add it (`WATCHPOST_DETECT_MAIL_CLIENTS`) |
+| `dns_bypass` | an application connects to a public DNS resolver (ports 443, 853): it escapes filtering | browser with "secure DNS": turn it off, or exempt the application | **browser with encrypted DNS** (Firefox, Chrome), Telegram, VPN applications, Tailscale: one per application per day, indefinitely |
+| `inventory_mismatch` | an application declared "system" while its installer says otherwise (Wazuh alert 100481, level 12) | serious: the agent or the device may be lying; look at the agent's state and the posture | — (cannot be muted) |
+| `flood` | more than 200 detections in the day for a device | incoherent data or compromised device: look at the agent and the posture | — (cannot be muted) |
 
-**Mettre en sourdine.** Sur une détection (ou sur la fiche d'application), **« Ne plus signaler pour cette application »**, avec un
-motif facultatif. La confirmation le dit : la détection **reste calculée et enregistrée**, mais n'est **plus ni envoyée vers Wazuh ni
-notifiée**, et la console la replie (case « Afficher les détections en sourdine (N) ») ; elle ne compte pas dans le verdict. La
-carte « Sourdines en cours » liste les sourdines avec leur motif, qui et quand, et leur levée. **Non masquables** : `sms_abuse`,
-`default_app_changed`, `inventory_mismatch`, `flood`. Chaque sourdine et chaque levée est un événement (`detect.muted`,
-`detect.unmuted`, alerte Wazuh) : une sourdine que vous n'avez pas posée signale que quelqu'un a utilisé votre console (changez le
-mot de passe). Réglages globaux (seuils, applications exemptées, clients de messagerie) : variables `VIGIE_DETECT_*` dans
-`infra/.env`, voir `infra/README.md` §7.4, puis `sudo ./install.sh --yes`.
+**Muting.** On a detection (or on the application sheet), **"Stop reporting for this application"**, with an optional
+reason. The confirmation says it: the detection **stays computed and recorded**, but is **no longer sent to Wazuh nor
+notified**, and the console collapses it ("Show muted detections (N)" box); it does not count in the verdict. The
+"Active mutes" card lists the mutes with their reason, who and when, and their lifting. **Cannot be muted**:
+`sms_abuse`, `default_app_changed`, `inventory_mismatch`, `flood`. Every mute and every lifting is an event
+(`detect.muted`, `detect.unmuted`, Wazuh alert): a mute you did not set means that someone used your console (change
+the password). Global settings (thresholds, exempted applications, mail clients): `WATCHPOST_DETECT_*` variables in
+`infra/.env`, see `infra/README.md` §7.4, then `sudo ./install.sh --yes`.
 
-Une détection **récurrente** (même application et même type déjà signalés dans les 30 jours) est marquée « Déjà signalé,
-récurrent » et sa gravité est plafonnée à 1.
+A **recurring** detection (same application and same type already reported within 30 days) is marked "Already
+reported, recurring" and its severity is capped at 1.
 
-### 2.2 La page Pistage
+### 2.2 The Tracking page
 
-Elle répond à « qu'est-ce qui est bloqué ou autorisé, vers qui, depuis quelle application, et que fait-on ». Elle montre à qui le
-téléphone parle, combien et depuis quelle application, **jamais le contenu** (chiffré). Trois zones :
+It answers "what is blocked or allowed, towards whom, from which application, and what do we do about it". It shows
+whom the phone talks to, how much and from which application, **never the content** (encrypted). Three areas:
 
-- **Synthèse par éditeur** (Google, Samsung, Meta, Microsoft, Amazon, TikTok/ByteDance, publicité et mesure d'audience, autres) :
-  requêtes, bloquées, autorisées, domaines, applications, octets envoyés et reçus. **Les octets par éditeur et les décomptes
-  bloqué/autorisé par application sont des estimations** (répartition au prorata des requêtes DNS).
-- **Onglets Domaines et Applications** : chaque domaine avec son statut (bloqué, autorisé, mixte), le motif (liste responsable) et
-  les applications qui le demandent ; boutons **Bloquer**, **Autoriser** et **Remettre par défaut** (règle posée dans AdGuard, dans un
-  bloc géré par Vigie ; vos règles manuelles ne sont pas touchées). Les domaines indispensables (test de connectivité, notifications
-  push, mises à jour) ne se bloquent qu'après une confirmation qui dit ce que le blocage casserait (`409 essential_domain`).
-  **Autoriser** un domaine affaiblit le blocage : chaque action est un événement (`tracking.override` ; alerte Wazuh de niveau 8 pour une
-  autorisation, 3 pour un blocage).
-- **Niveau de blocage** : **Permissif** (flux de menaces et télémétrie évidente, aucune liste publicitaire générale : pour dépanner
-  une application récalcitrante), **Équilibré** (défaut), **Strict** (Multi PRO++ et listes strictes). Changer de niveau active
-  exactement les listes du niveau dans AdGuard ; l'abaisser est un affaiblissement (événement `tracking.level_changed`, alerte Wazuh
-  de niveau 8). L'équivalent en ligne de commande : `sudo ./install.sh --profile permissif|equilibre|strict --yes`. Le niveau
-  « en service » est l'état réel des listes d'AdGuard ; `install.sh` et `update.sh` le conservent.
-  **Ce niveau est indépendant du profil de l'application sur le téléphone.**
+- **Summary by publisher** (Google, Samsung, Meta, Microsoft, Amazon, TikTok/ByteDance, advertising and audience
+  measurement, others): requests, blocked, allowed, domains, applications, bytes sent and received. **The bytes per
+  publisher and the blocked/allowed counts per application are estimates** (distributed in proportion to DNS
+  requests).
+- **Domains and Apps tabs**: each domain with its status (blocked, allowed, mixed), the reason (responsible list) and
+  the applications that request it; **Block**, **Allow** and **Reset to default** buttons (a rule written in AdGuard,
+  in a block managed by Watchpost; your manual rules are not touched). Essential domains (connectivity check, push
+  notifications, updates) are blocked only after a confirmation that says what the block would break
+  (`409 essential_domain`). **Allowing** a domain weakens blocking: every action is an event (`tracking.override`;
+  Wazuh alert of level 8 for an allow, 3 for a block).
+- **Blocking level**: **Permissive** (threat feeds and obvious telemetry, no general advertising list: to troubleshoot
+  a stubborn application), **Balanced** (default), **Strict** (Multi PRO++ and strict lists). Changing the level turns
+  on exactly the level's lists in AdGuard; lowering it is a weakening (event `tracking.level_changed`, Wazuh alert of
+  level 8). The command-line equivalent: `sudo ./install.sh --profile permissive|balanced|strict --yes`. The level "in
+  force" is the actual state of AdGuard's lists; `install.sh` and `update.sh` keep it. **This level is independent of
+  the application's profile on the phone.**
 
-Si AdGuard est injoignable, la page le dit et désactive les actions (« adguard: false ») ; les agrégats déjà enregistrés restent
-affichés, avec un avertissement.
+If AdGuard is unreachable, the page says so and disables the actions ("adguard: false"); the aggregates already
+recorded remain displayed, with a warning.
 
-### 2.3 La page Commandes
+### 2.3 The Commands page
 
-Elle pilote le canal de commandes à distance (guide 03, §15). **Prérequis côté téléphone** : canal activé, code défini. La carte
-« Canal de commandes » dit si le téléphone est connecté (mode permanent) ou son dernier contact (interrogation).
+It drives the remote command channel (guide 03, §15). **Prerequisites on the phone side**: channel on, passphrase set.
+The "Command channel" card says whether the phone is connected (permanent mode) or its last contact (polling).
 
-- **Actions simples** (sans code, valables 1 heure) : Sonner (avec ou sans vibration), Vibrer, Arrêter la sonnerie, **Localiser
-  maintenant** (la position arrive par le flux et s'affiche sur la carte de la page et la page Carte).
-- **Actions sensibles** (code de commande, saisi à chaque fois, **jamais envoyé au serveur** : la clé est dérivée et la signature
-  calculée dans le navigateur) : Verrouiller avec message (valable 7 jours par défaut), Effacer le message.
-- **Zone dangereuse** : Effacer le téléphone, en trois étapes (explication et rappel que l'effacement doit être autorisé dans
-  l'application ; nom de l'appareil à retaper ; code). Valable 15 minutes par défaut, 24 heures au plus.
-- **Historique** (mis à jour en direct) : états en attente, remise, exécutée, échouée, refusée, expirée, annulée. Une commande
-  **remise puis expirée sans réponse** s'affiche « Expirée sans réponse : a pu être exécutée » ; seule une commande jamais remise est
-  dite « jamais exécutée ». **Annuler** n'engage que le serveur : une commande signée déjà remise reste exécutable jusqu'à son
-  expiration. Les limites sont de 20 commandes par heure et 10 en attente par appareil.
+- **Simple actions** (no passphrase, valid for 1 hour): Ring (with or without vibration), Vibrate, Stop ringing,
+  **Locate now** (the position arrives through the stream and is shown on the page's map and the Map page).
+- **Sensitive actions** (command passphrase, typed every time, **never sent to the server**: the key is derived and the
+  signature computed in the browser): Lock with a message (valid for 7 days by default), Clear the message.
+- **Danger zone**: Erase the phone, in three steps (an explanation and a reminder that erasing must be allowed in the
+  application; the device name to retype; the passphrase). Valid for 15 minutes by default, 24 hours at most.
+- **History** (updated live): states pending, delivered, executed, failed, refused, expired, cancelled. A command
+  **delivered and then expired with no reply** is shown as "Expired with no reply: may have been executed"; only a
+  command never delivered is called "never executed". **Cancel** binds only the server: a signed command already
+  delivered remains executable until it expires. The limits are 20 commands per hour and 10 pending per device.
 
-Un code faux est refusé par le **téléphone** (`bad_signature`) : la console ne peut pas le vérifier. WebCrypto exige HTTPS : sinon la
-page désactive les commandes sensibles. Si l'horloge de votre ordinateur est décalée de plus de 10 minutes, la création échoue
-(« horloge de cet ordinateur décalée »).
+A wrong passphrase is refused by the **phone** (`bad_signature`): the console cannot check it. WebCrypto requires
+HTTPS: otherwise the page disables the sensitive commands. If your computer's clock is off by more than 10 minutes,
+creation fails ("this computer's clock is off").
 
-**Tapez le code dans la console que vous ouvrez depuis un ordinateur de confiance.** La page est servie par le serveur : si vous
-doutez de lui, ne saisissez pas le code (guide 04, cas F). Une piste hors de ce dépôt : signer depuis une copie de la console gardée
-hors du serveur.
+**Type the passphrase in a console that you open from a trusted computer.** The page is served by the server: if you
+doubt it, do not enter the passphrase (guide 04, case F). A lead outside this repository: sign from a copy of the
+console kept off the server.
 
-### 2.4 L'onglet Risque (Applications)
+### 2.4 The Risk tab (Apps)
 
-Chaque application reçoit une note de 0 à 100 et un niveau (faible 0-29, moyen 30-69, élevé 70-100) d'après ses **capacités
-déclarées** (permissions demandées, composants, installateur, absence d'icône, démarrage au boot…), avec les raisons expliquées en
-français et « souvent légitime parce que… », et les combinaisons `combo_*` (cheval de Troie bancaire, fraude au SMS, logiciel
-espion) en rouge et en tête. « Accordée » ou « demandée, pas accordée » distingue l'intention de l'état. **C'est un indicateur
-d'attention, pas un verdict** : un **contrôle parental, un antivirus, une application d'automatisation ou d'identification d'appelant
-légitimes sortent « élevé »**, et un logiciel malveillant discret publié sur une boutique peut sortir « faible ». Les applications du
-système et Vigie sont plafonnées à « faible ». Le score reste élevé quand une garde empêche l'octroi.
+Every application receives a score from 0 to 100 and a level (low 0-29, medium 30-69, high 70-100) according to its
+**declared capabilities** (requested permissions, components, installer, absence of an icon, start at boot…), with
+the reasons explained and "often legitimate because…", and the `combo_*` combinations (banking trojan, SMS fraud,
+stalkerware) in red and at the top. "Granted" or "requested, not granted" tells intent from state. **It is an
+indicator of attention, not a verdict**: a legitimate **parental control, antivirus, automation or caller-identification
+application comes out "high"**, and a discreet piece of malware published on a store can come out "low". System
+applications and Watchpost are capped at "low". The score stays high when a guard prevents the grant.
 
-## 3. Les alertes Wazuh
+## 3. The Wazuh alerts
 
-Interface : `https://siem.<domaine>` (deux connexions, guide 01). Deux tableaux de bord sont fournis : **« Vigie — sécurité du
-téléphone »** (alertes dans le temps, par règle, par technique ATT&CK Mobile, liste, carte des positions) et **« Vigie —
-pistage et DNS »** (applications qui contactent la télémétrie, domaines bloqués, événements par type). Les alertes sont dans les
-index `wazuh-alerts-*` (niveau 3 et plus), **tous** les événements dans `wazuh-archives-*`. Un troisième tableau de bord,
-**« Vigie — détections et applications »**, montre les détections par type et application, les applications à risque moyen ou élevé,
-les refus et les actions des gardes. Champs utiles : `rule.level`,
-`rule.id`, `data.vigie.type`, `data.vigie.data.*`. Pour l'heure **réelle** d'un événement, utilisez `data.vigie.ts` : l'heure
-indexée (`@timestamp`) est celle de l'arrivée, et l'historique envoyé en différé arrive « d'un coup ».
+Interface: `https://siem.<domain>` (two logins, guide 01). Three dashboards are provided: **"Watchpost — phone
+security"** (alerts over time, by rule, by ATT&CK Mobile technique, list, map of positions), **"Watchpost — tracking
+and DNS"** (applications that contact telemetry, blocked domains, events by type) and **"Watchpost — detections and
+apps"**, which shows detections by type and application, medium- or high-risk applications, the denials and the
+actions of the guards. The alerts are in the `wazuh-alerts-*` indices (level 3 and above), **all** events in
+`wazuh-archives-*`. Useful fields: `rule.level`, `rule.id`, `data.watchpost.type`, `data.watchpost.data.*`. For the
+**real** time of an event, use `data.watchpost.ts`: the indexed time (`@timestamp`) is the arrival time, and history
+sent late arrives "all at once".
 
-**Notifications (désactivées par défaut).** Tant que vous n'avez rien configuré, une alerte grave ne se voit qu'en ouvrant la
-console ou Wazuh. Pour être prévenu, renseignez dans `infra/.env` un webhook compatible ntfy et/ou un relais SMTP, puis
-`sudo ./install.sh --yes` :
+**Notifications (off by default).** As long as you have configured nothing, a serious alert is seen only by opening the
+console or Wazuh. To be warned, fill in `infra/.env` with an ntfy-compatible webhook and/or an SMTP relay, then
+`sudo ./install.sh --yes`:
 
-| Variable | Rôle |
+| Variable | Purpose |
 |---|---|
-| `VIGIE_NOTIFY_LEVEL` | niveau Wazuh minimal notifié (**10 par défaut**) ; le **silence de l'agent** (règle 100301) et la remise à zéro de séquence (100305) sont toujours notifiés |
-| `VIGIE_NOTIFY_URL` | webhook : `POST` d'un JSON `{"title","message","priority","tags"}` |
-| `VIGIE_NOTIFY_TOPIC` | sujet ntfy (avec ntfy, `VIGIE_NOTIFY_URL` est la racine du serveur, par exemple `https://ntfy.sh`) |
-| `VIGIE_NOTIFY_TOKEN` | jeton facultatif (`Authorization: Bearer …`) |
-| `VIGIE_NOTIFY_SMTP_HOST`, `_PORT` (587), `_TLS` (`starttls`, `tls` ou `none`), `_USER`, `_PASSWORD`, `_FROM`, `_TO` | e-mail par le relais SMTP de votre messagerie |
+| `WATCHPOST_NOTIFY_LEVEL` | minimum Wazuh level notified (**10 by default**); the **agent's silence** (rule 100301) and the sequence reset (100305) are always notified |
+| `WATCHPOST_NOTIFY_URL` | webhook: `POST` of a JSON `{"title","message","priority","tags"}` |
+| `WATCHPOST_NOTIFY_TOPIC` | ntfy topic (with ntfy, `WATCHPOST_NOTIFY_URL` is the root of the server, for example `https://ntfy.sh`) |
+| `WATCHPOST_NOTIFY_TOKEN` | optional token (`Authorization: Bearer …`) |
+| `WATCHPOST_NOTIFY_SMTP_HOST`, `_PORT` (587), `_TLS` (`starttls`, `tls` or `none`), `_USER`, `_PASSWORD`, `_FROM`, `_TO` | e-mail through your mail provider's SMTP relay |
 
-**Seuil** : 10 par défaut. Les alertes « permission SMS accordée » (100161) et « nouvelle appli SMS par défaut » (100511) sont de
-niveau 8 et **ne sont donc pas notifiées** par défaut : abaissez `VIGIE_NOTIFY_LEVEL` à **8** pour les recevoir (au prix de quelques
-alertes de plus ; guide 08). À ce seuil par défaut sont notifiés, entre autres : les domaines de menaces contactés, la fraude au SMS (`sms_abuse`), une
-permission SMS détenue par une autre appli (`sms_permission`), le changement d'appli SMS par défaut (`default_app_changed`), le micro
-ou la caméra en arrière-plan, une application récente qui obtient des capacités graves, le spam, le plafond de détections, les
-aggravations et les corrélations (13) ; le verrouillage et l'effacement demandés ou exécutés, une signature invalide, le canal
-verrouillé ; **pas** les pics d'envoi, l'éventail d'adresses, le contournement DNS, les mises à jour de détection ni les traces
-(`infra/README.md` §8.5). Le message contient le titre de la règle, le niveau, le nom de l'appareil, le type d'événement et les heures : jamais le journal
-brut, ni les données de l'événement (position, identifiants), ni un secret. **Il part chez un tiers** : avec ntfy, un sujet
-public est lisible par quiconque en connaît le nom, choisissez-le long et aléatoire, ou utilisez votre propre serveur ntfy avec
-jeton. `install.sh` indique à sa dernière ligne si les notifications sont actives. Vérifié avec un récepteur local (webhook et
-e-mail en clair) ; **SMTP avec TLS et authentification, et un vrai serveur ntfy, n'ont pas été testés** : faites un essai (par
-exemple en abaissant temporairement `VIGIE_NOTIFY_LEVEL` à 3, ce qui est une suggestion de ce guide, puis en le remettant). Les
-échéances de certificats d'appareils ne sont pas notifiées : `sudo ./enroll.sh --list`.
+**Threshold**: 10 by default. The alerts "SMS permission granted" (100161) and "new default SMS app" (100511) are level
+8 and are therefore **not notified** by default: lower `WATCHPOST_NOTIFY_LEVEL` to **8** to receive them (at the cost of
+a few more alerts; guide 08). At the default threshold the following are notified, among others: threat domains
+contacted, SMS fraud (`sms_abuse`), an SMS permission held by another app (`sms_permission`), the change of default SMS
+app (`default_app_changed`), microphone or camera in the background, a recent application that obtains serious
+capabilities, spam, the detection cap, escalations and correlations (13); lock and erase requested or executed, an
+invalid signature, the channel locked; **not** upload spikes, the address fan-out, DNS bypass, detection updates or
+traces (`infra/README.md` §8.5). The message contains the rule title, the level, the device name, the event type and
+the times: never the raw log, nor the event's data (position, identifiers), nor a secret. **It goes to a third
+party**: with ntfy, a public topic is readable by anyone who knows its name, so choose it long and random, or use your
+own ntfy server with a token. `install.sh` says on its last line whether notifications are active. Verified with a
+local receiver (webhook and plain e-mail); **SMTP with TLS and authentication, and a real ntfy server, have not been
+tested**: run a trial (for example by temporarily lowering `WATCHPOST_NOTIFY_LEVEL` to 3, which is a suggestion of this
+guide, then putting it back). Device certificate expiries are not notified: `sudo ./enroll.sh --list`.
 
-Familles de règles (identifiants 100100 à 100549 ; détail dans `infra/README.md` §7.2) et premier geste :
+Rule families (identifiers 100100 to 100549; details in `infra/README.md` §7.2) and first gesture:
 
-| Famille | Exemples (niveau) | Quoi faire |
+| Family | Examples (level) | What to do |
 |---|---|---|
-| **Agent** | altération `agent.tamper` (12), collecte ou envoi désactivé (5), tampon saturé (6), arrêt (3) | Vous en êtes-vous à l'origine (interrupteur, retrait, mise à jour) ? Sinon, regardez le détail (`kind` : `force_stop`, `permission_revoked`, `admin_disabled`, `device_owner_lost`…), vérifiez le téléphone, puis le journal système. |
-| **Absence** | aucun événement depuis 60 min (7), reprise (3), trous de séquence (6, ou 3 si expliqués par une purge), compteur revenu en arrière (8) | Téléphone éteint, hors réseau, DNS privé inaccessible (l'agent ne résout plus `ingest.…`), agent arrêté ? Voir §5. |
-| **Posture** (une alerte par champ modifié) | démarrage vérifié dégradé (12), chiffrement perdu (10), perte du Device Owner (10), DNS privé désactivé/non strict ou vers un hôte inattendu (10), ADB sans fil (9), verrouillage supprimé (8), ADB (7), sources inconnues (6), Play Protect (5), options développeur (4) | Un changement de réglage que vous n'avez pas fait est le signal important. Relisez Sécurité › Posture ; remettez le réglage ; en cas de DNS privé non strict, regardez s'il y a eu un repli (`security.policy` de sévérité 2). Correctif de sécurité de plus de 3 mois (6) ou 6 mois (9) : mettre à jour. |
-| **Capteurs** | micro ou caméra utilisés appareil verrouillé (10), micro hors appel (6) ou caméra (8) écran éteint, tout usage marqué (2) | Qui ? Vigie **ne le sait pas** : croisez avec `app.foreground` et le trafic réseau à la même minute (Applications, Réseau), regardez les permissions dangereuses (Applications), révoquez ou désinstallez l'application suspecte. |
-| **Apps** | installée hors Play/Galaxy Store (8) ou sans installateur/ADB (8), nouvelle app d'accessibilité (10), administrateur de l'appareil (10), écoute des notifications (8), VPN (7), permission sensible accordée (5) | Reconnaissez-vous l'application ? Applications › Accès spéciaux ; retirez l'accès ou désinstallez. Accessibilité et administrateur sont les plus graves. |
-| **Sécurité** | AC utilisateur ajoutée (10), déverrouillages échoués répétés (10), `security.log` : shell ADB (10), commande ou transfert ADB (8), journalisation arrêtée (12), violation d'intégrité de clé (12), restriction retirée (5)… | Une AC ajoutée que vous ignorez permet d'intercepter le trafic chiffré : retirez-la (Paramètres › Sécurité). Échecs de déverrouillage : quelqu'un a essayé votre téléphone. |
-| **Réseau** | chiffrement cellulaire nul (12), rétrogradation 2G (10), traceur BLE qui suit (10), position simulée (9), Wi-Fi ouvert (4), réseau sans DNS privé (5), changement d'heure ≥ 1 h (5), USB avec ADB (5) | Traceur : regardez la carte et l'événement `net.ble_tracker` (type de traceur, durée) et cherchez-le physiquement. Position simulée : une application de simulation est installée. |
-| **Pistage** | requête DNS d'une application vers la télémétrie Google/Samsung (2, **sans alerte**, marquée pour les tableaux) | Rien : c'est de la statistique (tableau « pistage et DNS »). |
-| **AdGuard** | domaine du flux de menaces demandé (10), répété (12), rafale de blocages (5) | Quelle application ? Le journal d'AdGuard ne montre que le téléphone : cherchez ce domaine dans les `net.dns` de la console (page Réseau, ou page Événements avec le domaine dans la recherche texte) pour trouver le paquet. Rafale : une application insiste (télémétrie en boucle) ; évaluez-la. |
-| **Commandes à distance** | effacement demandé (12) ou exécuté (12), verrouillage demandé (10) ou exécuté (10), signature invalide `bad_signature` (10), canal verrouillé `locked_out` (12), commande refusée (5), échouée (6), rafale de 8 commandes en 10 min (8) | Une commande que **vous** n'avez pas émise est un signal grave : guide 04, cas F (changer le code **sur le téléphone**, couper le canal). `bad_signature` : quelqu'un essaie de commander le téléphone sans le code (ou vous avez mal tapé le vôtre). |
-| **Gardes** (`security.policy`, `guard:…`) | garde **désactivée** (8), libération de quarantaine (5), activation, mise en quarantaine, permission rendue (3), permission refusée (2), échec (5) | Une garde désactivée que vous n'avez pas désactivée : quelqu'un (ou un service d'accessibilité) a touché à Vigie ; regardez le journal des actions de l'écran Politique. |
-| **Détections du collecteur** (`detect.*`) | de 3 (trace) à 12 ; **13 quand plusieurs types de détection visent la même application en 24 h** ; une mise à jour de détection : 5 ; « détection aggravée » : 12 | Voir §2.1 pour chaque type. |
-| **Profil de risque et rôles** (`app.risk`, `app.role`) | risque élevé à l'installation d'une application (9, ou 11 avec une combinaison `combo_*`) ; nouvelle appli SMS par défaut (8), clavier (8), téléphone (7), assistant ou saisie automatique (7) ; permissions SMS accordées (8) | Reconnaître l'application ; sinon guide 08 et guide 04 (cas E). |
-| **Pistage** (`tracking.*`) | niveau abaissé (8), domaine autorisé (8), blocage forcé d'un domaine indispensable (6), blocage manuel retiré (5), autre (3) | Vérifier que c'est vous (la console) ; sinon changez le mot de passe de la console. |
-| **Repli** | sévérité 3 ou 2 signalée par l'agent pour un type sans règle dédiée (10 / 6) | Lire l'événement. |
+| **Agent** | `agent.tamper` tampering (12), collection or upload disabled (5), buffer saturated (6), stop (3) | Did you cause it (switch, removal, update)? If not, look at the detail (`kind`: `force_stop`, `permission_revoked`, `admin_disabled`, `device_owner_lost`…), check the phone, then the system log. |
+| **Absence** | no event for 60 min (7), resumption (3), sequence gaps (6, or 3 if explained by a purge), counter gone backwards (8) | Phone off, offline, private DNS unreachable (the agent no longer resolves `ingest.…`), agent stopped? See §5. |
+| **Posture** (one alert per field changed) | verified boot degraded (12), encryption lost (10), Device Owner lost (10), private DNS disabled/non-strict or towards an unexpected host (10), wireless ADB (9), lock removed (8), ADB (7), unknown sources (6), Play Protect (5), developer options (4) | A setting change you did not make is the important signal. Reread Security › Posture; put the setting back; for a non-strict private DNS, see whether there was a fallback (severity-2 `security.policy`). Security patch older than 3 months (6) or 6 months (9): update. |
+| **Sensors** | microphone or camera used while the device is locked (10), microphone outside a call (6) or camera (8) with the screen off, any use flagged (2) | Who? Watchpost **does not know**: cross-reference with `app.foreground` and the network traffic of the same minute (Apps, Network), look at the dangerous permissions (Apps), revoke or uninstall the suspect application. |
+| **Apps** | installed from outside the Play/Galaxy Store (8) or with no installer/ADB (8), new accessibility app (10), device administrator (10), notification listener (8), VPN (7), sensitive permission granted (5) | Do you recognise the application? Apps › Special access; remove the access or uninstall. Accessibility and administrator are the most serious. |
+| **Security** | user CA added (10), repeated failed unlocks (10), `security.log`: ADB shell (10), ADB command or transfer (8), logging stopped (12), key integrity violation (12), restriction removed (5)… | A CA you do not know about allows interception of encrypted traffic: remove it (Settings › Security). Unlock failures: someone tried your phone. |
+| **Network** | null cellular cipher (12), 2G downgrade (10), BLE tracker following (10), mock location (9), open Wi-Fi (4), network without private DNS (5), time change ≥ 1 h (5), USB with ADB (5) | Tracker: look at the map and the `net.ble_tracker` event (tracker type, duration) and look for it physically. Mock location: a simulation application is installed. |
+| **Tracking** | DNS request by an application towards Google/Samsung telemetry (2, **without an alert**, tagged for the dashboards) | Nothing: it is statistics ("tracking and DNS" dashboard). |
+| **AdGuard** | threat-feed domain requested (10), repeated (12), burst of blocks (5) | Which application? AdGuard's log shows only the phone: look for this domain in the console's `net.dns` events (Network page, or Events page with the domain in the text search) to find the package. Burst: an application insists (telemetry in a loop); assess it. |
+| **Remote commands** | erase requested (12) or executed (12), lock requested (10) or executed (10), invalid signature `bad_signature` (10), channel locked `locked_out` (12), command refused (5), failed (6), burst of 8 commands in 10 min (8) | A command that **you** did not issue is a serious signal: guide 04, case F (change the passphrase **on the phone**, turn off the channel). `bad_signature`: someone is trying to command the phone without the passphrase (or you mistyped yours). |
+| **Guards** (`security.policy`, `guard:…`) | guard **disabled** (8), quarantine release (5), activation, quarantine, permission given back (3), permission denied (2), failure (5) | A guard disabled that you did not disable: someone (or an accessibility service) touched Watchpost; look at the Policy screen's action log. |
+| **Collector detections** (`detect.*`) | from 3 (trace) to 12; **13 when several detection types target the same application within 24 h**; a detection update: 5; "detection escalated": 12 | See §2.1 for each type. |
+| **Risk profile and roles** (`app.risk`, `app.role`) | high risk at installation of an application (9, or 11 with a `combo_*` combination); new default SMS app (8), keyboard (8), dialer (7), assistant or autofill (7); SMS permissions granted (8) | Recognise the application; otherwise guide 08 and guide 04 (case E). |
+| **Tracking** (`tracking.*`) | level lowered (8), domain allowed (8), forced block of an essential domain (6), manual block removed (5), other (3) | Check that it was you (the console); otherwise change the console password. |
+| **Fallback** | severity 3 or 2 reported by the agent for a type with no dedicated rule (10 / 6) | Read the event. |
 
-### Faux positifs attendus (déduits des règles, à confirmer à l'usage)
+### Expected false positives (deduced from the rules, to be confirmed in use)
 
-- **Alertes ADB** (shell, commande ou transfert, USB avec ADB, ADB et options développeur dans la posture) : à chaque fois
-  que vous utilisez les scripts du dépôt. C'est le fonctionnement normal.
-- **Application « sans installateur/ADB »** à chaque mise à jour de Vigie par ADB.
-- **Absence** : téléphone éteint, batterie vide, longue nuit sans réseau.
-- **Compteur revenu en arrière / trous de séquence** après un désenrôlement/réenrôlement ou une réinstallation.
-- **Perte du Device Owner et `agent.tamper`** après un retrait de secours par `dpm remove-active-admin` (attendu).
-  Un retrait par l'application ou par le script normal est annoncé et ne déclenche **pas** `agent.tamper`.
-- **DNS privé non strict** pendant un repli du DNS privé, ou au moment d'un changement de réglage fait par vous.
-- **Traceurs BLE** dans les transports (le traceur d'un voisin se déplace avec vous), **2G** en sous-sol ou en zone
-  blanche (si la 2G n'est pas interdite), **Wi-Fi ouvert** en hôtel, **micro hors appel** avec un assistant vocal ou un
-  enregistreur que vous avez lancé.
-- Limites des règles : un événement ne déclenche qu'**une** règle ; un micro utilisé écran éteint pendant un appel
-  (source `voice_communication`) n'alerte pas ; un défaut déjà présent à l'enrôlement ne produit pas d'alerte.
+- **ADB alerts** (shell, command or transfer, USB with ADB, ADB and developer options in the posture): every time you
+  use the repository's scripts. This is normal operation.
+- **Application "with no installer/ADB"** at every Watchpost update through ADB.
+- **Absence**: phone off, empty battery, a long night with no network.
+- **Counter gone backwards / sequence gaps** after an unenroll/re-enroll or a reinstall.
+- **Loss of the Device Owner and `agent.tamper`** after an emergency removal through `dpm remove-active-admin`
+  (expected). A removal through the application or through the normal script is announced and does **not** trigger
+  `agent.tamper`.
+- **Non-strict private DNS** during a private DNS fallback, or when you change a setting yourself.
+- **BLE trackers** on public transport (a neighbour's tracker moves with you), **2G** in a basement or a dead zone (if
+  2G is not forbidden), **open Wi-Fi** in a hotel, **microphone outside a call** with a voice assistant or a recorder
+  you started.
+- Limits of the rules: an event triggers only **one** rule; a microphone used with the screen off during a call
+  (source `voice_communication`) does not alert; a defect already present at enrollment produces no alert.
 
 ## 4. AdGuard Home
 
-`https://adguard.<domaine>` (deux connexions). À chaque `install.sh`, Vigie réapplique la configuration qu'elle gère (compte
-`admin`, TLS et DoT, amonts Quad9 et Mullvad, DNSSEC, journal lu par Wazuh, listes du profil) et **conserve le reste** :
-règles personnalisées de l'interface, listes ajoutées, listes d'autorisation, clients, réécritures DNS, limitation de débit,
-durée du journal. `sudo ./install.sh --reset-adguard` régénère tout (l'ancienne configuration est gardée dans
-`data/adguard/conf/AdGuardHome.yaml.avant-reset-*`). AdGuard est arrêté quelques secondes à chaque `install.sh` : le DNS du
-téléphone est alors indisponible un court instant.
+`https://adguard.<domain>` (two logins). At every `install.sh`, Watchpost applies again the configuration it manages
+(`admin` account, TLS and DoT, Quad9 and Mullvad upstreams, DNSSEC, the log read by Wazuh, the profile's lists) and
+**keeps the rest**: custom rules from the interface, added lists, allowlists, clients, DNS rewrites, rate limiting, log
+duration. `sudo ./install.sh --reset-adguard` regenerates everything (the old configuration is kept in
+`data/adguard/conf/AdGuardHome.yaml.before-reset-*`). AdGuard is stopped for a few seconds at every `install.sh`: the
+phone's DNS is then unavailable for a short moment.
 
-- **Voir ce qui est bloqué** : la page **Pistage** de la console (§2.2), le journal des requêtes d'AdGuard (filtre sur les
-  requêtes bloquées) et les statistiques. Dans la console, page Réseau : les noms DNS par application. Dans Wazuh : tableau « Vigie — pistage et DNS » (toutes
-  les requêtes sont archivées, 90 jours).
-- **Débloquer un domaine qui casse une application** : repérez le domaine au moment où l'application échoue. Le plus simple :
-  console › **Pistage** › Domaines › **Autoriser** (règle posée dans un bloc géré par Vigie ; un domaine indispensable demande une
-  confirmation). Autres façons équivalentes : dans l'interface d'AdGuard, « Règles de filtrage personnalisées » (conservées par
-  `install.sh`), ou par fichier, sur le VPS :
+- **See what is blocked**: the console's **Tracking** page (§2.2), AdGuard's query log (filter on blocked requests)
+  and the statistics. In the console, Network page: DNS names per application. In Wazuh: the "Watchpost — tracking
+  and DNS" dashboard (all requests are archived, 90 days).
+- **Unblock a domain that breaks an application**: spot the domain at the moment the application fails. The simplest
+  way: console › **Tracking** › Domains › **Allow** (a rule written in a block managed by Watchpost; an essential
+  domain asks for confirmation). Other equivalent ways: in AdGuard's interface, "Custom filtering rules" (kept by
+  `install.sh`), or by file, on the VPS:
 
   ```bash
-  cd ~/vigie/infra
-  echo '@@||domaine.exemple^$important' | sudo tee -a data/adguard/userfilters/regles-perso.txt
+  cd ~/watchpost/infra
+  echo '@@||domain.example^$important' | sudo tee -a data/adguard/userfilters/custom-rules.txt
   sudo ./install.sh --yes
-  python3 tools/dot-query.py dns.vigie.exemple.fr domaine.exemple     # doit répondre une vraie adresse
+  python3 tools/dot-query.py dns.watchpost.example.org domain.example     # must answer a real address
   ```
 
-  `@@||domaine^$important` autorise le domaine et ses sous-domaines **même s'il figure dans une autre liste** ; chaque
-  exception affaiblit aussi le filtrage des menaces pour ce domaine : n'autorisez que ce qui casse réellement. Le fichier
-  est conservé par `install.sh` et par les sauvegardes. Bloquer en plus un domaine : `||domaine^`. Gardez en tête que les
-  exceptions `@@…$important` de `vigie-base.txt` (test de connectivité Android, `mtalk*.google.com`, FCM, Play, comptes Google,
-  mises à jour Samsung) ne doivent **jamais** être retirées : bloquer un domaine de test de connectivité fait afficher
-  « connecté, sans Internet » au téléphone.
-- **Changer le niveau de blocage DNS** (côté serveur) : console › Pistage › « Niveau de blocage » (permissif, équilibré, strict),
-  ou `sudo ./install.sh --profile permissif|equilibre|strict --yes`. Le niveau strict ajoute HaGeZi Multi PRO++ et `vigie-strict.txt` (Firebase Remote Config, Galaxy
-  Store, push et cloud Samsung…). Il est **indépendant** du profil strict de l'application sur le téléphone : ne passez au
-  strict côté serveur qu'après avoir stabilisé le profil du téléphone, et surveillez les applications cassées.
-- **Si les mises à jour Samsung échouent** : regardez le journal AdGuard pour des domaines `*.samsungdm.com` ou
-  `*.samsungapps.com` bloqués (les domaines de mises à jour `ospserver.net` sont autorisés par défaut). Conflit signalé :
-  la liste HaGeZi bloque `gld.samsungosp.com`, alors que le compte Samsung passe par `*.samsungosp.com`.
-- Une partie de la télémétrie des Services Google Play passe par des domaines partagés qu'on ne peut pas bloquer sans
-  casser le Play Store : voir le README racine, section « limites ».
+  `@@||domain^$important` allows the domain and its sub-domains **even if it appears in another list**; each
+  exception also weakens threat filtering for that domain: allow only what really breaks. The file is kept by
+  `install.sh` and by the backups. To block a domain in addition: `||domain^`. Keep in mind that the
+  `@@…$important` exceptions in `watchpost-base.txt` (Android connectivity check, `mtalk*.google.com`, FCM, Play,
+  Google accounts, Samsung updates) must **never** be removed: blocking a connectivity-check domain makes the phone
+  show "connected, no Internet".
+- **Change the DNS blocking level** (server side): console › Tracking › "Blocking level" (permissive, balanced,
+  strict), or `sudo ./install.sh --profile permissive|balanced|strict --yes`. The strict level adds HaGeZi Multi PRO++
+  and `watchpost-strict.txt` (Firebase Remote Config, Galaxy Store, Samsung push and cloud…). It is **independent** of
+  the application's strict profile on the phone: switch to strict on the server only after stabilising the phone's
+  profile, and watch for broken applications.
+- **If Samsung updates fail**: look at AdGuard's log for blocked `*.samsungdm.com` or `*.samsungapps.com` domains (the
+  `ospserver.net` update domains are allowed by default). A reported conflict: the HaGeZi list blocks
+  `gld.samsungosp.com`, while the Samsung account goes through `*.samsungosp.com`.
+- Part of the Google Play services telemetry goes through shared domains that cannot be blocked without breaking the
+  Play Store: see the root README, "limits" section.
 
-## 5. Savoir si l'agent a cessé d'émettre
+## 5. Knowing whether the agent has stopped sending
 
-Sans notification configurée (§3), rien ne vous prévient : à vous de regarder. Avec les notifications, le **silence de
-l'agent** est notifié quel que soit le niveau. Indices, du plus rapide au plus profond :
+Without notifications configured (§3), nothing warns you: it is up to you to look. With notifications, the **agent's
+silence** is notified whatever the level. Clues, from the quickest to the deepest:
 
-1. **Console, point rouge « dernier contact »** et bandeau « Aucun contact depuis… » (vue d'ensemble).
-2. **Alerte Wazuh d'absence** : aucun événement depuis 60 minutes (niveau 7, sonde exécutée toutes les 10 minutes ;
-   `VIGIE_WATCH_SILENCE_MIN` dans `infra/.env`), puis « reprise » (3) quand l'appareil émet à nouveau.
-3. **Serveur** : `sudo ./enroll.sh --list` (colonnes « dernier contact » et expiration du certificat).
-4. **Téléphone** : la notification permanente « Vigie collecte… » (elle porte le nombre d'événements en attente et l'heure
-   du dernier envoi) et l'Accueil de Vigie.
-5. **Vue d'ensemble › Collecteurs** : un collecteur « indisponible » ou « désactivé » attend une permission ou a été coupé.
+1. **Console, red "last contact" dot** and the "No contact for…" banner (Overview).
+2. **Wazuh absence alert**: no event for 60 minutes (level 7, probe run every 10 minutes; `WATCHPOST_WATCH_SILENCE_MIN`
+   in `infra/.env`), then "resumption" (3) when the device sends again.
+3. **Server**: `sudo ./enroll.sh --list` ("last contact" and certificate expiry columns).
+4. **Phone**: the permanent notification "Watchpost is collecting…" (it carries the number of events waiting and the
+   time of the last upload) and Watchpost's Home.
+5. **Overview › Collectors**: a collector "unavailable" or "disabled" is waiting for a permission or has been turned
+   off.
 
-Causes habituelles : téléphone éteint ou hors réseau ; **DNS privé injoignable** (l'agent ne résout plus l'adresse
-d'ingestion : il garde ses événements en tampon, jusqu'à 200 Mio ou 30 jours, et les renvoie ensuite) ; agent tué par la gestion
-de batterie Samsung (vérifier « Applications jamais en veille » et l'optimisation de batterie, guide 03 §9) ; **permission
-retirée** dans les Paramètres (le collecteur passe « indisponible » et `agent.tamper` `permission_revoked` est émis : Vigie ne
-la reprend pas d'elle-même, onglet Collecteurs › « Accorder les permissions », ou `grant-adb-permissions`) ; certificat client
-expiré (§8) ; appareil révoqué (la console l'indique) ; mise à jour de l'APK avec une autre clé (impossible).
+Usual causes: phone off or offline; **private DNS unreachable** (the agent no longer resolves the ingestion address:
+it keeps its events in its buffer, up to 200 MB or 30 days, and sends them afterwards); agent killed by Samsung's
+battery management (check "Never sleeping apps" and battery optimization, guide 03 §9); **permission removed** in
+Settings (the collector becomes "unavailable" and `agent.tamper` `permission_revoked` is emitted: Watchpost does not
+take it back by itself, Collectors tab › "Grant permissions", or `grant-adb-permissions`); expired client certificate
+(§8); revoked device (the console says so); APK update with another key (impossible).
 
-## 6. Mises à jour
+## 6. Updates
 
-**Serveur** (dossier `infra`) :
+**Server** (`infra` folder):
 
 ```bash
-sudo ./update.sh            # sauvegarde, git pull --ff-only, images, reconstruction du collecteur, install.sh
-sudo ./update.sh --no-pull  # sans git pull
+sudo ./update.sh            # backup, git pull --ff-only, images, rebuild of the collector, install.sh
+sudo ./update.sh --no-pull  # without git pull
 ```
 
-Une sauvegarde est faite d'abord. Les versions des images (Wazuh 4.14.10, AdGuard Home v0.107.80, Caddy 2.11.9) sont
-**épinglées** dans `docker-compose.yml` : on ne suit jamais « latest ». Pour monter de version, modifier ce fichier (les
-trois images Wazuh ensemble, après lecture des notes de version) puis `update.sh`. Le `git pull` échoue s'il y a des
-modifications locales dans le dépôt. Après une mise à jour, refaites les contrôles du guide 01, section 9. Mettez aussi à
-jour le système du VPS (`apt`) et redémarrez de temps en temps : les conteneurs redémarrent seuls.
+A backup is made first. The image versions (Wazuh 4.14.10, AdGuard Home v0.107.80, Caddy 2.11.9) are **pinned** in
+`docker-compose.yml`: "latest" is never followed. To move up a version, edit that file (the three Wazuh images
+together, after reading the release notes) and then run `update.sh`. `git pull` fails if there are local changes in the
+repository. After an update, redo the checks of guide 01, section 9. Also update the VPS's system (`apt`) and reboot
+from time to time: the containers restart by themselves.
 
-**Application** : même clé de signature **obligatoire** et `versionCode` strictement croissant.
+**Application**: the same signing key is **mandatory** and the `versionCode` strictly increasing.
 
 ```bash
 cd android
-./gradlew assembleRelease -Pvigie.versionCode=2 -Pvigie.versionName=0.2.0
+./gradlew assembleRelease -Pwatchpost.versionCode=2 -Pwatchpost.versionName=0.2.0
 ./scripts/install-apk.sh app/build/outputs/apk/release/app-release.apk
-./scripts/rescue-revert.sh      # l'issue de secours répond-elle toujours ? (« reverted=0… »)
+./scripts/rescue-revert.sh      # does the rescue still answer? ("reverted=0…")
 ```
 
 ```powershell
 cd android
-.\gradlew.bat assembleRelease -Pvigie.versionCode=2 -Pvigie.versionName=0.2.0
+.\gradlew.bat assembleRelease -Pwatchpost.versionCode=2 -Pwatchpost.versionName=0.2.0
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-apk.ps1 -Apk app\build\outputs\apk\release\app-release.apk
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\rescue-revert.ps1
 ```
 
-Le **compagnon de notifications** se met à jour de la même façon (`./gradlew :notifier:assembleRelease`, puis
-`./scripts/install-notifier.sh notifier/build/outputs/apk/release/notifier-release.apk`), avec **la même clé** et le même
-`versionCode` croissant ; l'ordre d'installation entre l'agent et le compagnon est indifférent.
+The **notification companion** is updated the same way (`./gradlew :notifier:assembleRelease`, then
+`./scripts/install-notifier.sh notifier/build/outputs/apk/release/notifier-release.apk`), with **the same key** and the
+same increasing `versionCode`; the installation order between the agent and the companion does not matter.
 
-Les données (tampon, enrôlement, réglages) sont conservées et l'agent redémarre seul. Vérifiez : la version dans la console
-(Vue d'ensemble › Agent), Device Owner toujours actif, envois réguliers. Jamais essayé sur un téléphone : lisez le guide 06
-(« mise à jour de l'APK »). Si l'installation échoue avec `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, ce n'est pas la même clé
-de signature : ne désinstallez pas Vigie (c'est un Device Owner) ; retrouvez la clé d'origine (guide 02).
+The data (buffer, enrollment, settings) is kept and the agent restarts by itself. Check: the version in the console
+(Overview › Agent), Device Owner still active, regular uploads. Never tried on a phone: read guide 06 ("APK update").
+If installation fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, it is not the same signing key: do not uninstall
+Watchpost (it is a Device Owner); find the original key (guide 02).
 
-## 7. Rétention (combien de temps les données restent)
+## 7. Retention (how long data stays)
 
-| Où | Durée | Réglage |
+| Where | Duration | Setting |
 |---|---|---|
-| Téléphone (tampon d'envoi) | 200 Mio ou 30 jours ; au-delà, les plus anciens et moins graves partent d'abord (`agent.buffer_overflow`) | Réglages de Vigie › Tampon et envoi |
-| Base du collecteur (console) | **90 jours** (sur l'heure d'origine `ts`) | `VIGIE_RETENTION_DAYS` |
-| Wazuh : alertes | **180 jours** | `WAZUH_ALERTS_RETENTION_DAYS` |
-| Wazuh : archives (tous les événements, requêtes DNS comprises) | **90 jours** | `WAZUH_ARCHIVES_RETENTION_DAYS` |
-| Fichiers d'archives sur disque (`archives.json`) | 14 jours | `VIGIE_ARCHIVES_FILE_DAYS` |
-| Journal de requêtes d'AdGuard (interface) | 7 jours (`168h`) | modèle `adguard/AdGuardHome.yaml.tmpl` |
-| Sauvegardes | jusqu'à ce que vous les supprimiez | `infra/backups/` |
+| Phone (upload buffer) | 200 MB or 30 days; beyond that, the oldest and least severe go first (`agent.buffer_overflow`) | Watchpost settings › Buffer and upload |
+| Collector database (console) | **90 days** (on the original time `ts`) | `WATCHPOST_RETENTION_DAYS` |
+| Wazuh: alerts | **180 days** | `WAZUH_ALERTS_RETENTION_DAYS` |
+| Wazuh: archives (all events, DNS requests included) | **90 days** | `WAZUH_ARCHIVES_RETENTION_DAYS` |
+| Archive files on disk (`archives.json`) | 14 days | `WATCHPOST_ARCHIVES_FILE_DAYS` |
+| AdGuard query log (interface) | 7 days (`168h`) | template `adguard/AdGuardHome.yaml.tmpl` |
+| Backups | until you delete them | `infra/backups/` |
 
-Pour changer une durée : modifiez la valeur dans `infra/.env`, puis `sudo ./install.sh --yes`. Un modèle d'index ne
-s'applique qu'aux index créés après lui (effet le lendemain). Surveillez le disque :
+To change a duration: edit the value in `infra/.env`, then `sudo ./install.sh --yes`. An index template applies only to
+indices created after it (effect the next day). Watch the disk:
 
 ```bash
 df -h /var/lib/docker
 sudo docker system df
 ```
 
-Un indexeur dont le disque dépasse 95 % passe en lecture seule : réduisez la rétention ou libérez de la place.
+An indexer whose disk exceeds 95 % goes read-only: reduce the retention or free up space.
 
-## 8. Renouvellements à prévoir
+## 8. Renewals to plan
 
-| Échéance | Quoi | Comment |
+| Deadline | What | How |
 |---|---|---|
-| **2 ans** après l'enrôlement | **certificat client du téléphone** | ci-dessous ; la date est affichée dans Vigie › Réglages › Enrôlement (« Certificat valide jusqu'au », en couleur d'alerte à moins de 30 jours) |
-| ~60 jours | certificats Let's Encrypt (console, ingestion, `dns.…`) | automatique (Caddy) ; AdGuard recharge le certificat sans redémarrer ; **jamais vu en conditions réelles** |
-| 5 ans | certificats internes de Wazuh (AC : 10 ans) | `sudo ./install.sh --renew-wazuh-certs` (même AC, cas normal) ou `--renew-wazuh-ca` (AC compromise ou expirée) ; l'échéance est rappelée à la fin de chaque `install.sh` (avertissement sous 90 jours) ; anciens fichiers gardés dans `secrets/wazuh-certs/ancien-<date>/` ; vérifié pour les deux sur une pile de test |
-| 20 ans | autorité du collecteur (certificats clients) | — |
-| au besoin | mots de passe | `sudo ./install.sh --rotate-passwords` (régénère tous les mots de passe, console comprise ; vérifié) ; console seule : `docker compose exec collector vigie-collector user set-password admin` |
-| jamais | keystore de signature | à ne **pas** changer (guide 02) ; testez la lecture de ses sauvegardes |
+| **2 years** after enrollment | **the phone's client certificate** | below; the date is shown in Watchpost › Settings › Enrollment ("Certificate valid until", in an alert colour within 30 days) |
+| ~60 days | Let's Encrypt certificates (console, ingestion, `dns.…`) | automatic (Caddy); AdGuard reloads the certificate without restarting; **never seen in real conditions** |
+| 5 years | Wazuh's internal certificates (CA: 10 years) | `sudo ./install.sh --renew-wazuh-certs` (same CA, the normal case) or `--renew-wazuh-ca` (compromised or expired CA); the expiry is recalled at the end of every `install.sh` (warning within 90 days); old files kept in `secrets/wazuh-certs/old-<date>/`; verified for both on a test stack |
+| 20 years | the collector's authority (client certificates) | — |
+| as needed | passwords | `sudo ./install.sh --rotate-passwords` (regenerates all the passwords, console included; verified); console only: `docker compose exec collector watchpost-collector user set-password admin` |
+| never | signing keystore | **do not** change it (guide 02); test that its backups can be read |
 
-**Renouveler le certificat du téléphone** (un mois avant l'échéance, sans désenrôler, sans scinder l'historique) :
+**Renew the phone's certificate** (a month before the expiry, without unenrolling, without splitting the history):
 
-1. Sur le serveur (dossier `infra`) :
+1. On the server (`infra` folder):
 
    ```bash
-   sudo ./enroll.sh --list                 # échéance du certificat de chaque appareil (« à renouveler » sous 30 jours)
-   sudo ./enroll.sh --renew s25            # ou --renew dev_… ; produit ./s25-renouvellement.vigie (droits 600)
+   sudo ./enroll.sh --list                 # certificate expiry of each device ("renew" within 30 days)
+   sudo ./enroll.sh --renew phone          # or --renew dev_… ; produces ./phone-renewal.watchpost (permissions 600)
    ```
 
-   Même `device_id`, nouveau jeton et nouveau certificat. **L'ancien couple reste accepté** jusqu'au premier envoi fait avec le
-   nouveau, puis il est refusé : si vous n'importez jamais le nouveau fichier, l'ancien continue de servir jusqu'à son
-   expiration. Vérifié à travers Caddy en mTLS : ancien accepté, nouveau accepté, ancien refusé ensuite.
-2. Copiez le fichier sur le téléphone par câble, comme au guide 03 (étape 10) : `scp` vers le PC, puis `push-enrollment`.
-3. Dans Vigie › Réglages › Enrôlement : **« Importer un nouveau fichier .vigie »** (ne désenrôlez **pas** : cela effacerait la
-   clé, le jeton et les événements en attente). L'écran compare avec l'enrôlement actuel et dit ce que deviennent les
-   événements en attente : « **Renouvellement : même serveur, même appareil. Les événements en attente sont conservés** »
-   est le message attendu. Touchez « Enrôler cet appareil » ; le test de connexion doit réussir et « Certificat valide
-   jusqu'au » affiche la nouvelle date.
-4. Supprimez toutes les copies du fichier (guide 03, étape 10) : `shred -u s25-renouvellement.vigie` sur le serveur.
-5. Au bout de quelques minutes, `sudo ./enroll.sh --list` montre la nouvelle échéance : la bascule a eu lieu.
+   Same `device_id`, new token and new certificate. **The old pair remains accepted** until the first upload made with
+   the new one, then it is refused: if you never import the new file, the old one keeps serving until it expires.
+   Verified through Caddy in mTLS: old accepted, new accepted, old refused afterwards.
+2. Copy the file to the phone by cable, as in guide 03 (step 10): `scp` to the PC, then `push-enrollment`.
+3. In Watchpost › Settings › Enrollment: **"Import a new .watchpost file"** (do **not** unenroll: that would erase the
+   key, the token and the pending events). The screen compares with the current enrollment and says what becomes of the
+   pending events: "**Renewal: same server, same device. Pending events (N) are kept.**" is the expected message. Tap
+   "Enroll this device"; the connection test must succeed and "Certificate valid until" shows the new date.
+4. Delete every copy of the file (guide 03, step 10): `shred -u phone-renewal.watchpost` on the server.
+5. After a few minutes, `sudo ./enroll.sh --list` shows the new expiry: the switch-over has happened.
 
-Si l'écran annonce « Même serveur, autre identifiant d'appareil » ou « Autre serveur », **arrêtez-vous** : vous avez importé un
-fichier produit par `enroll` (nouvel appareil) au lieu de `--renew`, ou pour une autre adresse. Le premier cas conserve le
-tampon mais scinde l'historique sur deux identifiants ; le second **efface** le tampon. Ces deux comportements viennent de
-l'application et n'ont jamais été essayés sur un téléphone (guide 06).
+If the screen announces "Same server, different device identifier" or "Different server", **stop**: you imported a file
+produced by `enroll` (new device) instead of `--renew`, or for another address. The first case keeps the buffer but
+splits the history over two identifiers; the second **erases** the buffer. These two behaviours come from the
+application and have never been tried on a phone (guide 06).
 
-## 9. Confidentialité de la console : les tuiles de carte
+## 9. Console privacy: the map tiles
 
-Par défaut la carte charge `https://tile.openstreetmap.org/{z}/{x}/{y}.png` depuis **votre navigateur** : OpenStreetMap voit
-votre adresse IP et les zones affichées, donc les lieux que fréquente le téléphone. Options : ne pas ouvrir la carte, ou
-définir `VIGIE_TILE_URL` dans `infra/.env` vers un fournisseur dont la politique vous convient (URL en `https://` avec
-`{z}`, `{x}`, `{y}`), puis `sudo ./install.sh --yes` (la politique de sécurité de la console suit automatiquement) ; ou
-auto-héberger des tuiles (non fourni, voir `infra/README.md` §10.2). La carte du dashboard Wazuh charge aussi un fond de
-carte tiers.
+By default the map loads `https://tile.openstreetmap.org/{z}/{x}/{y}.png` from **your browser**: OpenStreetMap sees
+your IP address and the areas displayed, hence the places the phone frequents. Options: do not open the map, or set
+`WATCHPOST_TILE_URL` in `infra/.env` to a provider whose policy suits you (an `https://` URL with `{z}`, `{x}`, `{y}`),
+then `sudo ./install.sh --yes` (the console's security policy follows automatically); or self-host tiles (not provided,
+see `infra/README.md` §10.2). The Wazuh dashboard's map also loads a third-party base map.
 
-## 10. Si le téléphone est perdu ou volé
+## 10. If the phone is lost or stolen
 
-Voir le [guide 04, cas G](04-retour-arriere.md) : sonner, localiser, **verrouiller avec un message** (console › Commandes, avec
-le code de commande), et l'effacement **seulement** s'il avait été autorisé à l'avance et essayé sur un appareil sacrifiable. Ces
-commandes n'ont jamais été essayées sur un téléphone, ne s'exécutent que si le téléphone se reconnecte et que le canal est activé, et
-ne remplacent ni votre opérateur ni le verrouillage et l'effacement de vos comptes Google ou Samsung. Dans tous les cas,
-**révoquez ensuite l'appareil** pour fermer l'ingestion et le canal : `sudo ./enroll.sh --revoke dev_xxx` (ou son nom). La console
-garde l'historique, y compris les dernières positions reçues.
+See [guide 04, case G](04-rollback.md): ring, locate, **lock with a message** (console › Commands, with the command
+passphrase), and erase **only** if it had been allowed in advance and tried on a sacrificial device. These commands have
+never been tried on a phone, run only if the phone reconnects and the channel is on, and replace neither your carrier
+nor the lock and erase features of your Google or Samsung accounts. In all cases, **then revoke the device** to close
+ingestion and the channel: `sudo ./enroll.sh --revoke dev_xxx` (or its name). The console keeps the history, including
+the last positions received.

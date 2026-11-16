@@ -1,98 +1,95 @@
-# État d'avancement
+# Status
 
-Fichier de reprise : à lire en premier, à mettre à jour à chaque fin de session de travail.
-Dernière mise à jour : 16/11/2026.
+Resume file for contributors: read it first, and update it at the end of every working session.
 
-## Où on en est
+## Where things stand
 
-Trois versions sont écrites de bout en bout : la v1 (télémétrie, politique anti-pistage, serveur), la v1.1
-(commandes à distance, vue « pistage », notifications, modes de localisation) et la v1.2 (protection contre
-un logiciel malveillant quel que soit son vecteur). Le serveur a été exécuté et testé réellement ;
-**l'application Android n'a jamais tourné sur un téléphone** (ni émulateur) : elle est vérifiée par
-compilation, lint, tests JVM et des essais croisés de son vrai code contre le vrai collecteur.
+Three feature sets are written end to end: version 1 (telemetry, anti-tracking policy, server), version 1.1 (remote
+commands, Tracking page, notifications, location modes) and version 1.2 (protection against malware whatever its
+vector). The server side has been run and tested for real; **the Android application has never run on a physical
+device** (and no emulator-based test exists): it is verified by compilation, lint, JVM tests and cross tests of its
+real code against the real collector.
 
-| Lot | Répertoire | État | Vérifié par exécution |
+| Part | Directory | State | Verified by execution |
 |---|---|---|---|
-| Architecture, contrat | `docs/ARCHITECTURE.md`, `docs/contrat/contrat.md` (§1 à §11) | fait | — |
-| Recherches plateforme | `docs/research/` | fait | sources web ; points « non vérifié » signalés dans les fichiers |
-| Collecteur Go | `server/collector/` | fait, trois revues | `go vet`, `go test -race`, essais réels avec le simulateur et ses scénarios d'attaque, image Docker |
-| Console web | `server/console/` | fait | typage, lint, 174 tests, parcours Chromium contre serveur factice et contre le vrai collecteur ; tuiles OSM réelles non chargées |
-| Infrastructure Docker | `infra/` | fait | pile réellement démarrée en TLS `internal` : mTLS, DoT, flux de commandes, pistage sur le vrai AdGuard, export → Wazuh sans perte, cas de test des règles tous verts (`infra/wazuh/tests/run-tests.sh`) |
-| Agent Android et APK compagnon | `android/` | fait, trois revues indépendantes | `./gradlew lint test assembleDebug assembleRelease` vert : 392 tests JVM (5 ignorés : essais croisés, à lancer avec les variables `VIGIE_CROSS_*`), APK inspectés |
-| Guides utilisateur | `README.md`, `docs/guides/01` à `08` | faits | commandes relues contre les scripts ; aucune exécutée sur un VPS ni sur un téléphone |
+| Architecture, contract | `docs/ARCHITECTURE.md`, `docs/contract/contract.md` | done | — |
+| Platform research | `docs/research/` | done | web sources; "unverified" points are flagged in the files |
+| Go collector | `server/collector/` | done, reviewed several times | `go vet`, `go test -race`, real runs with the simulator and its attack scenarios, Docker image |
+| Web console | `server/console/` | done | typing, lint, 174 tests, Chromium walkthroughs against a mock server and against the real collector; real OSM tiles not loaded |
+| Docker infrastructure | `infra/` | done | stack really started in internal TLS mode: mTLS, DoT, command stream, tracking against the real AdGuard, export → Wazuh without loss, all rule test cases green (`infra/wazuh/tests/run-tests.sh`) |
+| Android agent and companion APK | `android/` | done, reviewed several times | `./gradlew lint test assembleDebug assembleRelease` green: 392 JVM tests (5 skipped: cross tests, run with the `WATCHPOST_CROSS_*` variables), APKs inspected |
+| User guides | `README.md`, `docs/guides/01` to `08` | done | commands checked against the scripts; none run on a VPS or a phone |
 
-## Ce que chaque version apporte
+## What each version brings
 
-- **v1** : 21 collecteurs, tampon hors-ligne, envoi mTLS, politique Device Owner (DNS privé imposé, paquets
-  désactivés, permissions refusées, restrictions), issue de secours ADB, collecteur, console, Wazuh, AdGuard.
-- **v1.1** (contrat §8 à §10) : commandes à distance (sonner, vibrer, localiser ; verrouiller et effacer
-  signés par un code que le serveur ne connaît pas ; canal coupé par défaut) ; vue « pistage » pilotant
-  AdGuard ; APK compagnon de notifications ; modes de localisation ; notifications des alertes ;
-  renouvellement d'appareil.
-- **v1.2** (contrat §11) : gardes de capacités (SMS, appels, accessibilité, claviers, quarantaine), profil de
-  risque des applications, rôles par défaut, comptage expérimental des opérations sensibles, détections côté
-  serveur avec sourdine, règles et corrélations Wazuh.
+- **Version 1**: 21 collectors, offline buffer, mTLS upload, Device Owner policy (enforced private DNS, disabled
+  packages, denied permissions, restrictions), ADB rescue, collector, console, Wazuh, AdGuard.
+- **Version 1.1** (contract §8 to §10): remote commands (ring, vibrate, locate; lock and erase signed with a
+  passphrase the server does not know; channel off by default); Tracking page driving AdGuard; notification companion
+  APK; location modes; alert notifications; device renewal. The agent now has 25 collectors.
+- **Version 1.2** (contract §11): capability guards (SMS, calls, accessibility, keyboards, quarantine), app risk
+  profile, default roles, experimental counters of sensitive operations, server-side detections with muting, Wazuh
+  rules and correlations.
 
-## Conclusions des revues à ne pas perdre de vue
+## Review conclusions to keep in mind
 
-- **Signature des commandes** : elle ne vaut qu'avec un code à forte entropie (cinq mots aléatoires) ; le
-  serveur sert la page où le code est saisi ; une commande signée reste exécutable jusqu'à son expiration.
-  L'effacement à distance ne s'active qu'après essai sur un appareil sacrifiable ou sauvegardé.
-- **Envoi de SMS à l'insu du propriétaire** (l'attaque qu'il a subie sur un précédent téléphone) : la vraie
-  protection est la **garde SMS**. Sans le comptage expérimental `app_ops` — jamais vu fonctionner,
-  probablement indisponible sur Android 16 —, ce cas ne produit qu'**une** détection,
-  `detect.sms_permission`. Une application acceptée comme appli SMS par défaut n'est pas bloquée, seulement
-  signalée. Voir `docs/guides/08-sms-et-logiciels-malveillants.md`.
-- **Profil de risque** : indicateur d'attention sur des capacités déclarées, pas un verdict (contrôle
-  parental, antivirus, automatisation sortent « élevé » ; un logiciel discret de boutique peut sortir « faible »).
-- **Détections** : les seuils ont été réglés sur un simulateur écrit par le même agent ; les faux positifs sur
-  un téléphone réel sont à attendre (DNS chiffré d'un navigateur, première sauvegarde de photos, appel vidéo
-  long) et se traitent par la mise en sourdine et les variables `VIGIE_DETECT_*`.
+- **Command signature**: it is worth something only with a high-entropy passphrase (five random words); the server
+  serves the page where the passphrase is typed; a signed command stays executable until it expires. Remote erase
+  must be enabled only after a trial on a sacrificial or fully backed-up device.
+- **SMS sent without the user's knowledge**: the real protection is the **SMS guard**. Without the experimental
+  `app_ops` counters, which have never been seen working and are probably unavailable on Android 16, this case
+  produces **only one** detection, `detect.sms_permission`. An application accepted as the default SMS app is not
+  blocked, only flagged. See `docs/guides/08-sms-and-malware.md`.
+- **Risk profile**: an indicator of attention on declared capabilities, not a verdict (parental control, antivirus and
+  automation come out "high"; a discreet store application can come out "low").
+- **Detections**: the thresholds were tuned on a simulator written by the same people as the detections; false
+  positives on a real phone are to be expected (a browser's encrypted DNS, a first photo backup, a long video call) and
+  are handled by muting and by the `WATCHPOST_DETECT_*` variables.
 
-## Jamais testé (à faire par le propriétaire)
+## Never tested
 
-- **Tout le comportement sur le Galaxy S25+** : activation Device Owner, service permanent, collecteurs,
-  politique, gardes, canal de commandes, compagnon, issue de secours ADB. La feuille de route est
-  `docs/guides/06-verifications-sur-appareil.md` (90 cases par ordre de risque) ; l'ordre d'essai prudent est
-  en tête de `docs/guides/03-telephone.md`.
-- **Scripts PowerShell** (`android/scripts/*.ps1`) : relus ligne à ligne, jamais exécutés.
-- **Serveur en conditions réelles** : Let's Encrypt et défi DNS-01, résolution DNS en amont, WireGuard,
-  `update.sh`, SMTP avec TLS et authentification, ntfy réel, consommation mémoire en charge réelle.
+- **All behaviour on a Samsung Galaxy phone**: Device Owner activation, permanent service, collectors, policy, guards,
+  command channel, companion, ADB rescue. The roadmap is `docs/guides/06-on-device-checks.md` (checklist ordered by
+  risk); the cautious order of trial is at the top of `docs/guides/03-phone.md`.
+- **PowerShell scripts** (`android/scripts/*.ps1`): checked line by line, never run (PowerShell was not available
+  where they were written).
+- **The server in real conditions**: Let's Encrypt and the DNS-01 challenge, upstream DNS resolution, WireGuard,
+  `update.sh`, SMTP with TLS and authentication, a real ntfy server, memory use under real load, ARM.
 
-## Limites connues et choix assumés
+## Known limits and assumed choices
 
-- Journaux réseau du Device Owner : DNS et `connect()` TCP seulement, par lots (~1 h 30) ; UDP/QUIC y échappent.
-- Caméra et micro : usage signalé sans l'application responsable (attribution expérimentale, éteinte par défaut).
-- Pas de VPN local, pas de Knox SDK (voir `docs/ARCHITECTURE.md`).
-- Rien n'est collecté avant le premier déverrouillage suivant un redémarrage ; l'issue de secours ADB non plus
-  ne répond pas avant.
-- Les journaux réseau et de sécurité du système s'allument dès l'activation du Device Owner (interrupteur par
-  collecteur) ; Android affiche alors la mention de surveillance du réseau.
-- Sonnerie à distance muette si « Ne pas déranger » coupe les alarmes.
-- Vue « pistage » : octets par éditeur et compteurs bloqué/autorisé par application sont des estimations.
-- Gardes : elles ne touchent ni les applications du système ni le détenteur du rôle correspondant ; les gardes
-  claviers et accessibilité n'éteignent jamais un service déjà actif, et leur effet réel sur One UI est à vérifier.
-- Compte console : qui connaît l'identifiant peut le bloquer par des échecs répétés.
-- Tuiles de carte OpenStreetMap publiques par défaut (`VIGIE_TILE_URL`).
-- Échéances des certificats d'appareils (2 ans) non notifiées : `infra/enroll.sh --list`.
+- Device Owner network logs: DNS and TCP `connect()` only, in batches (about 1 h 30); UDP/QUIC escape them.
+- Camera and microphone: use is reported without the responsible application (experimental attribution, off by
+  default).
+- No local VPN, no Knox SDK (see `docs/ARCHITECTURE.md`).
+- Nothing is collected before the first unlock following a reboot; the ADB rescue does not answer before then either.
+- The system network and security logs turn on as soon as the Device Owner is activated (one switch per collector);
+  Android then displays the network-monitoring notice.
+- Remote ringing is silent if "Do Not Disturb" mutes alarms.
+- Tracking page: bytes per publisher and blocked/allowed counters per application are estimates.
+- Guards: they touch neither system applications nor the holder of the matching role; the keyboard and accessibility
+  guards never turn off a service that is already active, and their real effect on One UI remains to be verified.
+- Console account: whoever knows the user name can lock it out with repeated failures.
+- The map uses the public OpenStreetMap tiles by default (`WATCHPOST_TILE_URL`).
+- Device certificate expiries (2 years) are not notified: `infra/enroll.sh --list`.
 
-## Environnement de développement cloud (si on y revient)
+## Development notes
 
-- SDK Android dans `/opt/android-sdk` (plateformes 36 et 37.0, build-tools 36.0.0) ; `dl.google.com` doit être
-  dans les domaines autorisés de l'environnement. Pas de KVM, donc pas d'émulateur.
-- Robolectric impossible (`gcp.mirrors.maven.org` bloqué par le proxy) : tests Android en JVM pure.
-- Docker : lancer `dockerd` à la main ; conteneurs sans accès Internet sortant ; Docker Hub peut répondre 429
-  (images de base sur `mirror.gcr.io`, voir `server/collector/README.md`). Disque limité : nettoyer images et caches.
-- Le keystore de signature utilisé ici était un keystore de test local, non versionné : **le propriétaire génère
-  le sien** (`android/scripts/generate-keystore.*`) et le conserve ; il signe l'agent et le compagnon.
-- Travail à plusieurs agents : chacun confiné à son répertoire, commits par chemin, et n'arrêter que ses propres
-  processus par PID (un `pkill` par nom a déjà tué le serveur d'un autre agent).
+- No emulator-based test exists, and Robolectric is not used: Android tests are pure JVM tests. Behaviour on a device
+  is verified with the on-device checklist.
+- The three cross tests of the `:app` module (`CrossServerTest`, `CrossCommandsTest`, `CrossDetectionsTest`) run the
+  agent's real code against a real collector and are skipped unless their `WATCHPOST_CROSS_*` variables are set (see
+  the header of each file and `docs/guides/07-development.md`).
+- The signing key of the APKs is generated locally (`android/scripts/generate-keystore.*`), never versioned, and must
+  be kept by whoever builds the APKs: it signs the agent and the companion, and no update is possible without it.
+- Docker: container base images may need a mirror if the registry rate-limits (see `server/collector/README.md`).
 
-## Prochaines étapes
+## Next steps
 
-1. Propriétaire : installer le serveur (`docs/guides/01`), compiler les deux APK avec son propre keystore (`02`),
-   suivre l'ordre d'essai du guide téléphone (`03`), cocher `06` au fur et à mesure et rapporter les écarts.
-2. Corriger ce que les essais sur appareil révèlent : c'est là que se trouvent les défauts restants. En premier :
-   la garde SMS, le canal de commandes en veille, et `adb shell dumpsys appops --history --op SEND_SMS`.
-3. Pistes suivantes : `docs/guides/07-reprise-developpement.md` (code de déverrouillage avant d'affaiblir une
-   garde, limite de débit SMS du système, listes d'exclusion du compagnon éditables dans l'agent, VPN local).
+1. Install the server (`docs/guides/01-server.md`), build the two APKs with your own keystore (`02-build-apk.md`),
+   follow the cautious order of trial of the phone guide (`03-phone.md`), tick `06-on-device-checks.md` as you go and
+   report the discrepancies.
+2. Fix what the on-device trials reveal: this is where the remaining defects are. First: the SMS guard, the command
+   channel in standby, and `adb shell dumpsys appops --history --op SEND_SMS`.
+3. Further leads: `docs/guides/07-development.md` (unlock code before weakening a guard, system SMS rate limit,
+   companion exclusion lists editable in the agent, local VPN).

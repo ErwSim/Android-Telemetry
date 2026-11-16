@@ -26,7 +26,7 @@
 | Item | Value | Source |
 |---|---|---|
 | Android on recent Galaxy devices (EU) | **One UI 9.0 / Android 17 (API 37)**, rolling out as a stable release since autumn 2026 in waves by country and model; availability on a given device depends on the model, the region and the carrier | [Press] https://9to5google.com/2026/09/14/samsung-android-17-one-ui-9-update-list |
-| Previous version | One UI 8.x / Android 16 (API 36). One UI 8 shipped for the Galaxy S25 generation on 2025-09-15 | [Press] https://news.samsung.com/uk/samsung-begins-official-rollout-of-one-ui-8-to-galaxy-devices |
+| Previous version | One UI 8.x / Android 16 (API 36). One UI 8 began rolling out to Galaxy devices on 2025-09-15 | [Press] https://news.samsung.com/uk/samsung-begins-official-rollout-of-one-ui-8-to-galaxy-devices |
 | Android 17 stable (AOSP/Pixel) | 2026-06-16. API frozen at Beta 3 (March 2026) | [Press] https://www.androidauthority.com/android-17-3561251/ |
 | Next version | One UI 9.x, then Android 18 (2027): **[Unverified]**, no reliable date | — |
 
