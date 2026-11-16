@@ -222,6 +222,10 @@ func (t *trackingService) loadState(ctx context.Context) (logState, error) {
 // may really end there, or the cursor's record may be missing from the files (it was only in memory, or
 // rotated away): the times of the records read just before it are tried as cursors before concluding.
 //
+// A cursor is the oldest record of a full page, 500 records deep: it is in AdGuard Home's files as long as
+// querylog.size_memory stays below the page size (with a larger memory buffer the cursor can be a record
+// still in memory, which is "later than the newest record" of the files: one record skipped).
+//
 // What the page budget leaves unread is kept as a gap and read by the next polls (agMaxGaps at most).
 func (t *trackingService) readLog(ctx context.Context, budget int) error {
 	state, err := t.loadState(ctx)

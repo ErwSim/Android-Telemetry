@@ -233,7 +233,12 @@ l'infrastructure doit vérifier celles qu'elle retient).
   dans le budget de pages (premier relevé : 24 h d'historique ; longue panne) est gardé comme
   « trou » à combler aux relevés suivants (16 au plus). Bloquée = motif `Filtered*` sauf `FilteredSafeSearch`.
   Le faux AdGuard Home du simulateur et des tests reproduit ce traitement réel d'`older_than` (deux fichiers,
-  rotation, tampon mémoire : `adguard.Fake.search`, `fake_test.go`).
+  rotation, tampon mémoire : `adguard.Fake.search`, `fake_test.go`). Essai du 16/11/2026 contre un AdGuard
+  Home réel v0.107.80 (conteneur local, `size_memory: 1`, trafic espacé puis en rafales, deux rotations du
+  journal dont une faite par AdGuard Home lui-même, deux redémarrages du collecteur) : 2114 entrées inscrites
+  par AdGuard Home, 2114 comptées, chacune une fois ; l'ancienne lecture (`older_than` = maintenant − 60 s)
+  en comptait 8. Rattrapage d'un journal existant par un collecteur neuf : 824 sur 824, puis 1350 sur 1350
+  avec `size_memory: 50` (trois pages).
   **Changements faits depuis la console** : `PUT /tracking/level` et `PUT /tracking/override` qui modifient
   réellement AdGuard Home produisent un événement du collecteur (`source = 'server'`, un par appareil non
   révoqué, exporté vers Wazuh avec `vigie.source = "server"`) : `tracking.level_changed` (`old` — absent si
@@ -291,11 +296,15 @@ l'infrastructure doit vérifier celles qu'elle retient).
 
 - Pistage : `older_than` d'AdGuard est strict : deux requêtes de la même nanoseconde à la frontière de deux
   pages pourraient être sautées (négligeable). Une entrée n'est comptée qu'une fois vieille de 60 s (les plus
-  récentes attendent le relevé suivant). **`querylog.size_memory` doit rester à 1** dans AdGuard Home (réglage
-  de l'infrastructure Vigie) : avec un tampon mémoire plus grand (1000 par défaut), un relevé de plus d'une
-  page dont le curseur désigne une entrée encore en mémoire fait sauter par AdGuard Home la dernière entrée
-  de son fichier (même défaut que ci-dessus : une entrée perdue par relevé de ce genre), et les entrées
-  n'atteignent le fichier lu par Wazuh que par paquets. Les `apps` d'un domaine et les `blocked`/`allowed`
+  récentes attendent le relevé suivant). **`querylog.size_memory` d'AdGuard Home doit rester inférieur à 500**
+  (la taille d'une page) : au-delà (1000 par défaut), un relevé de plus d'une page peut avoir pour curseur une
+  entrée encore en mémoire, et AdGuard Home saute alors la dernière entrée de son fichier (une entrée perdue
+  par relevé de ce genre). À l'inverse, **`size_memory: 1` fait perdre des entrées à AdGuard Home lui-même**
+  dès que des requêtes arrivent en même temps (son tampon d'une entrée est écrasé avant d'être écrit) :
+  mesuré sur une instance réelle v0.107.80 avec 8 clients simultanés, 187 entrées inscrites pour 240 réponses
+  à `size_memory: 1`, 1350 pour 1360 à `size_memory: 50`. Ces entrées n'existent ni pour le collecteur ni
+  pour Wazuh : c'est un réglage de l'infrastructure (voir le rapport de revue du 16/11/2026).
+  Les `apps` d'un domaine et les `blocked`/`allowed`
   d'une application sont des estimations (AdGuard ne voit pas l'application ; `net.dns` ne voit pas le blocage).
 - Commandes : le collecteur ne vérifie pas `sig` (il n'a pas le code). Sans le code, un serveur compromis
   peut faire sonner, vibrer ou localiser le téléphone autant qu'il veut, retenir, retarder ou rejouer dans

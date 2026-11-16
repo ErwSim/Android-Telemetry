@@ -784,7 +784,10 @@ Vérifié dans l'environnement de développement (Linux, sans émulateur ni appa
 
 - `./gradlew lint test assembleDebug assembleRelease` réussit (lint : 0 erreur, avertissements de style
   `UseKtx`/versions seulement).
-- 221 tests JVM, 1 ignoré (l'essai croisé contre le vrai collecteur, à lancer avec `VIGIE_CROSS_ENROLL`) :
+- 299 tests JVM, dont 4 ignorés sans leurs variables d'environnement (les essais croisés contre le vrai
+  collecteur : `CrossServerTest` et les trois de `CrossCommandsTest`, exécutés à part le 16/11/2026) —
+  décompte du 16/11/2026 après la revue de sécurité de la v1.1 : `:core` 131 (dont les commandes à
+  distance), `:collectors` 92, `:policy` 67, `:app` 9. Détail d'origine (v1) :
   `:core` 97 (tampon Room sur SQLite JVM : séquence après redémarrage, transaction
   interrompue, purge par sévérité/âge, horodatage d'origine non monotone ; envoi contre MockWebServer : tous
   les codes du contrat, gzip, lots, 1 Mio, Wi-Fi, reprise ; sérialisation exacte du §1 ; fichiers `.vigie` et
