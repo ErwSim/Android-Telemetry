@@ -68,7 +68,13 @@ interface Ctx {
 }
 
 function mk(c: Ctx, t: number, type: string, sev: number, data: Record<string, unknown>): MockEvent | undefined {
-  if (t > c.horizon || c.silent.some((w) => t >= w.start && t < w.end)) return undefined;
+  const w = c.silent.find((x) => t >= x.start && t < x.end);
+  // Le téléphone éteint n'envoie rien ; une détection est calculée par le serveur et l'usage horaire est livré au retour du téléphone.
+  if (w) {
+    if (!type.startsWith('detect.') && type !== 'app.ops') return undefined;
+    t = w.end + 2 * MIN + Math.floor(c.rng() * MIN);
+  }
+  if (t > c.horizon) return undefined;
   const e: MockEvent = {
     id: ulid(c.rng, t),
     ts: new Date(t).toISOString(),
@@ -310,8 +316,9 @@ export function applyScenario(events: MockEvent[], scenario: Scenario, now: numb
     mk(c, roleAt + 15 * MIN, 'app.role', 2, { role: 'sms', old: 'com.fastcleaner.pro', new: 'com.samsung.android.messaging' });
     det(roleAt + 2 * MIN, 'detect.default_app_changed', 3, FAST_APP, { role: 'sms', old: 'com.samsung.android.messaging', new: 'com.fastcleaner.pro', risk: { score: 96, level: 'high', reasons: ['combo_banking_trojan', 'accessibility_service', 'sms_read'] } }, 'Fast Cleaner Pro est devenue l\'application SMS par défaut', 2 * MIN);
     det(t0 + 2 * HOUR + 2 * MIN, 'detect.default_app_changed', 2, { package: 'com.google.android.googlequicksearchbox', label: 'Google' }, { role: 'assistant', old: 'com.samsung.android.bixby.agent', new: 'com.google.android.googlequicksearchbox', risk: { score: 14, level: 'low', reasons: [] } }, "Google est devenue l'assistant par défaut", 2 * MIN);
+    det(now - 2 * DAY - 1 * HOUR, 'detect.inventory_mismatch', 2, { package: 'com.sync.helper.svc', label: 'Sync Helper' }, { declared_system: true, installer: 'com.android.shell' }, 'Sync Helper est déclarée application du système alors que son installateur est ADB', 5 * MIN);
     // Plafond atteint : une seule détection `flood`, sans application.
-    det(now - 1 * DAY - 3 * HOUR, 'detect.flood', 3, {}, { count: 412, limit: 200 }, "Plus de 200 détections en une journée sur cet appareil : seule celle-ci est gardée", HOUR);
+    det(now - 1 * DAY - 3 * HOUR, 'detect.flood', 3, {}, { suppressed: 212, limit: 200 }, "Plus de 200 détections dans la journée pour cet appareil : 212 de plus non enregistrées. L'appareil envoie des données incohérentes ou est compromis.", HOUR);
     ['ads.unknown-cdn.biz', 'track.sdkmetrics.cc'].forEach((dom, i) => {
       detDay(todayStart - 5 * DAY + 12 * HOUR + i * MIN, 'detect.threat_domain', 2, FAST_APP, { domain: dom, requests: 5 + i, blocked: true, reason: LIST }, `Fast Cleaner Pro a demandé ${dom}, bloqué par une liste de menaces`);
     });

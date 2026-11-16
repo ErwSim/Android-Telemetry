@@ -20,6 +20,7 @@ const failures = [];
 const fail = (m) => { failures.push(m); console.log('  ✗ ' + m); };
 const ok = (m) => console.log('  ✓ ' + m);
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+const EXTRA = ['sms_permission', 'default_app_changed', 'flood', 'inventory_mismatch'].map((t) => `detect.${t}`);
 const TYPES = ['threat_domain', 'upload_spike', 'fanout', 'mail_ports', 'dns_bypass', 'sms_abuse', 'sensor_background', 'new_app_risky'].map((t) => `detect.${t}`);
 
 async function main() {
@@ -67,7 +68,8 @@ async function main() {
           const missing = TYPES.filter((t) => !types.has(t));
           console.log(`  types reçus du vrai collecteur : ${[...types].join(', ')}`);
           if (missing.length) fail(`détections : types absents : ${missing.join(', ')}`); else ok('détections : les huit types du contrat §11.3, produits par le vrai collecteur, affichés');
-          const unknown = [...types].filter((t) => !TYPES.includes(t));
+          const unknown = [...types].filter((t) => !TYPES.includes(t) && !EXTRA.includes(t));
+          console.log(`  types du §11.4 reçus : ${[...types].filter((t) => EXTRA.includes(t)).join(', ') || 'aucun'}`);
           if (unknown.length) fail(`détections : types inattendus : ${unknown.join(', ')}`);
           // La phrase construite à partir de la preuve réelle (pas de repli sur le résumé) pour chaque type.
           const sentences = await page.locator('[data-testid=detection]').evaluateAll((els) => els.map((e) => [e.getAttribute('data-type'), e.querySelector('.det-what')?.textContent || '']));
@@ -76,6 +78,24 @@ async function main() {
       }
       await shot('10-detections');
       if (first && SCENARIO !== 'sain') {
+        // Mise en sourdine contre le vrai collecteur : un type masquable, puis levée.
+        const target = page.locator('[data-testid=detection]:has([data-testid=mute-btn])').first();
+        if (await target.count()) {
+          const id = await target.getAttribute('data-id');
+          const type = await target.getAttribute('data-type');
+          await target.evaluate((el) => { el.querySelector('details').open = true; });
+          await target.locator('[data-testid=mute-btn]').click();
+          await page.waitForSelector('dialog[open]');
+          await page.fill('dialog textarea', 'essai console (vrai collecteur)');
+          await page.click('dialog button:has-text("Mettre en sourdine")');
+          await page.waitForSelector('dialog[open]', { state: 'detached', timeout: 15000 });
+          await page.waitForSelector('[data-testid=mutes-table] tbody tr:has-text("essai console")', { timeout: 15000 });
+          await page.waitForFunction((i) => !document.querySelector(`[data-testid=detection][data-id="${i}"]:not([data-muted=true])`), id, { timeout: 10000 });
+          ok(`sourdine contre le vrai collecteur (${type}) : posée, détection repliée, listée avec son motif`);
+          await page.click('[data-testid=mutes-table] tr:has-text("essai console") button:has-text("Lever la sourdine")');
+          await page.waitForSelector(`[data-testid=detection][data-id="${id}"]:not([data-muted=true])`, { timeout: 15000 });
+          ok('levée de la sourdine contre le vrai collecteur : détection de nouveau signalée');
+        } else fail('aucune détection masquable à essayer contre le vrai collecteur');
         await page.selectOption('select[aria-label="Type de détection"]', 'detect.sms_abuse');
         await page.waitForFunction(() => { const c = [...document.querySelectorAll('[data-testid=detection]')]; return c.length > 0 && c.every((e) => e.getAttribute('data-type') === 'detect.sms_abuse'); }, null, { timeout: 15000 });
         ok('filtre par type contre le vrai collecteur : sms_abuse');

@@ -114,6 +114,7 @@ export const TYPE_LABELS: Record<string, string> = {
   'detect.sms_permission': 'Détection : permission SMS',
   'detect.default_app_changed': 'Détection : application par défaut changée',
   'detect.flood': 'Détection : trop de détections',
+  'detect.inventory_mismatch': 'Détection : fausse application système',
   'detect.muted': 'Détection mise en sourdine',
   'detect.unmuted': 'Sourdine levée',
   'tracking.level_changed': 'Niveau de blocage modifié',

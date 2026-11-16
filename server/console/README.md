@@ -265,6 +265,28 @@ sensibles. Noms d'applis et de paquets hostiles : rendus par React comme du text
 vrai collecteur : renvoyé tel quel en JSON, aucune erreur serveur (le rendu dans un navigateur n'a pas été
 rejoué pendant la revue : conclusion tirée de la lecture du code).
 
+**Revue indépendante de la v1.2 (contrat §11.4).**
+
+- **Nouveaux types** : `detect.sms_permission` (une *revue* : « cette application peut envoyer des SMS sans passer par votre messagerie ; est-ce voulu ? », badge « À vérifier »,
+  renvoi vers la garde SMS), `detect.default_app_changed` (sur le rôle `sms`, la console dit que c'est la voie classique des chevaux de Troie SMS), `detect.flood` (plafond de
+  200 détections par jour : agent défectueux ou appareil compromis) et `detect.inventory_mismatch` (application déclarée « système » à tort). Evidence lue au format du collecteur
+  (`suppressed`/`limit`, `role`/`old`/`new`/`risk`…).
+- **Mise en sourdine** : sur une détection, « Ne plus signaler pour cette application » (sauf `sms_abuse`, `default_app_changed`, `flood`, `inventory_mismatch` et les détections sans
+  application), avec motif facultatif (200 caractères) et une confirmation qui dit que la détection **reste calculée et enregistrée** mais ne sera **plus ni envoyée vers Wazuh ni notifiée**.
+  Les détections en sourdine sont repliées (case « Afficher les détections en sourdine (N) »), ne comptent pas dans le verdict, et la carte « Sourdines en cours » liste les sourdines
+  avec leur motif, qui et quand, et leur levée. `POST`/`DELETE /detections/mute`, `GET /detections/mutes` ; un `detect.muted` / `detect.unmuted` du flux relit la liste ; une sourdine
+  s'applique aussi aux détections créées avant elle. Les événements `detect.muted`/`detect.unmuted` sont décrits dans le journal. Même bouton sur la fiche d'application.
+- **Récurrence** : `recurring: true` s'affiche « Déjà signalé, récurrent » (gravité déjà plafonnée à 1 par le collecteur). **Mises à jour** : un événement `update: true` + `detection_id`
+  remplace la carte existante (pas de doublon).
+- **Déclaré / accordé** : `app.risk` porte sur les capacités **demandées** ; la liste parallèle `granted` (avec ou sans suffixe `:granted`) distingue, dans l'onglet Risque et sur la fiche,
+  « Accordée » de « Demandée, pas accordée » (trait pointillé) pour les raisons qui sont des capacités ; sans liste `granted`, aucune distinction n'est inventée. Une note explique que le
+  score reste élevé quand une garde empêche l'octroi.
+- **Le verdict dit la vérité** (page Détections et vue d'ensemble, vert compris) : toujours ce qui est surveillé (permission d'envoi de SMS détenue, changement d'application SMS par défaut,
+  domaines de menaces, gros envois, connexions, nouvelles applications à risque) ; sans collecteur `app_ops` en marche (d'après la dernière pulsation), « Non surveillé ici : les envois de SMS
+  eux-mêmes… » ; avec lui, « en marche » ne prouve pas que des données arrivent ; et que **la garde SMS de l'application Vigie est la vraie protection** (`monitoringScope`, testé).
+- Hypothèses faites faute de précision au contrat : forme de `GET /detections/mutes` (`{mutes:[{device_id,type,package,reason,created_at,created_by}]}`, confirmée par le collecteur), clés
+  d'evidence de `sms_permission` (aucune requise) et de `default_app_changed` (`role`, `old`, `new`, profil aplati depuis `risk` ou lu tel quel).
+
 ## Pistage (page « Pistage »)
 
 Répartition avec **Réseau** : *Réseau* décrit le trafic observé (noms demandés, destinations, volumes, chronologie) et marche

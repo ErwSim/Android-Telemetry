@@ -9,7 +9,7 @@ import { isRecord } from './data.ts';
 import { fmtBytes, fmtDate, fmtNumber, fmtTime, parseTs } from './format.ts';
 import { cleanText } from './text.ts';
 import { opInfo } from './ops.ts';
-import { reasonInfo } from './risk.ts';
+import { levelInfo, reasonInfo } from './risk.ts';
 import { roleLabel } from './roles.ts';
 
 export const DETECTION_TYPES = [
@@ -25,6 +25,7 @@ export const DETECTION_TYPES = [
   'detect.sms_permission',
   'detect.default_app_changed',
   'detect.flood',
+  'detect.inventory_mismatch',
 ] as const;
 
 export type DetectionType = (typeof DETECTION_TYPES)[number];
@@ -199,6 +200,19 @@ const TYPES: Record<DetectionType, TypeInfo> = {
     actions: [
       "Regarder l'état de l'appareil sur la vue d'ensemble (événements perdus, collecteurs en erreur) et le journal des événements du jour.",
       "Si rien ne l'explique, considérer le téléphone comme compromis : changer le code de commande dans l'application, et au besoin révoquer l'appareil puis le ré-enrôler (ligne de commande du collecteur).",
+    ],
+    mutable: false,
+  },
+  'detect.inventory_mismatch': {
+    label: "Application déclarée « système » à tort",
+    why: "L'inventaire déclare « système » une application dont l'installateur ou l'historique montrent qu'elle a été installée. Les applications du système sont notées avec un risque plafonné à faible et épargnées par certaines gardes : se faire passer pour une application du système permet d'échapper au profil de risque et aux gardes de l'application Vigie.",
+    innocent: [
+      "Une application préinstallée mise à jour depuis une boutique, dont l'installateur a changé.",
+      "Un téléphone dont l'inventaire est incomplet après un redémarrage ou une réinstallation de l'agent.",
+    ],
+    actions: [
+      "Ouvrir la fiche de l'application : installateur, signature, date d'installation.",
+      "Si vous ne la reconnaissez pas comme une application de votre téléphone, la désinstaller.",
     ],
     mutable: false,
   },
@@ -515,10 +529,14 @@ export function observation(d: Detection): string {
       if (!role) return fallback();
       return `${who} est devenue ${role === 'sms' ? "l'application SMS par défaut" : `le rôle « ${roleLabel(role)} » par défaut`}${old ? ` (à la place de ${old})` : ''}`;
     }
+    case 'detect.inventory_mismatch':
+      return `${who} est déclarée application du système par l'inventaire, alors que son installateur ou son historique disent le contraire`;
     case 'detect.flood': {
-      const n = pickNum(ev, ['count', 'total', 'suppressed', 'dropped']);
+      // Format du collecteur : `suppressed` (détections de plus non enregistrées) et `limit` ; ancien format : `count`.
       const cap = pickNum(ev, ['limit', 'cap', 'max']) ?? 200;
-      return `Plus de ${fmtNumber(cap)} détections en une journée sur cet appareil${n !== undefined ? ` (${fmtNumber(n)} produites)` : ''} : seule celle-ci est gardée`;
+      const more = pickNum(ev, ['suppressed', 'dropped']);
+      const n = pickNum(ev, ['count', 'total']);
+      return `Plus de ${fmtNumber(cap)} détections en une journée sur cet appareil${more !== undefined ? ` : ${fmtNumber(more)} de plus non enregistrées` : n !== undefined ? ` (${fmtNumber(n)} produites)` : ''}`;
     }
     default:
       return fallback();
@@ -550,6 +568,11 @@ export function capabilityLabel(code: string): string {
   return Object.prototype.hasOwnProperty.call(CAPABILITY_LABELS, code) ? (CAPABILITY_LABELS[code] as string) : cleanText(code, 80);
 }
 
+const SOURCE_VALUES: Record<string, string> = {
+  permission_changed: 'permission accordée',
+  inventory: 'inventaire des applications',
+};
+
 const REASON_VALUES: Record<string, string> = {
   not_default_sms_app: "pas l'application SMS par défaut",
   volume: 'volume quotidien dépassé',
@@ -580,6 +603,12 @@ const EVIDENCE_LABELS: Record<string, string> = {
   old: 'Ancienne application',
   new: 'Nouvelle application',
   limit: 'Plafond',
+  suppressed: 'Détections de plus, non enregistrées',
+  since: 'Depuis',
+  until: "Jusqu'à",
+  source: 'Origine',
+  granted: 'Capacités accordées',
+  permission: 'Permission',
   domain: 'Domaine',
   requests: 'Requêtes',
   blocked: 'Bloqué par AdGuard',
@@ -624,7 +653,7 @@ const EVIDENCE_LABELS: Record<string, string> = {
   trigger: 'Déclencheur',
 };
 
-const DATE_KEYS = new Set(['installed_at', 'first_hour', 'peak_hour']);
+const DATE_KEYS = new Set(['installed_at', 'first_hour', 'peak_hour', 'since', 'until']);
 const BYTES_KEYS = new Set(['tx_bytes', 'median_bytes', 'threshold_bytes', 'rx_bytes', 'bytes']);
 
 function scalar(v: unknown): string | undefined {
@@ -648,6 +677,9 @@ export function evidenceItems(d: Detection): EvidenceItem[] {
     else if (k === 'reasons' && Array.isArray(v)) value = v.filter((x): x is string => typeof x === 'string').map((x) => reasonInfo(x).label).join(', ') || undefined;
     else if (DATE_KEYS.has(k) && typeof v === 'string') value = parseTs(v) ? `${fmtDate(v)} ${fmtTime(v)}` : scalar(v);
     else if (k === 'role' && typeof v === 'string') value = roleLabel(v);
+    else if (k === 'level' && typeof v === 'string') value = levelInfo(v).label;
+    else if (k === 'source' && typeof v === 'string') value = SOURCE_VALUES[v] ?? scalar(v);
+    else if (k === 'granted' && Array.isArray(v)) value = v.filter((x): x is string => typeof x === 'string').map((x) => reasonInfo(x).label).join(', ') || undefined;
     else if (k === 'blocked' && typeof v === 'number') {
       out.push({ label: 'Blocages comptés par AdGuard', value: fmtNumber(v) });
       continue;

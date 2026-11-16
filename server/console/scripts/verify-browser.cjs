@@ -736,7 +736,7 @@ async function runV12(browser) {
     errors: [],
     hosts: new Set(),
     // Route /apps/ops absente (404) : provoquée volontairement pour vérifier l'état vide ; annulation d'une commande signée.
-    expected: (p, st) => (st === 404 && p.startsWith('/api/console/apps/ops')) || (st === 401 && p === '/api/console/me') || (st === 409 && p.includes('/cancel')),
+    expected: (p, st) => (st === 400 && p.startsWith('/api/console/detections/mute')) || (st === 404 && p.startsWith('/api/console/apps/ops')) || (st === 401 && p === '/api/console/me') || (st === 409 && p.includes('/cancel')),
   };
   const ctx = await newContext(browser, sc, state);
   const page = await ctx.newPage();
@@ -748,9 +748,9 @@ async function runV12(browser) {
   await page.goto(`${BASE}/detections`, { waitUntil: 'load' });
   await settle(page, '[data-testid=detection]');
   const types = new Set(await page.locator('[data-testid=detection]').evaluateAll((els) => els.map((e) => e.getAttribute('data-type'))));
-  const want = ['threat_domain', 'upload_spike', 'fanout', 'mail_ports', 'dns_bypass', 'sms_abuse', 'sensor_background', 'new_app_risky'].map((t) => `detect.${t}`);
+  const want = ['threat_domain', 'upload_spike', 'fanout', 'mail_ports', 'dns_bypass', 'sms_abuse', 'sensor_background', 'new_app_risky', 'sms_permission', 'default_app_changed', 'flood', 'inventory_mismatch'].map((t) => `detect.${t}`);
   const missing = want.filter((t) => !types.has(t));
-  if (missing.length) fail(`détections : types absents : ${missing.join(', ')}`); else ok(`détections : les 8 types du contrat §11.3 affichés (${types.size} types dont un hors catalogue)`);
+  if (missing.length) fail(`détections : types absents : ${missing.join(', ')}`); else ok(`détections : les 12 types des contrats §11.3 et §11.4 affichés (${types.size} types dont un hors catalogue)`);
   if (!types.has('detect.quantum_leak')) fail('détections : type inconnu non affiché'); else ok('détection de type inconnu : affichée avec son code et sa description');
   const main = await page.textContent('.main');
   if (!main.includes('a tenté de joindre le domaine')) fail('détections : phrase « ce qui a été observé » absente'); else ok('détections : ce qui a été observé est écrit en clair');
@@ -784,6 +784,83 @@ async function runV12(browser) {
   await page.click('button.seg-btn:has-text("7 jours")');
   await page.waitForTimeout(500);
 
+  // ---- §11.4 : détections sans app.ops, revue, rôle SMS, plafond, récurrence
+  const smsPerm = page.locator('[data-testid=detection][data-type="detect.sms_permission"]').first();
+  await smsPerm.waitFor();
+  const smsPermTxt = await smsPerm.textContent();
+  if (!/À vérifier/.test(smsPermTxt) || !/est-ce voulu/.test(smsPermTxt) || !/revue/.test(smsPermTxt) || !/garde SMS/.test(smsPermTxt)) fail('sms_permission : revue « est-ce voulu ? » et renvoi vers la garde SMS absents'); else ok("sms_permission : présentée comme une revue (« est-ce voulu ? »), avec renvoi vers la garde SMS de l'application");
+  const defApp = page.locator('[data-testid=detection][data-type="detect.default_app_changed"]', { hasText: 'application SMS par défaut' }).first();
+  await defApp.waitFor();
+  await defApp.locator('summary').click();
+  const roleTxt = await defApp.locator('[data-testid=det-sms-role]').textContent();
+  if (!/voie classique des chevaux de Troie SMS/.test(roleTxt)) fail('default_app_changed (sms) : voie classique des chevaux de Troie SMS non dite'); else ok('default_app_changed sur le rôle SMS : « la voie classique des chevaux de Troie SMS » dit en clair');
+  if (await defApp.locator('[data-testid=mute-btn]').count()) fail('default_app_changed : mise en sourdine proposée alors que le type n\'est pas masquable');
+  const flood = page.locator('[data-testid=detection][data-type="detect.flood"]').first();
+  await flood.waitFor();
+  await flood.locator('summary').click();
+  const floodTxt = await flood.textContent();
+  if (!/Plus de 200 détections/.test(floodTxt) || !/212 de plus/.test(floodTxt) || !/compromis/.test(floodTxt) || (await flood.locator('[data-testid=mute-btn]').count())) fail('flood : phrase, explication ou absence de sourdine incorrectes'); else ok("flood : plafond de 200 détections expliqué (agent défectueux ou appareil compromis), non masquable");
+  const smsAbuse = page.locator('[data-testid=detection][data-type="detect.sms_abuse"]').first();
+  await smsAbuse.locator('summary').click();
+  if (await smsAbuse.locator('[data-testid=mute-btn]').count()) fail('sms_abuse : mise en sourdine proposée'); else ok('sms_abuse : pas de mise en sourdine (type non masquable)');
+  const recurring = await page.locator('[data-testid=detection] .badge:has-text("Déjà signalé, récurrent")').count();
+  if (recurring < 1) fail('récurrence : badge « déjà signalé, récurrent » absent'); else ok(`récurrence : ${recurring} détection(s) « déjà signalé, récurrent » (gravité plafonnée à 1)`);
+
+  // ---- Verdict : ce qui est surveillé et ce qui ne l'est pas (collecteur app_ops en marche dans ce scénario)
+  const scopeTxt = await page.textContent('[data-testid=verdict-scope]');
+  if (await page.locator('[data-testid=verdict-blind]').count() || !/ne prouve pas que des données arrivent/.test(scopeTxt) || !/garde SMS/.test(scopeTxt) || !/permission d'envoyer des SMS/.test(scopeTxt)) fail('verdict (app_ops en marche) : texte de périmètre incorrect'); else ok('verdict avec app_ops en marche : périmètre dit (permission SMS, appli par défaut), « en marche » ne prouve pas que des données arrivent, garde SMS = vraie protection');
+
+  // ---- Sourdines (§11.4)
+  const folded = await page.locator('[data-testid=detection][data-muted=true]').count();
+  if (folded) fail('sourdine : détection en sourdine non repliée par défaut');
+  const showMuted = page.locator('label.check:has-text("Afficher les détections en sourdine")');
+  await showMuted.waitFor();
+  const mutedLabel = await showMuted.textContent();
+  await page.waitForSelector('[data-testid=mutes-table] tbody tr:has-text("Chrome")');
+  const mt = await page.textContent('[data-testid=mutes-table]');
+  if (!/Chrome utilise le DNS sécurisé/.test(mt) || !/Lever la sourdine/.test(mt)) fail('sourdines en cours : motif ou levée absents'); else ok(`sourdines en cours listées avec motif et levée ; détection en sourdine repliée (${mutedLabel.trim()})`);
+  await showMuted.locator('input').check();
+  await page.waitForSelector('[data-testid=detection][data-muted=true] .badge:has-text("En sourdine")');
+  ok('filtre « Afficher les détections en sourdine » : la détection repliée réapparaît, marquée');
+  await showMuted.locator('input').uncheck();
+  // Mettre en sourdine : Sync Helper / contournement du DNS
+  const syncDns = page.locator('[data-testid=detection][data-type="detect.dns_bypass"]', { hasText: 'Sync Helper' }).first();
+  await syncDns.waitFor();
+  const syncId = await syncDns.getAttribute('data-id');
+  await syncDns.locator('summary').click();
+  await syncDns.locator('[data-testid=mute-btn]').click();
+  await page.waitForSelector('dialog[open]');
+  const mdlg = await page.textContent('dialog[open]');
+  if (!/calculée et enregistrée/.test(mdlg) || !/plus envoyée vers Wazuh ni notifiée/.test(mdlg) || !/lever la sourdine/.test(mdlg)) fail('dialogue de sourdine : explication incomplète'); else ok('dialogue de sourdine : la détection reste calculée, mais ne sera plus ni envoyée vers Wazuh ni notifiée ; levée possible');
+  await page.screenshot({ path: path.join(OUT, 'v12-sourdine-dialogue.png') });
+  await page.fill('dialog textarea', 'Résolveur voulu (test)');
+  await page.click('dialog button:has-text("Mettre en sourdine")');
+  await page.waitForSelector('dialog[open]', { state: 'detached' });
+  await page.waitForSelector('[data-testid=mute-notice]');
+  await page.waitForFunction((id) => !document.querySelector(`[data-testid=detection][data-id="${id}"]:not([data-muted=true])`), syncId, { timeout: 10000 });
+  await page.waitForSelector('[data-testid=mutes-table] tbody tr:has-text("Résolveur voulu (test)")');
+  ok('mise en sourdine : détection repliée, sourdine listée avec son motif, verdict allégé');
+  const mutesApi = await page.evaluate(async () => (await (await fetch('/api/console/detections/mutes')).json()).mutes);
+  if (!mutesApi.some((m) => m.package === 'com.sync.helper.svc' && m.type === 'detect.dns_bypass' && m.reason === 'Résolveur voulu (test)')) fail('sourdine : non enregistrée côté serveur');
+  await page.waitForFunction(() => document.querySelector('[data-testid=verdict-muted]'), null, { timeout: 5000 });
+  // Journal : l'événement serveur detect.muted est lisible (vu plus bas) ; levée depuis la liste des sourdines
+  await page.click('[data-testid=mutes-table] tr:has-text("Résolveur voulu") button:has-text("Lever la sourdine")');
+  await page.waitForFunction(() => !document.querySelector('[data-testid=mutes-table] tr')?.parentElement?.textContent.includes('Résolveur voulu (test)'), null, { timeout: 10000 });
+  await page.waitForSelector(`[data-testid=detection][data-id="${syncId}"]:not([data-muted=true])`);
+  ok('levée de la sourdine : la détection est de nouveau signalée');
+  // Une mise à jour reçue en direct remplace la détection existante (pas de doublon)
+  const nBefore = await page.locator('[data-testid=detection]').count();
+  await control({ emit_detection: { type: 'detect.dns_bypass', package: 'com.sync.helper.svc', label: 'Sync Helper', severity: 2, update: true, detection_id: syncId, evidence: { connections: 999, resolvers: ['1.1.1.1:443'], providers: ['Cloudflare DNS'] }, summary: 'mise à jour' } });
+  await page.waitForFunction(([id]) => document.querySelector(`[data-testid=detection][data-id="${id}"]`)?.textContent.includes('999'), [syncId], { timeout: 15000 });
+  const nAfter = await page.locator('[data-testid=detection]').count();
+  if (nAfter !== nBefore) fail(`mise à jour en direct : ${nBefore} → ${nAfter} cartes (doublon)`); else ok('mise à jour en direct (update + detection_id) : la carte est remplacée, sans doublon');
+  // Sourdine refusée par le serveur pour un type non masquable : message clair, rien de masqué
+  const refused = await page.evaluate(async () => {
+    const r = await fetch('/api/console/detections/mute', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'vigie' }, body: JSON.stringify({ device_id: 'dev_8f3a1c2e9b7d', type: 'detect.sms_abuse', package: 'com.wallpapers.superhd' }) });
+    return r.status;
+  });
+  if (refused !== 400) fail(`sourdine d'un type non masquable : statut ${refused} au lieu de 400`);
+
   // Pagination par curseur : 70 détections de plus
   await control({ more_detections: 70 });
   await page.click('button:has-text("Actualiser")');
@@ -809,6 +886,7 @@ async function runV12(browser) {
   await page.goto(`${BASE}/`, { waitUntil: 'load' });
   await settle(page, '[data-testid=verdict]');
   const ov = await page.textContent('[data-testid=overview-detections]');
+  if (!/Surveillé dans tous les cas/.test(ov) || !/garde SMS/.test(ov)) fail("vue d'ensemble : périmètre de la surveillance et garde SMS non dits"); else ok("vue d'ensemble : le verdict dit ce qui est surveillé et que la garde SMS est la vraie protection");
   const critBefore = Number((/(\d+)\s*critique/.exec(ov) || [])[1] || 0);
   if (!/à examiner/.test(ov) || !critBefore) fail("vue d'ensemble : résumé des détections par gravité absent"); else ok(`vue d'ensemble : ${critBefore} critiques sur 7 jours, résumé par gravité`);
   await control({ emit_detection: { type: 'detect.sensor_background', package: 'com.sync.helper.svc', label: 'Sync Helper', severity: 3, evidence: { op: 'camera', background_count: 9, count: 9 }, summary: 'direct' } });
@@ -840,6 +918,16 @@ async function runV12(browser) {
   const unknown = await page.textContent('.reasons');
   if (!unknown.includes('code inconnu') || !unknown.includes('Position en arrière-plan')) fail('profil de risque : code inconnu / explications absents'); else ok('profil de risque : raisons expliquées en clair ; un code inconnu est affiché tel quel');
   await page.screenshot({ path: path.join(OUT, 'v12-risque-raisons.png') });
+  // Déclaré / accordé (§11.4) : Fast Cleaner demande le micro et la caméra en arrière-plan sans les avoir obtenus
+  await page.fill('input[placeholder="nom ou paquet"]', 'fast cleaner');
+  await page.click('[data-testid=risk-table] .expander');
+  await page.waitForSelector('.reasons li:has-text("Micro ou caméra en arrière-plan")');
+  const gr = await page.textContent('.reasons');
+  const decl = await page.locator('.reasons li:has-text("Micro ou caméra en arrière-plan") .badge:has-text("Demandée, pas accordée")').count();
+  const accd = await page.locator('.reasons li:has-text("Service d\'accessibilité") .badge:has-text("Accordée")').count();
+  const noteTxt = await page.textContent('[data-testid=grant-note]');
+  if (!decl || !accd || !/demande/.test(noteTxt) || !/garde/.test(noteTxt) || /Demandée, pas accordée/.test(await page.locator('.reasons li:has-text("Installée hors boutique")').textContent())) fail('risque : distinction demandée / accordée absente ou mal posée'); else ok("risque : distingue ce que l'application demande de ce qu'elle a obtenu (micro/caméra demandés, pas accordés ; accessibilité accordée) ; l'état « hors boutique » n'est pas marqué");
+  void gr;
 
   // ---- Fiche d'une application (ouverture directe : le paquet contient des points)
   await page.goto(`${BASE}/applications/fiche?pkg=com.wallpapers.superhd`, { waitUntil: 'load' });
@@ -906,6 +994,9 @@ async function runV12(browser) {
   await page.fill('input[list=event-types]', 'detect.');
   await page.waitForSelector('.tbl tbody tr:has-text("a tenté de joindre")', { timeout: 15000 });
   ok('journal : détections décrites en clair');
+  await page.waitForSelector('.tbl tbody tr:has-text("Sourdine : Contournement du DNS du téléphone pour com.sync.helper.svc · motif : Résolveur voulu (test) · par admin")', { timeout: 15000 });
+  await page.waitForSelector('.tbl tbody tr:has-text("Fin de sourdine")');
+  ok('journal : detect.muted et detect.unmuted lisibles (type, application, motif, qui)');
 
   // ---- Commandes : validité de l'effacement et textes sur les limites de la signature
   await page.goto(`${BASE}/commandes`, { waitUntil: 'load' });
@@ -980,6 +1071,13 @@ async function runV12Scenario(browser, scenario, scenarios) {
         const txt = await page.textContent('[data-testid=detection][data-type="detect.sms_abuse"]');
         if (!/SMS/.test(txt) || !/arrière-plan/.test(txt)) fail('scénario fraude : phrase des SMS sans arrière-plan');
       }
+    }
+    if (light) {
+      const blind = await page.locator('[data-testid=verdict-blind]').count();
+      const scope = await page.textContent('[data-testid=verdict-scope]');
+      if (scenario === 'healthy') {
+        if (!blind || !/envois de SMS eux-mêmes/.test(await page.textContent('[data-testid=verdict-blind]')) || !/garde SMS/.test(scope)) fail('scénario sain : le verdict vert ne dit pas que les envois de SMS ne sont pas surveillés'); else ok('scénario sain : « Rien à signaler » ET « non surveillé : les envois de SMS eux-mêmes » (app_ops désactivé), garde SMS rappelée');
+      } else if (blind) fail('scénario fraude : angle mort annoncé alors que app_ops tourne');
     }
     await shot(page, named, '10-detections');
     // Vue d'ensemble

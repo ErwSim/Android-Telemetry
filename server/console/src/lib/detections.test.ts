@@ -40,8 +40,8 @@ const det = (type: string, evidence: Record<string, unknown>, extra: Partial<Det
 });
 
 describe('types de détection', () => {
-  it('les onze types des contrats §11.3 et §11.4 ont libellé, raison, explications innocentes et conduite à tenir', () => {
-    expect(DETECTION_TYPES).toHaveLength(11);
+  it('les douze types des contrats §11.3 et §11.4 ont libellé, raison, explications innocentes et conduite à tenir', () => {
+    expect(DETECTION_TYPES).toHaveLength(12);
     for (const t of DETECTION_TYPES) {
       const i = typeInfo(t);
       expect(i.label).not.toBe(t);
@@ -290,7 +290,10 @@ describe('détections du §11.4 (sans app.ops)', () => {
     expect(typeInfo('detect.default_app_changed').why).toContain('chevaux de Troie SMS');
   });
   it('flood : sans application, plafond lu', () => {
-    expect(observation(det('detect.flood', { count: 412, limit: 200 }, { package: undefined, label: undefined } as never))).toBe('Plus de 200 détections en une journée sur cet appareil (412 produites) : seule celle-ci est gardée');
+    expect(observation(det('detect.flood', { count: 412, limit: 200 }, { package: undefined, label: undefined } as never))).toBe('Plus de 200 détections en une journée sur cet appareil (412 produites)');
+    expect(observation(det('detect.flood', { suppressed: 37, limit: 200 }, { package: undefined, label: undefined } as never))).toBe('Plus de 200 détections en une journée sur cet appareil : 37 de plus non enregistrées');
+    expect(observation(det('detect.inventory_mismatch', {}))).toContain('déclarée application du système');
+    expect(isMutable({ type: 'detect.inventory_mismatch', package: 'p' })).toBe(false);
     expect(observation(det('detect.flood', {}))).toContain('Plus de 200');
   });
   it('types non masquables : sms_abuse, default_app_changed, flood ; sans application : rien à masquer', () => {
@@ -369,5 +372,17 @@ describe('ce qui est surveillé et ce qui ne l’est pas (§11.4)', () => {
     expect(sc.ops).toContain('ne prouve pas que des données arrivent');
     expect(sc.guard).toContain('garde SMS');
     expect(sc.watched).toContain('Surveillé dans tous les cas');
+  });
+});
+
+describe('preuves §11.4 au format du collecteur', () => {
+  it('sms_permission et default_app_changed : profil de risque à plat, dates, origine, capacités accordées', () => {
+    const items = evidenceItems(det('detect.sms_permission', { permission: 'SEND_SMS', level: 'high', score: 91, reasons: ['combo_sms_fraud', 'sms_send'], source: 'permission_changed', since: '2026-11-15T13:53:20.157Z', default_sms_app: ['com.samsung.android.messaging'] }));
+    expect(items).toContainEqual({ label: 'Niveau de risque', value: 'Élevé' });
+    expect(items).toContainEqual({ label: 'Origine', value: 'permission accordée' });
+    expect(items.find((i) => i.label === 'Depuis')?.value).toMatch(/^15\/11\/2026 /);
+    expect(items.find((i) => i.label === 'Raisons')?.value).toBe('Profil de fraude au SMS, Peut envoyer des SMS');
+    const g = evidenceItems(det('detect.default_app_changed', { role: 'sms', granted: ['accessibility_service', 'overlay'] }));
+    expect(g.find((i) => i.label === 'Capacités accordées')?.value).toBe("Service d'accessibilité, Affichage par-dessus les autres applications");
   });
 });

@@ -55,7 +55,7 @@ const byId = new Map(events.map((e) => [e.id, e]));
 /** Sourdines de détections (contrat §11.4) ; en `mixed`, le propriétaire a déjà masqué le DNS sécurisé de Chrome. */
 const mutes: { device_id: string; type: string; package: string; label?: string; reason?: string; created_at: string; created_by: string }[] =
   SCENARIO === 'mixed' ? [{ device_id: DEVICE_MAIN.device_id, type: 'detect.dns_bypass', package: 'com.android.chrome', label: 'Chrome', reason: 'Chrome utilise le DNS sécurisé, voulu', created_at: new Date(NOW - 20 * 3_600_000).toISOString(), created_by: 'admin' }] : [];
-const NOT_MUTABLE = new Set(['detect.sms_abuse', 'detect.default_app_changed', 'detect.flood']);
+const NOT_MUTABLE = new Set(['detect.sms_abuse', 'detect.default_app_changed', 'detect.flood', 'detect.inventory_mismatch']);
 /** `app.ops` : « normal » (selon le scénario), « empty » (collecteur actif, rien d'utilisé) ou « 404 » (route absente). */
 let opsMode: 'normal' | 'empty' | '404' = 'normal';
 const sessions = new Map<string, string>();
