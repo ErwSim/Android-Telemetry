@@ -26,12 +26,32 @@ Spécifiée dans `docs/contrat/contrat.md` §8, §9, §10 et `docs/ARCHITECTURE.
 | Lot | Répertoire | État | Vérifié par exécution |
 |---|---|---|---|
 | Commandes à distance (sonner, vibrer, localiser, verrouiller + message, effacer ; sensibles signées par un code inconnu du serveur ; connexion permanente ; canal coupé par défaut dans l'app) | `server/collector/`, `server/console/`, `android/` | fait | tests des trois composants ; signature du navigateur acceptée par l'agent simulé ; vrai code Kotlin contre le vrai collecteur (`CrossCommandsTest`) ; flux tenu 7 min à travers Caddy en mTLS |
-| Vue « pistage » (bloqué / autorisé par éditeur, domaine, application ; actions sur AdGuard ; niveaux permissif / équilibré / strict) | `server/collector/`, `server/console/`, `infra/` | fait ; **correction du relevé du journal AdGuard en cours** (des requêtes étaient perdues) | blocage d'un domaine vérifié par requête DoT avant/après sur le vrai AdGuard ; niveaux réellement appliqués |
+| Vue « pistage » (bloqué / autorisé par éditeur, domaine, application ; actions sur AdGuard ; niveaux permissif / équilibré / strict) | `server/collector/`, `server/console/`, `infra/` | fait | blocage d'un domaine vérifié par requête DoT avant/après sur le vrai AdGuard ; niveaux réellement appliqués |
 | APK compagnon de notifications (titre et texte en option, codes masqués) | `android/notifier/`, `android/collectors/…/notifications` | fait | build, tests, inspection des APK (pas d'`INTERNET`, même signature) |
 | Modes de localisation (GPS seul / + réseau / fusionné) | `android/collectors/…/location` | fait | tests JVM |
 | Infrastructure v1.1 | `infra/` | fait | pile réelle en TLS interne, 143/143 cas de règles Wazuh |
-| Revue de sécurité indépendante de la v1.1 | — | en cours | — |
+| Revue de sécurité indépendante de la v1.1 | — | faite : effacement rejouable et relevé du journal AdGuard corrigés ; limites de la signature documentées au contrat §8 | API attaquée sur le vrai collecteur, renvoi après 5 min, signatures TypeScript → Kotlin, relevé prouvé sur un vrai AdGuard |
 | Alignement des guides sur la v1.1 | `README.md`, `docs/guides/` | à faire après la revue | — |
+
+## Version 1.2 en cours (demandée par le propriétaire le 16/11/2026)
+
+But : protéger d'un logiciel malveillant quel que soit son vecteur (le propriétaire a subi 2 000 SMS de
+hameçonnage par jour sur un précédent téléphone). Spécifiée au contrat §11.
+
+| Lot | Répertoire | État au 16/11/2026, 16 h 15 UTC |
+|---|---|---|
+| Gardes de capacités (SMS, appels, accessibilité, claviers, quarantaine des nouvelles applications), type de réglage « liste de paquets » | `android/policy`, `android/app`, `android/core` | en cours (premiers commits poussés) |
+| Collecteurs `app.risk`, `app.role`, `app.ops` | `android/collectors` | en cours |
+| Détections côté serveur (§11.3), scénarios d'attaque du simulateur | `server/collector` | en cours |
+| Console : détections, profil de risque, usage des opérations sensibles | `server/console` | en cours |
+| Infrastructure : règles Wazuh pour `detect.*`, `app.risk`, `tracking.*` ; `querylog.size_memory` ≈ 50 | `infra/` | à faire après le collecteur |
+| Revue indépendante des gardes et des détections | — | à faire |
+| Alignement des guides sur la v1.1 et la v1.2 | `README.md`, `docs/guides/` | à faire en dernier |
+
+Les agents ont été interrompus deux fois par la limite d'usage ; les points d'étape sont commités. Pour
+reprendre sans eux : lire le §11 du contrat, `git log` par répertoire, et finir chaque lot jusqu'à un build
+vert (`android/` : `./gradlew lint test assembleDebug assembleRelease` ; `server/collector` : `go vet`,
+`go test -race` ; `server/console` : `npm run build`, tests, `npm run verify`).
 
 ## Jamais testé (à faire par le propriétaire)
 
