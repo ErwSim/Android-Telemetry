@@ -1,4 +1,4 @@
-// ULID (26 caractères, alphabet de Crockford) généré dans le navigateur pour l'identifiant d'une commande.
+// ULID (26 characters, Crockford alphabet) generated in the browser for a command's identifier.
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
 function randomBytes(n: number): Uint8Array {
@@ -7,7 +7,7 @@ function randomBytes(n: number): Uint8Array {
   return b;
 }
 
-/** 48 bits d'horodatage (ms) puis 80 bits aléatoires. `now` et `random` sont injectables pour les tests. */
+/** 48 bits of timestamp (ms) then 80 random bits. `now` and `random` can be injected for tests. */
 export function ulid(now: number = Date.now(), random: (n: number) => Uint8Array = randomBytes): string {
   let t = Math.floor(now);
   let time = '';
@@ -15,7 +15,7 @@ export function ulid(now: number = Date.now(), random: (n: number) => Uint8Array
     time = ALPHABET.charAt(t % 32) + time;
     t = Math.floor(t / 32);
   }
-  // 256 est un multiple de 32 : `& 31` garde une distribution uniforme.
+  // 256 is a multiple of 32: `& 31` keeps a uniform distribution.
   let rand = '';
   for (const b of random(16)) rand += ALPHABET.charAt(b & 31);
   return time + rand;

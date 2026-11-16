@@ -12,11 +12,11 @@ notifications, §11 risque, opérations et détections de `docs/contrat/contrat.
 
 ```sh
 npm install
-npm run mock      # serveur factice sur http://127.0.0.1:8787 (identifiants : admin / vigie)
+npm run mock      # serveur factice sur http://127.0.0.1:8787 (identifiants : admin / watchpost)
 npm run dev       # Vite sur http://localhost:5173, proxy /api vers le serveur factice
 ```
 
-Pour viser un autre collecteur : `VIGIE_API_TARGET=http://127.0.0.1:8080 npm run dev`.
+Pour viser un autre collecteur : `WATCHPOST_API_TARGET=http://127.0.0.1:8080 npm run dev`.
 
 Le serveur factice (`mock/`) génère sept jours de télémétrie déterministe autour de Paris : trajets, trous de
 données (téléphone éteint, arrêt forcé de l'agent, perte du fix), DNS et connexions par paquet Google/Samsung,
@@ -83,7 +83,7 @@ au SMS » dans les quatre configurations (clair/sombre, bureau/téléphone). Cap
 
 `scripts/verify-real.cjs` rejoue dans Chromium les parcours commandes (simple, mauvais code puis bon code, annulation, position
 reçue), pistage, notifications et carte contre un collecteur réel (`REAL_URL`, `REAL_PASSWORD`, `REAL_CODE`), avec les mêmes
-contrôles (console, CSP, tiers, fuite du code). Les parcours de la version 1.2 contre le vrai collecteur sont décrits plus bas. Prérequis : collecteur lancé avec `VIGIE_CONSOLE_DIR=$PWD/dist`, un appareil
+contrôles (console, CSP, tiers, fuite du code). Les parcours de la version 1.2 contre le vrai collecteur sont décrits plus bas. Prérequis : collecteur lancé avec `WATCHPOST_CONSOLE_DIR=$PWD/dist`, un appareil
 enrôlé et alimenté par `sim --command-code 'correct horse battery staple' --fake-adguard 127.0.0.1:3001 …` (agent de commandes et faux
 AdGuard Home du simulateur : voir `server/collector/README.md`). Avec AdGuard joignable, le script rejoue aussi le blocage
 d'un domaine, le `409` d'un domaine indispensable et un changement de niveau ; sans AdGuard, il contrôle le mode dégradé.
@@ -159,7 +159,7 @@ qui se met à jour en direct) ; la vue d'ensemble n'affiche que l'état du canal
 
 - Le **navigateur** génère l'ULID, construit `payload` (JSON sérialisé **une seule fois** ; c'est cette chaîne exacte qui est
   signée et envoyée), fixe la validité (1 h simple ; verrouillage 7 jours par défaut et 30 au plus ; **effacement 15 min par défaut et 24 h au plus**, contrat §8) et signe les commandes
-  sensibles : `K = PBKDF2-HMAC-SHA256(code, "vigie-cmd-v1:" + device_id, 600 000, 32 octets)` puis
+  sensibles : `K = PBKDF2-HMAC-SHA256(code, "watchpost-cmd-v1:" + device_id, 600 000, 32 octets)` puis
   `sig = base64(HMAC-SHA256(K, UTF-8(payload)))`, par WebCrypto (`src/lib/commands.ts`). Le test `commands.test.ts` reproduit
   le vecteur du contrat §8 (K, payload reconstruit à l'identique, signature, accents en UTF-8).
 - Le **code de commande** est saisi à chaque commande dans un champ **non contrôlé** (il n'existe pas dans l'état React), sert

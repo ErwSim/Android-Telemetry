@@ -16,7 +16,7 @@ interface DeviceValue {
 }
 
 const Ctx = createContext<DeviceValue | null>(null);
-const KEY = 'vigie.device';
+const KEY = 'watchpost.device';
 
 export function DeviceProvider({ children }: { children: ReactNode }) {
   const { data, error, loading, reload } = useApi('devices', (signal) => api.devices(signal));

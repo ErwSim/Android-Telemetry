@@ -1,31 +1,31 @@
-// Usage des opérations sensibles (contrat §11.2, `app.ops`, expérimental) : libellés, lecture tolérante de
-// `GET /apps/ops`, agrégations. Ces données peuvent être absentes : l'appelant affiche alors un état vide.
+// Usage of sensitive operations (contract §11.2, `app.ops`, experimental): labels, tolerant reading of
+// `GET /apps/ops`, aggregations. These data may be absent: the caller then displays an empty state.
 import type { AppOpsResponse, AppOpsRow } from '../api/types.ts';
 import { isRecord } from './data.ts';
 
 export interface OpInfo {
   op: string;
   label: string;
-  /** verbe court pour une phrase : « a envoyé des SMS » */
+  /** short verb for a sentence: "sent SMS" */
   group: 'sms' | 'calls' | 'contacts' | 'micro' | 'camera' | 'other';
-  /** les cinq usages que le propriétaire veut voir en premier */
+  /** the five usages to show first */
   headline: boolean;
 }
 
 const OPS: Record<string, Omit<OpInfo, 'op'>> = {
-  send_sms: { label: 'Envoi de SMS', group: 'sms', headline: true },
-  read_sms: { label: 'Lecture de SMS', group: 'sms', headline: false },
-  receive_sms: { label: 'Réception de SMS', group: 'sms', headline: false },
-  call_phone: { label: 'Appels passés', group: 'calls', headline: true },
-  read_contacts: { label: 'Lecture des contacts', group: 'contacts', headline: true },
-  read_call_log: { label: "Lecture du journal d'appels", group: 'calls', headline: false },
-  record_audio: { label: 'Micro', group: 'micro', headline: true },
-  camera: { label: 'Caméra', group: 'camera', headline: true },
-  fine_location: { label: 'Position précise', group: 'other', headline: false },
-  get_accounts: { label: 'Lecture des comptes', group: 'other', headline: false },
+  send_sms: { label: 'SMS sending', group: 'sms', headline: true },
+  read_sms: { label: 'SMS reading', group: 'sms', headline: false },
+  receive_sms: { label: 'SMS receiving', group: 'sms', headline: false },
+  call_phone: { label: 'Calls placed', group: 'calls', headline: true },
+  read_contacts: { label: 'Contact reading', group: 'contacts', headline: true },
+  read_call_log: { label: 'Call log reading', group: 'calls', headline: false },
+  record_audio: { label: 'Microphone', group: 'micro', headline: true },
+  camera: { label: 'Camera', group: 'camera', headline: true },
+  fine_location: { label: 'Precise location', group: 'other', headline: false },
+  get_accounts: { label: 'Account reading', group: 'other', headline: false },
 };
 
-/** Ordre d'affichage : celui du contrat. */
+/** Display order: the contract's. */
 export const OP_CODES: readonly string[] = Object.keys(OPS);
 
 export function opInfo(op: string): OpInfo {
@@ -56,8 +56,8 @@ function row(raw: unknown, pkg?: string, label?: string): AppOpsRow | undefined 
 }
 
 /**
- * Lit la réponse de `GET /apps/ops`. Deux formes sont acceptées : lignes à plat `{package, op, count, …}`
- * (sous `ops`, `rows`, `items` ou `apps`), ou applications portant leurs opérations `{package, ops: [...]}`.
+ * Reads the `GET /apps/ops` response. Two forms are accepted: flat rows `{package, op, count, ...}`
+ * (under `ops`, `rows`, `items` or `apps`), or applications carrying their operations `{package, ops: [...]}`.
  */
 export function parseOpsResponse(raw: unknown): AppOpsResponse {
   const src = Array.isArray(raw) ? raw : isRecord(raw) ? (raw['apps'] ?? raw['ops'] ?? raw['rows'] ?? raw['items'] ?? []) : [];
@@ -86,14 +86,14 @@ export function parseOpsResponse(raw: unknown): AppOpsResponse {
 export interface AppOps {
   package: string;
   label?: string;
-  /** par opération, dans l'ordre du contrat */
+  /** per operation, in the contract's order */
   ops: { op: string; count: number; background: number; rejected: number; lastTs?: string }[];
   total: number;
   background: number;
   rejected: number;
 }
 
-/** Regroupe par application (additionne si une paire application/opération apparaît plusieurs fois). */
+/** Groups by application (adds up if an application/operation pair appears several times). */
 export function groupByApp(rows: readonly AppOpsRow[]): AppOps[] {
   const m = new Map<string, AppOps>();
   for (const r of rows) {
@@ -131,7 +131,7 @@ export interface OpTotal {
   apps: { package: string; label?: string; count: number; background: number }[];
 }
 
-/** Par opération : total, dont arrière-plan, et applications classées par nombre d'usages. */
+/** Per operation: total, of which background, and applications ranked by number of uses. */
 export function groupByOp(rows: readonly AppOpsRow[]): OpTotal[] {
   const m = new Map<string, OpTotal>();
   for (const a of groupByApp(rows)) {
@@ -154,7 +154,7 @@ export function groupByOp(rows: readonly AppOpsRow[]): OpTotal[] {
   return [...m.values()].sort((a, b) => idx(a.op) - idx(b.op) || a.op.localeCompare(b.op));
 }
 
-/** Part des usages faits en arrière-plan, de 0 à 1 (0 si aucun usage). */
+/** Share of uses made in the background, from 0 to 1 (0 if no use). */
 export function backgroundShare(count: number, background: number): number {
   return count > 0 ? Math.min(1, background / count) : 0;
 }

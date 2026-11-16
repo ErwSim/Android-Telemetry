@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useEventStream } from '../api/useEventStream.ts';
 import { usePagedDetections } from '../api/usePagedDetections.ts';
-import type { VigieEvent } from '../api/types.ts';
+import type { WatchpostEvent } from '../api/types.ts';
 import { DetectionCard } from '../components/detections/DetectionCard.tsx';
 import { Verdict } from '../components/detections/Verdict.tsx';
 import { PeriodPicker, usePeriod } from '../components/PeriodPicker.tsx';
@@ -60,7 +60,7 @@ export default function Detections() {
   });
   const periodKey = ctl.key;
   const onEvent = useCallback(
-    (ev: VigieEvent) => {
+    (ev: WatchpostEvent) => {
       // Sourdine posée ou levée (depuis un autre onglet, ou par le collecteur) : on relit la liste et les sourdines.
       if (isMuteEvent(ev.type)) {
         reloadList();

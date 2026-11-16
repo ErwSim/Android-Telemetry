@@ -1,4 +1,4 @@
-// Configuration d'exécution : `/config.json` (fichier statique, facultatif) puis variables de build.
+// Runtime configuration: `/config.json` (static file, optional), then build variables.
 
 export interface AppConfig {
   tileUrl: string;
@@ -8,12 +8,12 @@ export interface AppConfig {
 
 export const DEFAULT_CONFIG: AppConfig = {
   tileUrl: (import.meta.env.VITE_TILE_URL as string | undefined) ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-  tileAttribution: (import.meta.env.VITE_TILE_ATTRIBUTION as string | undefined) ?? '© contributeurs OpenStreetMap',
+  tileAttribution: (import.meta.env.VITE_TILE_ATTRIBUTION as string | undefined) ?? '© OpenStreetMap contributors',
   tileAttributionUrl:
     (import.meta.env.VITE_TILE_ATTRIBUTION_URL as string | undefined) ?? 'https://www.openstreetmap.org/copyright',
 };
 
-/** Une URL de tuiles valide est en https (ou même origine) et contient {z}, {x} et {y}. */
+/** A valid tile URL uses https (or same origin) and contains {z}, {x} and {y}. */
 export function isValidTileUrl(u: unknown): u is string {
   if (typeof u !== 'string') return false;
   if (!u.includes('{z}') || !u.includes('{x}') || !u.includes('{y}')) return false;
@@ -39,7 +39,7 @@ export function loadConfig(): Promise<AppConfig> {
     .then(async (r) => {
       if (!r.ok) return DEFAULT_CONFIG;
       const ct = r.headers.get('content-type') ?? '';
-      if (!ct.includes('json')) return DEFAULT_CONFIG; // repli SPA vers index.html
+      if (!ct.includes('json')) return DEFAULT_CONFIG; // SPA fallback to index.html
       return mergeConfig(await r.json());
     })
     .catch(() => DEFAULT_CONFIG);

@@ -29,7 +29,7 @@ async function main() {
     for (const mobile of [false, true]) {
       const tag = `${scheme === 'light' ? 'clair' : 'sombre'}-${mobile ? 'telephone' : 'bureau'}`;
       const ctx = await browser.newContext({
-        viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 }, colorScheme: scheme, locale: 'fr-FR', timezoneId: 'Europe/Paris',
+        viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 }, colorScheme: scheme, locale: 'en-GB', timezoneId: 'Europe/Paris',
         isMobile: mobile, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1,
       });
       await ctx.addInitScript(() => { window.__csp = []; document.addEventListener('securitypolicyviolation', (e) => window.__csp.push(`${e.violatedDirective} ${e.blockedURI}`)); });

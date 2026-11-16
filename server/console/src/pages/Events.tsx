@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { usePagedEvents } from '../api/usePagedEvents.ts';
 import { useEventStream } from '../api/useEventStream.ts';
-import type { VigieEvent } from '../api/types.ts';
+import type { WatchpostEvent } from '../api/types.ts';
 import { EventList } from '../components/EventList.tsx';
 import { PeriodPicker, usePeriod } from '../components/PeriodPicker.tsx';
 import { Card } from '../components/ui.tsx';
@@ -50,11 +50,11 @@ export default function Events() {
 
   const filtersKey = `${deviceId}|${typeD}|${sevMin}|${q}`;
   // Les événements reçus en direct sont rattachés aux filtres actifs : un changement de filtre les écarte.
-  const [liveState, setLiveState] = useState<{ key: string; events: VigieEvent[] }>({ key: filtersKey, events: [] });
+  const [liveState, setLiveState] = useState<{ key: string; events: WatchpostEvent[] }>({ key: filtersKey, events: [] });
   const visibleLive = useMemo(() => (liveState.key === filtersKey ? liveState.events : []), [liveState, filtersKey]);
 
   const onEvent = useCallback(
-    (ev: VigieEvent) => {
+    (ev: WatchpostEvent) => {
       if (!matchesFilters(ev, { type: typeD, sevMin, q, deviceId })) return;
       setLiveState((prev) => {
         const base = prev.key === filtersKey ? prev.events : [];

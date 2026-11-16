@@ -5,7 +5,7 @@ import { useApi } from '../api/useApi.ts';
 import { useEventStream } from '../api/useEventStream.ts';
 import { usePagedDetections } from '../api/usePagedDetections.ts';
 import { usePagedEvents } from '../api/usePagedEvents.ts';
-import type { VigieEvent } from '../api/types.ts';
+import type { WatchpostEvent } from '../api/types.ts';
 import { AppDomains } from '../components/AppDomains.tsx';
 import { AppName } from '../components/AppName.tsx';
 import { opsCollectorState } from '../components/apps/OpsView.tsx';
@@ -259,7 +259,7 @@ function SheetDetections({ pkg, from, to, now }: { pkg: string; from: string; to
     reloadMutes();
   }, [reloadList, reloadMutes]));
   const onEvent = useCallback(
-    (ev: VigieEvent) => {
+    (ev: WatchpostEvent) => {
       if (isMuteEvent(ev.type)) {
         reloadList();
         reloadMutes();
@@ -350,7 +350,7 @@ function SheetHistory({ pkg, from, to }: { pkg: string; from: string; to: string
   const { deviceId } = useDevice();
   const paged = usePagedEvents(deviceId ? { device_id: deviceId, type: HISTORY_TYPES, q: pkg, from, to } : null, 50);
   const mine = useMemo(() => ({ ...paged, events: paged.events.filter((e) => e.data['package'] === pkg) }), [paged, pkg]);
-  const describe = (ev: VigieEvent) => describeEvent(ev);
+  const describe = (ev: WatchpostEvent) => describeEvent(ev);
   return (
     <div className="flush">
       <EventList paged={mine} describe={describe} empty="Aucune installation, mise à jour ni changement de permission sur 90 jours." />

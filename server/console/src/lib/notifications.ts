@@ -1,19 +1,19 @@
-// Agrégation des événements `app.notification` (contrat §10), pour la section Notifications des applications.
-import type { VigieEvent } from '../api/types.ts';
+// Aggregation of `app.notification` events (contract §10), for the Notifications section of applications.
+import type { WatchpostEvent } from '../api/types.ts';
 import { bool, str } from './data.ts';
 
 export interface NotificationSummary {
   total: number;
   posted: number;
   removed: number;
-  /** événements portant un titre ou un texte (option « Contenu des notifications » active sur le téléphone) */
+  /** events carrying a title or a text ("Notification content" option enabled on the phone) */
   withContent: number;
   redacted: number;
   ongoing: number;
   byCategory: { key: string; count: number }[];
 }
 
-export function summarizeNotifications(events: VigieEvent[]): NotificationSummary {
+export function summarizeNotifications(events: WatchpostEvent[]): NotificationSummary {
   const s: NotificationSummary = { total: 0, posted: 0, removed: 0, withContent: 0, redacted: 0, ongoing: 0, byCategory: [] };
   const cats = new Map<string, number>();
   for (const e of events) {

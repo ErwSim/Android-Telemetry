@@ -26,12 +26,12 @@ function Protected() {
   if (status === 'loading')
     return (
       <div className="boot">
-        <Loading label="Chargement…" />
+        <Loading label="Loading…" />
       </div>
     );
   if (status === 'anon') {
     const from = loc.pathname + loc.search;
-    return <Navigate to="/connexion" replace state={{ from }} />;
+    return <Navigate to="/login" replace state={{ from }} />;
   }
   return (
     <DeviceProvider>
@@ -50,20 +50,20 @@ export default function App() {
       }
     >
       <Routes>
-        <Route path="/connexion" element={<Login />} />
+        <Route path="/login" element={<Login />} />
         <Route element={<Protected />}>
           <Route index element={<Overview />} />
           <Route path="detections" element={<Detections />} />
-          <Route path="carte" element={<MapPage />} />
-          <Route path="evenements" element={<Events />} />
-          <Route path="evenements/:id" element={<EventDetail />} />
-          <Route path="reseau" element={<Network />} />
-          <Route path="pistage" element={<Tracking />} />
-          <Route path="applications" element={<Apps />} />
-          <Route path="applications/fiche" element={<AppSheet />} />
-          <Route path="securite" element={<Security />} />
-          <Route path="alertes" element={<Alerts />} />
-          <Route path="commandes" element={<Commands />} />
+          <Route path="map" element={<MapPage />} />
+          <Route path="events" element={<Events />} />
+          <Route path="events/:id" element={<EventDetail />} />
+          <Route path="network" element={<Network />} />
+          <Route path="tracking" element={<Tracking />} />
+          <Route path="apps" element={<Apps />} />
+          <Route path="apps/detail" element={<AppSheet />} />
+          <Route path="security" element={<Security />} />
+          <Route path="alerts" element={<Alerts />} />
+          <Route path="commands" element={<Commands />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

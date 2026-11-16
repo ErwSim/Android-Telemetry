@@ -1,7 +1,7 @@
 // Serveur factice de l'API console (contrat §6). Lancé par `npm run mock`.
 //   --port 8787        port d'écoute (défaut 8787, ou MOCK_PORT)
 //   --static dist      sert aussi la console construite, avec une CSP stricte et le repli SPA
-// Identifiants : admin / vigie (MOCK_USER, MOCK_PASSWORD).
+// Identifiants : admin / watchpost (MOCK_USER, MOCK_PASSWORD).
 //   --scenario mixed|healthy|fraud  (défaut mixed, ou MOCK_SCENARIO) : détections, profils de risque, app.ops, rôles (voir scenario.ts)
 // Contrôle de test : POST /__mock/control { ops_mode?: "normal"|"empty"|"404", more_detections? (nombre à ajouter), emit_detection? (détection en direct),  wazuh?, expire?, fail?, latency_ms?,
 //   clock_skew_ms? (horloge du serveur décalée), adguard?, stored? (adguard=false mais agrégats stockés servis), channel?: "stream"|"poll"|"offline", agent?: { disabled, wipe_allowed, code_configured, device_owner,
@@ -27,8 +27,8 @@ const argVal = (name: string): string | undefined => {
 const PORT = Number(argVal('--port') ?? process.env['MOCK_PORT'] ?? 8787);
 const STATIC_DIR = argVal('--static') ?? process.env['MOCK_STATIC'];
 const USER = process.env['MOCK_USER'] ?? 'admin';
-const PASSWORD = process.env['MOCK_PASSWORD'] ?? 'vigie';
-const COOKIE = 'vigie_session';
+const PASSWORD = process.env['MOCK_PASSWORD'] ?? 'watchpost';
+const COOKIE = 'watchpost_session';
 // CSP imposée par le vrai serveur : à ajuster ici si le build change (voir README).
 const CSP =
   process.env['MOCK_CSP'] ??
@@ -468,7 +468,7 @@ const server = http.createServer((req, res) => {
     const route = p.slice('/api/console'.length);
     if (control.latency_ms) await new Promise((r) => setTimeout(r, control.latency_ms));
 
-    if (method !== 'GET' && method !== 'HEAD' && req.headers['x-requested-with'] !== 'vigie') {
+    if (method !== 'GET' && method !== 'HEAD' && req.headers['x-requested-with'] !== 'watchpost') {
       err(res, 403, 'csrf', 'En-tête X-Requested-With manquant');
       return;
     }

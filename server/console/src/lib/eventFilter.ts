@@ -1,4 +1,4 @@
-import type { VigieEvent } from '../api/types.ts';
+import type { WatchpostEvent } from '../api/types.ts';
 
 export function parsePrefixes(type: string): string[] {
   return type
@@ -13,9 +13,9 @@ export function togglePrefix(type: string, prefix: string): string {
   return next.join(',');
 }
 
-/** Filtre côté client pour les événements reçus en direct (même sémantique que l'API). */
+/** Client-side filter for events received live (same semantics as the API). */
 export function matchesFilters(
-  ev: VigieEvent,
+  ev: WatchpostEvent,
   f: { type: string; sevMin: number; q: string; deviceId?: string | undefined },
 ): boolean {
   if (f.deviceId && ev.device_id && ev.device_id !== f.deviceId) return false;

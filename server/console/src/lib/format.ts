@@ -1,8 +1,8 @@
-// Formatage (français, heure locale du navigateur).
+// Formatting (English, browser local time).
 
-const LOCALE = 'fr-FR';
+const LOCALE = 'en-GB';
 
-/** Convertit un horodatage RFC 3339 ou un epoch (ms ou s) en Date ; undefined si invalide. */
+/** Converts an RFC 3339 timestamp or an epoch (ms or s) into a Date; undefined if invalid. */
 export function parseTs(v: unknown): Date | undefined {
   if (v instanceof Date) return Number.isNaN(v.getTime()) ? undefined : v;
   if (typeof v === 'number' && Number.isFinite(v)) {
@@ -42,14 +42,14 @@ export function fmtHourMinute(v: unknown, tz?: string): string {
   return fmt({ hour: '2-digit', minute: '2-digit' }, v, tz);
 }
 
-/** « il y a 3 min », « dans 2 h »… */
+/** "3 min ago", "in 2 h"... */
 export function fmtRelative(v: unknown, now: Date = new Date()): string {
   const d = parseTs(v);
   if (!d) return '—';
   const diffS = Math.round((d.getTime() - now.getTime()) / 1000);
   const abs = Math.abs(diffS);
   const rtf = new Intl.RelativeTimeFormat(LOCALE, { numeric: 'auto' });
-  if (abs < 45) return diffS <= 0 ? "à l'instant" : 'dans un instant';
+  if (abs < 45) return diffS <= 0 ? 'just now' : 'in a moment';
   if (abs < 3600) return rtf.format(Math.round(diffS / 60), 'minute');
   if (abs < 86400) return rtf.format(Math.round(diffS / 3600), 'hour');
   if (abs < 86400 * 60) return rtf.format(Math.round(diffS / 86400), 'day');
@@ -63,10 +63,10 @@ export function fmtNumber(n: number | undefined | null, digits = 0): string {
   return new Intl.NumberFormat(LOCALE, { maximumFractionDigits: digits, minimumFractionDigits: 0 }).format(n);
 }
 
-/** Tailles binaires (Kio, Mio, Gio), base 1024, comme dans le contrat. */
+/** Binary sizes (KiB, MiB, GiB), base 1024, as in the contract. */
 export function fmtBytes(n: number | undefined | null): string {
   if (n === undefined || n === null || !Number.isFinite(n)) return '—';
-  const units = ['o', 'Kio', 'Mio', 'Gio', 'Tio'];
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
   let v = Math.abs(n);
   let i = 0;
   while (v >= 1024 && i < units.length - 1) {
@@ -78,7 +78,7 @@ export function fmtBytes(n: number | undefined | null): string {
   return `${sign}${fmtNumber(v, digits)}${NBSP}${units[i]}`;
 }
 
-/** Durée lisible : « 45 s », « 12 min », « 2 h 05 », « 3 j 4 h ». */
+/** Readable duration: "45 s", "12 min", "2 h 05", "3 d 4 h". */
 export function fmtDuration(ms: number | undefined | null): string {
   if (ms === undefined || ms === null || !Number.isFinite(ms) || ms < 0) return '—';
   const s = Math.round(ms / 1000);
@@ -92,7 +92,7 @@ export function fmtDuration(ms: number | undefined | null): string {
   }
   const d = Math.floor(h / 24);
   const rh = h % 24;
-  return rh ? `${d}${NBSP}j${NBSP}${rh}${NBSP}h` : `${d}${NBSP}j`;
+  return rh ? `${d}${NBSP}d${NBSP}${rh}${NBSP}h` : `${d}${NBSP}d`;
 }
 
 export function fmtDistance(m: number | undefined | null): string {
@@ -115,10 +115,10 @@ export function fmtCoord(lat: number, lon: number): string {
   return `${fmtNumber(lat, 5)}, ${fmtNumber(lon, 5)}`;
 }
 
-/** Texte lisible pour une valeur arbitraire de `data` (affichage dans un tableau). */
+/** Readable text for an arbitrary `data` value (display in a table). */
 export function fmtValue(v: unknown): string {
   if (v === undefined || v === null) return '—';
-  if (typeof v === 'boolean') return v ? 'oui' : 'non';
+  if (typeof v === 'boolean') return v ? 'yes' : 'no';
   if (typeof v === 'number') return fmtNumber(v, 2);
   if (typeof v === 'string') return v === '' ? '—' : v;
   try {
@@ -128,12 +128,12 @@ export function fmtValue(v: unknown): string {
   }
 }
 
-/** Début de la journée locale. */
+/** Start of the local day. */
 export function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-/** Valeur pour <input type="datetime-local"> en heure locale. */
+/** Value for <input type="datetime-local"> in local time. */
 export function toLocalInput(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;

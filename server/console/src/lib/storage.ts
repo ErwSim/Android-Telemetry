@@ -1,4 +1,4 @@
-// localStorage protégé : peut être indisponible (navigation privée, stockage bloqué).
+// Guarded localStorage: it may be unavailable (private browsing, blocked storage).
 export function readStore(key: string): string | null {
   try {
     return window.localStorage.getItem(key);
@@ -11,6 +11,6 @@ export function writeStore(key: string, value: string | null): void {
     if (value === null) window.localStorage.removeItem(key);
     else window.localStorage.setItem(key, value);
   } catch {
-    /* ignoré */
+    /* ignored */
   }
 }

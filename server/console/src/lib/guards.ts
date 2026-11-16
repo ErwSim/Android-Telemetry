@@ -1,6 +1,6 @@
-// Gardes de l'agent (contrat §11.1, module :policy, Device Owner requis). Elles se règlent sur le téléphone,
-// dans l'écran Politique de l'application : la console ne peut ni les activer ni les désactiver (le serveur ne
-// commande jamais le téléphone). Ce fichier ne sert qu'à les rappeler.
+// Agent guards (contract §11.1, :policy module, Device Owner required). They are set on the phone,
+// in the application's Policy screen: the console can neither enable nor disable them (the server never
+// commands the phone). This file only serves to describe them.
 
 export interface GuardInfo {
   key: string;
@@ -9,14 +9,14 @@ export interface GuardInfo {
 }
 
 export const GUARDS: readonly GuardInfo[] = [
-  { key: 'sms', label: 'SMS', effect: "Refuse l'envoi de SMS à toutes les applications sauf une liste choisie (pré-remplie avec l'application SMS par défaut)." },
-  { key: 'calls', label: 'Appels', effect: "Refuse de passer des appels (et, en option, de lire le journal d'appels) sauf à une liste choisie (le composeur par défaut)." },
-  { key: 'accessibility', label: "Services d'accessibilité", effect: "Seuls les services d'accessibilité approuvés (et ceux du système) peuvent être activés." },
-  { key: 'input_methods', label: 'Claviers', effect: 'Seuls les claviers approuvés (et ceux du système) peuvent être activés.' },
+  { key: 'sms', label: 'SMS', effect: 'Refuses SMS sending to all applications except a chosen list (pre-filled with the default SMS app).' },
+  { key: 'calls', label: 'Calls', effect: 'Refuses to place calls (and, optionally, to read the call log) except to a chosen list (the default dialer).' },
+  { key: 'accessibility', label: 'Accessibility services', effect: 'Only approved accessibility services (and system ones) can be enabled.' },
+  { key: 'input_methods', label: 'Keyboards', effect: 'Only approved keyboards (and system ones) can be enabled.' },
   {
     key: 'quarantine',
-    label: 'Quarantaine',
-    effect: "Toute application non système installée ensuite se voit refuser les permissions à risque (SMS, appels, contacts, micro, caméra, position en arrière-plan…) jusqu'à ce que vous la libériez.",
+    label: 'Quarantine',
+    effect: 'Any non-system application installed afterwards is denied risky permissions (SMS, calls, contacts, microphone, camera, background location...) until you release it.',
   },
 ];
 

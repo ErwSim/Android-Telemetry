@@ -1,7 +1,7 @@
-// Appliqué avant le premier rendu pour éviter un flash de thème (script externe : compatible CSP).
+// Applied before the first render to avoid a theme flash (external script: CSP-compatible).
 try {
-  var t = localStorage.getItem('vigie.theme');
+  var t = localStorage.getItem('watchpost.theme');
   if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
 } catch {
-  /* stockage indisponible : thème système */
+  /* storage unavailable: system theme */
 }

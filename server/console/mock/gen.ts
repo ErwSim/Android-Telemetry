@@ -297,7 +297,7 @@ export function generate(now: number, seed = 20261115): Generated {
       const t = hStart + Math.floor(rng() * HOUR);
       const app = weighted(rng, dnsApps);
       if (app.package === 'com.fastcleaner.pro' && t < todayStart - 5 * DAY) continue;
-      if (app.package === 'io.github.erwsim.vigie' && t < todayStart - 5 * DAY) continue;
+      if (app.package === 'io.github.erwsim.watchpost' && t < todayStart - 5 * DAY) continue;
       const host = hostFor(app);
       const addrs = [addrOf(host)];
       push(t, 'net.dns', 0, { package: app.package, uid: 10000 + (app.package.length * 37) % 400, hostname: host, addresses: addrs, address_count: addrs.length });
@@ -355,7 +355,7 @@ export function generate(now: number, seed = 20261115): Generated {
   push(todayStart - 5 * DAY + 11 * HOUR + 2 * MIN + 20_000, 'app.permission_changed', 2, { package: 'com.fastcleaner.pro', permission: 'android.permission.RECORD_AUDIO', granted: true });
   push(todayStart - 5 * DAY + 11 * HOUR + 2 * MIN + 30_000, 'app.permission_changed', 2, { package: 'com.fastcleaner.pro', permission: 'android.permission.READ_SMS', granted: true });
   push(todayStart - 6 * DAY + 10 * HOUR, 'app.installed', 1, { package: 'org.fdroid.fdroid', version_name: '1.21.1', version_code: 1021001, installer: 'com.android.shell', signer_sha256: hex(rng, 32) });
-  for (const [d, pkg, ver] of [[4, 'com.whatsapp', '2.25.33.76'], [3, 'com.android.chrome', '142.0.7444.102'], [2, 'com.spotify.music', '9.0.96.1022'], [1, 'com.google.android.gms', '25.44.31'], [0, 'io.github.erwsim.vigie', '1.0.0']] as const) {
+  for (const [d, pkg, ver] of [[4, 'com.whatsapp', '2.25.33.76'], [3, 'com.android.chrome', '142.0.7444.102'], [2, 'com.spotify.music', '9.0.96.1022'], [1, 'com.google.android.gms', '25.44.31'], [0, 'io.github.erwsim.watchpost', '1.0.0']] as const) {
     push(todayStart - d * DAY + 2 * HOUR + Math.round(rng() * HOUR), 'app.updated', 0, { package: pkg, version_name: ver, version_code: 100000 + pkg.length * 111, installer: 'com.android.vending', signer_sha256: hex(makeRng(pkg.length), 32) });
   }
   push(todayStart - 3 * DAY + 20 * HOUR, 'app.removed', 1, { package: 'com.old.flashlight', version_name: '2.0', installer: 'com.android.vending' });
@@ -364,10 +364,10 @@ export function generate(now: number, seed = 20261115): Generated {
     push(t, 'app.special_access', extra ? 2 : 0, {
       accessibility_services: ['com.google.android.marvin.talkback/.TalkBackService', ...(extra ? ['com.fastcleaner.pro/.CleanerAccessibilityService'] : [])],
       notification_listeners: ['com.samsung.android.app.watchmanager/.NotificationService', ...(extra ? ['com.fastcleaner.pro/.NotifListener'] : [])],
-      device_admins: ['io.github.erwsim.vigie/.admin.AdminReceiver'],
+      device_admins: ['io.github.erwsim.watchpost/.admin.AdminReceiver'],
       overlay_apps: ['com.facebook.orca', ...(extra ? ['com.fastcleaner.pro'] : [])],
       unknown_sources_apps: ['org.fdroid.fdroid', ...(extra ? ['com.fastcleaner.pro'] : [])],
-      usage_access_apps: ['com.samsung.android.forest', 'io.github.erwsim.vigie'],
+      usage_access_apps: ['com.samsung.android.forest', 'io.github.erwsim.watchpost'],
       vpn_apps: [],
       default_apps: { browser: 'com.android.chrome', sms: 'com.samsung.android.messaging', dialer: 'com.samsung.android.dialer', launcher: 'com.sec.android.app.launcher', assistant: 'com.google.android.googlequicksearchbox' },
     });
@@ -466,11 +466,11 @@ export function generate(now: number, seed = 20261115): Generated {
     ['keyguard_dismiss_auth_attempt', { success: 1, strength: 1 }],
     ['adb_shell_command', { command: 'pm list packages' }],
     ['app_process_start', { name: 'com.whatsapp', start_time: 123456, uid: 10201, pid: 8841, seinfo: 'default' }],
-    ['key_generated', { success: 1, key_id: 'vigie_client_key', uid: 10250 }],
+    ['key_generated', { success: 1, key_id: 'watchpost_client_key', uid: 10250 }],
     ['media_mount', { mount_point: '/storage/emulated', volume_label: 'internal' }],
     ['crypto_self_test_completed', { result: 1 }],
-    ['user_restriction_set', { admin_package: 'io.github.erwsim.vigie', restriction: 'no_debugging_features' }],
-    ['password_complexity_required', { admin_package: 'io.github.erwsim.vigie', complexity: 3 }],
+    ['user_restriction_set', { admin_package: 'io.github.erwsim.watchpost', restriction: 'no_debugging_features' }],
+    ['password_complexity_required', { admin_package: 'io.github.erwsim.watchpost', complexity: 3 }],
   ];
   for (let i = 0; i < 140; i++) {
     const t = t0 + rng() * (horizon - t0);

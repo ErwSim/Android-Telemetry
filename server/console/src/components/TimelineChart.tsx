@@ -16,9 +16,9 @@ export interface TimelineChartProps {
   ariaLabel: string;
 }
 
-const dayFmt = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit' });
-const hourFmt = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' });
-const dayHourFmt = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+const dayFmt = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit' });
+const hourFmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
+const dayHourFmt = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
 function defaultLabel(k: string): string {
   return k.includes('.') ? typeLabel(k) : domainLabel(k);

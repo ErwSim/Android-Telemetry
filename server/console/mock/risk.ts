@@ -56,7 +56,7 @@ const EXPLICIT: Record<string, { score: number; reasons: string[]; granted?: str
   'com.waze': { score: 36, reasons: ['background_location', 'mic_camera_background', 'boot_receiver', 'quantum_overlay'] },
   'com.facebook.katana': { score: 27, reasons: ['boot_receiver', 'background_location', 'calls'] },
   'com.whatsapp': { score: 19, reasons: ['calls', 'boot_receiver'] },
-  'io.github.erwsim.vigie': { score: 18, reasons: ['device_admin', 'boot_receiver', 'background_location', 'mic_camera_background'] },
+  'io.github.erwsim.watchpost': { score: 18, reasons: ['device_admin', 'boot_receiver', 'background_location', 'mic_camera_background'] },
   'com.samsung.android.messaging': { score: 15, reasons: ['sms_send', 'sms_read', 'boot_receiver'] },
   'com.samsung.android.dialer': { score: 12, reasons: ['calls', 'boot_receiver'] },
   'com.google.android.marvin.talkback': { score: 14, reasons: ['accessibility_service'] },
@@ -82,7 +82,7 @@ export function profileOf(a: MockApp): RiskProfile {
   const e = EXPLICIT[a.package];
   const reasons = e ? e.reasons : derive(a);
   let score = e ? e.score : Math.min(100, reasons.reduce((s, c) => s + (WEIGHT[c] ?? 0), 0) + 3);
-  const capped = a.system || a.package === 'io.github.erwsim.vigie';
+  const capped = a.system || a.package === 'io.github.erwsim.watchpost';
   if (capped) score = Math.min(score, 25);
   const level = capped ? 'low' : levelOf(score);
   const fromStore = a.system ? true : a.installer === 'com.android.vending' || a.installer === 'com.sec.android.app.samsungapps';

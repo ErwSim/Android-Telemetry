@@ -1,20 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import type { VigieEvent } from '../api/types.ts';
+import type { WatchpostEvent } from '../api/types.ts';
 import { involves, roleChanges, roleLabel, rolesHeldBy, roleWhy } from './roles.ts';
 
-const ev = (id: string, ts: string, data: Record<string, unknown>, type = 'app.role'): VigieEvent => ({ id, ts, type, sev: 1, data });
+const ev = (id: string, ts: string, data: Record<string, unknown>, type = 'app.role'): WatchpostEvent => ({ id, ts, type, sev: 1, data });
 
-describe('rôles par défaut', () => {
-  it('traduit les rôles connus et laisse passer les autres', () => {
-    expect(roleLabel('sms')).toBe('Application SMS');
-    expect(roleLabel('call_screening')).toBe("Filtrage d'appels");
+describe('default roles', () => {
+  it('translates known roles and lets others through', () => {
+    expect(roleLabel('sms')).toBe('SMS app');
+    expect(roleLabel('call_screening')).toBe('Call screening');
     expect(roleLabel('wallet')).toBe('wallet');
     expect(roleLabel('constructor')).toBe('constructor');
     expect(roleWhy('sms')).toContain('SMS');
     expect(roleWhy('wallet')).toBeUndefined();
   });
 
-  it('extrait les changements, du plus récent au plus ancien, en ignorant le reste', () => {
+  it('extracts the changes, newest first, ignoring the rest', () => {
     const l = roleChanges([
       ev('1', '2026-11-10T10:00:00Z', { role: 'browser', old: 'a', new: 'b' }),
       ev('2', '2026-11-14T10:00:00Z', { role: 'sms', new: 'c' }),
@@ -27,7 +27,7 @@ describe('rôles par défaut', () => {
     expect(involves(l[1] as never, 'z')).toBe(false);
   });
 
-  it('retrouve les rôles tenus par un paquet', () => {
+  it('finds the roles held by a package', () => {
     expect(rolesHeldBy({ sms: 'p', launcher: 'p', browser: 'q', assistant: 3 }, 'p')).toEqual(['sms', 'home']);
     expect(rolesHeldBy(undefined, 'p')).toEqual([]);
   });

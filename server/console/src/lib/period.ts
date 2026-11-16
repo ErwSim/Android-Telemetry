@@ -4,11 +4,11 @@ import { startOfDay } from './format.ts';
 export type PeriodKey = 'today' | '24h' | '7d' | '30d' | 'custom';
 
 export const PERIOD_LABELS: Record<PeriodKey, string> = {
-  today: "Aujourd'hui",
+  today: 'Today',
   '24h': '24 h',
-  '7d': '7 jours',
-  '30d': '30 jours',
-  custom: 'Personnalisé',
+  '7d': '7 days',
+  '30d': '30 days',
+  custom: 'Custom',
 };
 
 export interface Period {
@@ -39,7 +39,7 @@ export function periodRange(p: Period): { from: string; to: string } {
   return { from: p.from.toISOString(), to: p.to.toISOString() };
 }
 
-/** Pas de la chronologie d'activité selon la durée (au plus ~ 400 barres). */
+/** Step of the activity timeline according to the duration (at most ~400 bars). */
 export function chooseBucket(from: Date, to: Date): Bucket {
   const span = to.getTime() - from.getTime();
   if (span <= 6 * H) return 'minute';

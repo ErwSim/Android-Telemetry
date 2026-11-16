@@ -4,7 +4,7 @@ import { api } from '../api/endpoints.ts';
 import { ApiError, clockSkewMs } from '../api/client.ts';
 import { useCommandList } from '../api/useCommands.ts';
 import { useEventStream } from '../api/useEventStream.ts';
-import type { Device, LastLocation, VigieEvent } from '../api/types.ts';
+import type { Device, LastLocation, WatchpostEvent } from '../api/types.ts';
 import { Badge, Card, Empty, ErrorBox, Loading, Stat } from '../components/ui.tsx';
 import { CommandHistory } from '../components/commands/CommandHistory.tsx';
 import { SimpleActions } from '../components/commands/SimpleActions.tsx';
@@ -56,7 +56,7 @@ export default function Commands() {
 
   const reloadList = list.reload;
   const onEvent = useCallback(
-    (ev: VigieEvent) => {
+    (ev: WatchpostEvent) => {
       if (ev.type === 'command.result') reloadList();
       if (ev.type === 'location.fix') {
         const lat = num(ev.data, 'lat');

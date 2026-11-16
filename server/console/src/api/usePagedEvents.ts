@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './endpoints.ts';
 import { ApiError } from './client.ts';
-import type { VigieEvent } from './types.ts';
+import type { WatchpostEvent } from './types.ts';
 
 export interface EventsParams {
   device_id?: string | undefined;
@@ -13,7 +13,7 @@ export interface EventsParams {
 }
 
 export interface PagedEvents {
-  events: VigieEvent[];
+  events: WatchpostEvent[];
   loading: boolean;
   loadingMore: boolean;
   error: ApiError | undefined;
@@ -24,7 +24,7 @@ export interface PagedEvents {
 
 /** Liste d'événements paginée par curseur (du plus récent au plus ancien). `null` désactive. */
 export function usePagedEvents(params: EventsParams | null, pageSize = 100): PagedEvents {
-  const [events, setEvents] = useState<VigieEvent[]>([]);
+  const [events, setEvents] = useState<WatchpostEvent[]>([]);
   const [cursor, setCursor] = useState<string | undefined>();
   const [loading, setLoading] = useState(params !== null);
   const [loadingMore, setLoadingMore] = useState(false);

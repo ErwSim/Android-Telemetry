@@ -81,7 +81,7 @@ export async function request<T>(path: string, query?: Query, opts: RequestOptio
   const headers: Record<string, string> = { Accept: 'application/json' };
   const init: RequestInit = { method, headers, credentials: 'same-origin' };
   if (opts.signal) init.signal = opts.signal;
-  if (method !== 'GET') headers['X-Requested-With'] = 'vigie';
+  if (method !== 'GET') headers['X-Requested-With'] = 'watchpost';
   if (opts.body !== undefined) {
     headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(opts.body);

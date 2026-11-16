@@ -61,7 +61,7 @@ export default function Alerts() {
                 néanmoins collectés et consultables dans le journal.
               </p>
               <p className="hint">
-                Pour activer cette page, renseignez <code>VIGIE_WAZUH_INDEXER_URL</code> (et identifiants) côté collecteur.
+                Pour activer cette page, renseignez <code>WATCHPOST_WAZUH_INDEXER_URL</code> (et identifiants) côté collecteur.
               </p>
             </Card>
           ) : d.alerts.length === 0 ? (

@@ -160,7 +160,7 @@ async function newContext(browser, sc, state) {
   const ctx = await browser.newContext({
     viewport: sc.viewport,
     colorScheme: sc.scheme,
-    locale: 'fr-FR',
+    locale: 'en-GB',
     timezoneId: 'Europe/Paris',
     isMobile: !!sc.mobile,
     hasTouch: !!sc.mobile,
@@ -182,7 +182,7 @@ async function login(page) {
   await page.goto(`${BASE}/`, { waitUntil: 'load' });
   await page.waitForURL(/\/connexion/, { timeout: 10000 }).catch(() => { throw new Error('pas de redirection vers /connexion'); });
   await page.fill('input[name=username]', 'admin');
-  await page.fill('input[name=password]', 'vigie');
+  await page.fill('input[name=password]', 'watchpost');
   await Promise.all([page.waitForURL(`${BASE}/`), page.click('button[type=submit]')]);
 }
 
@@ -856,7 +856,7 @@ async function runV12(browser) {
   if (nAfter !== nBefore) fail(`mise à jour en direct : ${nBefore} → ${nAfter} cartes (doublon)`); else ok('mise à jour en direct (update + detection_id) : la carte est remplacée, sans doublon');
   // Sourdine refusée par le serveur pour un type non masquable : message clair, rien de masqué
   const refused = await page.evaluate(async () => {
-    const r = await fetch('/api/console/detections/mute', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'vigie' }, body: JSON.stringify({ device_id: 'dev_8f3a1c2e9b7d', type: 'detect.sms_abuse', package: 'com.wallpapers.superhd' }) });
+    const r = await fetch('/api/console/detections/mute', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'watchpost' }, body: JSON.stringify({ device_id: 'dev_8f3a1c2e9b7d', type: 'detect.sms_abuse', package: 'com.wallpapers.superhd' }) });
     return r.status;
   });
   if (refused !== 400) fail(`sourdine d'un type non masquable : statut ${refused} au lieu de 400`);
@@ -978,7 +978,7 @@ async function runV12(browser) {
 
   // ---- Journal : événements de pistage lisibles (changements faits depuis la console, comme le ferait la page Pistage)
   await page.evaluate(async () => {
-    const put = (path, body) => fetch(`/api/console/tracking/${path}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'vigie' }, body: JSON.stringify(body) });
+    const put = (path, body) => fetch(`/api/console/tracking/${path}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'watchpost' }, body: JSON.stringify(body) });
     await put('level', { level: 'strict' });
     await put('override', { domain: 'www.leboncoin.fr', action: 'block' });
     await put('override', { domain: 'www.leboncoin.fr', action: 'default' });

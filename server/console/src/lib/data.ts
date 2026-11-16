@@ -1,4 +1,4 @@
-// Accès défensifs aux champs de `data` : un champ peut manquer ou avoir un type inattendu.
+// Defensive access to the fields of `data`: a field may be missing or have an unexpected type.
 import type { DataObject } from '../api/types.ts';
 
 export function str(d: DataObject | undefined, k: string): string | undefined {

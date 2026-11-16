@@ -141,7 +141,7 @@ export const APPS: MockApp[] = [
     dnsWeight: 1.6, mibPerHour: 2, firstInstallDaysAgo: 5, lastUpdateDaysAgo: 5,
   },
   {
-    package: 'io.github.erwsim.vigie', label: 'Vigie Agent', system: false, installer: 'com.android.shell', version_name: '1.0.0', perms: P('ACCESS_FINE_LOCATION', 'ACCESS_BACKGROUND_LOCATION', 'POST_NOTIFICATIONS', 'READ_PHONE_STATE', 'BLUETOOTH_SCAN'),
+    package: 'io.github.erwsim.watchpost', label: 'Vigie Agent', system: false, installer: 'com.android.shell', version_name: '1.0.0', perms: P('ACCESS_FINE_LOCATION', 'ACCESS_BACKGROUND_LOCATION', 'POST_NOTIFICATIONS', 'READ_PHONE_STATE', 'BLUETOOTH_SCAN'),
     hosts: [['ingest.exemple.fr', 6]],
     dnsWeight: 1.2, mibPerHour: 1.2, firstInstallDaysAgo: 9, lastUpdateDaysAgo: 2,
   },

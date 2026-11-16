@@ -1,4 +1,4 @@
-import type { VigieEvent } from '../api/types.ts';
+import type { WatchpostEvent } from '../api/types.ts';
 import { fmtBytes, fmtDuration, fmtNumber, fmtValue } from './format.ts';
 import { bool, list, num, obj, str, strList } from './data.ts';
 import { cleanText } from './text.ts';
@@ -8,7 +8,7 @@ import { levelInfo } from './risk.ts';
 import { roleLabel } from './roles.ts';
 import { LEVEL_FALLBACK } from './tracking.ts';
 
-export const SEV_LABELS = ['Info', 'Notable', 'Avertissement', 'Critique'] as const;
+export const SEV_LABELS = ['Info', 'Notable', 'Warning', 'Critical'] as const;
 
 export function sevLabel(sev: number): string {
   return SEV_LABELS[Math.max(0, Math.min(3, Math.trunc(sev)))] ?? 'Info';
@@ -21,22 +21,22 @@ export function domainOf(type: string): string {
 
 export const DOMAIN_LABELS: Record<string, string> = {
   agent: 'Agent',
-  device: 'Appareil',
-  location: 'Position',
-  net: 'Réseau',
+  device: 'Device',
+  location: 'Location',
+  net: 'Network',
   app: 'Applications',
-  sensor: 'Capteurs',
-  security: 'Sécurité',
-  command: 'Commandes',
-  detect: 'Détections',
-  tracking: 'Pistage',
+  sensor: 'Sensors',
+  security: 'Security',
+  command: 'Commands',
+  detect: 'Detections',
+  tracking: 'Tracking',
 };
 
 export function domainLabel(d: string): string {
   return DOMAIN_LABELS[d] ?? d;
 }
 
-/** Index de couleur stable pour un domaine (variables CSS --series-N). */
+/** Stable colour index for a domain (CSS variables --series-N). */
 const DOMAIN_ORDER = ['net', 'location', 'app', 'device', 'security', 'agent', 'sensor', 'net.dns', 'net.connect'];
 export function seriesIndex(key: string): number {
   const i = DOMAIN_ORDER.indexOf(key);
@@ -49,86 +49,86 @@ function hash(s: string): number {
 }
 
 export const TYPE_LABELS: Record<string, string> = {
-  'agent.started': "Démarrage de l'agent",
-  'agent.stopped': "Arrêt de l'agent",
-  'agent.heartbeat': 'Pulsation',
-  'agent.buffer_overflow': 'Tampon saturé',
-  'agent.collector_error': 'Erreur de collecteur',
-  'agent.config_changed': 'Réglage modifié',
-  'agent.tamper': 'Altération détectée',
-  'device.inventory': "Inventaire de l'appareil",
-  'device.boot': 'Démarrage',
-  'device.shutdown': 'Extinction',
-  'device.screen': 'Écran',
-  'device.battery': 'Batterie',
-  'device.power_save': "Économiseur d'énergie",
-  'device.storage': 'Stockage',
-  'device.thermal': 'Thermique',
-  'device.time_changed': 'Heure modifiée',
-  'device.timezone_changed': 'Fuseau modifié',
+  'agent.started': 'Agent started',
+  'agent.stopped': 'Agent stopped',
+  'agent.heartbeat': 'Heartbeat',
+  'agent.buffer_overflow': 'Buffer full',
+  'agent.collector_error': 'Collector error',
+  'agent.config_changed': 'Setting changed',
+  'agent.tamper': 'Tampering detected',
+  'device.inventory': 'Device inventory',
+  'device.boot': 'Boot',
+  'device.shutdown': 'Shutdown',
+  'device.screen': 'Screen',
+  'device.battery': 'Battery',
+  'device.power_save': 'Power saving',
+  'device.storage': 'Storage',
+  'device.thermal': 'Thermal',
+  'device.time_changed': 'Time changed',
+  'device.timezone_changed': 'Time zone changed',
   'device.usb': 'USB',
-  'device.airplane_mode': 'Mode avion',
-  'location.fix': 'Position',
-  'location.provider': 'Fournisseur de position',
-  'net.connectivity': 'Connectivité',
+  'device.airplane_mode': 'Airplane mode',
+  'location.fix': 'Location',
+  'location.provider': 'Location provider',
+  'net.connectivity': 'Connectivity',
   'net.wifi': 'Wi-Fi',
-  'net.wifi_scan': 'Scan Wi-Fi',
-  'net.cell': 'Réseau mobile',
-  'net.cell_security': 'Sécurité cellulaire',
-  'net.dns': 'Requête DNS',
-  'net.connect': 'Connexion',
-  'net.usage': "Volumes d'usage",
+  'net.wifi_scan': 'Wi-Fi scan',
+  'net.cell': 'Mobile network',
+  'net.cell_security': 'Cellular security',
+  'net.dns': 'DNS query',
+  'net.connect': 'Connection',
+  'net.usage': 'Usage volumes',
   'net.bluetooth': 'Bluetooth',
-  'net.ble_tracker': 'Traceur BLE',
-  'net.hotspot': 'Point d’accès',
+  'net.ble_tracker': 'BLE tracker',
+  'net.hotspot': 'Hotspot',
   'net.nfc': 'NFC',
-  'app.inventory': 'Inventaire des apps',
-  'app.installed': 'App installée',
-  'app.updated': 'App mise à jour',
-  'app.removed': 'App supprimée',
-  'app.foreground': 'App au premier plan',
-  'app.permission_changed': 'Permission modifiée',
-  'app.special_access': 'Accès spéciaux',
+  'app.inventory': 'App inventory',
+  'app.installed': 'App installed',
+  'app.updated': 'App updated',
+  'app.removed': 'App removed',
+  'app.foreground': 'App in foreground',
+  'app.permission_changed': 'Permission changed',
+  'app.special_access': 'Special access',
   'app.notification': 'Notification',
-  'sensor.camera': 'Caméra',
+  'sensor.camera': 'Camera',
   'sensor.microphone': 'Microphone',
-  'security.log': 'Journal de sécurité',
-  'security.posture': 'Posture de sécurité',
-  'security.keyguard': 'Verrouillage',
-  'security.ca_cert': "Certificat d'AC",
-  'security.policy': 'Politique appliquée',
-  'command.result': 'Résultat de commande',
-  'command.issued': 'Commande émise',
-  'command.cancelled': 'Commande annulée',
-  'app.risk': 'Profil de risque',
-  'app.role': 'Rôle par défaut modifié',
-  'app.ops': 'Opérations sensibles',
-  'detect.threat_domain': 'Détection : domaine de menace',
-  'detect.upload_spike': 'Détection : envoi inhabituel',
-  'detect.fanout': 'Détection : connexions multiples',
-  'detect.mail_ports': 'Détection : ports de courrier',
-  'detect.dns_bypass': 'Détection : DNS contourné',
-  'detect.sms_abuse': 'Détection : SMS anormaux',
-  'detect.sensor_background': 'Détection : micro ou caméra',
-  'detect.new_app_risky': 'Détection : application à risque',
-  'detect.sms_permission': 'Détection : permission SMS',
-  'detect.default_app_changed': 'Détection : application par défaut changée',
-  'detect.flood': 'Détection : trop de détections',
-  'detect.inventory_mismatch': 'Détection : fausse application système',
-  'detect.muted': 'Détection mise en sourdine',
-  'detect.unmuted': 'Sourdine levée',
-  'tracking.level_changed': 'Niveau de blocage modifié',
-  'tracking.override': 'Règle de blocage modifiée',
+  'security.log': 'Security log',
+  'security.posture': 'Security posture',
+  'security.keyguard': 'Lock',
+  'security.ca_cert': 'CA certificate',
+  'security.policy': 'Policy applied',
+  'command.result': 'Command result',
+  'command.issued': 'Command issued',
+  'command.cancelled': 'Command cancelled',
+  'app.risk': 'Risk profile',
+  'app.role': 'Default role changed',
+  'app.ops': 'Sensitive operations',
+  'detect.threat_domain': 'Detection: threat domain',
+  'detect.upload_spike': 'Detection: unusual upload',
+  'detect.fanout': 'Detection: many connections',
+  'detect.mail_ports': 'Detection: mail ports',
+  'detect.dns_bypass': 'Detection: DNS bypassed',
+  'detect.sms_abuse': 'Detection: abnormal SMS',
+  'detect.sensor_background': 'Detection: microphone or camera',
+  'detect.new_app_risky': 'Detection: risky application',
+  'detect.sms_permission': 'Detection: SMS permission',
+  'detect.default_app_changed': 'Detection: default application changed',
+  'detect.flood': 'Detection: too many detections',
+  'detect.inventory_mismatch': 'Detection: fake system application',
+  'detect.muted': 'Detection muted',
+  'detect.unmuted': 'Mute lifted',
+  'tracking.level_changed': 'Blocking level changed',
+  'tracking.override': 'Blocking rule changed',
 };
 
 export function typeLabel(type: string): string {
   return TYPE_LABELS[type] ?? type;
 }
 
-const onOff = (b: boolean | undefined) => (b === undefined ? '?' : b ? 'activé' : 'désactivé');
+const onOff = (b: boolean | undefined) => (b === undefined ? '?' : b ? 'enabled' : 'disabled');
 
-/** Résumé d'une ligne pour un événement. Ne jette jamais : repli sur les champs scalaires. */
-export function describeEvent(ev: VigieEvent): string {
+/** One-line summary of an event. Never throws: falls back to scalar fields. */
+export function describeEvent(ev: WatchpostEvent): string {
   const d = ev.data ?? {};
   try {
     switch (ev.type) {
@@ -138,18 +138,18 @@ export function describeEvent(ev: VigieEvent): string {
       case 'agent.heartbeat': {
         const parts = [];
         const b = num(d, 'battery_pct');
-        if (b !== undefined) parts.push(`batterie ${fmtNumber(b)} %${bool(d, 'charging') ? ' (charge)' : ''}`);
+        if (b !== undefined) parts.push(`battery ${fmtNumber(b)} %${bool(d, 'charging') ? ' (charging)' : ''}`);
         const q = num(d, 'queue_depth');
-        if (q !== undefined) parts.push(`tampon ${fmtNumber(q)} évt`);
-        if (bool(d, 'device_owner') !== undefined) parts.push(`Device Owner ${bool(d, 'device_owner') ? 'oui' : 'non'}`);
+        if (q !== undefined) parts.push(`buffer ${fmtNumber(q)} evt`);
+        if (bool(d, 'device_owner') !== undefined) parts.push(`Device Owner ${bool(d, 'device_owner') ? 'yes' : 'no'}`);
         return parts.join(' · ');
       }
       case 'agent.buffer_overflow':
-        return `${fmtNumber(num(d, 'dropped'))} événements purgés`;
+        return `${fmtNumber(num(d, 'dropped'))} events purged`;
       case 'agent.collector_error':
-        return `${str(d, 'collector') ?? '?'} : ${str(d, 'error') ?? 'erreur'}`;
+        return `${str(d, 'collector') ?? '?'}: ${str(d, 'error') ?? 'error'}`;
       case 'agent.config_changed':
-        return `${str(d, 'key') ?? '?'} : ${fmtValue(d['old'])} → ${fmtValue(d['new'])}`;
+        return `${str(d, 'key') ?? '?'}: ${fmtValue(d['old'])} → ${fmtValue(d['new'])}`;
       case 'agent.tamper':
         return `${str(d, 'kind') ?? '?'}${str(d, 'detail') ? ` — ${str(d, 'detail')}` : ''}`;
       case 'device.inventory':
@@ -169,33 +169,33 @@ export function describeEvent(ev: VigieEvent): string {
       case 'net.nfc':
         return onOff(bool(d, 'enabled'));
       case 'device.storage':
-        return `${fmtBytes(num(d, 'free_bytes'))} libres sur ${fmtBytes(num(d, 'total_bytes'))}`;
+        return `${fmtBytes(num(d, 'free_bytes'))} free of ${fmtBytes(num(d, 'total_bytes'))}`;
       case 'device.thermal':
         return str(d, 'status') ?? '';
       case 'device.time_changed':
-        return `décalage ${fmtDuration(Math.abs(num(d, 'delta_ms') ?? 0))}`;
+        return `offset ${fmtDuration(Math.abs(num(d, 'delta_ms') ?? 0))}`;
       case 'device.timezone_changed':
         return str(d, 'tz') ?? '';
       case 'device.usb':
-        return `${bool(d, 'connected') ? 'connecté' : 'déconnecté'}${strList(d, 'functions').length ? ` · ${strList(d, 'functions').join(', ')}` : ''}`;
+        return `${bool(d, 'connected') ? 'connected' : 'disconnected'}${strList(d, 'functions').length ? ` · ${strList(d, 'functions').join(', ')}` : ''}`;
       case 'location.fix': {
         const lat = num(d, 'lat');
         const lon = num(d, 'lon');
-        if (lat === undefined || lon === undefined) return 'position incomplète';
-        return `${fmtNumber(lat, 5)}, ${fmtNumber(lon, 5)}${num(d, 'acc_m') !== undefined ? ` · ±${fmtNumber(num(d, 'acc_m'))} m` : ''}${bool(d, 'mock') ? ' · SIMULÉE' : ''}`;
+        if (lat === undefined || lon === undefined) return 'incomplete location';
+        return `${fmtNumber(lat, 5)}, ${fmtNumber(lon, 5)}${num(d, 'acc_m') !== undefined ? ` · ±${fmtNumber(num(d, 'acc_m'))} m` : ''}${bool(d, 'mock') ? ' · MOCK' : ''}`;
       }
       case 'location.provider':
         return `${str(d, 'provider') ?? '?'} ${onOff(bool(d, 'enabled'))}`;
       case 'net.connectivity': {
-        const t = strList(d, 'transports').join('+') || 'aucun transport';
-        return `${t}${bool(d, 'validated') === false ? ' · non validé' : ''}${bool(d, 'vpn') ? ' · VPN' : ''}${bool(d, 'private_dns_active') ? ' · DNS privé' : ''}`;
+        const t = strList(d, 'transports').join('+') || 'no transport';
+        return `${t}${bool(d, 'validated') === false ? ' · not validated' : ''}${bool(d, 'vpn') ? ' · VPN' : ''}${bool(d, 'private_dns_active') ? ' · private DNS' : ''}`;
       }
       case 'net.wifi':
-        return `${str(d, 'event') ?? '?'} · ${str(d, 'ssid') ?? 'SSID inconnu'}${num(d, 'rssi') !== undefined ? ` · ${num(d, 'rssi')} dBm` : ''}${str(d, 'security') ? ` · ${str(d, 'security')}` : ''}`;
+        return `${str(d, 'event') ?? '?'} · ${str(d, 'ssid') ?? 'unknown SSID'}${num(d, 'rssi') !== undefined ? ` · ${num(d, 'rssi')} dBm` : ''}${str(d, 'security') ? ` · ${str(d, 'security')}` : ''}`;
       case 'net.wifi_scan':
-        return `${list(d, 'aps').length} réseaux`;
+        return `${list(d, 'aps').length} networks`;
       case 'net.cell':
-        return `${str(d, 'tech') ?? '?'} · ${str(d, 'operator') ?? `${str(d, 'mcc') ?? '?'}/${str(d, 'mnc') ?? '?'}`}${num(d, 'signal_dbm') !== undefined ? ` · ${num(d, 'signal_dbm')} dBm` : ''}${bool(d, 'roaming') ? ' · itinérance' : ''}`;
+        return `${str(d, 'tech') ?? '?'} · ${str(d, 'operator') ?? `${str(d, 'mcc') ?? '?'}/${str(d, 'mnc') ?? '?'}`}${num(d, 'signal_dbm') !== undefined ? ` · ${num(d, 'signal_dbm')} dBm` : ''}${bool(d, 'roaming') ? ' · roaming' : ''}`;
       case 'net.cell_security':
         return `${str(d, 'kind') ?? '?'}${str(d, 'detail') ? ` — ${str(d, 'detail')}` : ''}`;
       case 'net.dns':
@@ -210,9 +210,9 @@ export function describeEvent(ev: VigieEvent): string {
       case 'net.bluetooth':
         return `${str(d, 'event') ?? '?'}${str(d, 'name') ? ` · ${str(d, 'name')}` : ''}${str(d, 'address') ? ` · ${str(d, 'address')}` : ''}`;
       case 'net.ble_tracker':
-        return `${str(d, 'kind') ?? 'inconnu'} · ${str(d, 'address') ?? '?'} · ${num(d, 'sightings') ?? '?'} détections`;
+        return `${str(d, 'kind') ?? 'unknown'} · ${str(d, 'address') ?? '?'} · ${num(d, 'sightings') ?? '?'} sightings`;
       case 'app.inventory':
-        return `partie ${num(d, 'part') ?? '?'}/${num(d, 'parts') ?? '?'} · ${list(d, 'apps').length} apps`;
+        return `part ${num(d, 'part') ?? '?'}/${num(d, 'parts') ?? '?'} · ${list(d, 'apps').length} apps`;
       case 'app.installed':
       case 'app.updated':
       case 'app.removed':
@@ -220,9 +220,9 @@ export function describeEvent(ev: VigieEvent): string {
       case 'app.foreground':
         return `${str(d, 'package') ?? '?'} ${str(d, 'event') ?? ''}`;
       case 'app.permission_changed':
-        return `${str(d, 'package') ?? '?'} · ${shortPermission(str(d, 'permission'))} ${bool(d, 'granted') ? 'accordée' : 'retirée'}`;
+        return `${str(d, 'package') ?? '?'} · ${shortPermission(str(d, 'permission'))} ${bool(d, 'granted') ? 'granted' : 'revoked'}`;
       case 'app.special_access':
-        return `accessibilité ${strList(d, 'accessibility_services').length} · écoute notif. ${strList(d, 'notification_listeners').length} · admins ${strList(d, 'device_admins').length} · VPN ${strList(d, 'vpn_apps').length}`;
+        return `accessibility ${strList(d, 'accessibility_services').length} · notif. listeners ${strList(d, 'notification_listeners').length} · admins ${strList(d, 'device_admins').length} · VPN ${strList(d, 'vpn_apps').length}`;
       case 'app.notification':
         return describeNotification(d);
       case 'command.result':
@@ -233,29 +233,29 @@ export function describeEvent(ev: VigieEvent): string {
       case 'app.risk': {
         const lv = levelInfo(str(d, 'level'), num(d, 'score'));
         const n = strList(d, 'reasons').length;
-        return `${str(d, 'label') ? `${cleanText(str(d, 'label'), 80)} · ` : ''}${cleanText(str(d, 'package'), 120) || '?'} · risque ${lv.label.toLowerCase()}${num(d, 'score') !== undefined ? ` (${num(d, 'score')}/100)` : ''} · ${n} raison${n > 1 ? 's' : ''}`;
+        return `${str(d, 'label') ? `${cleanText(str(d, 'label'), 80)} · ` : ''}${cleanText(str(d, 'package'), 120) || '?'} · ${lv.label.toLowerCase()} risk${num(d, 'score') !== undefined ? ` (${num(d, 'score')}/100)` : ''} · ${n} reason${n > 1 ? 's' : ''}`;
       }
       case 'app.role':
-        return `${roleLabel(str(d, 'role') ?? '?')} : ${cleanText(str(d, 'old'), 120) || 'aucune'} → ${cleanText(str(d, 'new'), 120) || 'aucune'}`;
+        return `${roleLabel(str(d, 'role') ?? '?')}: ${cleanText(str(d, 'old'), 120) || 'none'} → ${cleanText(str(d, 'new'), 120) || 'none'}`;
       case 'app.ops': {
         const rows = list<Record<string, unknown>>(d, 'apps');
         const total = rows.reduce((a, x) => a + (typeof x['count'] === 'number' ? x['count'] : 0), 0);
-        return `${rows.length} usage${rows.length > 1 ? 's' : ''} d'opérations sensibles · ${fmtNumber(total)} appel${total > 1 ? 's' : ''}`;
+        return `${rows.length} sensitive operation use${rows.length > 1 ? 's' : ''} · ${fmtNumber(total)} call${total > 1 ? 's' : ''}`;
       }
       case 'detect.muted':
       case 'detect.unmuted': {
-        // §11.4 : événement serveur ; `type`, `package`, `reason`, `user` (champs non fixés : lus avec tolérance).
-        const what = str(d, 'type') ? detectionLabel(str(d, 'type') as string) : 'détection';
-        return `${ev.type === 'detect.muted' ? 'Sourdine' : 'Fin de sourdine'} : ${what} pour ${cleanText(str(d, 'package'), 255) || '?'}${str(d, 'reason') ? ` · motif : ${cleanText(str(d, 'reason'), 200)}` : ''}${str(d, 'user') ? ` · par ${cleanText(str(d, 'user'), 60)}` : ''}`;
+        // §11.4: server event; `type`, `package`, `reason`, `user` (fields not fixed: read tolerantly).
+        const what = str(d, 'type') ? detectionLabel(str(d, 'type') as string) : 'detection';
+        return `${ev.type === 'detect.muted' ? 'Muted' : 'Mute lifted'}: ${what} for ${cleanText(str(d, 'package'), 255) || '?'}${str(d, 'reason') ? ` · reason: ${cleanText(str(d, 'reason'), 200)}` : ''}${str(d, 'user') ? ` · by ${cleanText(str(d, 'user'), 60)}` : ''}`;
       }
       case 'tracking.level_changed':
         return describeLevelChange(d);
       case 'tracking.override':
         return describeOverride(d);
       case 'sensor.camera':
-        return `${bool(d, 'in_use') ? 'utilisée' : 'libérée'} · caméra ${str(d, 'camera_id') ?? (num(d, 'camera_id') ?? '?')}${str(d, 'package') ? ` · ${str(d, 'package')}` : ''}`;
+        return `${bool(d, 'in_use') ? 'in use' : 'released'} · camera ${str(d, 'camera_id') ?? (num(d, 'camera_id') ?? '?')}${str(d, 'package') ? ` · ${str(d, 'package')}` : ''}`;
       case 'sensor.microphone':
-        return `${bool(d, 'recording') ? 'enregistrement' : 'arrêt'}${str(d, 'source') ? ` · ${str(d, 'source')}` : ''}${str(d, 'package') ? ` · ${str(d, 'package')}` : ''}${bool(d, 'silenced') ? ' · silencé' : ''}`;
+        return `${bool(d, 'recording') ? 'recording' : 'stopped'}${str(d, 'source') ? ` · ${str(d, 'source')}` : ''}${str(d, 'package') ? ` · ${str(d, 'package')}` : ''}${bool(d, 'silenced') ? ' · silenced' : ''}`;
       case 'security.log': {
         const f = obj(d, 'fields');
         const extra = f
@@ -267,13 +267,13 @@ export function describeEvent(ev: VigieEvent): string {
         return `${str(d, 'tag') ?? '?'}${extra ? ` · ${extra}` : ''}`;
       }
       case 'security.posture':
-        return 'instantané de posture';
+        return 'posture snapshot';
       case 'security.keyguard':
-        return `${str(d, 'event') ?? '?'}${num(d, 'failed_attempts') !== undefined ? ` · ${num(d, 'failed_attempts')} échecs` : ''}`;
+        return `${str(d, 'event') ?? '?'}${num(d, 'failed_attempts') !== undefined ? ` · ${num(d, 'failed_attempts')} failures` : ''}`;
       case 'security.ca_cert':
         return `${str(d, 'event') ?? '?'} · ${str(d, 'subject') ?? str(d, 'sha256')?.slice(0, 16) ?? '?'}`;
       case 'security.policy':
-        return `${str(d, 'action') ?? '?'}${str(d, 'target') ? ` · ${str(d, 'target')}` : ''}${bool(d, 'ok') === false ? ` · ÉCHEC${str(d, 'error') ? ` (${str(d, 'error')})` : ''}` : ''}`;
+        return `${str(d, 'action') ?? '?'}${str(d, 'target') ? ` · ${str(d, 'target')}` : ''}${bool(d, 'ok') === false ? ` · FAILED${str(d, 'error') ? ` (${str(d, 'error')})` : ''}` : ''}`;
       default:
         if (isDetectionType(ev.type)) {
           const det = detectionFromEvent(ev);
@@ -286,31 +286,31 @@ export function describeEvent(ev: VigieEvent): string {
   }
 }
 
-const levelName = (k: string | undefined): string => (k ? (LEVEL_FALLBACK[k]?.name ?? cleanText(k, 40)) : 'inconnu');
-const ACTION_NAMES: Record<string, string> = { block: 'blocage', allow: 'autorisation', default: 'retour au réglage par défaut' };
+const levelName = (k: string | undefined): string => (k ? (LEVEL_FALLBACK[k]?.name ?? cleanText(k, 40)) : 'unknown');
+const ACTION_NAMES: Record<string, string> = { block: 'block', allow: 'allow', default: 'back to default setting' };
 
-/** `tracking.level_changed` (contrat §9) : `old` (absent si l'état ne correspondait à aucun niveau), `new`, `changes`, `user`. */
+/** `tracking.level_changed` (contract §9): `old` (absent if the state matched no level), `new`, `changes`, `user`. */
 function describeLevelChange(d: Record<string, unknown>): string {
-  const by = str(d, 'user') ? ` · par ${cleanText(str(d, 'user'), 60)}` : '';
+  const by = str(d, 'user') ? ` · by ${cleanText(str(d, 'user'), 60)}` : '';
   const ch = Array.isArray(d['changes']) ? d['changes'].length : num(d, 'changes');
-  return `Niveau de blocage : ${levelName(str(d, 'old'))} → ${levelName(str(d, 'new'))}${ch ? ` · ${ch} liste${ch > 1 ? 's' : ''} modifiée${ch > 1 ? 's' : ''}` : ''}${by}`;
+  return `Blocking level: ${levelName(str(d, 'old'))} → ${levelName(str(d, 'new'))}${ch ? ` · ${ch} list${ch > 1 ? 's' : ''} changed` : ''}${by}`;
 }
 
-/** `tracking.override` (contrat §9) : `domain`, `action`, `forced`, `previous`, `user`. */
+/** `tracking.override` (contract §9): `domain`, `action`, `forced`, `previous`, `user`. */
 function describeOverride(d: Record<string, unknown>): string {
   const action = str(d, 'action') ?? '?';
   const prev = str(d, 'previous');
-  const by = str(d, 'user') ? ` · par ${cleanText(str(d, 'user'), 60)}` : '';
+  const by = str(d, 'user') ? ` · by ${cleanText(str(d, 'user'), 60)}` : '';
   const head = ACTION_NAMES[action] ?? cleanText(action, 40);
-  return `${head.charAt(0).toUpperCase()}${head.slice(1)} de « ${cleanText(str(d, 'domain'), 255) || '?'} »${bool(d, 'forced') ? ' · forcé (domaine indispensable)' : ''}${prev ? ` · règle précédente : ${ACTION_NAMES[prev] ?? cleanText(prev, 40)}` : ''}${by}`;
+  return `${head.charAt(0).toUpperCase()}${head.slice(1)} of "${cleanText(str(d, 'domain'), 255) || '?'}"${bool(d, 'forced') ? ' · forced (essential domain)' : ''}${prev ? ` · previous rule: ${ACTION_NAMES[prev] ?? cleanText(prev, 40)}` : ''}${by}`;
 }
 
-const NOTIFICATION_EVENTS: Record<string, string> = { posted: 'publiée', removed: 'retirée' };
+const NOTIFICATION_EVENTS: Record<string, string> = { posted: 'posted', removed: 'removed' };
 
 /**
- * Notification : application, événement, puis titre et texte s'ils existent. Ces deux champs viennent de
- * n'importe quelle application : ils sont nettoyés (caractères de contrôle, bidirectionnel) et ne sont jamais
- * interprétés. `redacted` : un code numérique de 4 à 8 chiffres a été masqué par le téléphone.
+ * Notification: application, event, then title and text if present. These two fields come from
+ * any application: they are cleaned (control characters, bidirectional) and never
+ * interpreted. `redacted`: a numeric code of 4 to 8 digits was masked by the phone.
  */
 export function describeNotification(d: Record<string, unknown>): string {
   const title = cleanText(d['title']);
@@ -319,18 +319,18 @@ export function describeNotification(d: Record<string, unknown>): string {
   const head = `${str(d, 'package') ?? '?'} ${ev ? (NOTIFICATION_EVENTS[ev] ?? ev) : ''}`.trim();
   const content = title && text ? `${title} — ${text}` : title || text;
   const parts = [head];
-  if (content) parts.push(`« ${content} »`);
+  if (content) parts.push(`"${content}"`);
   else if (!bool(d, 'ongoing')) parts.push(str(d, 'category') ?? '');
-  if (bool(d, 'redacted')) parts.push('contenu masqué (code numérique)');
+  if (bool(d, 'redacted')) parts.push('content hidden (numeric code)');
   return parts.filter(Boolean).join(' · ');
 }
 
 function describeCommandResult(d: Record<string, unknown>): string {
   const status = str(d, 'status');
-  const statusLabel = status === 'executed' ? 'exécutée' : status === 'failed' ? 'échec' : status === 'refused' ? 'refusée' : (status ?? '?');
+  const statusLabel = status === 'executed' ? 'executed' : status === 'failed' ? 'failed' : status === 'refused' ? 'refused' : (status ?? '?');
   const detail = str(d, 'detail');
   const why = status === 'refused' ? refusalInfo(detail)?.title : detail;
-  return `${commandLabel(str(d, 'type') ?? '?')} · ${statusLabel}${why ? ` (${why})` : ''}${bool(d, 'signed') ? ' · signée' : ''}`;
+  return `${commandLabel(str(d, 'type') ?? '?')} · ${statusLabel}${why ? ` (${why})` : ''}${bool(d, 'signed') ? ' · signed' : ''}`;
 }
 
 function genericSummary(d: Record<string, unknown>): string {
@@ -347,34 +347,34 @@ export function shortPermission(p: string | undefined): string {
 }
 
 export const PERMISSION_LABELS: Record<string, string> = {
-  CAMERA: 'Caméra',
+  CAMERA: 'Camera',
   RECORD_AUDIO: 'Microphone',
-  ACCESS_FINE_LOCATION: 'Position précise',
-  ACCESS_COARSE_LOCATION: 'Position approximative',
-  ACCESS_BACKGROUND_LOCATION: 'Position en arrière-plan',
-  READ_CONTACTS: 'Lire les contacts',
-  WRITE_CONTACTS: 'Modifier les contacts',
-  READ_CALENDAR: "Lire l'agenda",
-  WRITE_CALENDAR: "Modifier l'agenda",
-  READ_PHONE_STATE: "État du téléphone",
-  READ_PHONE_NUMBERS: 'Numéros de téléphone',
-  CALL_PHONE: 'Passer des appels',
-  READ_CALL_LOG: "Journal d'appels",
-  WRITE_CALL_LOG: "Modifier le journal d'appels",
-  SEND_SMS: 'Envoyer des SMS',
-  READ_SMS: 'Lire les SMS',
-  RECEIVE_SMS: 'Recevoir des SMS',
-  READ_EXTERNAL_STORAGE: 'Lire le stockage',
-  WRITE_EXTERNAL_STORAGE: 'Écrire sur le stockage',
+  ACCESS_FINE_LOCATION: 'Precise location',
+  ACCESS_COARSE_LOCATION: 'Approximate location',
+  ACCESS_BACKGROUND_LOCATION: 'Background location',
+  READ_CONTACTS: 'Read contacts',
+  WRITE_CONTACTS: 'Modify contacts',
+  READ_CALENDAR: 'Read calendar',
+  WRITE_CALENDAR: 'Modify calendar',
+  READ_PHONE_STATE: 'Phone state',
+  READ_PHONE_NUMBERS: 'Phone numbers',
+  CALL_PHONE: 'Place calls',
+  READ_CALL_LOG: 'Call log',
+  WRITE_CALL_LOG: 'Modify call log',
+  SEND_SMS: 'Send SMS',
+  READ_SMS: 'Read SMS',
+  RECEIVE_SMS: 'Receive SMS',
+  READ_EXTERNAL_STORAGE: 'Read storage',
+  WRITE_EXTERNAL_STORAGE: 'Write to storage',
   READ_MEDIA_IMAGES: 'Photos',
-  READ_MEDIA_VIDEO: 'Vidéos',
+  READ_MEDIA_VIDEO: 'Videos',
   READ_MEDIA_AUDIO: 'Audio',
   POST_NOTIFICATIONS: 'Notifications',
-  BODY_SENSORS: 'Capteurs corporels',
-  ACTIVITY_RECOGNITION: 'Activité physique',
-  BLUETOOTH_CONNECT: 'Bluetooth (connexion)',
+  BODY_SENSORS: 'Body sensors',
+  ACTIVITY_RECOGNITION: 'Physical activity',
+  BLUETOOTH_CONNECT: 'Bluetooth (connect)',
   BLUETOOTH_SCAN: 'Bluetooth (scan)',
-  NEARBY_WIFI_DEVICES: 'Appareils Wi-Fi proches',
+  NEARBY_WIFI_DEVICES: 'Nearby Wi-Fi devices',
 };
 
 export function permissionLabel(p: string): string {
@@ -382,12 +382,12 @@ export function permissionLabel(p: string): string {
   return PERMISSION_LABELS[s] ?? s;
 }
 
-/** Noms usuels des installateurs. */
+/** Common names of installers. */
 export function installerLabel(installer: string | undefined): string {
   switch (installer) {
     case undefined:
     case '':
-      return 'Inconnu / préinstallée';
+      return 'Unknown / preinstalled';
     case 'com.android.vending':
       return 'Play Store';
     case 'com.sec.android.app.samsungapps':
@@ -396,7 +396,7 @@ export function installerLabel(installer: string | undefined): string {
       return 'ADB';
     case 'com.google.android.packageinstaller':
     case 'com.android.packageinstaller':
-      return 'Installateur de paquets';
+      return 'Package installer';
     case 'com.google.android.apps.nbu.files':
       return 'Files by Google';
     case 'com.android.chrome':
@@ -409,7 +409,7 @@ export function installerLabel(installer: string | undefined): string {
 }
 
 const TRUSTED_INSTALLERS = new Set(['com.android.vending', 'com.sec.android.app.samsungapps']);
-/** Application utilisateur installée hors Play Store / Galaxy Store. */
+/** User application installed outside the Play Store / Galaxy Store. */
 export function isSideloaded(a: { system?: boolean; installer?: string }): boolean {
   if (a.system) return false;
   return !a.installer || !TRUSTED_INSTALLERS.has(a.installer);

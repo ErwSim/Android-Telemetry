@@ -1,7 +1,7 @@
-// Écrit sur la sortie standard les cas difficiles de signature (voir src/lib/commandVectors.ts), signés par le
-// vrai code de la console :
-//   node scripts/command-vectors.ts                      jeu d'essai versionné (src/lib/fixtures/command-vectors.json)
-//   node scripts/command-vectors.ts <device_id>          pour un appareil réel, à l'heure courante (essai croisé)
+// Writes to standard output the hard signature cases (see src/lib/commandVectors.ts), signed by the
+// console's real code:
+//   node scripts/command-vectors.ts                      versioned test set (src/lib/fixtures/command-vectors.json)
+//   node scripts/command-vectors.ts <device_id>          for a real device, at the current time (cross-check)
 import { buildVectors, seededRandom, FIXTURE_DEVICE, FIXTURE_NOW_MS, FIXTURE_SEED } from '../src/lib/commandVectors.ts';
 
 const device = process.argv[2];

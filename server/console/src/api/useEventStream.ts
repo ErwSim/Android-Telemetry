@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from './endpoints.ts';
 import { ApiError, buildQuery, signalUnauthorized, STREAM_URL } from './client.ts';
-import type { VigieEvent } from './types.ts';
+import type { WatchpostEvent } from './types.ts';
 import { isRecord } from '../lib/data.ts';
 
 export type StreamStatus = 'off' | 'connecting' | 'open' | 'error';
 
-export function parseStreamEvent(raw: string): VigieEvent | undefined {
+export function parseStreamEvent(raw: string): WatchpostEvent | undefined {
   try {
     const v: unknown = JSON.parse(raw);
     if (!isRecord(v) || typeof v['id'] !== 'string' || typeof v['type'] !== 'string' || typeof v['ts'] !== 'string') return undefined;
     return {
-      ...(v as unknown as VigieEvent),
+      ...(v as unknown as WatchpostEvent),
       sev: typeof v['sev'] === 'number' ? v['sev'] : 0,
       data: isRecord(v['data']) ? v['data'] : {},
     };
@@ -21,7 +21,7 @@ export function parseStreamEvent(raw: string): VigieEvent | undefined {
 }
 
 /** Abonnement SSE (`/stream`). Reconnexion automatique gérée par EventSource ; 401 → retour à la connexion. */
-export function useEventStream(enabled: boolean, deviceId: string | undefined, onEvent: (e: VigieEvent) => void): StreamStatus {
+export function useEventStream(enabled: boolean, deviceId: string | undefined, onEvent: (e: WatchpostEvent) => void): StreamStatus {
   const key = enabled && typeof EventSource !== 'undefined' ? `on:${deviceId ?? ''}` : null;
   const [st, setSt] = useState<{ key: string; status: StreamStatus }>({ key: '', status: 'off' });
   const cb = useRef(onEvent);

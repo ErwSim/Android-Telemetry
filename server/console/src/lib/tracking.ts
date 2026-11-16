@@ -1,10 +1,10 @@
-// Vue « pistage » (contrat §9) : niveaux, statuts, motifs, agrégations. Fonctions pures.
+// "Tracking" view (contract §9): levels, statuses, reasons, aggregations. Pure functions.
 import type { ApiError } from '../api/client.ts';
 import type { Publisher, TrackingApp, TrackingDomain, TrackingTotals } from '../api/types.ts';
 
 export type Tone = 'neutral' | 'ok' | 'warn' | 'bad' | 'info';
 
-// ------------------------------------------------------------------------------------------- niveaux
+// ------------------------------------------------------------------------------------------- levels
 
 export interface LevelText {
   key: string;
@@ -12,25 +12,25 @@ export interface LevelText {
   description: string;
 }
 
-/** Textes de repli si le collecteur n'en fournit pas (`levels[].name` / `description`). */
+/** Fallback texts if the collector provides none (`levels[].name` / `description`). */
 export const LEVEL_FALLBACK: Record<string, { name: string; description: string }> = {
-  permissif: {
-    name: 'Permissif',
-    description: 'Bloque la publicité et les traqueurs les plus connus. Aucune télémétrie de Google ou de Samsung n’est coupée : le risque de casser une application est minimal.',
+  permissive: {
+    name: 'Permissive',
+    description: 'Blocks advertising and the best-known trackers. No Google or Samsung telemetry is cut: the risk of breaking an application is minimal.',
   },
-  equilibre: {
-    name: 'Équilibré',
-    description: 'Ajoute le blocage de la télémétrie et de la mesure d’audience (Google, Samsung, éditeurs tiers) en laissant passer ce dont le téléphone a besoin : notifications push, mises à jour, services Google Play.',
+  balanced: {
+    name: 'Balanced',
+    description: 'Adds blocking of telemetry and audience measurement (Google, Samsung, third-party publishers) while letting through what the phone needs: push notifications, updates, Google Play services.',
   },
   strict: {
     name: 'Strict',
-    description: 'Bloque aussi les services d’arrière-plan facultatifs des éditeurs. Certaines applications peuvent perdre des fonctions (synchronisation, recommandations, connexion avec un compte).',
+    description: 'Also blocks the optional background services of publishers. Some applications may lose features (synchronisation, recommendations, signing in with an account).',
   },
 };
 
-export const LEVEL_ORDER = ['permissif', 'equilibre', 'strict'];
+export const LEVEL_ORDER = ['permissive', 'balanced', 'strict'];
 
-/** Fusionne les niveaux du collecteur avec les textes de repli ; l'ordre est permissif, équilibré, strict. */
+/** Merges the collector's levels with the fallback texts; the order is permissive, balanced, strict. */
 export function levelTexts(levels: { key: string; name?: string; description?: string }[] | undefined): LevelText[] {
   const src: { key: string; name?: string; description?: string }[] =
     levels && levels.length > 0 ? levels : LEVEL_ORDER.map((key) => ({ key }));
@@ -45,7 +45,7 @@ export function levelTexts(levels: { key: string; name?: string; description?: s
   return out.sort((a, b) => rank(a.key) - rank(b.key));
 }
 
-// ------------------------------------------------------------------------------------ statuts et motifs
+// ------------------------------------------------------------------------------------ statuses and reasons
 
 export interface StatusText {
   label: string;
@@ -55,51 +55,51 @@ export interface StatusText {
 export function domainStatus(status: string | undefined): StatusText {
   switch (status) {
     case 'blocked':
-      return { label: 'Bloqué', tone: 'ok' };
+      return { label: 'Blocked', tone: 'ok' };
     case 'allowed':
-      return { label: 'Autorisé', tone: 'neutral' };
+      return { label: 'Allowed', tone: 'neutral' };
     case 'mixed':
-      return { label: 'Mixte', tone: 'warn' };
+      return { label: 'Mixed', tone: 'warn' };
     default:
-      return { label: 'Non évalué', tone: 'neutral' };
+      return { label: 'Not assessed', tone: 'neutral' };
   }
 }
 
 export function overrideLabel(o: 'block' | 'allow' | undefined): string | undefined {
-  return o === 'block' ? 'Règle manuelle : bloquer' : o === 'allow' ? 'Règle manuelle : autoriser' : undefined;
+  return o === 'block' ? 'Manual rule: block' : o === 'allow' ? 'Manual rule: allow' : undefined;
 }
 
 const REASON_TOKENS: Record<string, string> = {
-  FilteredBlackList: 'Liste de blocage',
-  FilteredBlockedService: 'Service bloqué',
-  FilteredSafeBrowsing: 'Navigation sécurisée',
-  FilteredParental: 'Contrôle parental',
-  FilteredSafeSearch: 'Recherche sécurisée',
-  FilteredInvalid: 'Requête invalide',
-  NotFilteredWhiteList: 'Autorisé par une règle',
-  NotFilteredNotFound: 'Aucune liste ne le bloque',
-  NotFilteredError: 'Non filtré (erreur du filtre)',
-  Rewrite: 'Réécrit par une règle',
-  RewriteEtcHosts: 'Réécrit (fichier hosts)',
-  RewriteAutoHosts: 'Réécrit (hôte automatique)',
+  FilteredBlackList: 'Blocklist',
+  FilteredBlockedService: 'Blocked service',
+  FilteredSafeBrowsing: 'Safe browsing',
+  FilteredParental: 'Parental control',
+  FilteredSafeSearch: 'Safe search',
+  FilteredInvalid: 'Invalid query',
+  NotFilteredWhiteList: 'Allowed by a rule',
+  NotFilteredNotFound: 'No list blocks it',
+  NotFilteredError: 'Not filtered (filter error)',
+  Rewrite: 'Rewritten by a rule',
+  RewriteEtcHosts: 'Rewritten (hosts file)',
+  RewriteAutoHosts: 'Rewritten (automatic host)',
 };
 
 /**
- * Traduit un motif. Le contrat ne fixe pas son format : on reconnaît les jetons d'AdGuard Home, éventuellement
- * suivis de « : nom de liste ou règle », et on affiche tout autre texte tel quel.
+ * Translates a reason. The contract does not fix its format: we recognise AdGuard Home's tokens, possibly
+ * followed by ": list name or rule", and display any other text as is.
  */
 export function reasonLabel(reason: string | undefined): string | undefined {
   if (!reason) return undefined;
   const m = /^([A-Za-z]+)\s*(?::\s*(.*))?$/.exec(reason.trim());
   const token = m?.[1];
   const known = token ? REASON_TOKENS[token] : undefined;
-  if (known) return m?.[2] ? `${known} : ${m[2]}` : known;
+  if (known) return m?.[2] ? `${known}: ${m[2]}` : known;
   return reason.trim();
 }
 
-// ----------------------------------------------------------------------------------------- agrégations
+// ----------------------------------------------------------------------------------------- aggregations
 
-/** Part bloquée en pour cent (0-100), ou undefined sans décompte bloqué/autorisé (mode dégradé). */
+/** Blocked share in percent (0-100), or undefined without a blocked/allowed count (degraded mode). */
 export function blockedPct(x: { queries: number; blocked?: number; allowed?: number }): number | undefined {
   if (x.blocked === undefined && x.allowed === undefined) return undefined;
   const total = (x.blocked ?? 0) + (x.allowed ?? 0) || x.queries;
@@ -107,7 +107,7 @@ export function blockedPct(x: { queries: number; blocked?: number; allowed?: num
   return ((x.blocked ?? 0) / total) * 100;
 }
 
-/** Totaux fournis par le collecteur, sinon somme des éditeurs. */
+/** Totals provided by the collector, otherwise the sum of the publishers. */
 export function totalsOf(totals: TrackingTotals | undefined, publishers: Publisher[]): TrackingTotals {
   if (totals) return totals;
   const out: TrackingTotals = { queries: 0 };
@@ -119,31 +119,31 @@ export function totalsOf(totals: TrackingTotals | undefined, publishers: Publish
   return out;
 }
 
-/** Éditeurs triés par requêtes décroissantes ; les éditeurs sans requête sont écartés. */
+/** Publishers sorted by decreasing queries; publishers without queries are discarded. */
 export function sortPublishers(publishers: Publisher[]): Publisher[] {
-  return publishers.filter((p) => p.queries > 0).sort((a, b) => b.queries - a.queries || a.name.localeCompare(b.name, 'fr'));
+  return publishers.filter((p) => p.queries > 0).sort((a, b) => b.queries - a.queries || a.name.localeCompare(b.name, 'en'));
 }
 
-/** Ajoute la page suivante de domaines en écartant les doublons (le curseur peut chevaucher). */
+/** Appends the next page of domains, discarding duplicates (the cursor may overlap). */
 export function mergeDomains(prev: TrackingDomain[], next: TrackingDomain[]): TrackingDomain[] {
   const seen = new Set(prev.map((d) => d.domain));
   return [...prev, ...next.filter((d) => !seen.has(d.domain))];
 }
 
-/** Règle effective d'un domaine : la modification locale en attente l'emporte sur celle du collecteur. */
+/** Effective rule of a domain: the pending local change wins over the collector's. */
 export function effectiveOverride(d: TrackingDomain, local: ReadonlyMap<string, 'block' | 'allow' | 'default'>): 'block' | 'allow' | undefined {
   const l = local.get(d.domain);
   if (l === 'default') return undefined;
   return l ?? d.override;
 }
 
-/** Applications d'un domaine : les `max` premières, et le nombre des autres. */
+/** Applications of a domain: the first `max`, and the number of the others. */
 export function splitApps(apps: { package: string; count: number }[] | undefined, max = 3): { shown: { package: string; count: number }[]; more: number } {
   const sorted = [...(apps ?? [])].sort((a, b) => b.count - a.count);
   return { shown: sorted.slice(0, max), more: Math.max(0, sorted.length - max) };
 }
 
-/** Applications triées par requêtes décroissantes, avec une recherche sur le nom ou le paquet. */
+/** Applications sorted by decreasing queries, with a search on the name or the package. */
 export function filterApps(apps: TrackingApp[], q: string): TrackingApp[] {
   const f = q.trim().toLowerCase();
   return apps
@@ -151,20 +151,20 @@ export function filterApps(apps: TrackingApp[], q: string): TrackingApp[] {
     .sort((a, b) => b.queries - a.queries || a.package.localeCompare(b.package));
 }
 
-// ------------------------------------------------------------------------------------------- erreur 409
+// ------------------------------------------------------------------------------------------- 409 error
 
 export interface Conflict {
   message: string;
-  /** ce que le blocage casserait, si le collecteur le détaille */
+  /** what blocking would break, if the collector details it */
   impacts: string[];
 }
 
 const IMPACT_KEYS = ['impacts', 'impact', 'breaks', 'would_break', 'consequences', 'affects', 'details'];
 
 /**
- * Lit la réponse `409` de `PUT /tracking/override` (domaine indispensable). Le contrat n'en fixe que l'esprit
- * (« expliquant ce que le blocage casserait ») : on affiche `message`, plus toute liste ou chaîne trouvée sous
- * une clé usuelle.
+ * Reads the `409` response of `PUT /tracking/override` (essential domain). The contract only fixes its spirit
+ * ("explaining what blocking would break"): we display `message`, plus any list or string found under
+ * a usual key.
  */
 export function parseConflict(e: Pick<ApiError, 'message' | 'body'>): Conflict {
   const impacts: string[] = [];
@@ -175,12 +175,12 @@ export function parseConflict(e: Pick<ApiError, 'message' | 'body'>): Conflict {
     else if (Array.isArray(v)) {
       for (const x of v) {
         if (typeof x === 'string' && x.trim()) impacts.push(x.trim());
-        // Collecteur : { domain, breaks } (domaine indispensable et ce qu'il casserait).
+        // Collector: { domain, breaks } (essential domain and what it would break).
         else if (x && typeof x === 'object') {
           const o = x as Record<string, unknown>;
           const what = typeof o['breaks'] === 'string' ? o['breaks'].trim() : '';
           const dom = typeof o['domain'] === 'string' ? o['domain'].trim() : '';
-          if (what) impacts.push(dom ? `${dom} : ${what}` : what);
+          if (what) impacts.push(dom ? `${dom}: ${what}` : what);
         }
       }
     }
@@ -193,42 +193,42 @@ export function parseConflict(e: Pick<ApiError, 'message' | 'body'>): Conflict {
 export type TrackAction = 'block' | 'allow' | 'default';
 
 /**
- * Actions proposées pour un domaine, d'après son statut sur la période et la règle manuelle en vigueur.
- * « Bloquer » n'a pas de sens pour un domaine déjà bloqué sans règle contraire, « Autoriser » pour un domaine
- * déjà autorisé ; « Remettre par défaut » n'existe que s'il y a une règle manuelle à retirer.
+ * Actions offered for a domain, according to its status over the period and the manual rule in force.
+ * "Block" makes no sense for a domain already blocked without a contrary rule, "Allow" for a domain
+ * already allowed; "Reset to default" only exists if there is a manual rule to remove.
  */
 export function availableActions(status: string | undefined, override: 'block' | 'allow' | undefined): TrackAction[] {
   const out: TrackAction[] = [];
   if (override !== 'block' && status !== 'blocked') out.push('block');
   if (override !== 'allow' && status !== 'allowed') out.push('allow');
   if (override) out.push('default');
-  // Statut inconnu et aucune règle : on propose quand même les deux choix.
+  // Unknown status and no rule: we still offer both choices.
   if (out.length === 0) out.push('block', 'allow');
   return out;
 }
 
-export const ACTION_LABELS: Record<TrackAction, string> = { block: 'Bloquer', allow: 'Autoriser', default: 'Remettre par défaut' };
+export const ACTION_LABELS: Record<TrackAction, string> = { block: 'Block', allow: 'Allow', default: 'Reset to default' };
 
-// ------------------------------------------------------------------------ erreurs et données de statut
+// ------------------------------------------------------------------------ errors and status data
 
-/** Y a-t-il des décomptes bloqué/autorisé ? Faux sans AdGuard (jamais configuré) : on n'affiche alors aucun pourcentage. */
+/** Are there blocked/allowed counts? False without AdGuard (never configured): no percentage is displayed then. */
 export function hasStatusData(totals: TrackingTotals | undefined): boolean {
   return (totals?.blocked ?? 0) + (totals?.allowed ?? 0) > 0;
 }
 
-/** Traduit les erreurs de `PUT /tracking/*` (contrat §9 et précisions). */
+/** Translates the errors of `PUT /tracking/*` (contract §9 and clarifications). */
 export function trackingErrorMessage(e: { status: number; code: string; message: string }): string {
   switch (e.code) {
     case 'adguard_unavailable':
-      return "AdGuard Home n'est pas configuré ou pas joignable depuis le collecteur : rien n'a été modifié.";
+      return 'AdGuard Home is not configured or not reachable from the collector: nothing was changed.';
     case 'adguard_error':
-      return "AdGuard Home a refusé ou n'a pas répondu : rien n'a été modifié (ou seulement en partie). Réessayez, ou vérifiez AdGuard Home.";
+      return 'AdGuard Home refused or did not answer: nothing was changed (or only partly). Try again, or check AdGuard Home.';
     case 'corrupt_rules':
-      return `Le bloc de règles géré par Vigie dans AdGuard Home est altéré : ${e.message}`;
+      return `The rule block managed by Watchpost in AdGuard Home is altered: ${e.message}`;
     case 'levels_not_configured':
-      return "Le choix du niveau n'est pas disponible : le collecteur n'a pas de fichier de correspondance niveaux → listes (VIGIE_ADGUARD_LEVELS_FILE).";
+      return 'Choosing the level is not available: the collector has no levels → lists mapping file (WATCHPOST_ADGUARD_LEVELS_FILE).';
     case 'invalid_domain':
-      return `Nom de domaine invalide : ${e.message}`;
+      return `Invalid domain name: ${e.message}`;
     default:
       return e.message;
   }

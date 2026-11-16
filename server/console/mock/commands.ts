@@ -69,7 +69,7 @@ let badSig: number[] = [];
 
 let keyCache: { deviceId: string; k: Buffer } | undefined;
 function keyFor(deviceId: string): Buffer {
-  if (keyCache?.deviceId !== deviceId) keyCache = { deviceId, k: pbkdf2Sync(COMMAND_CODE, `vigie-cmd-v1:${deviceId}`, 600_000, 32, 'sha256') };
+  if (keyCache?.deviceId !== deviceId) keyCache = { deviceId, k: pbkdf2Sync(COMMAND_CODE, `watchpost-cmd-v1:${deviceId}`, 600_000, 32, 'sha256') };
   return keyCache.k;
 }
 

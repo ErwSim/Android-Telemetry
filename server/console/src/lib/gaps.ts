@@ -1,4 +1,4 @@
-// Détection des trous dans une trace de positions et classification de leur cause probable.
+// Detection of gaps in a location track and classification of their probable cause.
 
 export interface TimedPoint {
   /** epoch ms */
@@ -6,9 +6,9 @@ export interface TimedPoint {
 }
 
 export interface Gap {
-  /** index du dernier point avant le trou */
+  /** index of the last point before the gap */
   fromIdx: number;
-  /** index du premier point après le trou */
+  /** index of the first point after the gap */
   toIdx: number;
   start: number;
   end: number;
@@ -23,8 +23,8 @@ export function median(values: number[]): number {
 }
 
 /**
- * Trous : deux points consécutifs séparés de plus de `thresholdMs`.
- * Les points sont supposés triés par temps croissant.
+ * Gaps: two consecutive points separated by more than `thresholdMs`.
+ * Points are assumed sorted by increasing time.
  */
 export function detectGaps(points: TimedPoint[], thresholdMs: number): Gap[] {
   const gaps: Gap[] = [];
@@ -39,8 +39,8 @@ export function detectGaps(points: TimedPoint[], thresholdMs: number): Gap[] {
 }
 
 /**
- * Seuil effectif : le seuil choisi, relevé à 3 fois l'intervalle médian pour ne pas déclarer de trous
- * quand le serveur a sous-échantillonné la trace.
+ * Effective threshold: the chosen threshold, raised to 3 times the median interval so as not to declare gaps
+ * when the server has downsampled the track.
  */
 export function effectiveThreshold(points: TimedPoint[], baseMs: number): number {
   const deltas: number[] = [];
@@ -52,7 +52,7 @@ export function effectiveThreshold(points: TimedPoint[], baseMs: number): number
   return Math.max(baseMs, 3 * median(deltas));
 }
 
-/** Découpe en segments continus (suites d'index [début, fin] inclus) séparés par les trous. */
+/** Splits into continuous segments (runs of indexes [start, end] inclusive) separated by the gaps. */
 export function splitSegments(count: number, gaps: Gap[]): [number, number][] {
   if (count === 0) return [];
   const segs: [number, number][] = [];
@@ -68,24 +68,24 @@ export function splitSegments(count: number, gaps: Gap[]): [number, number][] {
 export type GapKind = 'silent' | 'nofix' | 'unknown';
 
 export interface Activity {
-  /** début de chaque tranche, epoch ms */
+  /** start of each bucket, epoch ms */
   starts: number[];
   bucketMs: number;
-  /** nombre d'événements (toutes catégories) par tranche */
+  /** number of events (all categories) per bucket */
   totals: number[];
 }
 
 /**
- * - `silent` : aucun événement reçu pendant le trou (hors ligne, éteint ou agent arrêté) ;
- * - `nofix` : le téléphone a émis des événements mais aucune position ;
- * - `unknown` : trou plus court que la granularité de la chronologie.
+ * - `silent`: no event received during the gap (offline, powered off or agent stopped);
+ * - `nofix`: the phone emitted events but no location;
+ * - `unknown`: gap shorter than the timeline's granularity.
  */
 export function classifyGap(gap: Gap, act: Activity | undefined): GapKind {
   if (!act || act.starts.length === 0) return 'unknown';
   let inside = 0;
   let active = 0;
-  // Les tranches des extrémités contiennent les événements émis juste avant/après le trou : on les écarte
-  // quand le trou est assez long pour qu'il en reste.
+  // The end buckets contain events emitted just before/after the gap: we discard them
+  // when the gap is long enough for some to remain.
   const margin = gap.durationMs > 3 * act.bucketMs ? act.bucketMs : 0;
   const lo = gap.start + margin;
   const hi = gap.end - margin;
@@ -102,7 +102,7 @@ export function classifyGap(gap: Gap, act: Activity | undefined): GapKind {
 }
 
 export const GAP_LABELS: Record<GapKind, string> = {
-  silent: 'Aucun événement reçu (hors ligne, éteint ou agent arrêté)',
-  nofix: 'Téléphone actif mais sans position (pas de fix)',
-  unknown: 'Cause indéterminée',
+  silent: 'No event received (offline, powered off or agent stopped)',
+  nofix: 'Phone active but without a location (no fix)',
+  unknown: 'Undetermined cause',
 };

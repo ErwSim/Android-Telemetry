@@ -6,7 +6,7 @@ export type Sev = 0 | 1 | 2 | 3;
 export type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 export type DataObject = Record<string, unknown>;
 
-export interface VigieEvent {
+export interface WatchpostEvent {
   id: string;
   ts: string;
   seq?: number;
@@ -83,7 +83,7 @@ export interface DevicesResponse {
 }
 
 export interface EventsResponse {
-  events: VigieEvent[];
+  events: WatchpostEvent[];
   next_cursor?: string;
 }
 

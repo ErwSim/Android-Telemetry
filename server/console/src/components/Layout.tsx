@@ -126,7 +126,7 @@ export default function Layout() {
           <ErrorBox message={error.message} onRetry={reload} />
         ) : devices.length === 0 ? (
           <div className="state state-empty">
-            <strong>Aucun appareil enrôlé.</strong> Créez-en un avec <code>vigie-collector enroll</code> sur le serveur.
+            <strong>Aucun appareil enrôlé.</strong> Créez-en un avec <code>watchpost-collector enroll</code> sur le serveur.
           </div>
         ) : (
           <Outlet />

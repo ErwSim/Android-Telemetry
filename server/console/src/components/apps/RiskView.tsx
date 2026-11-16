@@ -40,7 +40,7 @@ export function RiskView({ risks, inventory, ts }: { risks: AppRisk[]; inventory
     const f = filterRisk(risks, { level, comboOnly, q });
     if (sort === 'name') {
       const n = (a: AppRisk) => (a.label ?? inv.get(a.package)?.label ?? a.package).toLowerCase();
-      return [...f].sort((a, b) => n(a).localeCompare(n(b), 'fr'));
+      return [...f].sort((a, b) => n(a).localeCompare(n(b), 'en'));
     }
     return sortByScore(f);
   }, [risks, level, comboOnly, q, sort, inv]);

@@ -1,28 +1,28 @@
-// Rôles par défaut d'Android (contrat §11.2, `app.role`) : SMS, composeur, navigateur, assistant, écran d'accueil,
-// filtrage d'appels… Un changement de rôle est un signal fort : un logiciel malveillant cherche souvent à devenir
-// l'application SMS ou le filtre d'appels.
-import type { VigieEvent } from '../api/types.ts';
+// Android default roles (contract §11.2, `app.role`): SMS, dialer, browser, assistant, home screen,
+// call screening... A role change is a strong signal: malware often tries to become
+// the SMS app or the call screening app.
+import type { WatchpostEvent } from '../api/types.ts';
 import { str } from './data.ts';
 
 const ROLE_LABELS: Record<string, string> = {
-  sms: 'Application SMS',
-  dialer: 'Application Téléphone',
-  browser: 'Navigateur',
+  sms: 'SMS app',
+  dialer: 'Phone app',
+  browser: 'Browser',
   assistant: 'Assistant',
-  home: "Écran d'accueil",
-  call_screening: "Filtrage d'appels",
-  launcher: "Écran d'accueil",
-  keyboard: 'Clavier',
+  home: 'Home screen',
+  call_screening: 'Call screening',
+  launcher: 'Home screen',
+  keyboard: 'Keyboard',
 };
 
 const ROLE_WHY: Record<string, string> = {
-  sms: "L'application SMS par défaut reçoit et envoie tous vos SMS : c'est le rôle que visent les logiciels de fraude au SMS.",
-  dialer: "L'application Téléphone par défaut gère les appels entrants et sortants.",
-  browser: 'Le navigateur par défaut ouvre tous les liens : un faux navigateur peut vous envoyer sur des sites piégés.',
-  assistant: "L'assistant par défaut peut lire l'écran et écouter le micro sur commande.",
-  home: "L'écran d'accueil voit toutes les applications que vous lancez.",
-  call_screening: "L'application de filtrage d'appels voit tous les numéros qui vous appellent.",
-  keyboard: 'Le clavier voit tout ce que vous saisissez, mots de passe compris.',
+  sms: 'The default SMS app receives and sends all your SMS messages: this is the role SMS fraud software aims for.',
+  dialer: 'The default Phone app handles incoming and outgoing calls.',
+  browser: 'The default browser opens all links: a fake browser can send you to booby-trapped sites.',
+  assistant: 'The default assistant can read the screen and listen to the microphone on command.',
+  home: 'The home screen sees all the applications you launch.',
+  call_screening: 'The call screening app sees every number that calls you.',
+  keyboard: 'The keyboard sees everything you type, passwords included.',
 };
 
 export function roleLabel(role: string): string {
@@ -41,8 +41,8 @@ export interface RoleChange {
   new?: string;
 }
 
-/** Changements de rôle (`app.role`) lus dans des événements, du plus récent au plus ancien ; les autres types sont ignorés. */
-export function roleChanges(events: readonly VigieEvent[]): RoleChange[] {
+/** Role changes (`app.role`) read from events, newest first; other types are ignored. */
+export function roleChanges(events: readonly WatchpostEvent[]): RoleChange[] {
   const out: RoleChange[] = [];
   for (const e of events) {
     if (e.type !== 'app.role') continue;
@@ -58,12 +58,12 @@ export function roleChanges(events: readonly VigieEvent[]): RoleChange[] {
   return out.sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
 }
 
-/** Premier changement de rôle d'une application ? Vrai si elle l'a gagné (`new`) ou perdu (`old`). */
+/** Does a role change involve an application? True if it gained (`new`) or lost (`old`) the role. */
 export function involves(c: RoleChange, pkg: string): boolean {
   return c.new === pkg || c.old === pkg;
 }
 
-/** Rôles actuellement tenus par un paquet d'après `app.special_access.default_apps` (clé de rôle → paquet). */
+/** Roles currently held by a package according to `app.special_access.default_apps` (role key → package). */
 export function rolesHeldBy(defaults: Record<string, unknown> | undefined, pkg: string): string[] {
   if (!defaults) return [];
   return Object.entries(defaults)

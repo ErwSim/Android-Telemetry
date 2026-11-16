@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { VigieEvent } from '../api/types.ts';
+import type { WatchpostEvent } from '../api/types.ts';
 import { describeEvent } from './events.ts';
 import { summarizeNotifications } from './notifications.ts';
 
-const ev = (data: Record<string, unknown>, type = 'app.notification'): VigieEvent => ({ id: 'x', ts: '2026-11-16T10:00:00.000Z', type, sev: 0, data });
+const ev = (data: Record<string, unknown>, type = 'app.notification'): WatchpostEvent => ({ id: 'x', ts: '2026-11-16T10:00:00.000Z', type, sev: 0, data });
 
 describe('app.notification dans le journal', () => {
   it('sans contenu : application, événement, catégorie', () => {

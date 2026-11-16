@@ -1,115 +1,115 @@
 [
   {
-    "name": "lock : accents, émoji, guillemets, saut de ligne, antislash",
+    "name": "lock: accents, emoji, quotes, line feed, backslash",
     "code": "correct horse battery staple",
     "device_id": "dev_0123456789abcdef",
     "type": "lock",
     "now_ms": 1794823200000,
-    "payload": "{\"v\":1,\"id\":\"01M7HWS780BVKQVXMRXAK870S3\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{\"message\":\"Téléphone perdu 🙂 — « appelez » le \\\"01 23 45 67 89\\\"\\nligne 2 \\\\ fin d'essai\"},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
-    "sig": "T7z5Fm1GllTEp3kVyjG60YSWwkswht8aVzIyUibxF6Q=",
+    "payload": "{\"v\":1,\"id\":\"01M7HWS780NKH9D038100NPH7B\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{\"message\":\"Teléfono perdido 🙂 — «llámeme» al \\\"+1 555 0100\\\"\\nline 2 \\\\ it's a test\"},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
+    "sig": "gEEVepCteVsjMEY8Jn2IQMd8Je5pNvoow4xTR1xhRUs=",
     "expect": {
-      "message": "Téléphone perdu 🙂 — « appelez » le \"01 23 45 67 89\"\nligne 2 \\ fin d'essai"
+      "message": "Teléfono perdido 🙂 — «llámeme» al \"+1 555 0100\"\nline 2 \\ it's a test"
     }
   },
   {
-    "name": "lock : 100 émojis (200 unités UTF-16), code non ASCII",
+    "name": "lock: 100 emoji (200 UTF-16 units), non-ASCII passphrase",
     "code": "pässwörd-código-密码-🔑🔑",
     "device_id": "dev_0123456789abcdef",
     "type": "lock",
     "now_ms": 1794823200000,
-    "payload": "{\"v\":1,\"id\":\"01M7HWS780YSQS1ATSXY2962SR\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{\"message\":\"🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂\"},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
-    "sig": "YO34We96ZNobwjSX+vUxIi4OnpdCDwSg166ZJBqUnlo=",
+    "payload": "{\"v\":1,\"id\":\"01M7HWS780YJTFXS1DWGGJ9BWG\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{\"message\":\"🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂\"},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
+    "sig": "L4BkGErMjpibdDkoBpxsz+LZvMu3udZ4U8C62EOOCwI=",
     "expect": {
       "message": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂"
     }
   },
   {
-    "name": "lock : message bordé d’espaces et de sauts de ligne, code décomposé (NFD)",
-    "code": "été indien 2026 !",
+    "name": "lock: message padded with spaces and line feeds, decomposed (NFD) passphrase",
+    "code": "niño jüngling 2026 !",
     "device_id": "dev_0123456789abcdef",
     "type": "lock",
     "now_ms": 1794823200000,
-    "payload": "{\"v\":1,\"id\":\"01M7HWS780KJG1CPARFCVTKWDK\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{\"message\":\"  \\n espaces et sauts autour \\n  \"},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
-    "sig": "xQoY6Ckbun+Yo5ZMJg/48mNEbj+FTEEwJ9Gt3LTlMhw=",
+    "payload": "{\"v\":1,\"id\":\"01M7HWS780SYE3GGSR8W1DQ1F3\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{\"message\":\"  \\n spaces and line feeds around \\n  \"},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
+    "sig": "RgbjNVCizXgNL1Lp+aS2ysY5hoZSwzeNfiA2x4YZexw=",
     "expect": {
-      "message": "espaces et sauts autour"
+      "message": "spaces and line feeds around"
     }
   },
   {
-    "name": "lock : arabe, hébreu, marque bidirectionnelle, émoji composé, diacritiques ; code bordé d’espaces",
+    "name": "lock: Arabic, Hebrew, bidirectional mark, composed emoji, diacritics; space-padded passphrase",
     "code": "  espaces autour & \"guillemets\" \\ ' <> %  ",
     "device_id": "dev_0123456789abcdef",
     "type": "lock",
     "now_ms": 1794823200000,
-    "payload": "{\"v\":1,\"id\":\"01M7HWS78028B4QX4562RK9ZM2\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{\"message\":\"مرحبا بالعالم — שלום עולם — ‮override‬ — 👨‍👩‍👧‍👦 — z̶a̶l̶g̶o̶\"},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
-    "sig": "Ue2mX2AgsmW2lZ+gAMF/Qn0mjpyTWChJbuldIUJFlLQ=",
+    "payload": "{\"v\":1,\"id\":\"01M7HWS780GJHFEGRSSB9BMMXM\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{\"message\":\"مرحبا بالعالم — שלום עולם — ‮override‬ — 👨‍👩‍👧‍👦 — z̶a̶l̶g̶o̶\"},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
+    "sig": "1+MbYRryh5qgBRTd0+JWArPCO+tehsmiSIneCZG6bNY=",
     "expect": {
       "message": "مرحبا بالعالم — שלום עולם — ‮override‬ — 👨‍👩‍👧‍👦 — z̶a̶l̶g̶o̶"
     }
   },
   {
-    "name": "lock : message qui ressemble à du JSON et à du HTML",
+    "name": "lock: message that looks like JSON and HTML",
     "code": "correct horse battery staple",
     "device_id": "dev_0123456789abcdef",
     "type": "lock",
     "now_ms": 1794823200000,
-    "payload": "{\"v\":1,\"id\":\"01M7HWS780610GWFASMYAS0QW8\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{\"message\":\"{\\\"type\\\":\\\"wipe\\\",\\\"params\\\":{}} </script><img src=x onerror=alert(1)> \\\\u0000 %00  ­\"},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
-    "sig": "olPtLQH5t2+1woMz6/+8vqRFFZT1R4YBDrjiAdyEfMg=",
+    "payload": "{\"v\":1,\"id\":\"01M7HWS7802CSDD9T5XHER7QPM\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{\"message\":\"{\\\"type\\\":\\\"wipe\\\",\\\"params\\\":{}} </script><img src=x onerror=alert(1)> \\\\u0000 %00  ­\"},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
+    "sig": "3NhO/FREf4DwBZGc5qaR2pclkdBEvyowt4Q82LDhMPA=",
     "expect": {
       "message": "{\"type\":\"wipe\",\"params\":{}} </script><img src=x onerror=alert(1)> \\u0000 %00  ­"
     }
   },
   {
-    "name": "lock : 200 lettres accentuées, validité de 30 jours",
+    "name": "lock: 200 accented letters, 30-day validity",
     "code": "pässwörd-código-密码-🔑🔑",
     "device_id": "dev_0123456789abcdef",
     "type": "lock",
     "now_ms": 1794823200000,
-    "payload": "{\"v\":1,\"id\":\"01M7HWS780GR9TP5W0TNY9Y9NZ\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{\"message\":\"éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\"},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-12-16T10:00:00.000Z\"}",
-    "sig": "fJKuEnrBMA6XyZb14cuZumIBLVHC9aP9UHzmxeRFos8=",
+    "payload": "{\"v\":1,\"id\":\"01M7HWS780PYV3XV310E0HFD1C\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{\"message\":\"üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü\"},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-12-16T10:00:00.000Z\"}",
+    "sig": "uWvBYWMgjRXm/c85izjnIuJMy3EaAv0n/fuF1iGL8p0=",
     "expect": {
-      "message": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+      "message": "üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü"
     }
   },
   {
-    "name": "lock : sans message",
+    "name": "lock: no message",
     "code": "correct horse battery staple",
     "device_id": "dev_0123456789abcdef",
     "type": "lock",
     "now_ms": 1794823200000,
-    "payload": "{\"v\":1,\"id\":\"01M7HWS780YPGA4B91SGVZGMGX\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
-    "sig": "Ex7MmucRAFIbXH13DnyOrr/n6sH0GEuPKGnTDf+oy8M=",
+    "payload": "{\"v\":1,\"id\":\"01M7HWS780BRKTVNHCADBH54Y2\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"lock\",\"params\":{},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
+    "sig": "xlnL21oIRlJNT/7G7donQ9aIeLOPGFleDEeFX3ynFvI=",
     "expect": {
       "message": null
     }
   },
   {
-    "name": "clear_lock_message : code décomposé (NFD)",
-    "code": "été indien 2026 !",
+    "name": "clear_lock_message: decomposed (NFD) passphrase",
+    "code": "niño jüngling 2026 !",
     "device_id": "dev_0123456789abcdef",
     "type": "clear_lock_message",
     "now_ms": 1794823200000,
-    "payload": "{\"v\":1,\"id\":\"01M7HWS780GVZ9HDY81JN9KWM5\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"clear_lock_message\",\"params\":{},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
-    "sig": "ZK69v+EmgDOc/rpefUQ1InDlTqvXbOx1zr6VWmPg+Kk=",
+    "payload": "{\"v\":1,\"id\":\"01M7HWS7809EGGPVZVJJT0CSJR\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"clear_lock_message\",\"params\":{},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-23T10:00:00.000Z\"}",
+    "sig": "0cwBIrFwR3v++5FeAwm3W9ugynuEvUP7HEVJUYgPCsE=",
     "expect": {}
   },
   {
-    "name": "wipe : code bordé d’espaces",
+    "name": "wipe: space-padded passphrase",
     "code": "  espaces autour & \"guillemets\" \\ ' <> %  ",
     "device_id": "dev_0123456789abcdef",
     "type": "wipe",
     "now_ms": 1794823200000,
-    "payload": "{\"v\":1,\"id\":\"01M7HWS780VNY5NCZA5W6QXRPS\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"wipe\",\"params\":{},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-17T10:00:00.000Z\"}",
-    "sig": "jwDBMwsgLVnHxFqknULhresbbY6/ZuGeY+Dq3wF/3u4=",
+    "payload": "{\"v\":1,\"id\":\"01M7HWS78086PQB2TK3BDP9NH4\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"wipe\",\"params\":{},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-17T10:00:00.000Z\"}",
+    "sig": "+f+v4cir9VuD7O+5P5F7Ter0OoeGG1XU8mFfKUW2Zco=",
     "expect": {}
   },
   {
-    "name": "ring : 300 s sans vibration (simple)",
+    "name": "ring: 300 s without vibration (simple)",
     "code": null,
     "device_id": "dev_0123456789abcdef",
     "type": "ring",
     "now_ms": 1794823200000,
-    "payload": "{\"v\":1,\"id\":\"01M7HWS780T5GA3AK9X4F3RCJ4\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"ring\",\"params\":{\"duration_s\":300,\"vibrate\":false},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-16T11:00:00.000Z\"}",
+    "payload": "{\"v\":1,\"id\":\"01M7HWS7800DVXQS283TJ2E8S1\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"ring\",\"params\":{\"duration_s\":300,\"vibrate\":false},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-16T11:00:00.000Z\"}",
     "sig": null,
     "expect": {
       "duration_s": 300,
@@ -117,12 +117,12 @@
     }
   },
   {
-    "name": "vibrate : valeur par défaut (simple)",
+    "name": "vibrate: default value (simple)",
     "code": null,
     "device_id": "dev_0123456789abcdef",
     "type": "vibrate",
     "now_ms": 1794823200000,
-    "payload": "{\"v\":1,\"id\":\"01M7HWS7801TAZR8EWGBESAX26\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"vibrate\",\"params\":{\"duration_s\":10},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-16T11:00:00.000Z\"}",
+    "payload": "{\"v\":1,\"id\":\"01M7HWS7809PQ4ZERTSGNKMP5W\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"vibrate\",\"params\":{\"duration_s\":10},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-16T11:00:00.000Z\"}",
     "sig": null,
     "expect": {
       "duration_s": 10
@@ -134,7 +134,7 @@
     "device_id": "dev_0123456789abcdef",
     "type": "locate",
     "now_ms": 1794823200000,
-    "payload": "{\"v\":1,\"id\":\"01M7HWS7804D8MMVF4C40KXBJ2\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"locate\",\"params\":{},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-16T11:00:00.000Z\"}",
+    "payload": "{\"v\":1,\"id\":\"01M7HWS780M5J2V794TEY1F93Z\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"locate\",\"params\":{},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-16T11:00:00.000Z\"}",
     "sig": null,
     "expect": {}
   },
@@ -144,7 +144,7 @@
     "device_id": "dev_0123456789abcdef",
     "type": "stop_ring",
     "now_ms": 1794823200000,
-    "payload": "{\"v\":1,\"id\":\"01M7HWS780YPTKFGJQNT3WSA76\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"stop_ring\",\"params\":{},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-16T11:00:00.000Z\"}",
+    "payload": "{\"v\":1,\"id\":\"01M7HWS780HMZWJ63J3TCPEN5Z\",\"device_id\":\"dev_0123456789abcdef\",\"type\":\"stop_ring\",\"params\":{},\"issued_at\":\"2026-11-16T10:00:00.000Z\",\"expires_at\":\"2026-11-16T11:00:00.000Z\"}",
     "sig": null,
     "expect": {}
   }

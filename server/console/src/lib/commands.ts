@@ -1,11 +1,11 @@
-// Commandes à distance (contrat §8) : construction du `payload`, validité, signature des commandes sensibles.
+// Remote commands (contract §8): building the `payload`, validity, signing of sensitive commands.
 //
-// Le navigateur construit `payload` (une chaîne JSON sérialisée UNE seule fois : ce sont ces octets exacts qui
-// sont signés puis relayés), génère l'identifiant ULID et signe les commandes sensibles par WebCrypto :
-//   K   = PBKDF2-HMAC-SHA256(code, sel = "vigie-cmd-v1:" + device_id, 600 000 itérations, 32 octets)
-//   sig = base64(HMAC-SHA256(K, octets UTF-8 de payload))
-// Le code et K ne sont jamais stockés ni envoyés : ils n'existent que dans les variables locales de
-// `signPayload` le temps du calcul.
+// The browser builds `payload` (a JSON string serialised ONCE: these exact bytes are
+// signed then relayed), generates the ULID identifier and signs sensitive commands with WebCrypto:
+//   K   = PBKDF2-HMAC-SHA256(passphrase, salt = "watchpost-cmd-v1:" + device_id, 600,000 iterations, 32 bytes)
+//   sig = base64(HMAC-SHA256(K, UTF-8 bytes of payload))
+// The passphrase and K are never stored or sent: they only exist in the local variables of
+// `signPayload` for the duration of the computation.
 import { ulid } from './ulid.ts';
 
 export type CommandType = 'ring' | 'vibrate' | 'stop_ring' | 'locate' | 'lock' | 'clear_lock_message' | 'wipe';
@@ -21,13 +21,13 @@ export function isSensitive(type: string): boolean {
 }
 
 export const COMMAND_LABELS: Record<CommandType, string> = {
-  ring: 'Sonner',
-  vibrate: 'Vibrer',
-  stop_ring: 'Arrêter la sonnerie',
-  locate: 'Localiser maintenant',
-  lock: 'Verrouiller avec message',
-  clear_lock_message: 'Effacer le message',
-  wipe: 'Effacer le téléphone',
+  ring: 'Ring',
+  vibrate: 'Vibrate',
+  stop_ring: 'Stop ringing',
+  locate: 'Locate now',
+  lock: 'Lock with message',
+  clear_lock_message: 'Clear the message',
+  wipe: 'Erase the phone',
 };
 
 export function commandLabel(type: string): string {
@@ -44,11 +44,11 @@ export const LIMITS = {
   vibrateMax: 60,
   messageMax: 200,
   codeMin: 12,
-  /** durée de validité par défaut : 1 h (simple), 7 jours (verrouillage), 15 min (effacement) */
+  /** default validity: 1 h (simple), 7 days (lock), 15 min (erase) */
   validitySimpleMs: HOUR_MS,
   validitySensitiveMs: 7 * DAY_MS,
   validityMaxMs: 30 * DAY_MS,
-  /** effacement : 15 min par défaut et 24 h au plus (contrat §8, revue de sécurité de la v1.1) */
+  /** erase: 15 min by default and 24 h at most (contract §8, v1.1 security review) */
   validityWipeMs: 15 * 60_000,
   validityWipeMaxMs: DAY_MS,
 } as const;
@@ -60,8 +60,8 @@ export interface CommandParams {
 }
 
 /**
- * Caractère de contrôle (C0, DEL, C1) autre que le saut de ligne, ou séparateur de ligne/paragraphe Unicode
- * (U+2028, U+2029) : le collecteur refuse les mêmes (`bad_params`), autant le dire avant de signer.
+ * Control character (C0, DEL, C1) other than the line feed, or Unicode line/paragraph separator
+ * (U+2028, U+2029): the collector refuses the same ones (`bad_params`), so better to say so before signing.
  */
 export function hasForbiddenControl(s: string): boolean {
   for (let i = 0; i < s.length; i++) {
@@ -71,19 +71,19 @@ export function hasForbiddenControl(s: string): boolean {
   return false;
 }
 
-/** Message d'erreur en français si les paramètres sont hors bornes, sinon undefined. */
+/** Error message if the parameters are out of bounds, otherwise undefined. */
 export function validateParams(type: CommandType, p: CommandParams): string | undefined {
   const dur = (v: number | undefined, max: number): string | undefined =>
-    v !== undefined && (!Number.isInteger(v) || v < 1 || v > max) ? `La durée doit être un nombre entier de secondes entre 1 et ${max}.` : undefined;
+    v !== undefined && (!Number.isInteger(v) || v < 1 || v > max) ? `The duration must be a whole number of seconds between 1 and ${max}.` : undefined;
   switch (type) {
     case 'ring':
       return dur(p.duration_s, LIMITS.ringMax);
     case 'vibrate':
       return dur(p.duration_s, LIMITS.vibrateMax);
     case 'lock':
-      // Contrat §8 : 200 unités UTF-16 au plus, aucun caractère de contrôle sauf le saut de ligne.
-      if (p.message !== undefined && p.message.length > LIMITS.messageMax) return `Le message ne doit pas dépasser ${LIMITS.messageMax} caractères.`;
-      if (p.message !== undefined && hasForbiddenControl(p.message)) return 'Le message ne doit contenir aucun caractère de contrôle (seul le saut de ligne est permis).';
+      // Contract §8: at most 200 UTF-16 units, no control character except the line feed.
+      if (p.message !== undefined && p.message.length > LIMITS.messageMax) return `The message must not exceed ${LIMITS.messageMax} characters.`;
+      if (p.message !== undefined && hasForbiddenControl(p.message)) return 'The message must not contain any control character (only the line feed is allowed).';
       return undefined;
     default:
       return undefined;
@@ -95,7 +95,7 @@ export function defaultValidityMs(type: CommandType): number {
   return isSensitive(type) ? LIMITS.validitySensitiveMs : LIMITS.validitySimpleMs;
 }
 
-/** Validité maximale : 24 h pour un effacement, 30 jours pour les autres. */
+/** Maximum validity: 24 h for an erase, 30 days for the others. */
 export function maxValidityMs(type: CommandType): number {
   return type === 'wipe' ? LIMITS.validityWipeMaxMs : LIMITS.validityMaxMs;
 }
@@ -110,15 +110,15 @@ export interface PayloadInput {
 }
 
 /**
- * Construit le `payload` : l'ordre des clés est celui du contrat. Les paramètres inutiles sont omis
- * (`params` vaut `{}` pour une commande sans paramètre).
+ * Builds the `payload`: the key order is the contract's. Unneeded parameters are omitted
+ * (`params` is `{}` for a command without parameters).
  */
 export function buildPayload(i: PayloadInput): string {
   const params = i.params ?? {};
   const err = validateParams(i.type, params);
   if (err) throw new Error(err);
   if (!Number.isFinite(i.validityMs) || i.validityMs <= 0 || i.validityMs > maxValidityMs(i.type)) {
-    throw new Error(i.type === 'wipe' ? "La validité d'un effacement ne peut pas dépasser 24 heures." : 'La durée de validité doit être comprise entre 1 ms et 30 jours.');
+    throw new Error(i.type === 'wipe' ? 'The validity of an erase cannot exceed 24 hours.' : 'The validity duration must be between 1 ms and 30 days.');
   }
   const out: Record<string, unknown> = {};
   switch (i.type) {
@@ -151,7 +151,7 @@ export function buildPayload(i: PayloadInput): string {
 
 export class CryptoUnavailableError extends Error {
   constructor() {
-    super("WebCrypto n'est pas disponible : la console doit être ouverte en HTTPS (ou sur localhost) pour signer une commande.");
+    super('WebCrypto is not available: the console must be opened over HTTPS (or on localhost) to sign a command.');
     this.name = 'CryptoUnavailableError';
   }
 }
@@ -163,12 +163,12 @@ export function canSign(): boolean {
 const PBKDF2_ITERATIONS = 600_000;
 const enc = new TextEncoder();
 
-/** K = PBKDF2-HMAC-SHA256(code, "vigie-cmd-v1:" + device_id, 600 000, 32 octets). Exposé pour les tests. */
+/** K = PBKDF2-HMAC-SHA256(passphrase, "watchpost-cmd-v1:" + device_id, 600,000, 32 bytes). Exposed for tests. */
 export async function deriveKeyBytes(code: string, deviceId: string): Promise<Uint8Array<ArrayBuffer>> {
   if (!canSign()) throw new CryptoUnavailableError();
   const base = await crypto.subtle.importKey('raw', enc.encode(code), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(`vigie-cmd-v1:${deviceId}`), iterations: PBKDF2_ITERATIONS },
+    { name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(`watchpost-cmd-v1:${deviceId}`), iterations: PBKDF2_ITERATIONS },
     base,
     256,
   );
@@ -185,7 +185,7 @@ export function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** sig = base64(HMAC-SHA256(K, UTF-8(payload))). La clé dérivée est effacée de la mémoire dès qu'elle est importée. */
+/** sig = base64(HMAC-SHA256(K, UTF-8(payload))). The derived key is wiped from memory as soon as it is imported. */
 export async function signPayload(code: string, deviceId: string, payload: string): Promise<string> {
   const k = await deriveKeyBytes(code, deviceId);
   let key: CryptoKey;
@@ -201,130 +201,130 @@ export async function signPayload(code: string, deviceId: string, payload: strin
 export function codeProblem(code: string): string | undefined {
   const n = Array.from(code).length;
   if (n === 0) return undefined;
-  if (n < LIMITS.codeMin) return `Le code de commande compte au moins ${LIMITS.codeMin} caractères (${n} saisis).`;
+  if (n < LIMITS.codeMin) return `The command passphrase must be at least ${LIMITS.codeMin} characters long (${n} entered).`;
   return undefined;
 }
 
-// ---------------------------------------------------------------------------- états et motifs de refus
+// ---------------------------------------------------------------------------- states and refusal reasons
 
 export type Tone = 'neutral' | 'ok' | 'warn' | 'bad' | 'info';
 
 export interface StatusInfo {
   label: string;
   tone: Tone;
-  /** vrai tant que la commande peut encore évoluer */
+  /** true while the command can still change */
   active: boolean;
   help: string;
 }
 
-/** Réserve sur une commande signée : le serveur n'est pas le seul à détenir la commande. */
+/** Caveat on a signed command: the server is not the only one to hold the command. */
 export const SIGNED_CAVEAT =
-  "Cela n'engage que le serveur : une commande signée reste exécutable par le téléphone jusqu'à sa date d'expiration si une copie existe (serveur compromis, copie conservée). Seul le changement du code de commande dans l'application du téléphone la rend caduque.";
+  'This only commits the server: a signed command remains executable by the phone until its expiry date if a copy exists (compromised server, retained copy). Only changing the command passphrase in the phone app makes it void.';
 
 /**
- * `delivered` : la commande avait été remise au téléphone (`delivered_at` renseigné). `signed` : commande sensible,
- * dont « annulée » et « expirée » ne sont que l'état du serveur (contrat §8, revue de sécurité de la v1.1).
+ * `delivered`: the command had been handed to the phone (`delivered_at` set). `signed`: sensitive command,
+ * for which "cancelled" and "expired" are only the server's state (contract §8, v1.1 security review).
  */
 export function statusInfo(status: string, delivered = false, signed = false): StatusInfo {
   if (status === 'expired' && delivered) {
-    // Remise puis aucun compte rendu : on ne sait pas ce que le téléphone en a fait. Un effacement, notamment,
-    // éteint le téléphone dix secondes après avoir tenté d'envoyer son résultat.
+    // Delivered then no report: we do not know what the phone did with it. An erase, in particular,
+    // powers the phone off ten seconds after trying to send its result.
     return {
-      label: 'Expirée sans réponse',
+      label: 'Expired without a response',
       tone: 'warn',
       active: false,
-      help: "Elle avait été remise au téléphone, mais aucun résultat n'est revenu avant son expiration : elle a pu être exécutée sans que le compte rendu parvienne au serveur (c'est le cas probable d'un effacement).",
+      help: 'It had been handed to the phone, but no result came back before it expired: it may have been executed without the report reaching the server (this is the probable case for an erase).',
     };
   }
   switch (status) {
     case 'pending':
-      return { label: 'En attente', tone: 'info', active: true, help: "Le serveur la garde : le téléphone ne l'a pas encore récupérée. Elle peut être annulée." };
+      return { label: 'Pending', tone: 'info', active: true, help: 'The server holds it: the phone has not fetched it yet. It can be cancelled.' };
     case 'delivered':
       return {
-        label: 'Remise',
+        label: 'Delivered',
         tone: 'info',
         active: true,
-        help: "Remise au téléphone, résultat attendu ; elle ne peut plus être annulée. Si le résultat n'arrive pas, le serveur la renvoie après 5 minutes (3 fois au plus) : elle peut rester « Remise » un moment.",
+        help: 'Handed to the phone, result awaited; it can no longer be cancelled. If the result does not arrive, the server sends it again after 5 minutes (3 times at most): it may stay "Delivered" for a while.',
       };
     case 'executed':
-      return { label: 'Exécutée', tone: 'ok', active: false, help: 'Le téléphone a exécuté la commande.' };
+      return { label: 'Executed', tone: 'ok', active: false, help: 'The phone executed the command.' };
     case 'failed':
-      return { label: 'Échec', tone: 'bad', active: false, help: "Le téléphone a essayé mais n'y est pas arrivé." };
+      return { label: 'Failed', tone: 'bad', active: false, help: 'The phone tried but did not manage to.' };
     case 'refused':
-      return { label: 'Refusée', tone: 'warn', active: false, help: 'Le téléphone a refusé la commande (motif ci-dessous).' };
+      return { label: 'Refused', tone: 'warn', active: false, help: 'The phone refused the command (reason below).' };
     case 'expired':
       return signed
-        ? { label: 'Expirée (côté serveur)', tone: 'neutral', active: false, help: `Le serveur ne la remet plus. ${SIGNED_CAVEAT}` }
-        : { label: 'Expirée', tone: 'neutral', active: false, help: "Le téléphone ne l'a pas récupérée avant son expiration : elle ne sera jamais exécutée." };
+        ? { label: 'Expired (server side)', tone: 'neutral', active: false, help: `The server no longer delivers it. ${SIGNED_CAVEAT}` }
+        : { label: 'Expired', tone: 'neutral', active: false, help: 'The phone did not fetch it before it expired: it will never be executed.' };
     case 'cancelled':
       return signed
-        ? { label: 'Annulée (côté serveur)', tone: 'neutral', active: false, help: `Annulée avant d'être remise : le serveur ne la remettra plus. ${SIGNED_CAVEAT}` }
-        : { label: 'Annulée', tone: 'neutral', active: false, help: "Annulée avant d'être remise : elle ne sera jamais exécutée." };
+        ? { label: 'Cancelled (server side)', tone: 'neutral', active: false, help: `Cancelled before being delivered: the server will no longer deliver it. ${SIGNED_CAVEAT}` }
+        : { label: 'Cancelled', tone: 'neutral', active: false, help: 'Cancelled before being delivered: it will never be executed.' };
     default:
-      return { label: status, tone: 'neutral', active: false, help: 'État inconnu de cette version de la console.' };
+      return { label: status, tone: 'neutral', active: false, help: 'State unknown to this version of the console.' };
   }
 }
 
 export interface Refusal {
-  /** libellé court */
+  /** short label */
   title: string;
-  /** explication complète */
+  /** full explanation */
   help: string;
   tone: Tone;
 }
 
-/** Traduit le `detail` d'un `command.result` refusé (motifs du contrat §8). */
+/** Translates the `detail` of a refused `command.result` (reasons of contract §8). */
 export function refusalInfo(detail: string | undefined): Refusal | undefined {
   if (!detail) return undefined;
   switch (detail) {
     case 'disabled':
       return {
-        title: 'Canal désactivé',
+        title: 'Channel disabled',
         tone: 'warn',
-        help: "Le canal de commandes est désactivé dans l'application, ou, pour un effacement, « Autoriser l'effacement à distance » n'y est pas activé (c'est éteint par défaut).",
+        help: 'The command channel is disabled in the app or, for an erase, "Allow remote erase" is not enabled there (it is off by default).',
       };
     case 'malformed':
-      return { title: 'Commande illisible', tone: 'warn', help: "Le téléphone n'a pas pu lire la commande (format ou identifiant incohérent)." };
+      return { title: 'Unreadable command', tone: 'warn', help: 'The phone could not read the command (inconsistent format or identifier).' };
     case 'wrong_device':
-      return { title: 'Autre appareil', tone: 'warn', help: 'La commande désigne un autre appareil que celui-ci.' };
+      return { title: 'Other device', tone: 'warn', help: 'The command names a different device than this one.' };
     case 'unknown_type':
-      return { title: 'Commande inconnue', tone: 'warn', help: "Cette version de l'agent ne connaît pas ce type de commande." };
+      return { title: 'Unknown command', tone: 'warn', help: 'This version of the agent does not know this type of command.' };
     case 'no_code_configured':
       return {
-        title: 'Aucun code défini',
+        title: 'No passphrase set',
         tone: 'warn',
-        help: "Aucun code de commande n'est défini dans l'application du téléphone : il faut le choisir sur le téléphone avant de pouvoir verrouiller ou effacer à distance.",
+        help: 'No command passphrase is set in the phone app: it must be chosen on the phone before locking or erasing remotely.',
       };
     case 'bad_signature':
       return {
-        title: 'Signature invalide (code incorrect ?)',
+        title: 'Invalid signature (wrong passphrase?)',
         tone: 'bad',
-        help: "La signature ne correspond pas au code défini dans l'application : le code saisi ici n'est probablement pas le bon (ou le nom de l'appareil a changé). Seul le téléphone peut le constater, le serveur ne connaît pas le code. Attention : 5 signatures invalides en une heure bloquent toutes les commandes sensibles pendant une heure.",
+        help: 'The signature does not match the passphrase set in the app: the passphrase entered here is probably not the right one (or the device name changed). Only the phone can tell, the server does not know the passphrase. Warning: 5 invalid signatures within an hour block all sensitive commands for an hour.',
       };
     case 'expired':
-      return { title: 'Expirée', tone: 'warn', help: "La commande était périmée à son arrivée sur le téléphone (tolérance d'horloge de 5 minutes)." };
+      return { title: 'Expired', tone: 'warn', help: 'The command was already out of date when it reached the phone (clock tolerance of 5 minutes).' };
     case 'replay':
-      return { title: 'Déjà exécutée', tone: 'warn', help: "Le téléphone a déjà exécuté une commande portant cet identifiant : elle n'est pas rejouée." };
+      return { title: 'Already executed', tone: 'warn', help: 'The phone already executed a command with this identifier: it is not replayed.' };
     case 'bad_params':
-      return { title: 'Paramètres hors bornes', tone: 'warn', help: 'Les paramètres de la commande sont hors des bornes acceptées par le téléphone.' };
+      return { title: 'Parameters out of bounds', tone: 'warn', help: "The command's parameters are outside the bounds accepted by the phone." };
     case 'not_device_owner':
       return {
-        title: "Vigie n'est pas Device Owner",
+        title: 'Watchpost is not Device Owner',
         tone: 'warn',
-        help: "Verrouiller, effacer le message ou effacer le téléphone exigent que l'agent soit Device Owner (activation par ADB) : l'agent tourne ici en mode dégradé.",
+        help: 'Locking, clearing the message or erasing the phone require the agent to be Device Owner (activated through ADB): the agent is running here in degraded mode.',
       };
     case 'locked_out':
       return {
-        title: 'Commandes sensibles bloquées',
+        title: 'Sensitive commands blocked',
         tone: 'bad',
-        help: "Après 5 signatures invalides en une heure, le téléphone refuse toute commande sensible pendant une heure. Attendez, puis réessayez avec le bon code.",
+        help: 'After 5 invalid signatures within an hour, the phone refuses every sensitive command for an hour. Wait, then try again with the right passphrase.',
       };
     default:
-      return { title: 'Motif non reconnu', tone: 'neutral', help: detail };
+      return { title: 'Unrecognised reason', tone: 'neutral', help: detail };
   }
 }
 
-// ----------------------------------------------------------------------------------- canal de commandes
+// ----------------------------------------------------------------------------------- command channel
 
 export interface CommandChannel {
   connected?: boolean;
@@ -336,51 +336,51 @@ export interface ChannelState {
   key: 'connected' | 'polling' | 'offline' | 'unknown';
   label: string;
   tone: Tone;
-  /** explication du délai à prévoir */
+  /** explanation of the delay to expect */
   hint: string;
 }
 
-/** Au-delà de ce délai sans contact, un agent en interrogation (toutes les 1 à 15 min) est considéré hors ligne. */
+/** Beyond this delay without contact, a polling agent (every 1 to 15 min) is considered offline. */
 export const POLL_STALE_MS = 20 * 60_000;
 
 /**
- * État du canal. En mode `poll`, `connected` ne dit rien (le collecteur réel le laisse à faux : il n'y a pas de
- * connexion ouverte) : on juge sur la fraîcheur de `last_contact`.
+ * Channel state. In `poll` mode, `connected` says nothing (the real collector leaves it false: there is no
+ * open connection): we judge by the freshness of `last_contact`.
  */
 export function channelState(ch: CommandChannel | undefined, now: Date = new Date()): ChannelState {
   if (!ch) {
-    return { key: 'unknown', label: 'État inconnu', tone: 'neutral', hint: "Le collecteur ne renseigne pas l'état du canal de commandes." };
+    return { key: 'unknown', label: 'Unknown state', tone: 'neutral', hint: 'The collector does not report the state of the command channel.' };
   }
   if (ch.mode === 'poll') {
     const t = Date.parse(ch.last_contact ?? '');
     const fresh = Number.isFinite(t) && now.getTime() - t < POLL_STALE_MS;
     return ch.connected || fresh
-      ? { key: 'polling', label: 'Interrogation périodique', tone: 'ok', hint: "Le téléphone vient chercher les commandes toutes les 1 à 15 minutes : une commande peut attendre jusqu'au prochain passage." }
-      : { key: 'offline', label: 'Hors ligne', tone: 'bad', hint: "Le téléphone n'a pas interrogé le serveur récemment (interrogation périodique, toutes les 1 à 15 minutes). Les commandes restent en attente jusqu'à son retour ou leur expiration." };
+      ? { key: 'polling', label: 'Periodic polling', tone: 'ok', hint: 'The phone fetches commands every 1 to 15 minutes: a command may wait until the next visit.' }
+      : { key: 'offline', label: 'Offline', tone: 'bad', hint: 'The phone has not polled the server recently (periodic polling, every 1 to 15 minutes). Commands stay pending until it comes back or they expire.' };
   }
   if (ch.connected) {
-    return { key: 'connected', label: 'Connecté', tone: 'ok', hint: 'Connexion permanente : les commandes sont remises presque immédiatement.' };
+    return { key: 'connected', label: 'Connected', tone: 'ok', hint: 'Permanent connection: commands are delivered almost immediately.' };
   }
   return {
     key: 'offline',
-    label: 'Hors ligne',
+    label: 'Offline',
     tone: 'bad',
-    hint: "Le téléphone n'est pas connecté au canal de commandes (éteint, hors réseau, canal désactivé dans l'application ou agent arrêté). Les commandes restent en attente jusqu'à son retour ou leur expiration.",
+    hint: 'The phone is not connected to the command channel (powered off, out of network, channel disabled in the app or agent stopped). Commands stay pending until it comes back or they expire.',
   };
 }
 
-/** Résumé d'une ligne des paramètres d'une commande pour l'historique. */
+/** One-line summary of a command's parameters for the history. */
 export function paramsSummary(type: string, params: Record<string, unknown> | undefined): string {
   const p = params ?? {};
   switch (type) {
     case 'ring': {
       const d = typeof p['duration_s'] === 'number' ? p['duration_s'] : undefined;
-      return `${d !== undefined ? `${d} s` : 'durée par défaut'}${p['vibrate'] === false ? ', sans vibration' : ', avec vibration'}`;
+      return `${d !== undefined ? `${d} s` : 'default duration'}${p['vibrate'] === false ? ', without vibration' : ', with vibration'}`;
     }
     case 'vibrate':
       return typeof p['duration_s'] === 'number' ? `${p['duration_s']} s` : '';
     case 'lock':
-      return typeof p['message'] === 'string' && p['message'] ? `message : « ${p['message']} »` : 'sans message';
+      return typeof p['message'] === 'string' && p['message'] ? `message: "${p['message']}"` : 'no message';
     default:
       return '';
   }
@@ -392,15 +392,15 @@ export interface Prepared {
   issuedAt: Date;
 }
 
-/** Identifiant et payload d'une nouvelle commande (la signature se calcule ensuite, si elle est requise). */
+/** Identifier and payload of a new command (the signature is computed afterwards, if required). */
 export function prepareCommand(deviceId: string, type: CommandType, params: CommandParams, validityMs: number, now: Date = new Date()): Prepared {
   const id = ulid(now.getTime());
   return { id, payload: buildPayload({ id, deviceId, type, params, issuedAt: now, validityMs }), issuedAt: now };
 }
 
 /**
- * Commandes refusées pour signature invalide dans la dernière heure (le téléphone bloque les commandes sensibles
- * à la cinquième). Se base sur l'heure du résultat, sinon de la création.
+ * Commands refused for an invalid signature in the last hour (the phone blocks sensitive commands
+ * at the fifth). Based on the result time, otherwise on the creation time.
  */
 export function badSignatureCount(cmds: { status: string; detail?: string | undefined; result_at?: string | undefined; created_at?: string | undefined }[], now: Date = new Date()): number {
   const since = now.getTime() - HOUR_MS;
@@ -411,20 +411,20 @@ export function badSignatureCount(cmds: { status: string; detail?: string | unde
   }).length;
 }
 
-// ------------------------------------------------------------------------- horloge et erreurs d'envoi
+// ------------------------------------------------------------------------- clock and sending errors
 
-/** Écart d'horloge au-delà duquel le serveur refuse `issued_at` (10 min), et correction maximale appliquée. */
+/** Clock offset beyond which the server refuses `issued_at` (10 min), and maximum correction applied. */
 export const SKEW_WARN_MS = 10 * 60_000;
-/** En deçà, l'écart mesuré (en-tête `Date`, à la seconde près, plus le délai réseau) n'est que du bruit. */
+/** Below this, the measured offset (`Date` header, to the second, plus network delay) is only noise. */
 const SKEW_NOISE_MS = 30_000;
 
 /**
- * Heure d'émission (`issued_at`) d'une commande. L'horloge de ce navigateur fait foi, corrigée de l'écart mesuré
- * avec le serveur (`skewMs` = serveur − navigateur) quand il est plausible : le téléphone refuse (`expired`) une
- * commande émise plus de 5 min dans son futur alors que le serveur en tolère 10, si bien qu'un ordinateur en
- * avance de 5 à 10 min produisait des commandes acceptées par le serveur puis refusées par le téléphone.
- * Au-delà de 10 min l'écart n'est jamais suivi (le serveur refusera, et l'utilisateur est averti) : un serveur
- * compromis ne doit pas pouvoir faire signer une commande datée du futur, qui resterait valable bien après.
+ * Issue time (`issued_at`) of a command. This browser's clock is authoritative, corrected by the offset measured
+ * against the server (`skewMs` = server − browser) when it is plausible: the phone refuses (`expired`) a
+ * command issued more than 5 min in its future whereas the server tolerates 10, so a computer
+ * 5 to 10 min ahead produced commands accepted by the server then refused by the phone.
+ * Beyond 10 min the offset is never followed (the server will refuse, and the user is warned): a compromised
+ * server must not be able to get a command dated in the future signed, which would stay valid long after.
  */
 export function issueTime(nowMs: number, skewMs: number | undefined): Date {
   if (skewMs === undefined || !Number.isFinite(skewMs)) return new Date(nowMs);
@@ -435,30 +435,30 @@ export function issueTime(nowMs: number, skewMs: number | undefined): Date {
 export function clockProblem(skewMs: number | undefined): string | undefined {
   if (skewMs === undefined || Math.abs(skewMs) <= SKEW_WARN_MS) return undefined;
   const min = Math.round(Math.abs(skewMs) / 60_000);
-  return `L'horloge de cet ordinateur est décalée d'environ ${min} minutes par rapport au serveur (${skewMs > 0 ? 'en retard' : 'en avance'}) : le serveur refusera les commandes (écart de 10 minutes au plus). Corrigez la date et l'heure de cet appareil.`;
+  return `This computer's clock is about ${min} minutes off from the server (${skewMs > 0 ? 'behind' : 'ahead'}): the server will refuse commands (offset of 10 minutes at most). Correct the date and time of this device.`;
 }
 
-/** Message utile pour l'échec de `POST /commands`. */
+/** Useful message for the failure of `POST /commands`. */
 export function commandErrorMessage(e: { status: number; code: string; message: string }): string {
   if (e.code === 'invalid_validity' && /^issued_at|10 minutes/.test(e.message)) {
-    return "Horloge de cet ordinateur décalée : l'heure d'émission de la commande est à plus de 10 minutes de l'heure du serveur. Corrigez la date et l'heure de cet appareil, puis recommencez.";
+    return "This computer's clock is off: the command's issue time is more than 10 minutes from the server's time. Correct the date and time of this device, then try again.";
   }
   switch (e.code) {
     case 'rate_limited':
-      return `Limite atteinte (20 commandes par heure, 10 en attente par appareil) : ${e.message}`;
+      return `Limit reached (20 commands per hour, 10 pending per device): ${e.message}`;
     case 'device_revoked':
-      return 'Cet appareil est révoqué : aucune commande ne peut lui être envoyée.';
+      return 'This device is revoked: no command can be sent to it.';
     case 'duplicate_id':
-      return 'Identifiant de commande déjà utilisé : recommencez.';
+      return 'Command identifier already used: try again.';
     case 'signature_required':
     case 'invalid_signature':
     case 'signature_not_allowed':
-      return `Signature refusée par le serveur (${e.message}).`;
+      return `Signature refused by the server (${e.message}).`;
     case 'bad_params':
     case 'invalid_payload':
     case 'invalid_validity':
-      return `Commande invalide : ${e.message}`;
+      return `Invalid command: ${e.message}`;
     default:
-      return e.status === 429 ? `Limite atteinte : ${e.message}` : e.message;
+      return e.status === 429 ? `Limit reached: ${e.message}` : e.message;
   }
 }

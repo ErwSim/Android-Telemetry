@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { VigieEvent } from '../api/types.ts';
+import type { WatchpostEvent } from '../api/types.ts';
 import { describeEvent, typeLabel } from '../lib/events.ts';
 import { fmtDateTime, fmtDateTimeShort } from '../lib/format.ts';
 import { JsonView } from './JsonView.tsx';
@@ -13,11 +13,11 @@ export function EventTable({
   showDevice = false,
   describe = describeEvent,
 }: {
-  events: VigieEvent[];
+  events: WatchpostEvent[];
   compact?: boolean;
   newIds?: ReadonlySet<string>;
   showDevice?: boolean;
-  describe?: (ev: VigieEvent) => string;
+  describe?: (ev: WatchpostEvent) => string;
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const cols = 4 + (showDevice ? 1 : 0);
@@ -84,7 +84,7 @@ export function EventTable({
   );
 }
 
-export function EventDetailBody({ ev }: { ev: VigieEvent }) {
+export function EventDetailBody({ ev }: { ev: WatchpostEvent }) {
   return (
     <div>
       <div className="kv-inline hint">

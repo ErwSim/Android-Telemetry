@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react
 import { api } from '../api/endpoints.ts';
 import { useApi } from '../api/useApi.ts';
 import { useEventStream } from '../api/useEventStream.ts';
-import type { LocationPoint, VigieEvent } from '../api/types.ts';
+import type { LocationPoint, WatchpostEvent } from '../api/types.ts';
 import { PeriodPicker, usePeriod } from '../components/PeriodPicker.tsx';
 import { Async, Badge, Card, Empty, KV, Loading } from '../components/ui.tsx';
 import type { MapPoint } from '../components/MapView.tsx';
@@ -63,7 +63,7 @@ export default function MapPage() {
   const liveKey = `${deviceId ?? ''}|${range.from}|${range.to}`;
   const [extra, setExtra] = useState<{ key: string; pts: LocationPoint[] }>({ key: liveKey, pts: [] });
   const onEvent = useCallback(
-    (ev: VigieEvent) => {
+    (ev: WatchpostEvent) => {
       if (ev.type !== 'location.fix') return;
       const lat = num(ev.data, 'lat');
       const lon = num(ev.data, 'lon');

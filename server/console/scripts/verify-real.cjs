@@ -2,9 +2,9 @@
  *
  *   REAL_URL=http://127.0.0.1:8090 REAL_PASSWORD=… [REAL_USER=admin] [OUT=dossier] node scripts/verify-real.cjs
  *
- * Prérequis (voir server/collector/README.md) : collecteur lancé avec VIGIE_CONSOLE_DIR=<ce dossier>/dist, un appareil
+ * Prérequis (voir server/collector/README.md) : collecteur lancé avec WATCHPOST_CONSOLE_DIR=<ce dossier>/dist, un appareil
  * enrôlé et alimenté (`sim --backfill 48h --follow`), et un agent qui interroge /api/v1/commands (le simulateur du
- * collecteur, ou `AGENT_CODE=… node <agent simulé> fichier.vigie`) dont le code de commande est `REAL_CODE`
+ * collecteur, ou `AGENT_CODE=… node <agent simulé> file.watchpost`) dont le code de commande est `REAL_CODE`
  * (défaut : « correct horse battery staple »). AdGuard Home n'est pas requis : sans lui on contrôle le mode dégradé.
  * Échoue sur toute erreur console, violation CSP, statut HTTP inattendu ou requête vers un tiers.
  */
@@ -26,7 +26,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 
 async function main() {
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'en-GB', timezoneId: 'Europe/Paris' });
   await ctx.addInitScript(() => { window.__csp = []; document.addEventListener('securitypolicyviolation', (e) => window.__csp.push(`${e.violatedDirective} ${e.blockedURI}`)); });
   await ctx.route('https://tile.openstreetmap.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: PNG, headers: { 'access-control-allow-origin': '*' } }));
   const page = await ctx.newPage();

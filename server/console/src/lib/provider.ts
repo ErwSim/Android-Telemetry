@@ -1,46 +1,46 @@
-// Fournisseurs de position (contrat §2 `location.fix.provider`, §10 modes de localisation).
+// Location providers (contract §2 `location.fix.provider`, §10 location modes).
 
 export type ProviderKey = 'gps' | 'network' | 'fused' | 'passive' | 'unknown';
 
 export interface ProviderInfo {
   key: ProviderKey;
   label: string;
-  /** libellé court pour la légende */
+  /** short label for the legend */
   short: string;
-  /** ce que ce fournisseur implique pour la vie privée */
+  /** what this provider implies for privacy */
   note: string;
-  /** passe par les Services Google Play */
+  /** goes through Google Play Services */
   google: boolean;
 }
 
 export function providerInfo(provider: string | undefined): ProviderInfo {
   switch (provider?.toLowerCase()) {
     case 'gps':
-      return { key: 'gps', label: 'GPS', short: 'GPS', note: 'Satellites seuls : rien ne part chez Google.', google: false };
+      return { key: 'gps', label: 'GPS', short: 'GPS', note: 'Satellites only: nothing goes to Google.', google: false };
     case 'network':
       return {
         key: 'network',
-        label: 'Réseau (Wi-Fi et antennes)',
-        short: 'Réseau',
-        note: 'Position estimée d’après les Wi-Fi et antennes voisins : ce fournisseur passe par les Services Google Play.',
+        label: 'Network (Wi-Fi and cell towers)',
+        short: 'Network',
+        note: 'Location estimated from nearby Wi-Fi networks and cell towers: this provider goes through Google Play Services.',
         google: true,
       };
     case 'fused':
       return {
         key: 'fused',
-        label: 'Fusionné',
-        short: 'Fusionné',
-        note: 'Combine GPS, Wi-Fi, antennes et capteurs : ce fournisseur est celui des Services Google Play.',
+        label: 'Fused',
+        short: 'Fused',
+        note: 'Combines GPS, Wi-Fi, cell towers and sensors: this provider is the one of Google Play Services.',
         google: true,
       };
     case 'passive':
-      return { key: 'passive', label: 'Passif', short: 'Passif', note: 'Reprend les positions demandées par d’autres applications.', google: false };
+      return { key: 'passive', label: 'Passive', short: 'Passive', note: 'Reuses the locations requested by other applications.', google: false };
     default:
-      return { key: 'unknown', label: provider ? provider : 'Inconnu', short: 'Inconnu', note: '', google: false };
+      return { key: 'unknown', label: provider ? provider : 'Unknown', short: 'Unknown', note: '', google: false };
   }
 }
 
-/** Nombre de positions par fournisseur, du plus fréquent au plus rare. */
+/** Number of locations per provider, from the most frequent to the rarest. */
 export function countProviders(points: { provider?: string | undefined }[]): { key: ProviderKey; label: string; count: number }[] {
   const m = new Map<ProviderKey, { label: string; count: number }>();
   for (const p of points) {

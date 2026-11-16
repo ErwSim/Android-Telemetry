@@ -167,7 +167,7 @@ function riskEvent(c: Ctx, t: number, app: MockApp, override?: { score: number; 
   const p = profileOf(app);
   const score = override?.score ?? p.score;
   const reasons = override?.reasons ?? p.reasons;
-  const level = app.system || app.package === 'io.github.erwsim.vigie' ? 'low' : score >= 65 ? 'high' : score >= 35 ? 'medium' : 'low';
+  const level = app.system || app.package === 'io.github.erwsim.watchpost' ? 'low' : score >= 65 ? 'high' : score >= 35 ? 'medium' : 'low';
   mk(c, t, 'app.risk', 0, {
     package: app.package,
     label: app.label,

@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/endpoints.ts';
 import { useApi } from '../api/useApi.ts';
 import { usePagedEvents } from '../api/usePagedEvents.ts';
-import type { AppInfo, VigieEvent } from '../api/types.ts';
+import type { AppInfo, WatchpostEvent } from '../api/types.ts';
 import { AppName } from '../components/AppName.tsx';
 import { EventList } from '../components/EventList.tsx';
 import { PeriodPicker, usePeriod } from '../components/PeriodPicker.tsx';
@@ -136,8 +136,8 @@ function Inventory({ apps, riskMap }: { apps: AppInfo[]; riskMap: Map<string, Ap
       sort === 'update'
         ? (parseTs(b.last_update)?.getTime() ?? 0) - (parseTs(a.last_update)?.getTime() ?? 0)
         : sort === 'perms'
-          ? (b.granted_dangerous?.length ?? 0) - (a.granted_dangerous?.length ?? 0) || name(a).localeCompare(name(b), 'fr')
-          : name(a).localeCompare(name(b), 'fr'),
+          ? (b.granted_dangerous?.length ?? 0) - (a.granted_dangerous?.length ?? 0) || name(a).localeCompare(name(b), 'en')
+          : name(a).localeCompare(name(b), 'en'),
     );
     return out;
   }, [apps, q, cat, installer, sort]);
@@ -468,7 +468,7 @@ function Notifications({ labelOf }: { labelOf: (pkg: string) => string | undefin
   const sum = useMemo(() => summarizeNotifications(paged.events), [paged.events]);
   const collector = device?.last_heartbeat?.collectors?.['notifications'];
   const total = (top.data?.items ?? []).reduce((a, i) => a + i.count, 0);
-  const describe = (ev: VigieEvent) => {
+  const describe = (ev: WatchpostEvent) => {
     const p = str(ev.data, 'package');
     const label = p ? labelOf(p) : undefined;
     const base = describeEvent(ev);
@@ -528,7 +528,7 @@ function History({ labelOf }: { labelOf: (pkg: string) => string | undefined }) 
   const [kind, setKind] = useState('');
   const range = periodRange(ctl.period);
   const paged = usePagedEvents(deviceId ? { device_id: deviceId, type: kind || HISTORY_TYPES, ...range } : null, 100);
-  const describe = (ev: VigieEvent) => {
+  const describe = (ev: WatchpostEvent) => {
     const pkg = str(ev.data, 'package');
     const label = pkg ? labelOf(pkg) : undefined;
     const base = describeEvent(ev);

@@ -1,11 +1,11 @@
-// Classification Google / Samsung des paquets Android et des noms DNS.
+// Google / Samsung classification of Android packages and DNS names.
 
 export type Vendor = 'google' | 'samsung' | 'other';
 
 export const VENDOR_LABELS: Record<Vendor, string> = {
   google: 'Google',
   samsung: 'Samsung',
-  other: 'Autres',
+  other: 'Others',
 };
 
 const GOOGLE_PACKAGES = ['com.google.', 'com.android.vending', 'com.android.chrome', 'com.android.googlesearch', 'android.autoinstalls.config.google'];
@@ -20,7 +20,7 @@ const SAMSUNG_PACKAGES = [
   'flipboard.boxer.app',
 ];
 
-// Domaines (suffixes) : google, firebase/analytics, CDN et services de plateforme Google ; services Samsung.
+// Domains (suffixes): Google, Firebase/analytics, CDN and Google platform services; Samsung services.
 const GOOGLE_DOMAINS = [
   'google.com',
   'google.fr',

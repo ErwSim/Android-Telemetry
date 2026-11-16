@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { VigieEvent } from '../api/types.ts';
+import type { WatchpostEvent } from '../api/types.ts';
 import { describeEvent, domainOf, installerLabel, isSideloaded, permissionLabel, sevLabel } from './events.ts';
 import { matchesFilters, parsePrefixes, togglePrefix } from './eventFilter.ts';
 import { classifyHost, classifyPackage } from './vendors.ts';
@@ -8,7 +8,7 @@ import { circleRing, haversine, pathLength } from './geo.ts';
 import { mergeConfig, isValidTileUrl } from './config.ts';
 import { chooseBucket, resolvePeriod } from './period.ts';
 
-const ev = (type: string, data: Record<string, unknown>, sev = 0): VigieEvent => ({ id: 'x', ts: '2026-11-15T10:00:00Z', type, sev, data });
+const ev = (type: string, data: Record<string, unknown>, sev = 0): WatchpostEvent => ({ id: 'x', ts: '2026-11-15T10:00:00Z', type, sev, data });
 
 describe('describeEvent', () => {
   it('résume les types du catalogue', () => {
@@ -21,7 +21,7 @@ describe('describeEvent', () => {
       expect(() => describeEvent(ev(t, {}))).not.toThrow();
       expect(() => describeEvent(ev(t, { apps: 'oops', fields: 3, lat: 'x', transports: {} }))).not.toThrow();
     }
-    expect(() => describeEvent({ id: 'x', ts: '', type: 'a.b', sev: 0 } as unknown as VigieEvent)).not.toThrow();
+    expect(() => describeEvent({ id: 'x', ts: '', type: 'a.b', sev: 0 } as unknown as WatchpostEvent)).not.toThrow();
   });
   it('replie un type inconnu sur ses champs scalaires', () => {
     expect(describeEvent(ev('futur.chose', { a: 1, b: 'x', c: { d: 1 } }))).toBe('a=1 · b=x');

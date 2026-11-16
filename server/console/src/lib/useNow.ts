@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-/** Date courante rafraîchie périodiquement (clés de requêtes « dernières 24 h »). */
+/** Current date refreshed periodically (keys of "last 24 h" queries). */
 export function useNow(intervalMs = 60_000): Date {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {

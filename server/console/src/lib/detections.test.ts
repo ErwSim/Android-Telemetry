@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Detection, VigieEvent } from '../api/types.ts';
+import type { Detection, WatchpostEvent } from '../api/types.ts';
 import {
   DETECTION_TYPES,
   appNameOf,
@@ -145,14 +145,14 @@ describe('lecture de l’API', () => {
   });
 
   it('transforme un événement `detect.*` du flux SSE en détection, ignore les autres', () => {
-    const ev: VigieEvent = { id: 'E1', ts: '2026-11-16T10:00:00Z', type: 'detect.sms_abuse', sev: 3, device_id: 'dev', data: { package: 'p', label: 'L', evidence: { count: 5 }, window_from: '2026-11-16T09:00:00Z', window_to: '2026-11-16T10:00:00Z', summary: 's' } };
+    const ev: WatchpostEvent = { id: 'E1', ts: '2026-11-16T10:00:00Z', type: 'detect.sms_abuse', sev: 3, device_id: 'dev', data: { package: 'p', label: 'L', evidence: { count: 5 }, window_from: '2026-11-16T09:00:00Z', window_to: '2026-11-16T10:00:00Z', summary: 's' } };
     expect(detectionFromEvent(ev)).toMatchObject({ id: 'E1', type: 'detect.sms_abuse', severity: 3, package: 'p', evidence: { count: 5 }, window_from: '2026-11-16T09:00:00Z' });
     expect(detectionFromEvent({ ...ev, type: 'net.dns' })).toBeUndefined();
     expect(detectionFromEvent({ ...ev, data: {} })?.evidence).toEqual({});
   });
 
   it('le journal décrit une détection en clair', () => {
-    const ev: VigieEvent = { id: 'E1', ts: '2026-11-16T10:00:00Z', type: 'detect.fanout', sev: 2, data: { package: 'com.x', evidence: { distinct_ips: 300 } } };
+    const ev: WatchpostEvent = { id: 'E1', ts: '2026-11-16T10:00:00Z', type: 'detect.fanout', sev: 2, data: { package: 'com.x', evidence: { distinct_ips: 300 } } };
     expect(describeEvent(ev)).toBe("com.x s'est connectée à 300 adresses différentes en une heure");
   });
 });
@@ -330,12 +330,12 @@ describe('détections du §11.4 (sans app.ops)', () => {
     expect(applyMutes(l, [])).toBe(l);
     expect(isMuteEvent('detect.muted')).toBe(true);
     expect(isMuteEvent('detect.fanout')).toBe(false);
-    const ev: VigieEvent = { id: 'E', ts: '2026-11-16T10:00:00Z', type: 'detect.muted', sev: 0, data: { package: 'p' } };
+    const ev: WatchpostEvent = { id: 'E', ts: '2026-11-16T10:00:00Z', type: 'detect.muted', sev: 0, data: { package: 'p' } };
     expect(detectionFromEvent(ev)).toBeUndefined();
   });
   it('une mise à jour du flux (update + detection_id) remplace la détection existante au lieu d’en créer une autre', () => {
     const base = det('detect.threat_domain', { domains: ['a.top'], domain_count: 1 }, { id: 'D1', ts: '2026-11-16T08:00:00Z' });
-    const ev: VigieEvent = { id: 'E9', ts: '2026-11-16T12:00:00Z', type: 'detect.threat_domain', sev: 3, device_id: 'dev', data: { update: true, detection_id: 'D1', package: 'com.exemple.app', evidence: { domains: ['a.top', 'b.top'], domain_count: 2 }, window_from: '2026-11-16T00:00:00Z', window_to: '2026-11-17T00:00:00Z' } };
+    const ev: WatchpostEvent = { id: 'E9', ts: '2026-11-16T12:00:00Z', type: 'detect.threat_domain', sev: 3, device_id: 'dev', data: { update: true, detection_id: 'D1', package: 'com.exemple.app', evidence: { domains: ['a.top', 'b.top'], domain_count: 2 }, window_from: '2026-11-16T00:00:00Z', window_to: '2026-11-17T00:00:00Z' } };
     const d = detectionFromEvent(ev) as Detection;
     expect(d.id).toBe('D1');
     expect(d.updated_at).toBe('2026-11-16T12:00:00Z');

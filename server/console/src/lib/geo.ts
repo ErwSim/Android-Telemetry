@@ -13,7 +13,7 @@ export function haversine(a: LatLon, b: LatLon): number {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 }
 
-/** Longueur cumulée d'un trajet, en mètres. Ignore les sauts supérieurs à `maxJumpM` (trous de données). */
+/** Cumulative length of a track, in metres. Skips the segments for which `skip` returns true (data gaps). */
 export function pathLength(points: LatLon[], skip?: (i: number) => boolean): number {
   let total = 0;
   for (let i = 1; i < points.length; i++) {
@@ -25,7 +25,7 @@ export function pathLength(points: LatLon[], skip?: (i: number) => boolean): num
   return total;
 }
 
-/** Polygone approximant un cercle de rayon `radiusM` (anneau GeoJSON fermé, [lon, lat]). */
+/** Polygon approximating a circle of radius `radiusM` (closed GeoJSON ring, [lon, lat]). */
 export function circleRing(center: LatLon, radiusM: number, steps = 48): [number, number][] {
   const ring: [number, number][] = [];
   const dLat = (radiusM / R) * (180 / Math.PI);

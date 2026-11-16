@@ -1,9 +1,9 @@
 {
-  "name": "vigie-console",
+  "name": "watchpost-console",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Console web Vigie (tableau de bord du propriétaire)",
+  "description": "Watchpost web console (the dashboard)",
   "scripts": {
     "dev": "vite",
     "mock": "node mock/server.ts",

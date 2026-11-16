@@ -1,5 +1,5 @@
 import type { PagedEvents } from '../api/usePagedEvents.ts';
-import type { VigieEvent } from '../api/types.ts';
+import type { WatchpostEvent } from '../api/types.ts';
 import { EventTable } from './EventTable.tsx';
 import { Empty, ErrorBox, Loading } from './ui.tsx';
 
@@ -15,7 +15,7 @@ export function EventList({
   paged: PagedEvents;
   compact?: boolean;
   empty?: string;
-  describe?: (ev: VigieEvent) => string;
+  describe?: (ev: WatchpostEvent) => string;
   showDevice?: boolean;
   newIds?: ReadonlySet<string>;
 }) {

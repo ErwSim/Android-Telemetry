@@ -43,7 +43,7 @@ export function OpsEmpty({ device, reason }: { device: Device | undefined; reaso
       <ol className="ops-steps">
         <li>
           Brancher le téléphone à l'ordinateur (débogage USB) et lancer <code>./scripts/grant-adb-permissions.sh</code> (ou la version <code>.ps1</code> sous Windows) : il accorde{' '}
-          <code>DUMP</code> à Vigie (équivalent : <code>adb shell pm grant io.github.erwsim.vigie android.permission.DUMP</code>).
+          <code>DUMP</code> à Vigie (équivalent : <code>adb shell pm grant io.github.erwsim.watchpost android.permission.DUMP</code>).
         </li>
         <li>
           Dans l'application Vigie, onglet <em>Collecteurs</em> : activer le collecteur expérimental « Usage des opérations sensibles ».

@@ -24,7 +24,7 @@ import type {
   TrackingSummary,
   TopKind,
   TopResponse,
-  VigieEvent,
+  WatchpostEvent,
 } from './types.ts';
 
 export interface Range {
@@ -51,7 +51,7 @@ export const api = {
     signal?: AbortSignal,
   ) => request<EventsResponse>('/events', q as unknown as Query, signal ? { signal } : {}),
   event: (id: string, signal?: AbortSignal) =>
-    request<VigieEvent>(`/events/${encodeURIComponent(id)}`, undefined, signal ? { signal } : {}),
+    request<WatchpostEvent>(`/events/${encodeURIComponent(id)}`, undefined, signal ? { signal } : {}),
   locations: (q: Range & { device_id?: string; max_points?: number }, signal?: AbortSignal) =>
     request<LocationsResponse>('/locations', q as unknown as Query, signal ? { signal } : {}),
   timeline: (

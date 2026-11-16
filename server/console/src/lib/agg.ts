@@ -6,7 +6,7 @@ export interface Counted {
   count: number;
 }
 
-/** Comptage de clés, trié par fréquence décroissante puis alphabétique. */
+/** Count of keys, sorted by decreasing frequency then alphabetically. */
 export function countKeys(keys: (string | undefined)[], limit = Infinity): Counted[] {
   const m = new Map<string, number>();
   for (const k of keys) {
@@ -19,7 +19,7 @@ export function countKeys(keys: (string | undefined)[], limit = Infinity): Count
     .slice(0, limit);
 }
 
-/** Fusionne plusieurs classements en additionnant `count` et `bytes` par clé. */
+/** Merges several rankings by adding `count` and `bytes` per key. */
 export function mergeTop(...lists: TopItem[][]): TopItem[] {
   const m = new Map<string, TopItem>();
   for (const l of lists) {
@@ -43,7 +43,7 @@ export interface VendorShare {
   total: number;
 }
 
-/** Répartition Google / Samsung / autres pondérée par `count` (ou `bytes` si `by === 'bytes'`). */
+/** Google / Samsung / others split weighted by `count` (or `bytes` if `by === 'bytes'`). */
 export function vendorShare(
   items: TopItem[],
   kind: 'host' | 'package',
@@ -64,7 +64,7 @@ export interface PermissionGroup {
   apps: AppInfo[];
 }
 
-/** Permissions dangereuses accordées, groupées par permission (les plus répandues d'abord). */
+/** Granted dangerous permissions, grouped by permission (the most widespread first). */
 export function groupPermissions(apps: AppInfo[]): PermissionGroup[] {
   const m = new Map<string, AppInfo[]>();
   for (const a of apps) {
@@ -79,7 +79,7 @@ export function groupPermissions(apps: AppInfo[]): PermissionGroup[] {
     .sort((a, b) => b.apps.length - a.apps.length || a.permission.localeCompare(b.permission));
 }
 
-/** Total d'événements par tranche. */
+/** Total events per bucket. */
 export function timelineTotals(t: TimelineResponse): { starts: number[]; totals: number[] } {
   const starts = t.buckets.map((b) => new Date(b).getTime());
   const totals = t.buckets.map((_, i) => t.series.reduce((acc, s) => acc + (s.counts[i] ?? 0), 0));
@@ -87,16 +87,16 @@ export function timelineTotals(t: TimelineResponse): { starts: number[]; totals:
 }
 
 export interface StackedData {
-  /** secondes epoch (format uPlot) */
+  /** epoch seconds (uPlot format) */
   x: number[];
-  /** sommes cumulées par série, dans l'ordre de `keys` */
+  /** cumulative sums per series, in the order of `keys` */
   cumulative: number[][];
   keys: string[];
-  /** total par série */
+  /** total per series */
   sums: number[];
 }
 
-/** Empile les séries (la première en bas). Les clés absentes de `order` suivent par volume décroissant. */
+/** Stacks the series (the first at the bottom). Keys absent from `order` follow by decreasing volume. */
 export function stackSeries(t: TimelineResponse, order: string[] = []): StackedData {
   const sums = new Map(t.series.map((s) => [s.key, s.counts.reduce((a, b) => a + b, 0)]));
   const keys = [
@@ -114,7 +114,7 @@ export function stackSeries(t: TimelineResponse, order: string[] = []): StackedD
   return { x, cumulative, keys, sums: keys.map((k) => sums.get(k) ?? 0) };
 }
 
-/** Compte par installateur (installateur absent regroupé sous « (aucun) »). */
+/** Count per installer (missing installer grouped under "(none)"). */
 export function countByInstaller(apps: AppInfo[]): Counted[] {
-  return countKeys(apps.map((a) => a.installer || '(aucun)'));
+  return countKeys(apps.map((a) => a.installer || '(none)'));
 }

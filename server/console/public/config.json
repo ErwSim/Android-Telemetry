@@ -1,5 +1,5 @@
 {
   "tileUrl": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-  "tileAttribution": "© contributeurs OpenStreetMap",
+  "tileAttribution": "© OpenStreetMap contributors",
   "tileAttributionUrl": "https://www.openstreetmap.org/copyright"
 }
