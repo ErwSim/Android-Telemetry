@@ -112,6 +112,7 @@ class CommandVerifier(
 
         // Content (authenticated for a sensitive type from here on).
         if (root.keys.any { it !in PAYLOAD_KEYS }) return refuse(Refusal.MALFORMED, signed)
+        if (JsonDuplicateKeys.found(envelope.payload)) return refuse(Refusal.MALFORMED, signed)
         val issuedAt = root.string("issued_at")?.let(Rfc3339::parseOrNull) ?: return refuse(Refusal.MALFORMED, signed)
         val expiresAt = root.string("expires_at")?.let(Rfc3339::parseOrNull) ?: return refuse(Refusal.MALFORMED, signed)
         if (expiresAt < issuedAt) return refuse(Refusal.MALFORMED, signed)
@@ -194,16 +195,114 @@ class CommandVerifier(
                     } else {
                         val prim = e as? JsonPrimitive ?: return null
                         if (!prim.isString) return null
-                        // "200 caractères" counted in UTF-16 units, as the console does (the strictest count).
+                        // "200 caractères" = 200 UTF-16 units; no control character except the line feed (contract §8,
+                        // checked here too: the server is not trusted).
                         if (prim.content.length > LOCK_MESSAGE_MAX) return null
-                        // Control characters are shown as spaces on the lock screen (displayed, never interpreted).
-                        prim.content.map { if (it.isISOControl()) ' ' else it }.joinToString("").trim().ifEmpty { null }
+                        if (prim.content.any { it.isISOControl() && it != '\n' }) return null
+                        prim.content.trim().ifEmpty { null }
                     }
                     CommandParams.Lock(message)
                 }
                 CommandTypes.STOP_RING, CommandTypes.LOCATE, CommandTypes.CLEAR_LOCK_MESSAGE, CommandTypes.WIPE ->
                     if (p.isEmpty()) CommandParams.None else null
                 else -> null
+            }
+        }
+    }
+}
+
+/**
+ * Detects an object with the same key twice anywhere in a JSON text that already parsed (the parser keeps
+ * the last one silently; contract §8: a payload with a duplicate key is refused). Keys are compared once
+ * their escapes are decoded (`"type"` and `"\u0074ype"` are the same key).
+ */
+internal object JsonDuplicateKeys {
+    fun found(text: String): Boolean = try {
+        Scanner(text).value()
+    } catch (_: Exception) {
+        true // unreadable here although the parser accepted it: refuse rather than guess
+    }
+
+    private class Scanner(private val s: String) {
+        private var i = 0
+
+        private fun ws() {
+            while (i < s.length && s[i].isWhitespace()) i++
+        }
+
+        /** Scans one value; true if a duplicate key was found in it. */
+        fun value(): Boolean {
+            ws()
+            return when (s[i]) {
+                '{' -> obj()
+                '[' -> arr()
+                '"' -> {
+                    string()
+                    false
+                }
+                else -> {
+                    while (i < s.length && s[i] !in ",]} \t\r\n") i++
+                    false
+                }
+            }
+        }
+
+        private fun obj(): Boolean {
+            i++ // {
+            val keys = HashSet<String>()
+            ws()
+            if (s[i] == '}') {
+                i++
+                return false
+            }
+            while (true) {
+                ws()
+                if (!keys.add(string())) return true
+                ws()
+                i++ // :
+                if (value()) return true
+                ws()
+                if (s[i++] == '}') return false // else ','
+            }
+        }
+
+        private fun arr(): Boolean {
+            i++ // [
+            ws()
+            if (s[i] == ']') {
+                i++
+                return false
+            }
+            while (true) {
+                if (value()) return true
+                ws()
+                if (s[i++] == ']') return false
+            }
+        }
+
+        private fun string(): String {
+            val out = StringBuilder()
+            i++ // opening quote
+            while (true) {
+                val c = s[i++]
+                when (c) {
+                    '"' -> return out.toString()
+                    '\\' -> {
+                        when (val e = s[i++]) {
+                            'u' -> {
+                                out.append(s.substring(i, i + 4).toInt(16).toChar())
+                                i += 4
+                            }
+                            'n' -> out.append('\n')
+                            't' -> out.append('\t')
+                            'r' -> out.append('\r')
+                            'b' -> out.append('\b')
+                            'f' -> out.append('\u000c')
+                            else -> out.append(e)
+                        }
+                    }
+                    else -> out.append(c)
+                }
             }
         }
     }

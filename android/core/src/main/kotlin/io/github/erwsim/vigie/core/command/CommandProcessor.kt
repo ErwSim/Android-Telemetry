@@ -16,8 +16,10 @@ import kotlinx.serialization.json.JsonPrimitive
  * verification ([CommandVerifier]) → execution (one [CommandExecutor] per type) → `command.result`
  * event (contract §8) → local history → result queued for `POST …/result`.
  *
- * A command whose result is still waiting to be acknowledged by the server is a redelivery (stream
- * and poll can both deliver it): it is skipped silently, the queued result answers it.
+ * Redelivery (contract §8 "Renvoi": the server delivers a command again when its result did not arrive,
+ * and stream and poll can both deliver it): a command whose id was already processed is **never executed
+ * again**; its original result is queued again for `POST …/result` (no new event, no new history line).
+ * Only an id still in the anti-replay window but whose result is no longer remembered gets `replay`.
  *
  * `wipe`: the event is emitted and the result queued **before** the reset, then [Hooks.beforeIrreversible]
  * tries to send them (10 s at most), then the executor runs. Executors never see a refused command.
@@ -59,9 +61,15 @@ class CommandProcessor(
         finish(CommandVerifier.INVALID_ID, CommandTypes.UNKNOWN, ExecutionResult.refused(Refusal.MALFORMED), signed = false)
     }
 
-    /** Returns the history entry, or null for a redelivery skipped because its result is still pending. */
+    /** Returns the history entry, or null for a redelivery answered with its original result. */
     suspend fun process(envelope: CommandEnvelope): CommandHistoryEntry? = mutex.withLock {
-        if (CommandVerifier.ULID.matches(envelope.id) && state.hasPendingResult(envelope.id)) return@withLock null
+        if (CommandVerifier.ULID.matches(envelope.id)) {
+            if (state.hasPendingResult(envelope.id)) return@withLock null
+            state.originalResult(envelope.id)?.let { original ->
+                state.addPendingResult(original)
+                return@withLock null
+            }
+        }
         when (val v = verifier.verify(envelope, environment())) {
             is CommandVerifier.Verification.Refused -> finish(v.id, v.type, ExecutionResult.refused(v.reason), v.signed)
             is CommandVerifier.Verification.Accepted -> execute(v.command)
@@ -111,7 +119,11 @@ class CommandProcessor(
         }
         val entry = CommandHistoryEntry(id, type, result.status.wire, result.detail, signed, now)
         state.addHistory(entry)
-        if (id != CommandVerifier.INVALID_ID) state.addPendingResult(PendingResult(id, result.status.wire, result.detail, now))
+        if (id != CommandVerifier.INVALID_ID) {
+            val pending = PendingResult(id, result.status.wire, result.detail, now)
+            state.rememberResult(pending)
+            state.addPendingResult(pending)
+        }
         try {
             hooks.onProcessed(entry)
         } catch (_: Exception) {

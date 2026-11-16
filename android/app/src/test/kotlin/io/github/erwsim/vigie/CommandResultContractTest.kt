@@ -90,8 +90,7 @@ class CommandResultContractTest {
         val (oldId, oldPayload) = kit.payload("ring", issuedAtMs = kit.clock.now - 7_200_000, expiresAtMs = kit.clock.now - 3_600_000)
         processor.process(CommandEnvelope(oldId, oldPayload, null)) // expired
         val replayed = kit.signed("lock")
-        processor.process(replayed)
-        kit.state.removePendingResult(replayed.id)
+        kit.state.markSeen(replayed.id, signed = true) // in the window, but no result remembered
         processor.process(replayed) // replay
         owner = false
         processor.process(kit.signed("lock")) // not_device_owner

@@ -149,14 +149,42 @@ class RemoteCommandsPolicyTest {
         assertEquals(0, notOwner.reset.calls.get())
     }
 
+    /**
+     * Contract §8 "Renvoi": the server delivers a command again when its result did not arrive. The agent
+     * answers with the original result and never executes again — for wipe, lock and ring alike.
+     */
     @Test
-    fun aWipeIsNeverRunTwice() {
-        val s = Setup()
+    fun aRedeliveredCommandIsAnsweredWithItsOriginalResultAndNeverRunAgain() {
+        val screen = FakeLockScreen()
+        val s = Setup(lockScreen = screen)
         val wipe = s.kit.signed("wipe")
+        val lock = s.kit.signed("lock", """{"message":"Perdu"}""")
         s.process(wipe)
-        s.kit.state.removePendingResult(wipe.id) // result acknowledged by the server
-        val again = s.process(wipe)!!
-        assertEquals("replay", again.detail)
+        s.process(lock)
+        assertEquals(1, s.reset.calls.get())
+        val eventsBefore = s.sink.events.size
+        for (round in 1..3) {
+            // Result acknowledged (or lost): the server delivers the same command again.
+            s.kit.state.removePendingResult(wipe.id)
+            s.kit.state.removePendingResult(lock.id)
+            s.liveWipeAllowed = round != 2 // even with the gate open again, nothing runs twice
+            assertNull(s.process(wipe))
+            assertNull(s.process(lock))
+            // Delivered twice before the result could be posted: still nothing.
+            assertNull(s.process(wipe))
+        }
+        assertEquals(1, s.reset.calls.get())
+        assertEquals(listOf("info=Perdu", "lockNow"), screen.calls)
+        assertEquals("no new event, no new history line", eventsBefore, s.sink.events.size)
+        assertEquals(2, s.kit.state.history.value.size)
+        val pending = s.kit.state.pendingResults().associateBy { it.id }
+        assertEquals("executed", pending[wipe.id]!!.status)
+        assertEquals("executed", pending[lock.id]!!.status)
+        assertEquals("ok_message", pending[lock.id]!!.detail)
+        // Only an id still in the anti-replay window whose result is no longer remembered gets "replay".
+        val forgotten = s.kit.signed("wipe")
+        s.kit.state.markSeen(forgotten.id, signed = true)
+        assertEquals("replay", s.process(forgotten)!!.detail)
         assertEquals(1, s.reset.calls.get())
     }
 

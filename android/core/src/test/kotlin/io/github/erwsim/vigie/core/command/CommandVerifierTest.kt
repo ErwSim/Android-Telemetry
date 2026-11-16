@@ -222,4 +222,26 @@ class CommandVerifierTest {
         assertFalse(kit.keys.isConfigured(CommandVector.DEVICE_ID))
         assertTrue(kit.box.destroyed)
     }
+
+    @Test
+    fun duplicateKeysAndControlCharactersAreRefused() {
+        val kit = CommandKit()
+        val ok = kit.env()
+        // Duplicate key at the top level, in params, or hidden behind an escape: malformed, even when signed.
+        val (id1, p1) = kit.payload("lock", """{"message":"a"}""")
+        val dup = p1.replace("\"params\"", "\"type\":\"lock\",\"params\"")
+        assertEquals(Refusal.MALFORMED, kit.verifier.verify(kit.sign(id1, dup), ok).reason())
+        assertEquals(Refusal.MALFORMED, kit.verifier.verify(kit.signed("lock", """{"message":"a","message":"b"}"""), ok).reason())
+        assertEquals(Refusal.MALFORMED, kit.verifier.verify(kit.signed("lock", """{"message":"a","\u006dessage":"b"}"""), ok).reason())
+        assertEquals(Refusal.MALFORMED, kit.verifier.verify(kit.simple("ring", """{"duration_s":5,"duration_s":300}"""), ok).reason())
+        // Nested objects with the same keys in different objects are fine.
+        assertTrue(JsonDuplicateKeys.found("""{"a":{"x":1},"b":{"x":[{"x":1},{"x":2}]},"a":0}"""))
+        assertFalse(JsonDuplicateKeys.found("""{"a":{"x":1},"b":{"x":[{"x":1},{"x":2}],"s":"\"a\":1,\"a\""}}"""))
+        // Lock message: line feed allowed, any other control character refused (the server is not trusted).
+        val withLf = kit.verifier.verify(kit.signed("lock", """{"message":"Perdu\nappelez-moi"}"""), ok) as Verification.Accepted
+        assertEquals(CommandParams.Lock("Perdu\nappelez-moi"), withLf.command.params)
+        assertEquals(Refusal.BAD_PARAMS, kit.verifier.verify(kit.signed("lock", """{"message":"a\tb"}"""), ok).reason())
+        assertEquals(Refusal.BAD_PARAMS, kit.verifier.verify(kit.signed("lock", """{"message":"a\u0000b"}"""), ok).reason())
+        assertEquals(Refusal.BAD_PARAMS, kit.verifier.verify(kit.signed("lock", """{"message":"a\u202Eb\u0085"}"""), ok).reason())
+    }
 }

@@ -165,6 +165,25 @@ class CommandStateStore(private val prefs: SharedPreferences) {
 
     fun hasPendingResult(id: String): Boolean = pendingResults().any { it.id == id }
 
+    /**
+     * The result of every processed command, kept with its id (contract §8 "Renvoi": a command delivered
+     * again is answered with its **original** result, never executed again). Bounded to [RESULT_MEMORY]
+     * entries (as many as the two anti-replay windows together); a later result of the same id (wipe
+     * announced then refused) replaces the earlier one.
+     */
+    fun rememberResult(result: PendingResult) = synchronized(lock) {
+        val list = (readResultMemory().filter { it.id != result.id } + result.copy(attempts = 0)).takeLast(RESULT_MEMORY)
+        prefs.edit().putString(K_RESULT_MEMORY, VigieJson.encodeToString(ListSerializer(PendingResult.serializer()), list)).commit()
+    }
+
+    fun originalResult(id: String): PendingResult? = synchronized(lock) { readResultMemory().lastOrNull { it.id == id } }
+
+    private fun readResultMemory(): List<PendingResult> = try {
+        prefs.getString(K_RESULT_MEMORY, null)?.let { VigieJson.decodeFromString(ListSerializer(PendingResult.serializer()), it) } ?: emptyList()
+    } catch (_: Exception) {
+        emptyList()
+    }
+
     fun addPendingResult(result: PendingResult) = synchronized(lock) {
         // A later result of the same command (wipe announced then failed) replaces the earlier one.
         writeResults((pendingResults().filter { it.id != result.id } + result).takeLast(MAX_PENDING_RESULTS))
@@ -187,6 +206,8 @@ class CommandStateStore(private val prefs: SharedPreferences) {
         const val LOCKOUT_MS = 3_600_000L
         const val HISTORY_SIZE = 50
         const val MAX_PENDING_RESULTS = 100
+        const val RESULT_MEMORY = 2 * REPLAY_WINDOW
+        private const val K_RESULT_MEMORY = "result_memory"
         private const val K_SEEN_SIGNED = "seen_signed"
         private const val K_SEEN_SIMPLE = "seen_simple"
         private const val K_BAD_SIGS = "bad_signature_times"
