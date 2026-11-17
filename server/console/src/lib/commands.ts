@@ -48,7 +48,7 @@ export const LIMITS = {
   validitySimpleMs: HOUR_MS,
   validitySensitiveMs: 7 * DAY_MS,
   validityMaxMs: 30 * DAY_MS,
-  /** erase: 15 min by default and 24 h at most (contract §8, v1.1 security review) */
+  /** erase: 15 min by default and 24 h at most (contract §8) */
   validityWipeMs: 15 * 60_000,
   validityWipeMaxMs: DAY_MS,
 } as const;
@@ -223,7 +223,7 @@ export const SIGNED_CAVEAT =
 
 /**
  * `delivered`: the command had been handed to the phone (`delivered_at` set). `signed`: sensitive command,
- * for which "cancelled" and "expired" are only the server's state (contract §8, v1.1 security review).
+ * for which "cancelled" and "expired" are only the server's state (contract §8).
  */
 export function statusInfo(status: string, delivered = false, signed = false): StatusInfo {
   if (status === 'expired' && delivered) {

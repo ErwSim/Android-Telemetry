@@ -1,6 +1,6 @@
 /**
  * What the signature of sensitive commands guarantees, and its limits (contract §8, "What the signature guarantees,
- * and its limits", v1.1 security review). The text does not promise more than the cryptography holds.
+ * and its limits"). The text does not promise more than the cryptography holds.
  */
 export function ServerLimits({ compact = false }: { compact?: boolean }) {
   if (compact) {

@@ -96,7 +96,7 @@ describe('payload building', () => {
     expect(() => buildPayload({ ...base, type: 'locate', validityMs: 0 })).toThrow();
     const ok = JSON.parse(buildPayload({ ...base, type: 'lock', validityMs: 30 * 86_400_000 })) as { expires_at: string };
     expect(ok.expires_at).toBe('2026-12-16T10:00:00.000Z');
-    // Erase: 24 h at most (contract §8, v1.1 security review)
+    // Erase: 24 h at most (contract §8)
     const wipe24 = JSON.parse(buildPayload({ ...base, type: 'wipe', validityMs: 86_400_000 })) as { expires_at: string };
     expect(wipe24.expires_at).toBe('2026-11-17T10:00:00.000Z');
     expect(() => buildPayload({ ...base, type: 'wipe', validityMs: 86_400_001 })).toThrow(/24 hours/);

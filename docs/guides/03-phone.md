@@ -18,7 +18,7 @@ is spread over several weeks, deliberately.
 
 ## Recommended order of trials (and what not to enable too early)
 
-This is the order recommended by the independent review of the application. Each phase is judged before the next;
+This is the recommended order. Each phase is judged before the next;
 section numbers refer to this guide.
 
 | Phase | What | Recommended duration |
